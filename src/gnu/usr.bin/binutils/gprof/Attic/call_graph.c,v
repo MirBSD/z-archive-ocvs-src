@@ -1,0 +1,387 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.21.17.33;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.05.08;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.30.06;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.43.33;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.09.21;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* call_graph.c  -  Create call graphs.
+
+   Copyright 2000, 2001, 2002 Free Software Foundation, Inc.
+
+   This file is part of GNU Binutils.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+   02111-1307, USA.  */
+
+#include "gprof.h"
+#include "search_list.h"
+#include "source.h"
+#include "symtab.h"
+#include "cg_arcs.h"
+#include "call_graph.h"
+#include "corefile.h"
+#include "gmon_io.h"
+#include "gmon_out.h"
+#include "sym_ids.h"
+
+void
+cg_tally (from_pc, self_pc, count)
+     bfd_vma from_pc;
+     bfd_vma self_pc;
+     unsigned long count;
+{
+  Sym *parent;
+  Sym *child;
+
+  parent = sym_lookup (&symtab, from_pc);
+  child = sym_lookup (&symtab, self_pc);
+
+  if (child == NULL || parent == NULL)
+    return;
+
+  /* If we're doing line-by-line profiling, both the parent and the
+     child will probably point to line symbols instead of function
+     symbols.  For the parent this is fine, since this identifies the
+     line number in the calling routing, but the child should always
+     point to a function entry point, so we back up in the symbol
+     table until we find it.
+
+     For normal profiling, is_func will be set on all symbols, so this
+     code will do nothing.  */
+  while (child >= symtab.base && ! child->is_func)
+    --child;
+
+  if (child < symtab.base)
+    return;
+
+  /* Keep arc if it is on INCL_ARCS table or if the INCL_ARCS table
+     is empty and it is not in the EXCL_ARCS table.  */
+  if (sym_id_arc_is_present (&syms[INCL_ARCS], parent, child)
+      || (syms[INCL_ARCS].len == 0
+	  && !sym_id_arc_is_present (&syms[EXCL_ARCS], parent, child)))
+    {
+      child->ncalls += count;
+      DBG (TALLYDEBUG,
+	   printf (_("[cg_tally] arc from %s to %s traversed %lu times\n"),
+		   parent->name, child->name, count));
+      arc_add (parent, child, count);
+    }
+}
+
+/* Read a record from file IFP describing an arc in the function
+   call-graph and the count of how many times the arc has been
+   traversed.  FILENAME is the name of file IFP and is provided
+   for formatting error-messages only.  */
+
+void
+cg_read_rec (ifp, filename)
+     FILE *ifp;
+     const char *filename;
+{
+  bfd_vma from_pc, self_pc;
+  unsigned int count;
+
+  if (gmon_io_read_vma (ifp, &from_pc)
+      || gmon_io_read_vma (ifp, &self_pc)
+      || gmon_io_read_32 (ifp, &count))
+    {
+      fprintf (stderr, _("%s: %s: unexpected end of file\n"),
+	       whoami, filename);
+      done (1);
+    }
+
+  DBG (SAMPLEDEBUG,
+       printf ("[cg_read_rec] frompc 0x%lx selfpc 0x%lx count %lu\n",
+	       (unsigned long) from_pc, (unsigned long) self_pc,
+	       (unsigned long) count));
+  /* Add this arc:  */
+  cg_tally (from_pc, self_pc, count);
+}
+
+/* Write all the arcs in the call-graph to file OFP.  FILENAME is
+   the name of OFP and is provided for formatting error-messages
+   only.  */
+
+void
+cg_write_arcs (ofp, filename)
+     FILE *ofp;
+     const char *filename;
+{
+  Arc *arc;
+  Sym *sym;
+
+  for (sym = symtab.base; sym < symtab.limit; sym++)
+    {
+      for (arc = sym->cg.children; arc; arc = arc->next_child)
+	{
+	  if (gmon_io_write_8 (ofp, GMON_TAG_CG_ARC)
+	      || gmon_io_write_vma (ofp, arc->parent->addr)
+	      || gmon_io_write_vma (ofp, arc->child->addr)
+	      || gmon_io_write_32 (ofp, arc->count))
+	    {
+	      perror (filename);
+	      done (1);
+	    }
+	  DBG (SAMPLEDEBUG,
+	     printf ("[cg_write_arcs] frompc 0x%lx selfpc 0x%lx count %lu\n",
+		     (unsigned long) arc->parent->addr,
+		     (unsigned long) arc->child->addr, arc->count));
+	}
+    }
+}
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d3 1
+a3 1
+   Copyright 2000, 2001 Free Software Foundation, Inc.
+d22 4
+a30 1
+#include "symtab.h"
+d33 5
+a37 3
+extern void
+DEFUN (cg_tally, (from_pc, self_pc, count),
+       bfd_vma from_pc AND bfd_vma self_pc AND unsigned long count)
+d83 3
+a85 1
+DEFUN (cg_read_rec, (ifp, filename), FILE * ifp AND CONST char *filename)
+d112 3
+a114 1
+DEFUN (cg_write_arcs, (ofp, filename), FILE * ofp AND const char *filename)
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d3 1
+a3 1
+   Copyright 2000, 2001, 2002 Free Software Foundation, Inc.
+a21 4
+#include "gprof.h"
+#include "search_list.h"
+#include "source.h"
+#include "symtab.h"
+d27 1
+d30 3
+a32 5
+void
+cg_tally (from_pc, self_pc, count)
+     bfd_vma from_pc;
+     bfd_vma self_pc;
+     unsigned long count;
+d78 1
+a78 3
+cg_read_rec (ifp, filename)
+     FILE *ifp;
+     const char *filename;
+d105 1
+a105 3
+cg_write_arcs (ofp, filename)
+     FILE *ofp;
+     const char *filename;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d3 1
+a3 1
+   Copyright 2000, 2001, 2002 Free Software Foundation, Inc.
+a21 4
+#include "gprof.h"
+#include "search_list.h"
+#include "source.h"
+#include "symtab.h"
+d27 1
+d30 3
+a32 5
+void
+cg_tally (from_pc, self_pc, count)
+     bfd_vma from_pc;
+     bfd_vma self_pc;
+     unsigned long count;
+d78 1
+a78 3
+cg_read_rec (ifp, filename)
+     FILE *ifp;
+     const char *filename;
+d105 1
+a105 3
+cg_write_arcs (ofp, filename)
+     FILE *ofp;
+     const char *filename;
+@
+

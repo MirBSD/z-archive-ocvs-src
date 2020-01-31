@@ -1,0 +1,280 @@
+head	1.4;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.4
+	tg-mergefixes-1-branch:1.4.0.4
+	tg-mergefixes-1-base:1.4
+	MIROS_X:1.4.0.2
+	MIROS_X_BASE:1.4
+	tg-mergetmp-3:1.4
+	MIRBSD_XP_MIRPPC:1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.2;
+locks; strict;
+comment	@# @;
+
+
+1.4
+date	2004.10.26.21.00.07;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.10.23.19.40.51;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.06.10.17.40.41;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.12.27.19.54.27;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@we can build a threaded perl again
+bump to #0814
+@
+text
+@# $MirBSD: src/gnu/usr.bin/perl/hints/mirbsd.sh,v 1.3 2004/10/23 19:40:51 tg Exp $
+#
+# hints file for MirOS; Thorsten Glaser <tg@@66h.42h.de>
+# Derived from OpenBSD; Todd Miller <millert@@openbsd.org>
+# Edited to allow Configure command-line overrides by
+#  Andy Dougherty <doughera@@lafayette.edu>
+#
+# To build with distribution paths, use:
+#	./Configure -des -Dmirbsd_distribution=defined
+#
+
+[ -z "$cc" ] && cc="$CC"
+
+# MirOS has a better malloc than perl...
+usemymalloc='n'
+
+# Currently, vfork(2) is not a real win over fork(2).
+usevfork="$undef"
+
+ARCH=$(arch | sed 's/^MirBSD.//')
+test -z "$usedl" && usedl=$define
+# We use -fPIC here because -fpic is *NOT* enough for some of the
+# extensions like Tk on some platforms (ie: sparc)
+cccdlflags="-DPIC -fPIC $cccdlflags"
+ld="${cc:-cc}"
+lddlflags="-shared -fPIC $lddlflags"
+libswanted=$(echo $libswanted | sed 's/ dl / /')
+
+# We need to force ld to export symbols on ELF platforms.
+# Without this, dlopen() is crippled.
+ELF=$(${cc:-cc} -dM -E - </dev/null | grep __ELF__)
+test -n "$ELF" && ldflags="-Wl,-E $ldflags"
+
+# MirOS doesn't need libcrypt
+libswanted=$(echo $libswanted | sed 's/ crypt / /')
+
+# Configure can't figure this out non-interactively
+d_suidsafe=$define
+
+   test "$optimize" || optimize='-O2'
+
+# This script UU/usethreads.cbu will get 'called-back' by Configure
+# after it has prompted the user for whether to use threads.
+cat > UU/usethreads.cbu <<'EOCBU'
+case "$usethreads" in
+$define|true|[yY]*)
+	ccflags="-pthread $ccflags"
+	ldflags="-pthread $ldflags"
+esac
+EOCBU
+
+# This script UU/use64bitint.cbu will get 'called-back' by Configure
+# after it has prompted the user for whether to use 64-bitness.
+cat > UU/use64bitint.cbu <<'EOCBU'
+case "$use64bitint" in
+$define|true|[yY]*)
+	echo " "
+	echo "Checking if your C library has broken 64-bit functions..." >&4
+	$cat >check.c <<EOCP
+#include <stdio.h>
+typedef $uquadtype myULL;
+int main (void)
+{
+    struct {
+	double d;
+	myULL  u;
+    } *p, test[] = {
+	{4294967303.15, 4294967303ULL},
+	{4294967294.2,  4294967294ULL},
+	{4294967295.7,  4294967295ULL},
+	{0.0, 0ULL}
+    };
+    for (p = test; p->u; p++) {
+	myULL x = (myULL)p->d;
+	if (x != p->u) {
+	    printf("buggy\n");
+	    return 0;
+	}
+    }
+    printf("ok\n");
+    return 0;
+}
+EOCP
+	set check
+	if eval $compile_ok; then
+	    libcquad=$(./check)
+	    echo "Your C library's 64-bit functions are $libcquad."
+	else
+	    echo "(I can't seem to compile the test program.)"
+	    echo "Assuming that your C library's 64-bit functions are ok."
+	    libcquad="ok"
+	fi
+	$rm -f check.c check
+
+	case "$libcquad" in
+	    buggy*)
+		cat >&4 <<EOM
+
+*** You have a C library with broken 64-bit functions.
+*** 64-bit support does not work reliably in this configuration.
+*** Please rerun Configure without -Duse64bitint and/or -Dusemorebits.
+*** Cannot continue, aborting.
+
+EOM
+		exit 1
+		;;
+	esac
+esac
+EOCBU
+
+# When building in the MirOS tree we use different paths
+# This is only part of the story, the rest comes from config.over
+case "$mirbsd_distribution" in
+''|$undef|false) ;;
+*)
+	# We put things in /usr, not /usr/local
+	prefix='/usr'
+	prefixexp='/usr'
+	sysman='/usr/share/man/man1'
+	libpth='/usr/lib'
+	glibpth='/usr/lib'
+	# Local things, however, do go in /usr/local
+	siteprefix='/usr/local'
+	siteprefixexp='/usr/local'
+	# Ports installs non-std libs in /usr/local/lib so look there too
+	locincpth='/usr/local/include'
+	loclibpth='/usr/local/lib'
+	# Link perl with shared libperl
+	if [ "$usedl" = "$define" -a -r shlib_version ]; then
+		useshrplib=true
+		libperl=$(. ./shlib_version; echo libperl.so.${major}.${minor})
+	fi
+	;;
+esac
+
+# end
+@
+
+
+1.3
+log
+@* merge perl 5.8.5
+* adjust for obsd and mbsd changes
+* adjust for mirports manpage changes
+* disable threaded perl for now, has been broken since a few
+  XXX someone help?
+* re-add shlib_version, it's easier this way
+* bump to libperl.so.10.0
+@
+text
+@d1 1
+a1 1
+# $MirBSD: src/gnu/usr.bin/perl/hints/mirbsd.sh,v 1.2 2004/06/10 17:40:41 tg Stab $
+d15 1
+a15 1
+test "$usemymalloc" || usemymalloc='n'
+a48 2
+		# Broken at least up to OpenBSD 3.5, we'll see about 3.6
+		d_getservbyname_r=$undef
+@
+
+
+1.2
+log
+@merge OpenBSD
+@
+text
+@d1 1
+a1 1
+# $MirBSD: src/gnu/usr.bin/perl/hints/mirbsd.sh,v 1.1 2003/12/27 19:54:27 tg Exp $
+d49 61
+@
+
+
+1.1
+log
+@save what I've done so far to attempt building it through
+perl was broken (i386-tirttt not i386-mirbsd? but not
+everywhere???) etc. so I didn't sync the lists.
+@
+text
+@d1 1
+a1 1
+# $MirBSD$
+d3 2
+a4 1
+# hints file for MirBSD; Todd Miller <millert@@openbsd.org>
+d12 1
+a12 1
+[ -z "$cc" ] && cc=$CC
+d14 1
+a14 1
+# MirBSD has a better malloc than perl...
+d20 1
+a20 8
+#
+# Not all platforms support dynamic loading...
+# For the case of "$openbsd_distribution", the hints file
+# needs to know whether we are using dynamic loading so that
+# it can set the libperl name appropriately.
+# Allow command line overrides.
+#
+ARCH=`arch | sed 's/^OpenBSD.//'`
+d23 1
+a23 1
+# extensions like Tk on some OpenBSD platforms (ie: sparc)
+d25 1
+a25 1
+ld=${cc:-cc}
+d27 2
+a28 1
+libswanted=`echo $libswanted | sed 's/ dl / /'`
+d31 1
+a31 1
+ELF=`${cc:-cc} -dM -E - </dev/null | grep __ELF__`
+d34 2
+a35 3
+# OpenBSD doesn't need libcrypt but many folks keep a stub lib
+# around for old NetBSD binaries.
+libswanted=`echo $libswanted | sed 's/ crypt / /'`
+d42 1
+a42 1
+# This script UU/usethreads.cbu will get 'called-back' by Configure 
+a46 1
+	# any openbsd version dependencies with pthreads?
+d52 1
+a52 1
+# When building in the MirBSD tree we use different paths
+d72 1
+a72 1
+		libperl=`. ./shlib_version; echo libperl.so.${major}.${minor}`
+@
+

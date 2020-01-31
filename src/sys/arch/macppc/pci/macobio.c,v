@@ -1,0 +1,577 @@
+head	1.3;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.6
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.4
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.2
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	cvs-200312222040:1.1.1.3
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.11.13.21.06.27;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.04.06.04.29.09;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.53;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.53;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.21.19.05.47;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.12.22.20.59.40;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@shave some off my work for the first MirHackathon and let
+the zombies walk around for bsiegert@@'s voodoo
+@
+text
+@/*	$OpenBSD: macobio.c,v 1.9 2003/10/15 23:00:56 drahn Exp $	*/
+/*	$NetBSD: obio.c,v 1.6 1999/05/01 10:36:08 tsubai Exp $	*/
+
+/*-
+ * Copyright (C) 1998	Internet Research Institute, Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by
+ *	Internet Research Institute, Inc.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/device.h>
+
+#include <dev/pci/pcivar.h>
+#include <dev/pci/pcidevs.h>
+
+#include <dev/ofw/openfirm.h>
+
+#include <machine/bus.h>
+#include <machine/autoconf.h>
+
+void macobio_attach(struct device *, struct device *, void *);
+int macobio_match(struct device *, void *, void *);
+int macobio_print(void *, const char *);
+void macobio_modem_power(int enable);
+
+void *undef_mac_establish(void * lcv, int irq, int type, int level,
+    int (*ih_fun)(void *), void *ih_arg, char *name);
+void mac_intr_disestab(void *lcp, void *arg);
+
+struct macobio_softc {
+	struct device sc_dev;
+	int sc_node;
+	struct ppc_bus_space sc_membus_space;
+	int	sc_id; /* copy of the PCI pa_id */
+	u_int8_t *obiomem;
+};
+struct cfdriver macobio_cd = {
+	NULL, "macobio", DV_DULL,
+};
+
+
+struct cfattach macobio_ca = {
+	sizeof(struct macobio_softc), macobio_match, macobio_attach
+};
+
+int
+macobio_match(struct device *parent, void *cf, void *aux)
+{
+	struct pci_attach_args *pa = aux;
+
+	if (PCI_VENDOR(pa->pa_id) == PCI_VENDOR_APPLE)
+		switch (PCI_PRODUCT(pa->pa_id)) {
+
+		case PCI_PRODUCT_APPLE_GC:
+		case PCI_PRODUCT_APPLE_OHARE:
+		case PCI_PRODUCT_APPLE_HEATHROW:
+		case PCI_PRODUCT_APPLE_PADDINGTON:
+		case PCI_PRODUCT_APPLE_KEYLARGO:
+		case PCI_PRODUCT_APPLE_INTREPID:
+		case PCI_PRODUCT_APPLE_PANGEA_MACIO:
+			return 1;
+		}
+
+	return 0;
+}
+
+#define HEATHROW_FCR_OFFSET 0x38
+u_int32_t *heathrow_FCR = NULL;
+
+/*
+ * Attach all the sub-devices we can find
+ */
+void
+macobio_attach(struct device *parent, struct device *self, void *aux)
+{
+	struct macobio_softc *sc = (struct macobio_softc *)self;
+	struct pci_attach_args *pa = aux;
+	struct confargs ca;
+	int node, child, namelen;
+	u_int32_t reg[20];
+	int32_t intr[8];
+	char name[32];
+	int need_interrupt_controller = 0;
+
+	sc->sc_id = pa->pa_id; /* save of type for later */
+
+	switch (PCI_PRODUCT(pa->pa_id)) {
+
+	/* XXX should not use name */
+	case PCI_PRODUCT_APPLE_GC:
+		node = OF_finddevice("/bandit/gc");
+		need_interrupt_controller = 1;
+		break;
+
+	case PCI_PRODUCT_APPLE_OHARE:
+		node = OF_finddevice("/bandit/ohare");
+		need_interrupt_controller = 1;
+		break;
+
+	case PCI_PRODUCT_APPLE_HEATHROW:
+	case PCI_PRODUCT_APPLE_PADDINGTON:
+		node = OF_finddevice("mac-io");
+		if (node == -1)
+			node = OF_finddevice("/pci/mac-io");
+		if (OF_getprop(node, "assigned-addresses", reg, sizeof(reg))
+			== (sizeof (reg[0]) * 5))
+		{
+			/* always ??? */
+			heathrow_FCR = mapiodev(reg[2] + HEATHROW_FCR_OFFSET,
+			    4);
+		}
+		break;
+	case PCI_PRODUCT_APPLE_KEYLARGO:
+	case PCI_PRODUCT_APPLE_INTREPID:
+	case PCI_PRODUCT_APPLE_PANGEA_MACIO:
+		node = OF_finddevice("mac-io");
+		if (node == -1)
+			node = OF_finddevice("/pci/mac-io");
+		if (OF_getprop(node, "assigned-addresses", reg, sizeof(reg))
+		    == (sizeof (reg[0]) * 5))
+			 sc->obiomem = mapiodev(reg[2], 0x100);
+
+		break;
+	default:
+		printf(": unknown macobio controller\n");
+		return;
+	}
+	sc->sc_node = node;
+
+	if (OF_getprop(node, "assigned-addresses", reg, sizeof(reg)) < 12)
+		return;
+
+	ca.ca_baseaddr = reg[2];
+
+	sc->sc_membus_space.bus_base = ca.ca_baseaddr;
+
+	sc->sc_membus_space.bus_reverse = 1;
+
+	ca.ca_iot = &sc->sc_membus_space;
+	ca.ca_dmat = pa->pa_dmat;
+
+	printf("\n");
+
+	/*
+	 * This might be a hack, but it makes the interrupt controller
+	 * attach as expected if a device node existed in the OF tree.
+	 */
+	if (need_interrupt_controller) {
+		/* force attachment of legacy interrupt controllers */
+		ca.ca_name = "legacy-interrupt-controller";
+		ca.ca_node = 0;
+
+		ca.ca_nreg  = 0;
+		ca.ca_nintr = 0;
+
+		ca.ca_reg = 0;
+		ca.ca_intr = 0;
+
+		config_found(self, &ca, macobio_print);
+	}
+
+	for (child = OF_child(node); child; child = OF_peer(child)) {
+		namelen = OF_getprop(child, "name", name, sizeof(name));
+		if (namelen < 0)
+			continue;
+		if (namelen >= sizeof(name))
+			continue;
+
+		name[namelen] = 0;
+		ca.ca_name = name;
+		ca.ca_node = child;
+
+		ca.ca_nreg  = OF_getprop(child, "reg", reg, sizeof(reg));
+		ca.ca_nintr = OF_getprop(child, "AAPL,interrupts", intr,
+				sizeof(intr));
+		if (ca.ca_nintr == -1)
+			ca.ca_nintr = OF_getprop(child, "interrupts", intr,
+					sizeof(intr));
+
+		ca.ca_reg = reg;
+		ca.ca_intr = intr;
+
+		config_found(self, &ca, macobio_print);
+	}
+}
+
+int
+macobio_print(void *aux, const char *macobio)
+{
+#ifdef MACOBIOVERBOSE
+	struct confargs *ca = aux;
+
+	if (macobio)
+		printf("%s at %s", ca->ca_name, macobio);
+
+	if (ca->ca_nreg > 0)
+		printf(" offset 0x%x", ca->ca_reg[0]);
+
+	return UNCONF;
+#else
+	return QUIET;
+#endif
+}
+
+void *
+undef_mac_establish(void * lcv, int irq, int type, int level,
+    int (*ih_fun)(void *), void *ih_arg, char *name)
+{
+	printf("mac_intr_establish called, not yet inited\n");
+	return 0;
+}
+
+void
+mac_intr_disestab(void *lcp, void *arg)
+{
+	printf("mac_intr_disestablish called, not yet inited\n");
+}
+
+intr_establish_t *mac_intr_establish_func = undef_mac_establish;
+intr_disestablish_t *mac_intr_disestablish_func = mac_intr_disestab;
+
+void *
+mac_intr_establish(void * lcv, int irq, int type, int level,
+    int (*ih_fun)(void *), void *ih_arg, char *name)
+{
+	return (*mac_intr_establish_func)(lcv, irq, type, level, ih_fun,
+	    ih_arg, name);
+}
+void
+mac_intr_disestablish(void *lcp, void *arg)
+{
+	(*mac_intr_disestablish_func)(lcp, arg);
+}
+
+void
+macobio_modem_power(int enable)
+{
+	u_int32_t val;
+	struct macobio_softc *sc = macobio_cd.cd_devs[0];
+	if (PCI_PRODUCT(sc->sc_id) == PCI_PRODUCT_APPLE_KEYLARGO ||
+	    PCI_PRODUCT(sc->sc_id) == PCI_PRODUCT_APPLE_INTREPID) {
+		val = in32rb(sc->obiomem + 0x40);
+		if (enable)
+			val = val & ~((u_int32_t)1<<25);
+		else 
+			val = val | ((u_int32_t)1<<25);
+		out32rb(sc->obiomem + 0x40, val);
+	}
+	if (PCI_PRODUCT(sc->sc_id) == PCI_PRODUCT_APPLE_PANGEA_MACIO) {
+		if (enable) {
+			/* set reset */
+			out8(sc->obiomem + 0x006a + 0x03, 0x04);
+			/* power modem on */
+			out8(sc->obiomem + 0x006a + 0x02, 0x04);
+			/* unset reset */
+			out8(sc->obiomem + 0x006a + 0x03, 0x05);
+		}  else {
+			/* disable it how? */
+		}
+	}
+}
+@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: macobio.c,v 1.7 2002/09/15 09:01:58 deraadt Exp $	*/
+d52 2
+d75 1
+a75 4
+macobio_match(parent, cf, aux)
+	struct device *parent;
+	void *cf;
+	void *aux;
+d87 1
+d102 1
+a102 3
+macobio_attach(parent, self, aux)
+	struct device *parent, *self;
+	void *aux;
+d138 1
+a138 1
+				4);
+d142 1
+d148 1
+a148 2
+			== (sizeof (reg[0]) * 5))
+		{
+a149 1
+		}
+d216 1
+a216 3
+macobio_print(aux, macobio)
+	void *aux;
+	const char *macobio;
+d234 2
+a235 8
+undef_mac_establish(lcv, irq, type, level, ih_fun, ih_arg, name)
+	void * lcv;
+	int irq;
+	int type;
+	int level;
+	int (*ih_fun)(void *);
+	void *ih_arg;
+	char *name;
+d242 1
+a242 3
+mac_intr_disestab(lcp, arg)
+	void *lcp;
+	void *arg;
+d251 2
+a252 8
+mac_intr_establish(lcv, irq, type, level, ih_fun, ih_arg, name)
+	void * lcv;
+	int irq;
+	int type;
+	int level;
+	int (*ih_fun)(void *);
+	void *ih_arg;
+	char *name;
+d255 1
+a255 1
+		ih_arg, name);
+d258 1
+a258 3
+mac_intr_disestablish(lcp, arg)
+	void *lcp;
+	void *arg;
+a262 1
+void macobio_modem_power(int enable);
+d268 2
+a269 1
+	if (PCI_PRODUCT(sc->sc_id) == PCI_PRODUCT_APPLE_KEYLARGO) {
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync MirBSD main source tree against OpenBSD-current,
+which should be fairly stable after the Hackathon now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: macobio.c,v 1.8 2003/05/12 09:00:31 tdeval Exp $	*/
+a87 1
+		case PCI_PRODUCT_APPLE_INTREPID:
+a143 1
+	case PCI_PRODUCT_APPLE_INTREPID:
+d290 1
+a290 2
+	if (PCI_PRODUCT(sc->sc_id) == PCI_PRODUCT_APPLE_KEYLARGO ||
+	    PCI_PRODUCT(sc->sc_id) == PCI_PRODUCT_APPLE_INTREPID) {
+@
+
+
+1.1.1.3
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: macobio.c,v 1.9 2003/10/15 23:00:56 drahn Exp $	*/
+a51 2
+void macobio_modem_power(int enable);
+
+d73 4
+a76 1
+macobio_match(struct device *parent, void *cf, void *aux)
+d103 3
+a105 1
+macobio_attach(struct device *parent, struct device *self, void *aux)
+d141 1
+a141 1
+			    4);
+d151 2
+a152 1
+		    == (sizeof (reg[0]) * 5))
+d154 1
+d221 3
+a223 1
+macobio_print(void *aux, const char *macobio)
+d241 8
+a248 2
+undef_mac_establish(void * lcv, int irq, int type, int level,
+    int (*ih_fun)(void *), void *ih_arg, char *name)
+d255 3
+a257 1
+mac_intr_disestab(void *lcp, void *arg)
+d266 8
+a273 2
+mac_intr_establish(void * lcv, int irq, int type, int level,
+    int (*ih_fun)(void *), void *ih_arg, char *name)
+d276 1
+a276 1
+	    ih_arg, name);
+d279 3
+a281 1
+mac_intr_disestablish(void *lcp, void *arg)
+d286 1
+@
+
+

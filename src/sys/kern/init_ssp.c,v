@@ -1,0 +1,159 @@
+head	1.3;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.3
+	tg-mergefixes-1-branch:1.3.0.4
+	tg-mergefixes-1-base:1.3
+	MIROS_X:1.3.0.2
+	MIROS_X_BASE:1.3
+	tg-mergetmp-3:1.3
+	MIRBSD_XP_MIRPPC:1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.10.29.20.52.08;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.09.17.20.16.43;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2004.09.16.10.08.02;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@move stack smash handler to the file compiled w/o SSP
+and mark it __dead
+@
+text
+@/**	$MirBSD: src/sys/kern/init_ssp.c,v 1.2 2004/09/17 20:16:43 tg Exp $ */
+
+/*-
+ * Copyright (c) 2004
+ *	Thorsten "mirabile" Glaser <tg@@66h.42h.de>
+ * Copyright (c) by The OpenBSD Project.
+ *
+ * Licensee is hereby permitted to deal in this work without restric-
+ * tion, including unlimited rights to use, publically perform, modi-
+ * fy, merge, distribute, sell, give away or sublicence, provided the
+ * above copyright notices, these terms and the disclaimer are retai-
+ * ned in all redistributions, or reproduced in accompanying documen-
+ * tation or other materials provided with binary redistributions.
+ *
+ * Licensor hereby provides this work "AS IS" and WITHOUT WARRANTY of
+ * any kind, expressed or implied, to the maximum extent permitted by
+ * applicable law, but with the warranty of being written without ma-
+ * licious intent or gross negligence; in no event shall licensor, an
+ * author or contributor be held liable for any damage, direct, indi-
+ * rect or other, however caused, arising in any way out of the usage
+ * of covered work, even if advised of the possibility of such damage.
+ */
+
+#ifdef __SSP_ALL__
+#error "You must compile this file with -fno-stack-protector-all"
+#endif
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <dev/rndvar.h>
+
+void init_ssp(void);
+#ifndef	NO_PROPOLICE
+void __stack_smash_handler(char [], int);
+#endif
+
+#define GUARDLEN 8
+
+#ifndef	NO_PROPOLICE
+long __guard[GUARDLEN];
+#endif
+
+void
+init_ssp(void)
+{
+#ifndef	NO_PROPOLICE
+	long tmp[GUARDLEN];
+	int i = GUARDLEN;
+
+	/*
+	 * this is so arc4random_bytes does not
+	 * cause a kernel panic for smashing...
+	 */
+	arc4random_bytes(tmp, sizeof(tmp));
+	while (i--)
+		__guard[i] = tmp[i];
+#endif
+}
+
+#ifndef	NO_PROPOLICE
+__dead void
+__stack_smash_handler(char func[], int damaged __attribute__((unused)))
+{
+	panic("ProPolice: kernel stack smashed in %s", func);
+}
+#endif
+@
+
+
+1.2
+log
+@like a week of hard work.
+* .cvsignore: add build.log
+* X: remove unused code
+* distrib: shrink floppy ramdisk until it fits, factor out some
+  essentials (ping, netcat, hexdump, df, mknod, update, MBRmgr)
+  into just another list
+* disktab, conf/FLOPPY: in-kernel floppy image shrinks by 256 KiB
+* distrib/lists: sync
+* gcc: Ada now always disables -fstack-protector-all (not SSP in
+  general); I learned it protects by itself
+* ld.so, sed: gcc -fstack-protector-all mis-compiles some files
+* bsd.own.mk: libbfd and libopcodes need a minor bump
+* sys.mk, param.h, gcc version.c: bump MirOS version/patchlevel
+
+I *hope* a make b-r "could" now succeed. I've done like 50 this week.
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/kern/init_ssp.c,v 1.1 2004/09/16 10:08:02 tg Exp $ */
+d33 3
+d59 8
+@
+
+
+1.1
+log
+@another price.
+the __guard[] setup functions (obviously) must not be ssp protected,
+since __guard[0] before and after will differ (previously, they used
+to work, and I could use -fno-stack-protector-all, but this way it's
+a lot safer)
+
+libc tested; kernel crash without this diff confirmed, new kernel not
+yet tested
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/share/misc/licence.template,v 1.14 2004/08/15 15:29:11 tg Rel $ */
+d45 1
+d52 2
+a53 1
+	memmove(__guard, tmp, sizeof(__guard));
+@
+

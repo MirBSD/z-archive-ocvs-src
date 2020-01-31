@@ -1,0 +1,787 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2
+	tg-mergefixes-1-branch:1.2.0.8
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.6
+	MIROS_X_BASE:1.2
+	tg-mergetmp-3:1.2
+	MIRBSD_XP_MIRPPC:1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.2
+	MIRBSD_7quater:1.1.1.4
+	cvs-200405160640:1.1.1.5
+	cvs-200401271800:1.1.1.5
+	cvs-200401261630:1.1.1.5
+	cvs-200401021645:1.1.1.5
+	MIRBSD_7_ALPHA:1.1.1.4.0.6
+	MIRBSD_7:1.1.1.4.0.4
+	cvs-200312222040:1.1.1.5
+	MIRBSD_7ter:1.1.1.4
+	MIRBSD_7_DEV:1.1.1.4.0.2
+	cvs-200310020700:1.1.1.4
+	cvs-200309271030:1.1.1.4
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.4
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.07.04.17.01.08;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.56.05;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.56.05;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.49.35;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.19.12.58.02;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.08.31.00.00.18;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2003.12.22.21.20.06;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@another round of warnings, etc.
+add RCS ID, KNF a bit while here
+
+some format string "errors" can't be resolved (2-digit year for example);
+here we might add a GCC option to not warn about them (although I'd
+rather like to see a
+		(void)strftime(buf, sizeof(buf) - 1, "%e%b%y", tp);
+changed into
+		(void)strftime(buf, sizeof(buf) - 1,
+		    "%e%b%y" __attribute__((safe_format)), tp);
+on a per-invocation basis; XXX any volunteers?)
+@
+text
+@/* $MirBSD$ */
+/* $OpenBSD: readmsg.c,v 1.15 2003/11/19 19:17:59 dhartmei Exp $	*/
+
+/*-
+ * Copyright (c) 1985, 1993 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include "globals.h"
+
+__SCCSID("@@(#)readmsg.c	5.1 (Berkeley) 5/11/93");
+__RCSID("$MirBSD$");
+
+extern char *tsptype[];
+
+/*
+ * LOOKAT checks if the message is of the requested type and comes from
+ * the right machine, returning 1 in case of affirmative answer
+ */
+#define LOOKAT(msg, mtype, mfrom, netp, froms) \
+	(((mtype) == TSP_ANY || (mtype) == (msg).tsp_type) &&		\
+	 ((mfrom) == 0 || !strcmp((mfrom), (msg).tsp_name)) &&		\
+	 ((netp) == 0 ||						\
+	  ((netp)->mask & (froms).sin_addr.s_addr) == (netp)->net.s_addr))
+
+struct timeval rtime, rwait, rtout;
+struct tsp msgin;
+static struct tsplist {
+	struct tsp info;
+	struct timeval when;
+	struct sockaddr_in addr;
+	struct tsplist *p;
+} msgslist;
+struct sockaddr_in from;
+struct netinfo *fromnet;
+struct timeval from_when;
+
+/*
+ * `readmsg' returns message `type' sent by `machfrom' if it finds it
+ * either in the receive queue, or in a linked list of previously received
+ * messages that it maintains.
+ * Otherwise it waits to see if the appropriate message arrives within
+ * `intvl' seconds. If not, it returns NULL.
+ */
+
+struct tsp *
+readmsg(int type, char *machfrom, struct timeval *intvl,
+    struct netinfo *netfrom)
+{
+	int length;
+	socklen_t salength;
+	struct pollfd pfd[1];
+	static struct tsplist *head = &msgslist;
+	static struct tsplist *tail = &msgslist;
+	static int msgcnt = 0;
+	struct tsplist *prev;
+	struct netinfo *ntp;
+	struct tsplist *ptr;
+	ssize_t n;
+
+	if (trace) {
+		fprintf(fd, "readmsg: looking for %s from %s, %s\n",
+			tsptype[type], machfrom == NULL ? "ANY" : machfrom,
+			netfrom == NULL ? "ANYNET" : inet_ntoa(netfrom->net));
+		if (head->p != 0) {
+			length = 1;
+			for (ptr = head->p; ptr != 0; ptr = ptr->p) {
+				/* do not repeat the hundreds of messages */
+				if (++length > 3) {
+					if (ptr == tail) {
+						fprintf(fd,"\t ...%d skipped\n",
+							length);
+					} else {
+						continue;
+					}
+				}
+				fprintf(fd, length > 1 ? "\t" : "queue:\t");
+				print(&ptr->info, &ptr->addr);
+			}
+		}
+	}
+
+	ptr = head->p;
+	prev = head;
+
+	/*
+	 * Look for the requested message scanning through the
+	 * linked list. If found, return it and free the space
+	 */
+
+	while (ptr != NULL) {
+		if (LOOKAT(ptr->info, type, machfrom, netfrom, ptr->addr)) {
+again:
+			msgin = ptr->info;
+			from = ptr->addr;
+			from_when = ptr->when;
+			prev->p = ptr->p;
+			if (ptr == tail)
+				tail = prev;
+			free((char *)ptr);
+			fromnet = NULL;
+			if (netfrom == NULL)
+			    for (ntp = nettab; ntp != NULL; ntp = ntp->next) {
+				    if ((ntp->mask & from.sin_addr.s_addr) ==
+					ntp->net.s_addr) {
+					    fromnet = ntp;
+					    break;
+				    }
+			    }
+			else
+			    fromnet = netfrom;
+			if (trace) {
+				fprintf(fd, "readmsg: found ");
+				print(&msgin, &from);
+			}
+
+/* The protocol can get far behind.  When it does, it gets
+ *	hopelessly confused.  So delete duplicate messages.
+ */
+			for (ptr = prev; (ptr = ptr->p) != NULL; prev = ptr) {
+				if (ptr->addr.sin_addr.s_addr
+					== from.sin_addr.s_addr
+				    && ptr->info.tsp_type == msgin.tsp_type) {
+					if (trace)
+						fprintf(fd, "\tdup ");
+					goto again;
+				}
+			}
+			msgcnt--;
+			return(&msgin);
+		} else {
+			prev = ptr;
+			ptr = ptr->p;
+		}
+	}
+
+	/*
+	 * If the message was not in the linked list, it may still be
+	 * coming from the network. Set the timer and wait
+	 * on a poll to read the next incoming message: if it is the
+	 * right one, return it, otherwise insert it in the linked list.
+	 */
+
+	(void)gettimeofday(&rtout, 0);
+	timeradd(&rtout, intvl, &rtout);
+	for (;;) {
+		(void)gettimeofday(&rtime, 0);
+		timersub(&rtout, &rtime, &rwait);
+		if (rwait.tv_sec < 0)
+			rwait.tv_sec = rwait.tv_usec = 0;
+		else if (rwait.tv_sec == 0
+			 && rwait.tv_usec < 1000000/CLK_TCK)
+			rwait.tv_usec = 1000000/CLK_TCK;
+
+		if (trace) {
+			fprintf(fd, "readmsg: wait %lld.%6ld at %s\n",
+				(int64_t)rwait.tv_sec, rwait.tv_usec, date());
+			/* Notice a full disk, as we flush trace info.
+			 * It is better to flush periodically than at
+			 * every line because the tracing consists of bursts
+			 * of many lines.  Without care, tracing slows
+			 * down the code enough to break the protocol.
+			 */
+			if (rwait.tv_sec != 0
+			    && EOF == fflush(fd))
+				traceoff("Tracing ended for cause at %s\n");
+		}
+
+		pfd[0].fd = sock;
+		pfd[0].events = POLLIN;
+		if (!poll(pfd, 1, rwait.tv_sec * 1000 +
+		    rwait.tv_usec / 1000)) {
+			if (rwait.tv_sec == 0 && rwait.tv_usec == 0)
+				return(0);
+			continue;
+		}
+		salength = sizeof(from);
+		if ((n = recvfrom(sock, (char *)&msgin, sizeof(struct tsp), 0,
+			     (struct sockaddr *)&from, &salength)) < 0) {
+			syslog(LOG_ERR, "recvfrom: %m");
+			exit(1);
+		}
+		if (n < sizeof(struct tsp)) {
+			syslog(LOG_NOTICE, "short packet (%u/%u bytes) from %s",
+			    n, sizeof(struct tsp), inet_ntoa(from.sin_addr));
+			continue;
+		}
+
+		(void)gettimeofday(&from_when, (struct timezone *)0);
+		bytehostorder(&msgin);
+
+		if (msgin.tsp_vers > TSPVERSION) {
+			if (trace) {
+			    fprintf(fd,"readmsg: version mismatch\n");
+			    /* should do a dump of the packet */
+			}
+			continue;
+		}
+
+		if (memchr(msgin.tsp_name, '\0', sizeof msgin.tsp_name) ==
+		    NULL) {
+			syslog(LOG_NOTICE, "hostname field not NUL terminated "
+			    "in packet from %s", inet_ntoa(from.sin_addr));
+			continue;
+		}
+
+		fromnet = NULL;
+		for (ntp = nettab; ntp != NULL; ntp = ntp->next)
+			if ((ntp->mask & from.sin_addr.s_addr) ==
+			    ntp->net.s_addr) {
+				fromnet = ntp;
+				break;
+			}
+
+		/*
+		 * drop packets from nets we are ignoring permanently
+		 */
+		if (fromnet == NULL) {
+			/*
+			 * The following messages may originate on
+			 * this host with an ignored network address
+			 */
+			if (msgin.tsp_type != TSP_TRACEON &&
+			    msgin.tsp_type != TSP_SETDATE &&
+			    msgin.tsp_type != TSP_MSITE &&
+			    msgin.tsp_type != TSP_TEST &&
+			    msgin.tsp_type != TSP_TRACEOFF) {
+				if (trace) {
+				    fprintf(fd,"readmsg: discard null net ");
+				    print(&msgin, &from);
+				}
+				continue;
+			}
+		}
+
+		/*
+		 * Throw away messages coming from this machine,
+		 * unless they are of some particular type.
+		 * This gets rid of broadcast messages and reduces
+		 * master processing time.
+		 */
+		if (!strcmp(msgin.tsp_name, hostname)
+		    && msgin.tsp_type != TSP_SETDATE
+		    && msgin.tsp_type != TSP_TEST
+		    && msgin.tsp_type != TSP_MSITE
+		    && msgin.tsp_type != TSP_TRACEON
+		    && msgin.tsp_type != TSP_TRACEOFF
+		    && msgin.tsp_type != TSP_LOOP) {
+			if (trace) {
+				fprintf(fd, "readmsg: discard own ");
+				print(&msgin, &from);
+			}
+			continue;
+		}
+
+		/*
+		 * Send acknowledgements here; this is faster and
+		 * avoids deadlocks that would occur if acks were
+		 * sent from a higher level routine.  Different
+		 * acknowledgements are necessary, depending on
+		 * status.
+		 */
+		if (fromnet == NULL)	/* do not de-reference 0 */
+			ignoreack();
+		else if (fromnet->status == MASTER)
+			masterack();
+		else if (fromnet->status == SLAVE)
+			slaveack();
+		else
+			ignoreack();
+
+		if (LOOKAT(msgin, type, machfrom, netfrom, from)) {
+			if (trace) {
+				fprintf(fd, "readmsg: ");
+				print(&msgin, &from);
+			}
+			return(&msgin);
+		} else if (++msgcnt > NHOSTS*3) {
+
+/* The protocol gets hopelessly confused if it gets too far
+*	behind.  However, it seems able to recover from all cases of lost
+*	packets.  Therefore, if we are swamped, throw everything away.
+*/
+			if (trace)
+				fprintf(fd,
+					"readmsg: discarding %d msgs\n",
+					msgcnt);
+			msgcnt = 0;
+			while ((ptr=head->p) != NULL) {
+				head->p = ptr->p;
+				free((char *)ptr);
+			}
+			tail = head;
+		} else {
+			tail->p = (struct tsplist *)
+				    malloc(sizeof(struct tsplist));
+			tail = tail->p;
+			tail->p = NULL;
+			tail->info = msgin;
+			tail->addr = from;
+			/* timestamp msgs so SETTIMEs are correct */
+			tail->when = from_when;
+		}
+	}
+}
+
+/*
+ * Send the necessary acknowledgements:
+ * only the type ACK is to be sent by a slave
+ */
+void
+slaveack(void)
+{
+	switch(msgin.tsp_type) {
+
+	case TSP_ADJTIME:
+	case TSP_SETTIME:
+	case TSP_ACCEPT:
+	case TSP_REFUSE:
+	case TSP_TRACEON:
+	case TSP_TRACEOFF:
+	case TSP_QUIT:
+		if (trace) {
+			fprintf(fd, "Slaveack: ");
+			print(&msgin, &from);
+		}
+		xmit(TSP_ACK,msgin.tsp_seq, &from);
+		break;
+
+	default:
+		if (trace) {
+			fprintf(fd, "Slaveack: no ack: ");
+			print(&msgin, &from);
+		}
+		break;
+	}
+}
+
+/*
+ * Certain packets may arrive from this machine on ignored networks.
+ * These packets should be acknowledged.
+ */
+void
+ignoreack(void)
+{
+	switch(msgin.tsp_type) {
+
+	case TSP_TRACEON:
+	case TSP_TRACEOFF:
+	case TSP_QUIT:
+		if (trace) {
+			fprintf(fd, "Ignoreack: ");
+			print(&msgin, &from);
+		}
+		xmit(TSP_ACK,msgin.tsp_seq, &from);
+		break;
+
+	default:
+		if (trace) {
+			fprintf(fd, "Ignoreack: no ack: ");
+			print(&msgin, &from);
+		}
+		break;
+	}
+}
+
+/*
+ * `masterack' sends the necessary acknowledgments
+ * to the messages received by a master
+ */
+void
+masterack(void)
+{
+	struct tsp resp;
+
+	resp = msgin;
+	resp.tsp_vers = TSPVERSION;
+	strlcpy(resp.tsp_name, hostname, sizeof resp.tsp_name);
+
+	switch(msgin.tsp_type) {
+
+	case TSP_QUIT:
+	case TSP_TRACEON:
+	case TSP_TRACEOFF:
+	case TSP_MSITEREQ:
+		if (trace) {
+			fprintf(fd, "Masterack: ");
+			print(&msgin, &from);
+		}
+		xmit(TSP_ACK,msgin.tsp_seq, &from);
+		break;
+
+	case TSP_RESOLVE:
+	case TSP_MASTERREQ:
+		if (trace) {
+			fprintf(fd, "Masterack: ");
+			print(&msgin, &from);
+		}
+		xmit(TSP_MASTERACK,msgin.tsp_seq, &from);
+		break;
+
+	default:
+		if (trace) {
+			fprintf(fd,"Masterack: no ack: ");
+			print(&msgin, &from);
+		}
+		break;
+	}
+}
+
+/*
+ * Print a TSP message
+ */
+void
+print(struct tsp *msg, struct sockaddr_in *addr)
+{
+	char tm[26];
+	time_t msgtime;
+
+	if (msg->tsp_type >= TSPTYPENUMBER) {
+		fprintf(fd, "bad type (%u) on packet from %s\n",
+		    msg->tsp_type, inet_ntoa(addr->sin_addr));
+		return;
+	}
+
+	switch (msg->tsp_type) {
+
+	case TSP_LOOP:
+		fprintf(fd, "%s %d %-6u #%d %-15s %s\n",
+			tsptype[msg->tsp_type],
+			msg->tsp_vers,
+			msg->tsp_seq,
+			msg->tsp_hopcnt,
+			inet_ntoa(addr->sin_addr),
+			msg->tsp_name);
+		break;
+
+	case TSP_SETTIME:
+	case TSP_SETDATE:
+	case TSP_SETDATEREQ:
+#ifdef sgi
+		(void)cftime(tm, "%D %T", &msg->tsp_time.tv_sec);
+#else
+		msgtime = msg->tsp_time.tv_sec;
+		strftime(tm, sizeof(tm), "%D %T", localtime(&msgtime));
+#endif /* sgi */
+		fprintf(fd, "%s %d %-6u %s %-15s %s\n",
+			tsptype[msg->tsp_type],
+			msg->tsp_vers,
+			msg->tsp_seq,
+			tm,
+			inet_ntoa(addr->sin_addr),
+			msg->tsp_name);
+		break;
+
+	case TSP_ADJTIME:
+		fprintf(fd, "%s %d %-6u (%d,%d) %-15s %s\n",
+			tsptype[msg->tsp_type],
+			msg->tsp_vers,
+			msg->tsp_seq,
+			msg->tsp_time.tv_sec,
+			msg->tsp_time.tv_usec,
+			inet_ntoa(addr->sin_addr),
+			msg->tsp_name);
+		break;
+
+	default:
+		fprintf(fd, "%s %d %-6u %-15s %s\n",
+			tsptype[msg->tsp_type],
+			msg->tsp_vers,
+			msg->tsp_seq,
+			inet_ntoa(addr->sin_addr),
+			msg->tsp_name);
+		break;
+	}
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 1
+/*	$OpenBSD: readmsg.c,v 1.11 2002/09/06 19:28:01 deraadt Exp $	*/
+d16 1
+a16 5
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+d33 1
+a33 3
+#ifndef lint
+static char sccsid[] = "@@(#)readmsg.c	5.1 (Berkeley) 5/11/93";
+#endif /* not lint */
+d35 2
+a36 1
+#include "globals.h"
+d72 1
+a72 1
+	struct netinfo *netfrom)
+d76 1
+a76 1
+	fd_set ready;
+d164 1
+a164 1
+	 * on a select to read the next incoming message: if it is the
+a169 1
+	FD_ZERO(&ready);
+d180 2
+a181 2
+			fprintf(fd, "readmsg: wait %ld.%6ld at %s\n",
+				rwait.tv_sec, rwait.tv_usec, date());
+d193 4
+a196 3
+		FD_SET(sock, &ready);
+		if (!select(sock+1, &ready, (fd_set *)0, (fd_set *)0,
+			   &rwait)) {
+d336 1
+a336 1
+slaveack()
+d368 1
+a368 1
+ignoreack()
+d396 1
+a396 1
+masterack()
+d439 1
+a439 3
+print(msg, addr)
+struct tsp *msg;
+struct sockaddr_in *addr;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: readmsg.c,v 1.12 2003/06/02 23:36:55 millert Exp $	*/
+d15 5
+a19 1
+ * 3. Neither the name of the University nor the names of its contributors
+@
+
+
+1.1.1.3
+log
+@sync with OpenBSD, this gives us a fair amount of fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: readmsg.c,v 1.13 2003/06/12 21:09:48 deraadt Exp $	*/
+d72 1
+a72 1
+    struct netinfo *netfrom)
+d336 1
+a336 1
+slaveack(void)
+d368 1
+a368 1
+ignoreack(void)
+d396 1
+a396 1
+masterack(void)
+d439 3
+a441 1
+print(struct tsp *msg, struct sockaddr_in *addr)
+@
+
+
+1.1.1.4
+log
+@Synchronize with OpenBSD 3.4-beta
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: readmsg.c,v 1.14 2003/08/19 19:41:21 deraadt Exp $	*/
+d76 1
+a76 1
+	struct pollfd pfd[1];
+d164 1
+a164 1
+	 * on a poll to read the next incoming message: if it is the
+d170 1
+d194 3
+a196 3
+		pfd[0].fd = sock;
+		pfd[0].events = POLLIN;
+		if (!poll(pfd, 1, rwait.tv_sec * 1000)) {
+@
+
+
+1.1.1.5
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: readmsg.c,v 1.15 2003/11/19 19:17:59 dhartmei Exp $	*/
+d195 1
+a195 2
+		if (!poll(pfd, 1, rwait.tv_sec * 1000 +
+		    rwait.tv_usec / 1000)) {
+@
+
+

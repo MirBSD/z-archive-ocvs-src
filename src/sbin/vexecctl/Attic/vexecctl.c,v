@@ -1,0 +1,317 @@
+head	1.1;
+access;
+symbols
+	MIRBSD_7_DEV:1.1.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.12.02.13.58.22;	author tg;	state dead;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2003.12.02.13.58.22;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.12.02.14.02.15;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2003.12.03.18.25.55;	author tg;	state Exp;
+branches;
+next	1.1.2.4;
+
+1.1.2.4
+date	2003.12.03.19.05.06;	author tg;	state Exp;
+branches;
+next	1.1.2.5;
+
+1.1.2.5
+date	2003.12.09.22.19.38;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@file vexecctl.c was initially added on branch MIRBSD_7_DEV.
+@
+text
+@@
+
+
+1.1.2.1
+log
+@commit vexecctl on behalf of wbx@@ (minus y.tab.c)
+@
+text
+@a0 152
+/* $MirBSD$ */
+
+/*
+ * Vexec Port for MirBSD extracted from Stephanie for OpenBSD 3.4
+ * Waldemar Brodkorb <miros@@thinknow.de>
+*/
+
+/* $Id: vexecctl.c,v 1.1 2003/09/10 10:02:00 brian Exp $ */
+
+/*
+ * Stephanie for OpenBSD 3.4
+ *
+ * This program is based on Brett Lymn's original code, but
+ * contains some extra improvements:
+ *  - Comments handled better.
+ *  - "Include" directives for splitting large databases over several
+ *    key files.
+ *  - Memory-related errors are attempted recovery where possible and
+ *    almost all means are taken to ensure smooth operation.
+ *
+ *    This of course will probably never be in use as the program will
+ *    99% of the time runs in single-user and don't require that much
+ *    memory, but it was a nice experience writing it. :)
+ */
+
+/* $NetBSD: veriexecctl.c,v 1.2 2002/12/06 02:26:14 thorpej Exp $	*/
+
+/*-
+ * Copyright (c) 1998-1999 Brett Lymn
+ *                         (blymn@@baea.com.au, brett_lymn@@yahoo.com.au)
+ * All rights reserved.
+ *
+ * This code has been donated to The NetBSD Foundation by the Author.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. The name of the author may not be used to endorse or promote products
+ *    derived from this software withough specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR "AS IS" AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <err.h>
+
+#include "my_stack.h"
+
+#define	VEXEC_DEVICE	"/dev/vexec"
+
+#define	usage(code)	errx(code, "Usage: %s [-v] <signature_file>", \
+			argv[0])
+
+extern void yyparse(void);
+
+int fd, verbose = 0, no_mem = 0;
+extern struct my_stack *filestack;
+extern FILE *yyin;
+
+int main(int argc, char **argv) {
+	char *infile;
+	int c;
+
+	/* For now... */
+	if ((argc < 2) || (argc > 3)) {
+		usage(1);
+	}
+
+	while ((c = getopt(argc, argv, "v")) != -1) {
+		switch (c) {
+		case 'v':
+			verbose = 1;
+			break;
+
+		default:
+			usage(1);
+		}
+	}
+
+	argc -= optind;
+	argv += optind;
+
+	infile = argv[0];
+
+	filestack = (struct my_stack *) malloc(sizeof(*filestack));
+	if (!filestack) {
+			(void) fprintf(stderr, "WARNING: Can't allocate"
+			    " memory for filename stack. Turning on "
+			    "verbose mode.\n");
+
+			verbose = 1;
+			no_mem = 1;
+	} else {
+		bzero(filestack, sizeof(*filestack));
+
+		filestack->name = strdup(infile);
+		if (!(filestack->name)) {
+			/*
+			 * Don't attempt further allocations.
+			 * Having memory every once in a while
+			 * may require more code to deal with
+			 * more situations that may introduce
+			 * slowness and possible inconsistency.
+			 */
+			(void) fprintf(stderr, "WARNING: Not enough "
+			    "memory for smooth operation. Turning on "
+			    "verbose mode.");
+
+			free(filestack);
+
+			verbose = 1;
+			no_mem = 1;
+		} else {
+			filestack->line = 1;
+		}
+	}
+
+	fd = open(VEXEC_DEVICE, O_WRONLY, 0);
+	if (fd == -1) {
+		err(1, "Failed to open pseudo-device");
+	}
+
+	if ((yyin = fopen(infile, "r")) == NULL) {
+		err(1, "Failed to open %s", infile);
+	}
+
+	if (verbose) {
+		(void) fprintf(stderr, "=> Parsing \"%s\"\n", infile);
+	}
+
+	yyparse();
+
+	(void) close(fd);
+	(void) fclose(yyin);
+
+	return (0);
+}
+@
+
+
+1.1.2.2
+log
+@* y.tab.c is a generated file
+* whitespace cleanup
+* remove $Id tags, because they are overwritten
+  by cvs anyways. The importer should either have
+  changed them to read $Stephanie$ or whatever
+  source they have been taken from, or changed the
+  first dollar sign to an underscore (for an example,
+  see /sys/arch/i386/conf/RAMDISK*).
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: vexecctl.c,v 1.1.2.1 2003/12/02 13:58:22 tg Exp $ */
+d6 1
+a6 1
+ */
+d8 1
+a8 1
+/* $Id: vexecctl.c,v 1.1.2.1 2003/12/02 13:58:22 tg Exp $ */
+@
+
+
+1.1.2.3
+log
+@first round of
+ * licence
+ * white-space
+cleanup.
+@
+text
+@d1 1
+a1 2
+/* $MirBSD: vexecctl.c,v 1.1.2.2 2003/12/02 14:02:15 tg Exp $ */
+/* $NetBSD: veriexecctl.c,v 1.2 2002/12/06 02:26:14 thorpej Exp $ */
+d6 5
+a10 1
+ *-
+d25 2
+@
+
+
+1.1.2.4
+log
+@Second round:
+ * add BSD licence template to the manual pages, as per
+	Message-ID: <Pine.GSO.4.58.0312031317370.17797@@fatboy.ethernet.org>
+   (realname guessed, waiting for confirmation)
+ * add wbx@@ and myself
+ * restructure boilerplate comments in vexecctl.c, they're too large
+
+Now missing: the lex and yacc sources.
+We don't need nor want copyrights on .h files if possible,
+nor on configuration file{s, samples}.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: vexecctl.c,v 1.1.2.3 2003/12/03 18:25:55 tg Exp $ */
+d4 19
+a47 15
+ *-
+ * Waldemar Brodkorb <miros@@thinknow.de>
+ * Stephanie for OpenBSD 3.4 / MirOS
+ *
+ * This program is based on Brett Lymn's original code, but
+ * contains some extra improvements:
+ *  - Comments handled better.
+ *  - "Include" directives for splitting large databases over several
+ *    key files.
+ *  - Memory-related errors are attempted recovery where possible and
+ *    almost all means are taken to ensure smooth operation.
+ *
+ *    This of course will probably never be in use as the program will
+ *    99% of the time runs in single-user and don't require that much
+ *    memory, but it was a nice experience writing it. :)
+@
+
+
+1.1.2.5
+log
+@Apparently the author permitted us to throw the same licence as
+the .c file onto the .l and .y files (wbx@@ correct me if I'm wrong).
+
+The licencing audit of vexec(ctl) is now done (I think), unless
+wbx@@ wants to add his own (c) for work he'd done.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: vexecctl.c,v 1.1.2.4 2003/12/03 19:05:06 tg Exp $ */
+d6 1
+a6 1
+ *	<blymn@@baesystems.com.au> <blymn@@baea.com.au> <brett_lymn@@yahoo.com.au>
+d31 1
+a31 1
+ * Stephanie for OpenBSD 3.4 / MirOS BSD
+d33 11
+a43 1
+ * Based on Brett Lymn's original code; contains enhancements.
+@
+
+

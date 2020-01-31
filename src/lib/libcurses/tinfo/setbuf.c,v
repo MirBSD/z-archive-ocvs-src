@@ -1,0 +1,254 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.46.41;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.41;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: setbuf.c,v 1.4 2001/01/22 18:01:57 millert Exp $	*/
+
+/****************************************************************************
+ * Copyright (c) 1998,2000 Free Software Foundation, Inc.                   *
+ *                                                                          *
+ * Permission is hereby granted, free of charge, to any person obtaining a  *
+ * copy of this software and associated documentation files (the            *
+ * "Software"), to deal in the Software without restriction, including      *
+ * without limitation the rights to use, copy, modify, merge, publish,      *
+ * distribute, distribute with modifications, sublicense, and/or sell       *
+ * copies of the Software, and to permit persons to whom the Software is    *
+ * furnished to do so, subject to the following conditions:                 *
+ *                                                                          *
+ * The above copyright notice and this permission notice shall be included  *
+ * in all copies or substantial portions of the Software.                   *
+ *                                                                          *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  *
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF               *
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.   *
+ * IN NO EVENT SHALL THE ABOVE COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,   *
+ * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR    *
+ * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR    *
+ * THE USE OR OTHER DEALINGS IN THE SOFTWARE.                               *
+ *                                                                          *
+ * Except as contained in this notice, the name(s) of the above copyright   *
+ * holders shall not be used in advertising or otherwise to promote the     *
+ * sale, use or other dealings in this Software without prior written       *
+ * authorization.                                                           *
+ ****************************************************************************/
+
+/****************************************************************************
+ *  Author: Zeyd M. Ben-Halim <zmbenhal@@netcom.com> 1992,1995               *
+ *     and: Eric S. Raymond <esr@@snark.thyrsus.com>                         *
+ ****************************************************************************/
+
+/*
+**	setbuf.c
+**
+**	Support for set_term(), reset_shell_mode(), reset_prog_mode().
+**
+*/
+
+#include <curses.priv.h>
+
+MODULE_ID("$From: setbuf.c,v 1.7 2000/12/10 02:55:08 tom Exp $")
+
+/*
+ * If the output file descriptor is connected to a tty (the typical case) it
+ * will probably be line-buffered.  Keith Bostic pointed out that we don't want
+ * this; it hoses people running over networks by forcing out a bunch of small
+ * packets instead of one big one, so screen updates on ptys look jerky.
+ * Restore block buffering to prevent this minor lossage.
+ *
+ * The buffer size is a compromise.  Ideally we'd like a buffer that can hold
+ * the maximum possible update size (the whole screen plus cup commands to
+ * change lines as it's painted).  On a 66-line xterm this can become
+ * excessive.  So we min it with the amount of data we think we can get through
+ * two Ethernet packets (maximum packet size - 100 for TCP/IP overhead).
+ *
+ * Why two ethernet packets?  It used to be one, on the theory that said
+ * packets define the maximum size of atomic update.  But that's less than the
+ * 2000 chars on a 25 x 80 screen, and we don't want local updates to flicker
+ * either.  Two packet lengths will handle up to a 35 x 80 screen.
+ *
+ * The magic '6' is the estimated length of the end-of-line cup sequence to go
+ * to the next line.  It's generous.  We used to mess with the buffering in
+ * init_mvcur() after cost computation, but that lost the sequences emitted by
+ * init_acs() in setupscreen().
+ *
+ * "The setvbuf function may be used only after the stream pointed to by stream
+ * has been associated with an open file and before any other operation is
+ * performed on the stream." (ISO 7.9.5.6.)
+ *
+ * Grrrr...
+ *
+ * On a lighter note, many implementations do in fact allow an application to
+ * reset the buffering after it has been written to.  We try to do this because
+ * otherwise we leave stdout in buffered mode after endwin() is called.  (This
+ * also happens with SVr4 curses).
+ *
+ * There are pros/cons:
+ *
+ * con:
+ *	There is no guarantee that we can reestablish buffering once we've
+ *	dropped it.
+ *
+ *	We _may_ lose data if the implementation does not coordinate this with
+ *	fflush.
+ *
+ * pro:
+ *	An implementation is more likely to refuse to change the buffering than
+ *	to do it in one of the ways mentioned above.
+ *
+ *	The alternative is to have the application try to change buffering
+ *	itself, which is certainly no improvement.
+ *
+ * Just in case it does not work well on a particular system, the calls to
+ * change buffering are all via the macro NC_BUFFERED.  Some implementations
+ * do indeed get confused by changing setbuf on/off, and will overrun the
+ * buffer.  So we disable this by default (there may yet be a workaround).
+ */
+NCURSES_EXPORT(void)
+_nc_set_buffer(FILE * ofp, bool buffered)
+{
+    /* optional optimization hack -- do before any output to ofp */
+#if HAVE_SETVBUF || HAVE_SETBUFFER
+    unsigned buf_len;
+    char *buf_ptr;
+
+    if (getenv("NCURSES_NO_SETBUF") != 0)
+	return;
+
+    fflush(ofp);
+    if ((SP->_buffered = buffered) != 0) {
+	buf_len = min(LINES * (COLS + 6), 2800);
+	if ((buf_ptr = SP->_setbuf) == 0) {
+	    if ((buf_ptr = typeMalloc(char, buf_len)) == NULL)
+		  return;
+	    SP->_setbuf = buf_ptr;
+	    /* Don't try to free this! */
+	}
+#if !USE_SETBUF_0
+	else
+	    return;
+#endif
+    } else {
+#if !USE_SETBUF_0
+	return;
+#else
+	buf_len = 0;
+	buf_ptr = 0;
+#endif
+    }
+
+#if HAVE_SETVBUF
+#ifdef SETVBUF_REVERSED		/* pre-svr3? */
+    (void) setvbuf(ofp, buf_ptr, buf_len, buf_len ? _IOFBF : _IOLBF);
+#else
+    (void) setvbuf(ofp, buf_ptr, buf_len ? _IOFBF : _IOLBF, buf_len);
+#endif
+#elif HAVE_SETBUFFER
+    (void) setbuffer(ofp, buf_ptr, (int) buf_len);
+#endif
+
+#endif /* HAVE_SETVBUF || HAVE_SETBUFFER */
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

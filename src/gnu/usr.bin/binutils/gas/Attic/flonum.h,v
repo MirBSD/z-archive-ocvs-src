@@ -1,0 +1,256 @@
+head	1.2;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.1
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.20.59.08;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.24;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.24;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.41.15;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2004.07.15.17.09.47;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* flonum.h - Floating point package
+   Copyright 1987, 1990, 1991, 1992, 1994, 1996, 2000
+   Free Software Foundation, Inc.
+
+   This file is part of GAS, the GNU Assembler.
+
+   GAS is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   GAS is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with GAS; see the file COPYING.  If not, write to the Free
+   Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+   02111-1307, USA.  */
+
+/***********************************************************************\
+ *									*
+ *	Arbitrary-precision floating point arithmetic.			*
+ *									*
+ *									*
+ *	Notation: a floating point number is expressed as		*
+ *	MANTISSA * (2 ** EXPONENT).					*
+ *									*
+ *	If this offends more traditional mathematicians, then		*
+ *	please tell me your nomenclature for flonums!			*
+ *									*
+ \***********************************************************************/
+
+#include "bignum.h"
+
+/***********************************************************************\
+ *									*
+ *	Variable precision floating point numbers.			*
+ *									*
+ *	Exponent is the place value of the low littlenum. E.g.:		*
+ *	If  0:  low points to the units             littlenum.		*
+ *	If  1:  low points to the LITTLENUM_RADIX   littlenum.		*
+ *	If -1:  low points to the 1/LITTLENUM_RADIX littlenum.		*
+ *									*
+ \***********************************************************************/
+
+/* JF:  A sign value of 0 means we have been asked to assemble NaN
+   A sign value of 'P' means we've been asked to assemble +Inf
+   A sign value of 'N' means we've been asked to assemble -Inf
+   */
+struct FLONUM_STRUCT {
+  LITTLENUM_TYPE *low;		/* low order littlenum of a bignum */
+  LITTLENUM_TYPE *high;		/* high order littlenum of a bignum */
+  LITTLENUM_TYPE *leader;	/* -> 1st non-zero littlenum */
+  /* If flonum is 0.0, leader==low-1 */
+  long exponent;		/* base LITTLENUM_RADIX */
+  char sign;			/* '+' or '-' */
+};
+
+typedef struct FLONUM_STRUCT FLONUM_TYPE;
+
+/***********************************************************************\
+ *									*
+ *	Since we can (& do) meet with exponents like 10^5000, it	*
+ *	is silly to make a table of ~ 10,000 entries, one for each	*
+ *	power of 10. We keep a table where item [n] is a struct		*
+ *	FLONUM_FLOATING_POINT representing 10^(2^n). We then		*
+ *	multiply appropriate entries from this table to get any		*
+ *	particular power of 10. For the example of 10^5000, a table	*
+ *	of just 25 entries suffices: 10^(2^-12)...10^(2^+12).		*
+ *									*
+ \***********************************************************************/
+
+extern const FLONUM_TYPE flonum_positive_powers_of_ten[];
+extern const FLONUM_TYPE flonum_negative_powers_of_ten[];
+extern const int table_size_of_flonum_powers_of_ten;
+/* Flonum_XXX_powers_of_ten[] table has legal indices from 0 to
+   + this number inclusive.  */
+
+/***********************************************************************\
+ *									*
+ *	Declare worker functions.					*
+ *									*
+ \***********************************************************************/
+
+int atof_generic PARAMS ((char **address_of_string_pointer,
+			  const char *string_of_decimal_marks,
+			  const char *string_of_decimal_exponent_marks,
+			  FLONUM_TYPE * address_of_generic_floating_point_number));
+
+void flonum_copy PARAMS ((FLONUM_TYPE * in, FLONUM_TYPE * out));
+void flonum_multip PARAMS ((const FLONUM_TYPE * a, const FLONUM_TYPE * b,
+			    FLONUM_TYPE * product));
+
+/***********************************************************************\
+ *									*
+ *	Declare error codes.						*
+ *									*
+ \***********************************************************************/
+
+#define ERROR_EXPONENT_OVERFLOW (2)
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@GNU Binutils, version 2.15
+@
+text
+@d87 4
+a90 4
+int atof_generic (char **address_of_string_pointer,
+		  const char *string_of_decimal_marks,
+		  const char *string_of_decimal_exponent_marks,
+		  FLONUM_TYPE * address_of_generic_floating_point_number);
+d92 3
+a94 3
+void flonum_copy (FLONUM_TYPE * in, FLONUM_TYPE * out);
+void flonum_multip (const FLONUM_TYPE * a, const FLONUM_TYPE * b,
+		    FLONUM_TYPE * product);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

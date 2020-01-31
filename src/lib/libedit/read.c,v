@@ -1,0 +1,1201 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.4
+	tg-mergefixes-1-branch:1.1.1.4.0.8
+	tg-mergefixes-1-base:1.1.1.4
+	MIROS_X:1.1.1.4.0.6
+	MIROS_X_BASE:1.1.1.4
+	tg-mergetmp-3:1.1.1.4
+	MIRBSD_XP_MIRPPC:1.1.1.4.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.4
+	MIRBSD_XP_SPARC:1.1.1.4.0.2
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.4
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.4
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.3
+	cvs-200306082100:1.1.1.3
+	ctm-3316:1.1.1.3
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.2
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.46.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.45;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.05.20.56.25;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.05.17.25.53;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.12.22.21.07.12;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: read.c,v 1.7 2002/02/16 21:27:26 millert Exp $	*/
+/*	$NetBSD: read.c,v 1.4 1997/04/11 17:52:47 christos Exp $	*/
+
+/*-
+ * Copyright (c) 1992, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Christos Zoulas of Cornell University.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#if !defined(lint) && !defined(SCCSID)
+#if 0
+static char sccsid[] = "@@(#)read.c	8.1 (Berkeley) 6/4/93";
+#else
+static char rcsid[] = "$OpenBSD: read.c,v 1.7 2002/02/16 21:27:26 millert Exp $";
+#endif
+#endif /* not lint && not SCCSID */
+
+/*
+ * read.c: Clean this junk up! This is horrible code.
+ *	   Terminal read functions
+ */
+#include "sys.h"
+#include <sys/errno.h>
+#include <unistd.h>
+#include <stdlib.h>
+extern int errno;
+#include "el.h"
+
+#define OKCMD -1
+
+private int read__fixio(int, int);
+private int read_preread(EditLine *);
+private int read_getcmd(EditLine *, el_action_t *, char *);
+
+#ifdef DEBUG_EDIT
+private void
+read_debug(el)
+    EditLine *el;
+{
+
+    if (el->el_line.cursor > el->el_line.lastchar)
+	(void)fprintf(el->el_errfile, "cursor > lastchar\r\n");
+    if (el->el_line.cursor < el->el_line.buffer)
+	(void)fprintf(el->el_errfile, "cursor < buffer\r\n");
+    if (el->el_line.cursor > el->el_line.limit)
+	(void)fprintf(el->el_errfile, "cursor > limit\r\n");
+    if (el->el_line.lastchar > el->el_line.limit)
+	(void)fprintf(el->el_errfile, "lastchar > limit\r\n");
+    if (el->el_line.limit != &el->el_line.buffer[EL_BUFSIZ - 2])
+	(void)fprintf(el->el_errfile, "limit != &buffer[EL_BUFSIZ-2]\r\n");
+}
+#endif /* DEBUG_EDIT */
+
+/* read__fixio():
+ *	Try to recover from a read error
+ */
+private int
+read__fixio(fd, e)
+    int fd, e;
+{
+    switch (e) {
+    case -1:	/* Make sure that the code is reachable */
+
+#ifdef EWOULDBLOCK
+    case EWOULDBLOCK:
+# ifndef TRY_AGAIN
+#  define TRY_AGAIN
+# endif
+#endif /* EWOULDBLOCK */
+
+#if defined(POSIX) && defined(EAGAIN)
+# if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+    case EAGAIN:
+#  ifndef TRY_AGAIN
+#   define TRY_AGAIN
+#  endif
+# endif /* EWOULDBLOCK && EWOULDBLOCK != EAGAIN */
+#endif /* POSIX && EAGAIN */
+
+	e = 0;
+#ifdef TRY_AGAIN
+# if defined(F_SETFL) && defined(O_NDELAY)
+	if ((e = fcntl(fd, F_GETFL, 0)) == -1)
+	    return -1;
+
+	if (fcntl(fd, F_SETFL, e & ~O_NDELAY) == -1)
+	    return -1;
+	else 
+	    e = 1;
+# endif /* F_SETFL && O_NDELAY */
+
+# ifdef FIONBIO
+	if (ioctl(fd, FIONBIO, (ioctl_t) &e) == -1)
+	    return -1;
+	else
+	    e = 1;
+# endif	/* FIONBIO */
+
+#endif /* TRY_AGAIN */
+	return e ? 0 : -1;
+
+    case EINTR:
+	return 0;
+
+    default:
+	return -1;
+    }
+}
+
+
+/* read_preread():
+ *	Try to read the stuff in the input queue;
+ */
+private int
+read_preread(el)
+    EditLine *el;
+{
+    int    chrs = 0;
+
+    if (el->el_chared.c_macro.nline) {
+	el_free((ptr_t) el->el_chared.c_macro.nline);
+	el->el_chared.c_macro.nline = NULL;
+    }
+
+    if (el->el_tty.t_mode == ED_IO)
+	return 0;
+
+#ifdef FIONREAD
+    (void)ioctl(el->el_infd, FIONREAD, (ioctl_t) &chrs);
+    if (chrs > 0) {
+	char    buf[EL_BUFSIZ];
+
+	chrs = read(el->el_infd, buf, (size_t) MIN(chrs, EL_BUFSIZ - 1));
+	if (chrs > 0) {
+	    buf[chrs] = '\0';
+	    el->el_chared.c_macro.nline = strdup(buf);
+	    el_push(el, el->el_chared.c_macro.nline);
+	}
+    }
+#endif  /* FIONREAD */
+
+    return chrs > 0;
+}
+
+
+/* el_push():
+ *	Push a macro
+ */
+public void
+el_push(el, str)
+    EditLine *el;
+    const char   *str;
+{
+    c_macro_t *ma = &el->el_chared.c_macro;
+
+    if (str != NULL && ma->level + 1 < EL_MAXMACRO) {
+	ma->level++;
+	ma->macro[ma->level] = (char *) str;
+    }
+    else {
+	term_beep(el);
+	term__flush();
+    }
+}
+
+
+/* read_getcmd():
+ *	Return next command from the input stream.
+ */
+private int
+read_getcmd(el, cmdnum, ch)
+    EditLine *el;
+    el_action_t *cmdnum;
+    char *ch;
+{
+    el_action_t  cmd = 0;
+    int     num;
+
+    while (cmd == 0 || cmd == ED_SEQUENCE_LEAD_IN) {
+	if ((num = el_getc(el, ch)) != 1)	/* if EOF or error */
+	    return num;
+
+#ifdef	KANJI
+	if ((*ch & 0200)) {
+	    el->el_state.metanext = 0;
+	    cmd = CcViMap[' '];
+	    break;
+	}
+	else
+#endif /* KANJI */
+
+	if (el->el_state.metanext) {
+	    el->el_state.metanext = 0;
+	    *ch |= 0200;
+	}
+	cmd = el->el_map.current[(unsigned char) *ch];
+	if (cmd == ED_SEQUENCE_LEAD_IN) {
+	    key_value_t val;
+	    switch (key_get(el, ch, &val)) {
+	    case XK_CMD:
+		cmd = val.cmd;
+		break;
+	    case XK_STR:
+		el_push(el, val.str);
+		break;
+#ifdef notyet
+	    case XK_EXE:
+		/* XXX: In the future to run a user function */
+		RunCommand(val.str);
+		break;
+#endif
+	    default:
+		abort();
+		break;
+	    }
+	}
+	if (el->el_map.alt == NULL) 
+	    el->el_map.current = el->el_map.key;
+    }
+    *cmdnum = cmd;
+    return OKCMD;
+}
+
+
+/* el_getc():
+ *	Read a character
+ */
+public int
+el_getc(el, cp)
+    EditLine *el;
+    char *cp;
+{
+    int num_read;
+    unsigned char tcp;
+    int tried = 0;
+
+    c_macro_t *ma = &el->el_chared.c_macro;
+
+    term__flush();
+    for (;;) {
+	if (ma->level < 0) {
+	    if (!read_preread(el))
+		break;
+	}
+	if (ma->level < 0) 
+	    break;
+   
+	if (*ma->macro[ma->level] == 0) {
+	    ma->level--;
+	    continue;
+	}
+	*cp = *ma->macro[ma->level]++ & 0377;
+	if (*ma->macro[ma->level] == 0) {	/* Needed for QuoteMode On */
+	    ma->level--;
+	}
+	return 1;
+    }
+
+#ifdef DEBUG_READ
+    (void)fprintf(el->el_errfile, "Turning raw mode on\n");
+#endif /* DEBUG_READ */
+    if (tty_rawmode(el) < 0)	/* make sure the tty is set up correctly */
+	return 0;
+
+#ifdef DEBUG_READ
+    (void)fprintf(el->el_errfile, "Reading a character\n");
+#endif /* DEBUG_READ */
+    while ((num_read = read(el->el_infd, (char *) &tcp, 1)) == -1)
+	if (!tried && read__fixio(el->el_infd, errno) == 0)
+	    tried = 1;
+	else {
+	    *cp = '\0';
+	    return -1;
+	}
+#ifdef DEBUG_READ
+    (void)fprintf(el->el_errfile, "Got it %c\n", tcp);
+#endif /* DEBUG_READ */
+    *cp = tcp;
+    return num_read;
+}
+
+
+
+public const char *
+el_gets(el, nread)
+    EditLine *el;
+    int *nread;
+{
+    int retval;
+    el_action_t  cmdnum = 0;
+    int     num;		/* how many chars we have read at NL */
+    char    ch;
+#ifdef FIONREAD
+    c_macro_t *ma = &el->el_chared.c_macro;
+#endif /* FIONREAD */
+
+    if (el->el_flags & HANDLE_SIGNALS)
+	sig_set(el);
+
+    re_clear_display(el);		/* reset the display stuff */
+    ch_reset(el);
+
+#ifdef FIONREAD
+    if (el->el_tty.t_mode == EX_IO && ma->level < 0) {
+	int    chrs = 0;
+
+	(void)ioctl(el->el_infd, FIONREAD, (ioctl_t) &chrs);
+	if (chrs == 0) {
+	    if (tty_rawmode(el) < 0) {
+		if (nread)
+			*nread = 0;
+		return NULL;
+	    }
+	}
+    }
+#endif /* FIONREAD */
+
+    re_refresh(el);			/* print the prompt */
+
+    for (num = OKCMD; num == OKCMD;) {	/* while still editing this line */
+#ifdef DEBUG_EDIT
+	read_debug(el);
+#endif /* DEBUG_EDIT */
+	/* if EOF or error */
+	if ((num = read_getcmd(el, &cmdnum, &ch)) != OKCMD) {
+#ifdef DEBUG_READ
+	    (void)fprintf(el->el_errfile, "Returning from el_gets %d\n", num);
+#endif /* DEBUG_READ */
+	    break;
+	}
+
+	if (cmdnum >= el->el_map.nfunc) {	/* BUG CHECK command */
+#ifdef DEBUG_EDIT
+	    (void)fprintf(el->el_errfile, 
+			   "ERROR: illegal command from key 0%o\r\n", ch);
+#endif /* DEBUG_EDIT */
+	    continue;		/* try again */
+	}
+
+	/* now do the real command */
+#ifdef DEBUG_READ
+	{
+	    el_bindings_t *b;
+	    for (b = el->el_map.help; b->name; b++)
+		if (b->func == cmdnum)
+		    break;
+	    if (b->name)
+		(void)fprintf(el->el_errfile, "Executing %s\n", b->name);
+	    else
+		(void)fprintf(el->el_errfile, "Error command = %d\n", cmdnum);
+	}
+#endif /* DEBUG_READ */
+	retval = (*el->el_map.func[cmdnum])(el, ch);
+
+	/* save the last command here */
+	el->el_state.lastcmd = cmdnum;
+
+	/* use any return value */
+	switch (retval) {
+	case CC_CURSOR:
+	    el->el_state.argument = 1;
+	    el->el_state.doingarg = 0;
+	    re_refresh_cursor(el);
+	    break;
+
+	case CC_REDISPLAY:
+	    re_clear_lines(el);
+	    re_clear_display(el);
+		/* FALLTHROUGH */
+
+	case CC_REFRESH:
+	    el->el_state.argument = 1;
+	    el->el_state.doingarg = 0;
+	    re_refresh(el);
+	    break;
+
+	case CC_NORM:		/* normal char */
+	    el->el_state.argument = 1;
+	    el->el_state.doingarg = 0;
+	    break;
+
+	case CC_ARGHACK:	/* Suggested by Rich Salz */
+	    /* <rsalz@@pineapple.bbn.com> */
+	    break;		/* keep going... */
+
+	case CC_EOF:		/* end of file typed */
+	    num = 0;
+	    break;
+
+	case CC_NEWLINE:	/* normal end of line */
+	    num = el->el_line.lastchar - el->el_line.buffer;	
+	    break;
+
+	case CC_FATAL:		/* fatal error, reset to known state */
+#ifdef DEBUG_READ
+	    (void)fprintf(el->el_errfile, "*** editor fatal ERROR ***\r\n\n");
+#endif /* DEBUG_READ */
+	    /* put (real) cursor in a known place */
+	    re_clear_display(el);	/* reset the display stuff */
+	    ch_reset(el);		/* reset the input pointers */
+	    re_refresh(el);		/* print the prompt again */
+	    el->el_state.argument = 1;
+	    el->el_state.doingarg = 0;
+	    break;
+
+	case CC_ERROR:
+	default:		/* functions we don't know about */
+#ifdef DEBUG_READ
+	    (void)fprintf(el->el_errfile, "*** editor ERROR ***\r\n\n");
+#endif /* DEBUG_READ */
+	    el->el_state.argument = 1;
+	    el->el_state.doingarg = 0;
+	    term_beep(el);
+	    term__flush();
+	    break;
+	}
+    }
+
+    (void)tty_cookedmode(el);	/* make sure the tty is set up correctly */
+    term__flush();		/* flush any buffered output */
+    if (el->el_flags & HANDLE_SIGNALS)
+	sig_clr(el);
+    if (nread)
+	    *nread = num;
+    return num ? el->el_line.buffer : NULL;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@sync the libraries as well before doing flag day
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: read.c,v 1.8 2003/05/01 21:11:21 avsm Exp $	*/
+d44 1
+a44 1
+static const char rcsid[] = "$OpenBSD: read.c,v 1.8 2003/05/01 21:11:21 avsm Exp $";
+@
+
+
+1.1.1.3
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: read.c,v 1.9 2003/06/02 20:18:40 millert Exp $	*/
+d19 5
+a23 1
+ * 3. Neither the name of the University nor the names of its contributors
+d44 1
+a44 1
+static const char rcsid[] = "$OpenBSD: read.c,v 1.9 2003/06/02 20:18:40 millert Exp $";
+@
+
+
+1.1.1.4
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 2
+a2 2
+/*	$OpenBSD: read.c,v 1.11 2003/11/25 20:12:38 otto Exp $	*/
+/*	$NetBSD: read.c,v 1.30 2003/10/18 23:48:42 christos Exp $	*/
+a35 1
+#include "config.h"
+d40 1
+a40 1
+static const char rcsid[] = "$OpenBSD: read.c,v 1.11 2003/11/25 20:12:38 otto Exp $";
+d48 2
+a49 2
+#include <errno.h>
+#include <fcntl.h>
+d52 1
+d55 1
+a55 1
+#define	OKCMD	-1
+d57 3
+a59 44
+private int	read__fixio(int, int);
+private int	read_preread(EditLine *);
+private int	read_char(EditLine *, char *);
+private int	read_getcmd(EditLine *, el_action_t *, char *);
+
+/* read_init():
+ *	Initialize the read stuff
+ */
+protected int
+read_init(EditLine *el)
+{
+	/* builtin read_char */
+	el->el_read.read_char = read_char;
+	return 0;
+}
+
+
+/* el_read_setfn():
+ *	Set the read char function to the one provided.
+ *	If it is set to EL_BUILTIN_GETCFN, then reset to the builtin one.
+ */
+protected int
+el_read_setfn(EditLine *el, el_rfunc_t rc)
+{
+	el->el_read.read_char = (rc == EL_BUILTIN_GETCFN) ? read_char : rc;
+	return 0;
+}
+
+
+/* el_read_getfn():
+ *	return the current read char function, or EL_BUILTIN_GETCFN
+ *	if it is the default one
+ */
+protected el_rfunc_t
+el_read_getfn(EditLine *el)
+{
+       return (el->el_read.read_char == read_char) ?
+	    EL_BUILTIN_GETCFN : el->el_read.read_char;
+}
+
+
+#ifndef MIN
+#define MIN(A,B) ((A) < (B) ? (A) : (B))
+#endif
+d63 2
+a64 1
+read_debug(EditLine *el)
+d67 10
+a76 10
+	if (el->el_line.cursor > el->el_line.lastchar)
+		(void) fprintf(el->el_errfile, "cursor > lastchar\r\n");
+	if (el->el_line.cursor < el->el_line.buffer)
+		(void) fprintf(el->el_errfile, "cursor < buffer\r\n");
+	if (el->el_line.cursor > el->el_line.limit)
+		(void) fprintf(el->el_errfile, "cursor > limit\r\n");
+	if (el->el_line.lastchar > el->el_line.limit)
+		(void) fprintf(el->el_errfile, "lastchar > limit\r\n");
+	if (el->el_line.limit != &el->el_line.buffer[EL_BUFSIZ - 2])
+		(void) fprintf(el->el_errfile, "limit != &buffer[EL_BUFSIZ-2]\r\n");
+a79 1
+
+a82 1
+/* ARGSUSED */
+d84 2
+a85 1
+read__fixio(int fd __attribute__((__unused__)), int e)
+d87 2
+a88 3
+
+	switch (e) {
+	case -1:		/* Make sure that the code is reachable */
+d91 4
+a94 4
+	case EWOULDBLOCK:
+#ifndef TRY_AGAIN
+#define	TRY_AGAIN
+#endif
+d98 6
+a103 6
+#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+	case EAGAIN:
+#ifndef TRY_AGAIN
+#define	TRY_AGAIN
+#endif
+#endif /* EWOULDBLOCK && EWOULDBLOCK != EAGAIN */
+d106 1
+a106 1
+		e = 0;
+d108 16
+a123 20
+#if defined(F_SETFL) && defined(O_NDELAY)
+		if ((e = fcntl(fd, F_GETFL, 0)) == -1)
+			return (-1);
+
+		if (fcntl(fd, F_SETFL, e & ~O_NDELAY) == -1)
+			return (-1);
+		else
+			e = 1;
+#endif /* F_SETFL && O_NDELAY */
+
+#ifdef FIONBIO
+		{
+			int zero = 0;
+
+			if (ioctl(fd, FIONBIO, (ioctl_t) & zero) == -1)
+				return (-1);
+			else
+				e = 1;
+		}
+#endif /* FIONBIO */
+d126 1
+a126 1
+		return (e ? 0 : -1);
+d128 2
+a129 2
+	case EINTR:
+		return (0);
+d131 3
+a133 3
+	default:
+		return (-1);
+	}
+d141 2
+a142 1
+read_preread(EditLine *el)
+d144 6
+a149 1
+	int chrs = 0;
+d151 2
+a152 2
+	if (el->el_tty.t_mode == ED_IO)
+		return (0);
+d155 5
+a159 1
+	(void) ioctl(el->el_infd, FIONREAD, (ioctl_t) & chrs);
+d161 3
+a163 8
+		char buf[EL_BUFSIZ];
+
+		chrs = read(el->el_infd, buf,
+		    (size_t) MIN(chrs, EL_BUFSIZ - 1));
+		if (chrs > 0) {
+			buf[chrs] = '\0';
+			el_push(el, buf);
+		}
+d165 2
+a166 1
+#endif /* FIONREAD */
+d168 1
+a168 1
+	return (chrs > 0);
+d176 11
+a186 10
+el_push(EditLine *el, char *str)
+{
+	c_macro_t *ma = &el->el_chared.c_macro;
+
+	if (str != NULL && ma->level + 1 < EL_MAXMACRO) {
+		ma->level++;
+		if ((ma->macro[ma->level] = el_strdup(str)) != NULL)
+			return;
+		ma->level--;
+	}
+d189 1
+d197 11
+a207 8
+read_getcmd(EditLine *el, el_action_t *cmdnum, char *ch)
+{
+	el_action_t cmd;
+	int num;
+
+	do {
+		if ((num = el_getc(el, ch)) != 1)	/* if EOF or error */
+			return (num);
+d210 6
+a215 5
+		if ((*ch & 0200)) {
+			el->el_state.metanext = 0;
+			cmd = CcViMap[' '];
+			break;
+		} else
+d218 14
+a231 14
+		if (el->el_state.metanext) {
+			el->el_state.metanext = 0;
+			*ch |= 0200;
+		}
+		cmd = el->el_map.current[(unsigned char) *ch];
+		if (cmd == ED_SEQUENCE_LEAD_IN) {
+			key_value_t val;
+			switch (key_get(el, ch, &val)) {
+			case XK_CMD:
+				cmd = val.cmd;
+				break;
+			case XK_STR:
+				el_push(el, val.str);
+				break;
+d233 4
+a236 4
+			case XK_EXE:
+				/* XXX: In the future to run a user function */
+				RunCommand(val.str);
+				break;
+d238 10
+a247 31
+			default:
+				EL_ABORT((el->el_errfile, "Bad XK_ type \n"));
+				break;
+			}
+		}
+		if (el->el_map.alt == NULL)
+			el->el_map.current = el->el_map.key;
+	} while (cmd == ED_SEQUENCE_LEAD_IN);
+	*cmdnum = cmd;
+	return (OKCMD);
+}
+
+
+/* read_char():
+ *	Read a character from the tty.
+ */
+private int
+read_char(EditLine *el, char *cp)
+{
+	int num_read;
+	int tried = 0;
+
+	while ((num_read = read(el->el_infd, cp, 1)) == -1)
+		if (!tried && read__fixio(el->el_infd, errno) == 0)
+			tried = 1;
+		else {
+			*cp = '\0';
+			return (-1);
+		}
+
+	return (num_read);
+d255 26
+a280 26
+el_getc(EditLine *el, char *cp)
+{
+	int num_read;
+	c_macro_t *ma = &el->el_chared.c_macro;
+
+	term__flush();
+	for (;;) {
+		if (ma->level < 0) {
+			if (!read_preread(el))
+				break;
+		}
+		if (ma->level < 0)
+			break;
+
+		if (ma->macro[ma->level][ma->offset] == '\0') {
+			el_free(ma->macro[ma->level--]);
+			ma->offset = 0;
+			continue;
+		}
+		*cp = ma->macro[ma->level][ma->offset++] & 0377;
+		if (ma->macro[ma->level][ma->offset] == '\0') {
+			/* Needed for QuoteMode On */
+			el_free(ma->macro[ma->level--]);
+			ma->offset = 0;
+		}
+		return (1);
+d282 2
+d286 1
+a286 1
+	(void) fprintf(el->el_errfile, "Turning raw mode on\n");
+d288 2
+a289 2
+	if (tty_rawmode(el) < 0)/* make sure the tty is set up correctly */
+		return (0);
+d292 1
+a292 1
+	(void) fprintf(el->el_errfile, "Reading a character\n");
+d294 7
+a300 1
+	num_read = (*el->el_read.read_char)(el, cp);
+d302 1
+a302 1
+	(void) fprintf(el->el_errfile, "Got it %c\n", *cp);
+d304 2
+a305 1
+	return (num_read);
+a307 17
+protected void
+read_prepare(EditLine *el)
+{
+	if (el->el_flags & HANDLE_SIGNALS)
+		sig_set(el);
+	if (el->el_flags & NO_TTY)
+		return;
+	if ((el->el_flags & (UNBUFFERED|EDIT_DISABLED)) == UNBUFFERED)
+		tty_rawmode(el);
+
+	/* This is relatively cheap, and things go terribly wrong if
+	   we have the wrong size. */
+	el_resize(el);
+	re_clear_display(el);	/* reset the display stuff */
+	ch_reset(el);
+	re_refresh(el);		/* print the prompt */
+}
+a308 8
+protected void
+read_finish(EditLine *el)
+{
+	if ((el->el_flags & UNBUFFERED) == 0)
+		(void) tty_cookedmode(el);
+	if (el->el_flags & HANDLE_SIGNALS)
+		sig_clr(el);
+}
+d311 8
+a318 7
+el_gets(EditLine *el, int *nread)
+{
+	int retval;
+	el_action_t cmdnum = 0;
+	int num;		/* how many chars we have read at NL */
+	char ch;
+	int crlf = 0;
+d320 1
+a320 1
+	c_macro_t *ma = &el->el_chared.c_macro;
+d323 2
+a324 25
+	if (el->el_flags & NO_TTY) {
+		char *cp = el->el_line.buffer;
+		size_t idx;
+
+		while ((*el->el_read.read_char)(el, cp) == 1) {
+			/* make sure there is space for next character */
+			if (cp + 1 >= el->el_line.limit) {
+				idx = (cp - el->el_line.buffer);
+				if (!ch_enlargebufs(el, 2))
+					break;
+				cp = &el->el_line.buffer[idx];
+			}
+			cp++;
+			if (el->el_flags & UNBUFFERED)
+				break;
+			if (cp[-1] == '\r' || cp[-1] == '\n')
+				break;
+		}
+
+		el->el_line.cursor = el->el_line.lastchar = cp;
+		*cp = '\0';
+		if (nread)
+			*nread = el->el_line.cursor - el->el_line.buffer;
+		return (el->el_line.buffer);
+	}
+d326 2
+d330 2
+a331 2
+	if (el->el_tty.t_mode == EX_IO && ma->level < 0) {
+		long chrs = 0;
+d333 7
+a339 8
+		(void) ioctl(el->el_infd, FIONREAD, (ioctl_t) & chrs);
+		if (chrs == 0) {
+			if (tty_rawmode(el) < 0) {
+				if (nread)
+					*nread = 0;
+				return (NULL);
+			}
+		}
+d341 1
+d344 1
+a344 2
+	if ((el->el_flags & UNBUFFERED) == 0)
+		read_prepare(el);
+d346 1
+a346 33
+	if (el->el_flags & EDIT_DISABLED) {
+		char *cp = el->el_line.buffer;
+		size_t idx;
+
+		term__flush();
+
+		while ((*el->el_read.read_char)(el, cp) == 1) {
+			/* make sure there is space next character */
+			if (cp + 1 >= el->el_line.limit) {
+				idx = (cp - el->el_line.buffer);
+				if (!ch_enlargebufs(el, 2))
+					break;
+				cp = &el->el_line.buffer[idx];
+			}
+			if (*cp == 4)	/* ought to be stty eof */
+				break;
+			cp++;
+			crlf = cp[-1] == '\r' || cp[-1] == '\n';
+			if (el->el_flags & UNBUFFERED)
+				break;
+			if (crlf)
+				break;
+		}
+
+		el->el_line.cursor = el->el_line.lastchar = cp;
+		*cp = '\0';
+		if (nread)
+			*nread = el->el_line.cursor - el->el_line.buffer;
+		return (el->el_line.buffer);
+	}
+
+	for (num = OKCMD; num == OKCMD;) {	/* while still editing this
+						 * line */
+d348 1
+a348 1
+		read_debug(el);
+d350 2
+a351 2
+		/* if EOF or error */
+		if ((num = read_getcmd(el, &cmdnum, &ch)) != OKCMD) {
+d353 1
+a353 2
+			(void) fprintf(el->el_errfile,
+			    "Returning from el_gets %d\n", num);
+d355 4
+a358 3
+			break;
+		}
+		if ((uint)cmdnum >= el->el_map.nfunc) {	/* BUG CHECK command */
+d360 2
+a361 2
+			(void) fprintf(el->el_errfile,
+			    "ERROR: illegal command from key 0%o\r\n", ch);
+d363 4
+a366 3
+			continue;	/* try again */
+		}
+		/* now do the real command */
+d368 10
+a377 30
+		{
+			el_bindings_t *b;
+			for (b = el->el_map.help; b->name; b++)
+				if (b->func == cmdnum)
+					break;
+			if (b->name)
+				(void) fprintf(el->el_errfile,
+				    "Executing %s\n", b->name);
+			else
+				(void) fprintf(el->el_errfile,
+				    "Error command = %d\n", cmdnum);
+		}
+#endif /* DEBUG_READ */
+		/* vi redo needs these way down the levels... */
+		el->el_state.thiscmd = cmdnum;
+		el->el_state.thisch = ch;
+		if (el->el_map.type == MAP_VI &&
+		    el->el_map.current == el->el_map.key &&
+		    el->el_chared.c_redo.pos < el->el_chared.c_redo.lim) {
+			if (cmdnum == VI_DELETE_PREV_CHAR &&
+			    el->el_chared.c_redo.pos != el->el_chared.c_redo.buf
+			    && isprint(el->el_chared.c_redo.pos[-1]))
+				el->el_chared.c_redo.pos--;
+			else
+				*el->el_chared.c_redo.pos++ = ch;
+		}
+		retval = (*el->el_map.func[cmdnum]) (el, ch);
+#ifdef DEBUG_READ
+		(void) fprintf(el->el_errfile,
+			"Returned state %d\n", retval );
+d379 1
+d381 2
+a382 2
+		/* save the last command here */
+		el->el_state.lastcmd = cmdnum;
+d384 35
+a418 40
+		/* use any return value */
+		switch (retval) {
+		case CC_CURSOR:
+			re_refresh_cursor(el);
+			break;
+
+		case CC_REDISPLAY:
+			re_clear_lines(el);
+			re_clear_display(el);
+			/* FALLTHROUGH */
+
+		case CC_REFRESH:
+			re_refresh(el);
+			break;
+
+		case CC_REFRESH_BEEP:
+			re_refresh(el);
+			term_beep(el);
+			break;
+
+		case CC_NORM:	/* normal char */
+			break;
+
+		case CC_ARGHACK:	/* Suggested by Rich Salz */
+			/* <rsalz@@pineapple.bbn.com> */
+			continue;	/* keep going... */
+
+		case CC_EOF:	/* end of file typed */
+			if ((el->el_flags & UNBUFFERED) == 0)
+				num = 0;
+			else if (num == -1) {
+				*el->el_line.lastchar++ = CTRL('d');
+				el->el_line.cursor = el->el_line.lastchar;
+				num = 1;
+			}
+			break;
+
+		case CC_NEWLINE:	/* normal end of line */
+			num = el->el_line.lastchar - el->el_line.buffer;
+			break;
+d420 1
+a420 1
+		case CC_FATAL:	/* fatal error, reset to known state */
+d422 1
+a422 2
+			(void) fprintf(el->el_errfile,
+			    "*** editor fatal ERROR ***\r\n\n");
+d424 7
+a430 5
+			/* put (real) cursor in a known place */
+			re_clear_display(el);	/* reset the display stuff */
+			ch_reset(el);	/* reset the input pointers */
+			re_refresh(el);	/* print the prompt again */
+			break;
+d432 2
+a433 2
+		case CC_ERROR:
+		default:	/* functions we don't know about */
+d435 1
+a435 2
+			(void) fprintf(el->el_errfile,
+			    "*** editor ERROR ***\r\n\n");
+d437 5
+a441 9
+			term_beep(el);
+			term__flush();
+			break;
+		}
+		el->el_state.argument = 1;
+		el->el_state.doingarg = 0;
+		el->el_chared.c_vcmd.action = NOP;
+		if (el->el_flags & UNBUFFERED)
+			break;
+d443 1
+d445 7
+a451 11
+	term__flush();		/* flush any buffered output */
+	/* make sure the tty is set up correctly */
+	if ((el->el_flags & UNBUFFERED) == 0) {
+		read_finish(el);
+		if (nread)
+			*nread = num;
+	} else {
+		if (nread)
+			*nread = el->el_line.lastchar - el->el_line.buffer;
+	}
+	return (num ? el->el_line.buffer : NULL);
+@
+
+

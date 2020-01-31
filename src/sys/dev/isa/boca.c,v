@@ -1,0 +1,322 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	cvs-200305131745:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.51.07;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.51.07;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: boca.c,v 1.16 2002/03/14 01:26:56 millert Exp $ */
+/*	$NetBSD: boca.c,v 1.15 1996/05/12 23:51:50 mycroft Exp $	*/
+
+/*
+ * Copyright (c) 1996 Christopher G. Demetriou.  All rights reserved.
+ * Copyright (c) 1995 Charles Hannum.  All rights reserved.
+ *
+ * This code is derived from public-domain software written by
+ * Roland McGrath, and information provided by David Muir Sharnoff.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Charles Hannum.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/device.h>
+#include <sys/termios.h>
+
+#include <machine/bus.h>
+#include <machine/intr.h>
+
+#include <dev/isa/isavar.h>
+#include <dev/ic/comreg.h>
+#include <dev/ic/comvar.h>
+
+#define	NSLAVES	8
+
+struct boca_softc {
+	struct device sc_dev;
+	void *sc_ih;
+
+	bus_space_tag_t sc_iot;
+	int sc_iobase;
+
+	int sc_alive;			/* mask of slave units attached */
+	void *sc_slaves[NSLAVES];	/* com device unit numbers */
+	bus_space_handle_t sc_slaveioh[NSLAVES];
+};
+
+int bocaprobe(struct device *, void *, void *);
+void bocaattach(struct device *, struct device *, void *);
+int bocaintr(void *);
+int bocaprint(void *, const char *);
+
+struct cfattach boca_ca = {
+	sizeof(struct boca_softc), bocaprobe, bocaattach,
+};
+
+struct cfdriver boca_cd = {
+	NULL, "boca", DV_TTY
+};
+
+int
+bocaprobe(parent, self, aux)
+	struct device *parent;
+	void *self;
+	void *aux;
+{
+	struct isa_attach_args *ia = aux;
+	int iobase = ia->ia_iobase;
+	bus_space_tag_t iot = ia->ia_iot;
+	bus_space_handle_t ioh;
+	int i, rv = 1;
+
+	/*
+	 * Do the normal com probe for the first UART and assume
+	 * its presence, and the ability to map the other UARTS,
+	 * means there is a multiport board there.
+	 * XXX Needs more robustness.
+	 */
+
+	/* if the first port is in use as console, then it. */
+	if (iobase == comconsaddr && !comconsattached)
+		goto checkmappings;
+
+	if (bus_space_map(iot, iobase, COM_NPORTS, 0, &ioh)) {
+		rv = 0;
+		goto out;
+	}
+	rv = comprobe1(iot, ioh);
+	bus_space_unmap(iot, ioh, COM_NPORTS);
+	if (rv == 0)
+		goto out;
+
+checkmappings:
+	for (i = 1; i < NSLAVES; i++) {
+		iobase += COM_NPORTS;
+
+		if (iobase == comconsaddr && !comconsattached)
+			continue;
+
+		if (bus_space_map(iot, iobase, COM_NPORTS, 0, &ioh)) {
+			rv = 0;
+			goto out;
+		}
+		bus_space_unmap(iot, ioh, COM_NPORTS);
+	}
+
+out:
+	if (rv)
+		ia->ia_iosize = NSLAVES * COM_NPORTS;
+	return (rv);
+}
+
+int
+bocaprint(aux, pnp)
+	void *aux;
+	const char *pnp;
+{
+	struct commulti_attach_args *ca = aux;
+
+	if (pnp)
+		printf("com at %s", pnp);
+	printf(" slave %d", ca->ca_slave);
+	return (UNCONF);
+}
+
+void
+bocaattach(parent, self, aux)
+	struct device *parent, *self;
+	void *aux;
+{
+	struct boca_softc *sc = (void *)self;
+	struct isa_attach_args *ia = aux;
+	struct commulti_attach_args ca;
+	bus_space_tag_t iot = ia->ia_iot;
+	int i;
+
+	sc->sc_iot = ia->ia_iot;
+	sc->sc_iobase = ia->ia_iobase;
+
+	for (i = 0; i < NSLAVES; i++)
+		if (bus_space_map(iot, sc->sc_iobase + i * COM_NPORTS,
+		    COM_NPORTS, 0, &sc->sc_slaveioh[i]))
+			panic("bocaattach: couldn't map slave %d", i);
+
+	printf("\n");
+
+	for (i = 0; i < NSLAVES; i++) {
+
+		ca.ca_slave = i;
+		ca.ca_iot = sc->sc_iot;
+		ca.ca_ioh = sc->sc_slaveioh[i];
+		ca.ca_iobase = sc->sc_iobase + i * COM_NPORTS;
+		ca.ca_noien = 0;
+
+		sc->sc_slaves[i] = config_found(self, &ca, bocaprint);
+		if (sc->sc_slaves[i] != NULL)
+			sc->sc_alive |= 1 << i;
+	}
+
+	sc->sc_ih = isa_intr_establish(ia->ia_ic, ia->ia_irq, IST_EDGE,
+	    IPL_TTY, bocaintr, sc, sc->sc_dev.dv_xname);
+}
+
+int
+bocaintr(arg)
+	void *arg;
+{
+	struct boca_softc *sc = arg;
+	bus_space_tag_t iot = sc->sc_iot;
+	int alive = sc->sc_alive;
+	int bits;
+
+	bits = bus_space_read_1(iot, sc->sc_slaveioh[0], 7) & alive;
+	if (bits == 0)
+		return (0);
+
+	for (;;) {
+#define	TRY(n) \
+		if (bits & (1 << (n))) \
+			comintr(sc->sc_slaves[n]);
+		TRY(0);
+		TRY(1);
+		TRY(2);
+		TRY(3);
+		TRY(4);
+		TRY(5);
+		TRY(6);
+		TRY(7);
+#undef TRY
+		bits = bus_space_read_1(iot, sc->sc_slaveioh[0], 7) & alive;
+		if (bits == 0)
+			return (1);
+ 	}
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

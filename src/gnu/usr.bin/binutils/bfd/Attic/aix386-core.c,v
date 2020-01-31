@@ -1,0 +1,822 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.46.23;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.20.59.56;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.38.52;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.38.52;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.25.47;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.22;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.03.48;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.05.34;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* BFD back-end for AIX on PS/2 core files.
+   This was based on trad-core.c, which was written by John Gilmore of
+        Cygnus Support.
+   Copyright 1988, 1989, 1991, 1992, 1993, 1994, 1996, 1998, 1999, 2000,
+   2001, 2002
+   Free Software Foundation, Inc.
+   Written by Minh Tran-Le <TRANLE@@INTELLICORP.COM>.
+   Converted to back end form by Ian Lance Taylor <ian@@cygnus.com>.
+
+This file is part of BFD, the Binary File Descriptor library.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "bfd.h"
+#include "sysdep.h"
+#include "libbfd.h"
+#include "coff/i386.h"
+#include "coff/internal.h"
+#include "libcoff.h"
+
+#include <signal.h>
+
+#if defined (_AIX) && defined (_I386)
+#define NOCHECKS		/* This is for coredump.h.  */
+#define _h_USER			/* Avoid including user.h from coredump.h.  */
+#include <uinfo.h>
+#include <sys/i386/coredump.h>
+#endif /* _AIX && _I386 */
+
+/* Maybe this could work on some other i386 but I have not tried it
+ * mtranle@@paris - Tue Sep 24 12:49:35 1991
+ */
+
+#ifndef COR_MAGIC
+# define COR_MAGIC "core"
+#endif
+
+/* Need this cast because ptr is really void *.  */
+#define core_hdr(bfd) \
+    (((bfd->tdata.trad_core_data))->hdr)
+#define core_section(bfd,n) \
+    (((bfd)->tdata.trad_core_data)->sections[n])
+#define core_regsec(bfd) \
+    (((bfd)->tdata.trad_core_data)->reg_section)
+#define core_reg2sec(bfd) \
+    (((bfd)->tdata.trad_core_data)->reg2_section)
+
+/* These are stored in the bfd's tdata.  */
+struct trad_core_struct {
+  struct corehdr *hdr;		/* core file header */
+  asection *reg_section;
+  asection *reg2_section;
+  asection *sections[MAX_CORE_SEGS];
+};
+
+static void swap_abort PARAMS ((void));
+
+static const bfd_target *
+aix386_core_file_p (abfd)
+     bfd *abfd;
+{
+  int i, n;
+  unsigned char longbuf[4];	/* Raw bytes of various header fields */
+  bfd_size_type core_size = sizeof (struct corehdr);
+  bfd_size_type amt;
+  struct corehdr *core;
+  struct mergem {
+    struct trad_core_struct coredata;
+    struct corehdr internal_core;
+  } *mergem;
+
+  amt = sizeof (longbuf);
+  if (bfd_bread ((PTR) longbuf, amt, abfd) != amt)
+    {
+      if (bfd_get_error () != bfd_error_system_call)
+	bfd_set_error (bfd_error_wrong_format);
+      return 0;
+    }
+
+  if (strncmp (longbuf, COR_MAGIC, 4))
+    return 0;
+
+  if (bfd_seek (abfd, (file_ptr) 0, 0) != 0)
+    return 0;
+
+  amt = sizeof (struct mergem);
+  mergem = (struct mergem *) bfd_zalloc (abfd, amt);
+  if (mergem == NULL)
+    return 0;
+
+  core = &mergem->internal_core;
+
+  if ((bfd_bread ((PTR) core, core_size, abfd)) != core_size)
+    {
+      if (bfd_get_error () != bfd_error_system_call)
+	bfd_set_error (bfd_error_wrong_format);
+    loser:
+      bfd_release (abfd, (char *) mergem);
+      abfd->tdata.any = NULL;
+      bfd_section_list_clear (abfd);
+      return 0;
+    }
+
+  set_tdata (abfd, &mergem->coredata);
+  core_hdr (abfd) = core;
+
+  /* Create the sections.  */
+  core_regsec (abfd) = bfd_make_section_anyway (abfd, ".reg");
+  if (core_regsec (abfd) == NULL)
+    goto loser;
+
+  core_regsec (abfd)->flags = SEC_HAS_CONTENTS;
+  core_regsec (abfd)->_raw_size = sizeof (core->cd_regs);
+  core_regsec (abfd)->vma = (bfd_vma) -1;
+
+  /* We'll access the regs afresh in the core file, like any section.  */
+  core_regsec (abfd)->filepos =
+    (file_ptr) offsetof (struct corehdr, cd_regs[0]);
+
+  core_reg2sec (abfd) = bfd_make_section_anyway (abfd, ".reg2");
+  if (core_reg2sec (abfd) == NULL)
+    /* bfd_release frees everything allocated after it's arg.  */
+    goto loser;
+
+  core_reg2sec (abfd)->flags = SEC_HAS_CONTENTS;
+  core_reg2sec (abfd)->_raw_size = sizeof (core->cd_fpregs);
+  core_reg2sec (abfd)->vma = (bfd_vma) -1;
+  core_reg2sec (abfd)->filepos =
+    (file_ptr) offsetof (struct corehdr, cd_fpregs);
+
+  for (i = 0, n = 0; (i < MAX_CORE_SEGS) && (core->cd_segs[i].cs_type); i++)
+    {
+      const char *sname;
+      flagword flags;
+
+      if (core->cd_segs[i].cs_offset == 0)
+	continue;
+
+      switch (core->cd_segs[i].cs_type)
+	{
+	case COR_TYPE_DATA:
+	  sname = ".data";
+	  flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+	  break;
+	case COR_TYPE_STACK:
+	  sname = ".stack";
+	  flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+	  break;
+	case COR_TYPE_LIBDATA:
+	  sname = ".libdata";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+	  break;
+	case COR_TYPE_WRITE:
+	  sname = ".writeable";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+	  break;
+	case COR_TYPE_MSC:
+	  sname = ".misc";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+	  break;
+	default:
+	  sname = ".unknown";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+	  break;
+	}
+      core_section (abfd, n) = bfd_make_section_anyway (abfd, sname);
+      if (core_section (abfd, n) == NULL)
+	goto loser;
+
+      core_section (abfd, n)->flags = flags;
+      core_section (abfd, n)->_raw_size = core->cd_segs[i].cs_len;
+      core_section (abfd, n)->vma       = core->cd_segs[i].cs_address;
+      core_section (abfd, n)->filepos   = core->cd_segs[i].cs_offset;
+      core_section (abfd, n)->alignment_power = 2;
+      n++;
+    }
+
+  return abfd->xvec;
+}
+
+static char *
+aix386_core_file_failing_command (abfd)
+     bfd *abfd;
+{
+  return core_hdr (abfd)->cd_comm;
+}
+
+static int
+aix386_core_file_failing_signal (abfd)
+     bfd *abfd;
+{
+  return core_hdr (abfd)->cd_cursig;
+}
+
+static bfd_boolean
+aix386_core_file_matches_executable_p (core_bfd, exec_bfd)
+     bfd *core_bfd;
+     bfd *exec_bfd;
+{
+  /* FIXME: We have no way of telling at this point.  */
+  return TRUE;
+}
+
+/* If somebody calls any byte-swapping routines, shoot them.  */
+
+static void
+swap_abort ()
+{
+  /* This way doesn't require any declaration for ANSI to fuck up.  */
+  abort ();
+}
+
+#define	NO_GET	((bfd_vma (*) PARAMS ((const bfd_byte *))) swap_abort)
+#define NO_GETS ((bfd_signed_vma (*) PARAMS ((const bfd_byte *))) swap_abort)
+#define	NO_PUT	((void (*) PARAMS ((bfd_vma, bfd_byte *))) swap_abort)
+
+const bfd_target aix386_core_vec = {
+  "aix386-core",
+  bfd_target_unknown_flavour,
+  BFD_ENDIAN_BIG,		/* target byte order */
+  BFD_ENDIAN_BIG,		/* target headers byte order */
+  (HAS_RELOC | EXEC_P |		/* object flags */
+   HAS_LINENO | HAS_DEBUG |
+   HAS_SYMS | HAS_LOCALS | WP_TEXT),
+
+  (SEC_HAS_CONTENTS | SEC_ALLOC | SEC_LOAD | SEC_RELOC), /* section flags */
+  0,				/* leading underscore */
+  ' ',				/* ar_pad_char */
+  16,				/* ar_max_namelen */
+  NO_GET, NO_GETS, NO_PUT,
+  NO_GET, NO_GETS, NO_PUT,
+  NO_GET, NO_GETS, NO_PUT,	/* data */
+  NO_GET, NO_GETS, NO_PUT,
+  NO_GET, NO_GETS, NO_PUT,
+  NO_GET, NO_GETS, NO_PUT,	/* hdrs */
+
+  {_bfd_dummy_target, _bfd_dummy_target,
+   _bfd_dummy_target, aix386_core_file_p},
+  {bfd_false, bfd_false,	/* bfd_create_object */
+   bfd_false, bfd_false},
+  {bfd_false, bfd_false,	/* bfd_write_contents */
+   bfd_false, bfd_false},
+
+  BFD_JUMP_TABLE_GENERIC (_bfd_generic),
+  BFD_JUMP_TABLE_COPY (_bfd_generic),
+  BFD_JUMP_TABLE_CORE (aix386),
+  BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
+  BFD_JUMP_TABLE_SYMBOLS (_bfd_nosymbols),
+  BFD_JUMP_TABLE_RELOCS (_bfd_norelocs),
+  BFD_JUMP_TABLE_WRITE (_bfd_generic),
+  BFD_JUMP_TABLE_LINK (_bfd_nolink),
+  BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
+
+  NULL,
+
+  (PTR) 0
+};
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d4 2
+a5 1
+   Copyright 1988, 1989, 1991, 1992, 1993, 1994, 1996, 1998, 1999, 2000
+d76 2
+a77 1
+  int core_size = sizeof (struct corehdr);
+d84 2
+a85 1
+  if (bfd_read ((PTR) longbuf, 1, sizeof (longbuf), abfd) != sizeof (longbuf))
+d95 1
+a95 1
+  if (bfd_seek (abfd, 0L, false) < 0)
+d98 2
+a99 1
+  mergem = (struct mergem *) bfd_zalloc (abfd, sizeof (struct mergem));
+d105 1
+a105 1
+  if ((bfd_read ((PTR) core, 1, core_size, abfd)) != core_size)
+d109 1
+d111 2
+d119 2
+a120 3
+  /* Create the sections.  This is raunchy, but bfd_close wants to
+     reclaim them.  */
+  core_regsec (abfd) = (asection *) bfd_zalloc (abfd, sizeof (asection));
+d122 11
+a132 6
+    {
+    loser:
+      bfd_release (abfd, (char *) mergem);
+      return 0;
+    }
+  core_reg2sec (abfd) = (asection *) bfd_zalloc (abfd, sizeof (asection));
+d134 8
+a141 5
+    {
+    loser1:
+      bfd_release (abfd, core_regsec (abfd));
+      goto loser;
+    }
+d145 3
+a149 13
+      core_section (abfd, n) =
+	(asection *) bfd_zalloc (abfd, sizeof (asection));
+      if (core_section (abfd, n) == NULL)
+	{
+	  int j;
+	  if (n > 0)
+	    {
+	      for (j = 0; j < n; j++)
+		bfd_release (abfd, core_section (abfd, j));
+	    }
+	  bfd_release (abfd, (char *) mergem);
+	  goto loser1;
+	}
+d154 2
+a155 3
+	  core_section (abfd, n)->name = ".data";
+	  core_section (abfd, n)->flags = (SEC_ALLOC + SEC_LOAD +
+					   SEC_HAS_CONTENTS);
+d158 2
+a159 3
+	  core_section (abfd, n)->name = ".stack";
+	  core_section (abfd, n)->flags = (SEC_ALLOC + SEC_LOAD +
+					   SEC_HAS_CONTENTS);
+d162 2
+a163 2
+	  core_section (abfd, n)->name = ".libdata";
+	  core_section (abfd, n)->flags = (SEC_ALLOC + SEC_HAS_CONTENTS);
+d166 2
+a167 2
+	  core_section (abfd, n)->name = ".writeable";
+	  core_section (abfd, n)->flags = (SEC_ALLOC + SEC_HAS_CONTENTS);
+d170 2
+a171 2
+	  core_section (abfd, n)->name = ".misc";
+	  core_section (abfd, n)->flags = (SEC_ALLOC + SEC_HAS_CONTENTS);
+d174 2
+a175 2
+	  core_section (abfd, n)->name = ".unknown";
+	  core_section (abfd, n)->flags = (SEC_ALLOC + SEC_HAS_CONTENTS);
+d178 5
+d187 1
+a187 5
+      core_section (abfd, n)->next      = NULL;
+      if (n > 0)
+	core_section (abfd, (n - 1))->next = core_section (abfd, n);
+
+      abfd->section_count = ++n;
+a189 24
+  core_regsec (abfd)->name = ".reg";
+  core_reg2sec (abfd)->name = ".reg2";
+
+  core_regsec (abfd)->flags = SEC_HAS_CONTENTS;
+  core_reg2sec (abfd)->flags = SEC_HAS_CONTENTS;
+
+  core_regsec (abfd)->_raw_size = sizeof (core->cd_regs);
+  core_reg2sec (abfd)->_raw_size = sizeof (core->cd_fpregs);
+
+  core_regsec (abfd)->vma = -1;
+  core_reg2sec (abfd)->vma = -1;
+
+  /* We'll access the regs afresh in the core file, like any section.  */
+  core_regsec (abfd)->filepos =
+    (file_ptr) offsetof (struct corehdr, cd_regs[0]);
+  core_reg2sec (abfd)->filepos =
+    (file_ptr) offsetof (struct corehdr, cd_fpregs);
+
+  /* Add the 2 reg fake sections to abfd.  */
+  abfd->section_count += 2;
+  abfd->sections = core_regsec (abfd);
+  core_regsec (abfd)->next = core_reg2sec (abfd);
+  core_reg2sec (abfd)->next = core_section (abfd, 0);
+
+d207 1
+a207 1
+static boolean
+d213 1
+a213 1
+  return true;
+d225 3
+a227 3
+#define	NO_GET	((PROTO(bfd_vma, (*), (       const bfd_byte *))) swap_abort )
+#define NO_GETS ((PROTO(bfd_signed_vma, (*), (const bfd_byte *))) swap_abort )
+#define	NO_PUT	((PROTO(void,        (*), (bfd_vma, bfd_byte *))) swap_abort )
+d233 1
+a233 1
+  BFD_ENDIANG_BIG,		/* target headers byte order */
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d4 1
+a4 2
+   Copyright 1988, 1989, 1991, 1992, 1993, 1994, 1996, 1998, 1999, 2000,
+   2001, 2002
+d75 1
+a75 2
+  bfd_size_type core_size = sizeof (struct corehdr);
+  bfd_size_type amt;
+d82 1
+a82 2
+  amt = sizeof (longbuf);
+  if (bfd_bread ((PTR) longbuf, amt, abfd) != amt)
+d92 1
+a92 1
+  if (bfd_seek (abfd, (file_ptr) 0, 0) != 0)
+d95 1
+a95 2
+  amt = sizeof (struct mergem);
+  mergem = (struct mergem *) bfd_zalloc (abfd, amt);
+d101 1
+a101 1
+  if ((bfd_bread ((PTR) core, core_size, abfd)) != core_size)
+a104 1
+    loser:
+a105 2
+      abfd->tdata.any = NULL;
+      bfd_section_list_clear (abfd);
+d112 3
+a114 2
+  /* Create the sections.  */
+  core_regsec (abfd) = bfd_make_section_anyway (abfd, ".reg");
+d116 6
+a121 11
+    goto loser;
+
+  core_regsec (abfd)->flags = SEC_HAS_CONTENTS;
+  core_regsec (abfd)->_raw_size = sizeof (core->cd_regs);
+  core_regsec (abfd)->vma = (bfd_vma) -1;
+
+  /* We'll access the regs afresh in the core file, like any section.  */
+  core_regsec (abfd)->filepos =
+    (file_ptr) offsetof (struct corehdr, cd_regs[0]);
+
+  core_reg2sec (abfd) = bfd_make_section_anyway (abfd, ".reg2");
+d123 5
+a127 8
+    /* bfd_release frees everything allocated after it's arg.  */
+    goto loser;
+
+  core_reg2sec (abfd)->flags = SEC_HAS_CONTENTS;
+  core_reg2sec (abfd)->_raw_size = sizeof (core->cd_fpregs);
+  core_reg2sec (abfd)->vma = (bfd_vma) -1;
+  core_reg2sec (abfd)->filepos =
+    (file_ptr) offsetof (struct corehdr, cd_fpregs);
+a130 3
+      const char *sname;
+      flagword flags;
+
+d133 13
+d150 3
+a152 2
+	  sname = ".data";
+	  flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+d155 3
+a157 2
+	  sname = ".stack";
+	  flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+d160 2
+a161 2
+	  sname = ".libdata";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+d164 2
+a165 2
+	  sname = ".writeable";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+d168 2
+a169 2
+	  sname = ".misc";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+d172 2
+a173 2
+	  sname = ".unknown";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+a175 5
+      core_section (abfd, n) = bfd_make_section_anyway (abfd, sname);
+      if (core_section (abfd, n) == NULL)
+	goto loser;
+
+      core_section (abfd, n)->flags = flags;
+d180 5
+a184 1
+      n++;
+d187 24
+d228 1
+a228 1
+static bfd_boolean
+d234 1
+a234 1
+  return TRUE;
+d246 3
+a248 3
+#define	NO_GET	((bfd_vma (*) PARAMS ((const bfd_byte *))) swap_abort)
+#define NO_GETS ((bfd_signed_vma (*) PARAMS ((const bfd_byte *))) swap_abort)
+#define	NO_PUT	((void (*) PARAMS ((bfd_vma, bfd_byte *))) swap_abort)
+d254 1
+a254 1
+  BFD_ENDIAN_BIG,		/* target headers byte order */
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d5 1
+a5 1
+   2001, 2002, 2004
+d225 3
+a227 6
+#define	NO_GET ((bfd_vma (*) (const void *)) swap_abort)
+#define	NO_PUT ((void (*) (bfd_vma, void *)) swap_abort)
+#define	NO_GETS ((bfd_signed_vma (*) (const void *)) swap_abort)
+#define	NO_GET64 ((bfd_uint64_t (*) (const void *)) swap_abort)
+#define	NO_PUT64 ((void (*) (bfd_uint64_t, void *)) swap_abort)
+#define	NO_GETS64 ((bfd_int64_t (*) (const void *)) swap_abort)
+d242 1
+a242 1
+  NO_GET64, NO_GETS64, NO_PUT64,
+d245 1
+a245 1
+  NO_GET64, NO_GETS64, NO_PUT64,
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d4 1
+a4 2
+   Copyright 1988, 1989, 1991, 1992, 1993, 1994, 1996, 1998, 1999, 2000,
+   2001, 2002
+d75 1
+a75 2
+  bfd_size_type core_size = sizeof (struct corehdr);
+  bfd_size_type amt;
+d82 1
+a82 2
+  amt = sizeof (longbuf);
+  if (bfd_bread ((PTR) longbuf, amt, abfd) != amt)
+d92 1
+a92 1
+  if (bfd_seek (abfd, (file_ptr) 0, 0) != 0)
+d95 1
+a95 2
+  amt = sizeof (struct mergem);
+  mergem = (struct mergem *) bfd_zalloc (abfd, amt);
+d101 1
+a101 1
+  if ((bfd_bread ((PTR) core, core_size, abfd)) != core_size)
+a104 1
+    loser:
+a105 2
+      abfd->tdata.any = NULL;
+      bfd_section_list_clear (abfd);
+d112 3
+a114 2
+  /* Create the sections.  */
+  core_regsec (abfd) = bfd_make_section_anyway (abfd, ".reg");
+d116 6
+a121 11
+    goto loser;
+
+  core_regsec (abfd)->flags = SEC_HAS_CONTENTS;
+  core_regsec (abfd)->_raw_size = sizeof (core->cd_regs);
+  core_regsec (abfd)->vma = (bfd_vma) -1;
+
+  /* We'll access the regs afresh in the core file, like any section.  */
+  core_regsec (abfd)->filepos =
+    (file_ptr) offsetof (struct corehdr, cd_regs[0]);
+
+  core_reg2sec (abfd) = bfd_make_section_anyway (abfd, ".reg2");
+d123 5
+a127 8
+    /* bfd_release frees everything allocated after it's arg.  */
+    goto loser;
+
+  core_reg2sec (abfd)->flags = SEC_HAS_CONTENTS;
+  core_reg2sec (abfd)->_raw_size = sizeof (core->cd_fpregs);
+  core_reg2sec (abfd)->vma = (bfd_vma) -1;
+  core_reg2sec (abfd)->filepos =
+    (file_ptr) offsetof (struct corehdr, cd_fpregs);
+a130 3
+      const char *sname;
+      flagword flags;
+
+d133 13
+d150 3
+a152 2
+	  sname = ".data";
+	  flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+d155 3
+a157 2
+	  sname = ".stack";
+	  flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+d160 2
+a161 2
+	  sname = ".libdata";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+d164 2
+a165 2
+	  sname = ".writeable";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+d168 2
+a169 2
+	  sname = ".misc";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+d172 2
+a173 2
+	  sname = ".unknown";
+	  flags = SEC_ALLOC + SEC_HAS_CONTENTS;
+a175 5
+      core_section (abfd, n) = bfd_make_section_anyway (abfd, sname);
+      if (core_section (abfd, n) == NULL)
+	goto loser;
+
+      core_section (abfd, n)->flags = flags;
+d180 5
+a184 1
+      n++;
+d187 24
+d228 1
+a228 1
+static bfd_boolean
+d234 1
+a234 1
+  return TRUE;
+d246 3
+a248 3
+#define	NO_GET	((bfd_vma (*) PARAMS ((const bfd_byte *))) swap_abort)
+#define NO_GETS ((bfd_signed_vma (*) PARAMS ((const bfd_byte *))) swap_abort)
+#define	NO_PUT	((void (*) PARAMS ((bfd_vma, bfd_byte *))) swap_abort)
+d254 1
+a254 1
+  BFD_ENDIAN_BIG,		/* target headers byte order */
+@
+

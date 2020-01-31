@@ -1,0 +1,238 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.21;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.21;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.55;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/usr/bin/perl -w
+
+use Test;
+use strict;
+
+my $count;
+  
+BEGIN
+  {
+  $| = 1;
+  if ($^O eq 'os390') { print "1..0\n"; exit(0) } # test takes too long there
+  unshift @@INC, '../lib'; # for running manually
+  my $location = $0; $location =~ s/mbi_rand.t//;
+  unshift @@INC, $location; # to locate the testing files
+  chdir 't' if -d 't';
+  $count = 128;
+  plan tests => $count*2;
+  }
+
+use Math::BigInt;
+my $c = 'Math::BigInt';
+
+my $length = 128;
+
+# If you get a failure here, please re-run the test with the printed seed
+# value as input: perl t/mbi_rand.t seed
+
+my $seed = ($#ARGV == 0) ? $ARGV[0] : int(rand(65537));
+print "# seed: $seed\n"; srand($seed);
+
+my ($A,$B,$As,$Bs,$ADB,$AMB,$la,$lb);
+my $two = Math::BigInt->new(2);
+for (my $i = 0; $i < $count; $i++)
+  {
+  # length of A and B
+  $la = int(rand($length)+1); $lb = int(rand($length)+1);
+  $As = ''; $Bs = '';
+  # we create the numbers from "patterns", e.g. get a random number and a
+  # random count and string them together. This means things like
+  # "100000999999999999911122222222" are much more likely. If we just strung
+  # together digits, we would end up with "1272398823211223" etc.
+  while (length($As) < $la) { $As .= int(rand(100)) x int(rand(16)); }
+  while (length($Bs) < $lb) { $Bs .= int(rand(100)) x int(rand(16)); }
+  $As =~ s/^0+//; $Bs =~ s/^0+//; 
+  $As = $As || '0'; $Bs = $Bs || '0';
+  # print "# As $As\n# Bs $Bs\n";
+  $A = $c->new($As); $B = $c->new($Bs);
+  # print "# A $A\n# B $B\n";
+  if ($A->is_zero() || $B->is_zero())
+    {
+    ok (1,1); ok (1,1); next;
+    }
+  # check that int(A/B)*B + A % B == A holds for all inputs
+  # $X = ($A/$B)*$B + 2 * ($A % $B) - ($A % $B);
+  ($ADB,$AMB) = $A->copy()->bdiv($B);
+  print "# ". join(' ',Math::BigInt::Calc->_base_len()),"\n"
+   unless ok ($ADB*$B+$two*$AMB-$AMB,$As);
+  # swap 'em and try this, too
+  # $X = ($B/$A)*$A + $B % $A;
+  ($ADB,$AMB) = $B->copy()->bdiv($A);
+  print "# ". join(' ',Math::BigInt::Calc->_base_len()),"\n"
+   unless ok ($ADB*$A+$two*$AMB-$AMB,$Bs);
+  }
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d17 1
+a17 1
+  plan tests => $count*4;
+d26 1
+a26 1
+# value as input "perl t/mbi_rand.t seed" and send me the output
+d28 1
+a28 1
+my $seed = ($#ARGV == 0) ? $ARGV[0] : int(rand(1165537));
+a37 1
+
+d41 1
+a41 2
+  # together digits, we would end up with "1272398823211223" etc. It also means
+  # that we get more frequently equal numbers or other special cases.
+a43 1
+
+d51 1
+a51 1
+    for (1..4) { ok (1,1); } next;
+a52 1
+
+a53 1
+
+a54 1
+
+d56 1
+a56 4
+#  print "# ($A / $B, $A % $B ) = $ADB $AMB\n";
+
+  print "# seed $seed, ". join(' ',Math::BigInt::Calc->_base_len()),"\n".
+        "# tried $ADB * $B + $two*$AMB - $AMB\n"
+a57 2
+  print "# seed: $seed, \$ADB * \$B / \$B = ", $ADB * $B / $B, " != $ADB (\$B=$B)\n"
+   unless ok ($ADB*$B/$B,$ADB);
+d61 1
+a61 3
+  #print "check: $ADB $AMB";
+  print "# seed $seed, ". join(' ',Math::BigInt::Calc->_base_len()),"\n".
+        "# tried $ADB * $A + $two*$AMB - $AMB\n"
+a62 4
+#  print " +$two * $AMB = ",$ADB * $A + $two * $AMB,"\n";
+#  print " -$AMB = ",$ADB * $A + $two * $AMB - $AMB,"\n";
+  print "# seed $seed, \$ADB * \$A / \$A = ", $ADB * $A / $A, " != $ADB (\$A=$A)\n"
+   unless ok ($ADB*$A/$A,$ADB);
+@
+

@@ -1,0 +1,255 @@
+head	1.2;
+access;
+symbols
+	cvs-1_12_11:1.1.2.1
+	cvs-1_12_10:1.1.2.1
+	FSF:1.1.2
+	cvs-200406091940:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200404170130:1.1.1.1
+	cvs-1_11_12:1.1.3.1
+	cvs-1_11_1p1:1.1.3.1
+	tg:1.1.3
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.05.16.17.43.41;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.33;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.33;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2004.12.02.11.59.21;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.02.12.19.27.36;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unixio.h>
+
+#include <errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+
+int rcmd(char **remote_hostname, int remote_port,
+         char *local_user, char *remote_user,
+         char *command, int zero)
+{
+  struct hostent *remote_hp;
+  struct hostent *local_hp;
+  struct sockaddr_in remote_isa;
+  struct sockaddr_in local_isa;
+  char local_hostname[80];
+  char ch;
+  int s;
+  int local_port;
+  int rs;
+
+  remote_hp = gethostbyname(*remote_hostname);
+  if(!remote_hp)
+    {
+    perror("couldn't get remote host address");
+    exit(-1);
+    }
+
+  /* Copy remote IP address into socket address structure */
+  remote_isa.sin_family = AF_INET;
+  remote_isa.sin_port = htons(remote_port);
+  memcpy(&remote_isa.sin_addr, remote_hp->h_addr, sizeof(remote_isa.sin_addr));
+
+  gethostname(local_hostname, 80);
+  local_hp = gethostbyname(local_hostname);
+  if(!local_hp)
+    {
+    perror("couldn't get local host address");
+    exit(-1);
+    }
+
+  /* Copy local IP address into socket address structure */
+  local_isa.sin_family = AF_INET;
+  memcpy(&local_isa.sin_addr, local_hp->h_addr, sizeof(local_isa.sin_addr));
+
+  /* Create the local socket */
+  s = socket(AF_INET, SOCK_STREAM, 0);
+  if(s < 0)
+    {
+    perror("socket failed\n");
+    exit(-1);
+    }
+
+  /* Bind local socket with a port from IPPORT_RESERVED/2 to IPPORT_RESERVED - 1
+     this requires the OPER privilege under VMS -- to allow communication with
+     a stock rshd under UNIX */
+
+  for(local_port = IPPORT_RESERVED - 1; local_port >= IPPORT_RESERVED/2; local_port--)
+    {
+    local_isa.sin_port = htons(local_port);
+    rs = bind(s, (struct sockaddr *)&local_isa, sizeof(local_isa));
+    if(rs == 0)
+      break;
+    }                  
+
+  /* Bind local socket to an unprivileged port.  A normal rshd will drop the
+     connection; you must be running a patched rshd invoked through inetd for
+     this connection method to work */
+
+  if (rs != 0)
+    for(local_port = IPPORT_USERRESERVED - 1;
+        local_port > IPPORT_RESERVED;
+        local_port--)
+      {
+      local_isa.sin_port = htons(local_port);
+      rs = bind(s, (struct sockaddr *)&local_isa, sizeof(local_isa));
+      if(rs == 0)
+        break;
+      }
+  
+  rs = connect(s, (struct sockaddr *) &remote_isa, sizeof(remote_isa));
+  if(rs == -1)
+    {
+    fprintf(stderr, "connect: errno = %d\n", errno);
+    close(s);
+    exit(-2);
+    }
+
+  /* Now supply authentication information */
+
+  /* Auxiliary port number for error messages, we don't use it */
+  write(s, "0\0", 2);
+
+  /* Who are we */
+  write(s, local_user, strlen(local_user) + 1);
+
+  /* Who do we want to be */
+  write(s, remote_user, strlen(remote_user) + 1);
+
+  /* What do we want to run */
+  write(s, command, strlen(command) + 1);
+
+  /* NUL is sent back to us if information is acceptable */
+  read(s, &ch, 1);
+  if(ch != '\0')
+    {
+    errno = EPERM;
+    return -1;
+    }
+
+  return s;
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@vendor-branch-ify new cvs 1.12
+@
+text
+@@
+
+
+1.1.3.1
+log
+@our CVS is currently at 1.11.1p1, thus import that version into vendor branch
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,412 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.4
+	cvs-200312222040:1.1.1.4
+	cvs-200310081815:1.1.1.4
+	cvs-200310020700:1.1.1.4
+	cvs-200309271030:1.1.1.4
+	cvs-200309261610:1.1.1.4
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1
+	ctm-3203:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.24.09.48.28;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.27.14.19.06;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.04.15.17.35.51;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.19.12.41.19;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.08.11.18.27.32;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.09.25.16.31.25;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@more non-i386
+@
+text
+@/*	$OpenBSD: rtld_machine.c,v 1.11 2003/02/02 16:57:58 deraadt Exp $ */
+
+/*
+ * Copyright (c) 1998-2002 Opsycon AB, Sweden.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Opsycon AB, Sweden.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
+ * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ */
+
+#define _DYN_LOADER
+
+#include <sys/types.h>
+
+#include <link.h>
+#include "resolve.h"
+#include "syscall.h"
+#include "archdep.h"
+
+int
+_dl_md_reloc(elf_object_t *object, int rel, int relsz)
+{
+	int	i;
+	int	numrel;
+	int	fails = 0;
+	Elf32_Addr loff;
+	Elf32_Rel  *relocs;
+
+	loff = object->load_offs;
+	numrel = object->Dyn.info[relsz] / sizeof(Elf32_Rel);
+	relocs = (Elf32_Rel *)(object->Dyn.info[rel]);
+
+	if (relocs == NULL)
+		return(0);
+
+	for (i = 0; i < numrel; i++, relocs++) {
+		Elf32_Addr r_addr = relocs->r_offset + loff;
+		Elf32_Addr ooff = 0;
+		const Elf32_Sym *sym, *this;
+		const char *symn;
+		int type;
+
+		if (ELF32_R_SYM(relocs->r_info) == 0xffffff)
+			continue;
+
+		sym = object->dyn.symtab;
+		sym += ELF32_R_SYM(relocs->r_info);
+		this = sym;
+		symn = object->dyn.strtab + sym->st_name;
+		type = ELF32_R_TYPE(relocs->r_info);
+
+		if (ELF32_R_SYM(relocs->r_info) &&
+		    !(ELF32_ST_BIND(sym->st_info) == STB_LOCAL &&
+		    ELF32_ST_TYPE (sym->st_info) == STT_NOTYPE)) {
+			ooff = _dl_find_symbol(symn, _dl_objects, &this,
+			SYM_SEARCH_ALL | SYM_NOWARNNOTFOUND | SYM_PLT,
+			sym->st_size, object->load_name);
+			if (!this && ELF32_ST_BIND(sym->st_info) == STB_GLOBAL) {
+				_dl_printf("%s: can't resolve reference '%s'\n",
+				    _dl_progname, symn);
+				fails++;
+			}
+
+		}
+
+		switch (ELF32_R_TYPE(relocs->r_info)) {
+		case R_MIPS_REL32:
+			if (ELF32_ST_BIND(sym->st_info) == STB_LOCAL &&
+			    (ELF32_ST_TYPE(sym->st_info) == STT_SECTION ||
+			    ELF32_ST_TYPE(sym->st_info) == STT_NOTYPE) ) {
+				*(u_int32_t *)r_addr += loff + sym->st_value;
+			} else if (this) {
+				*(u_int32_t *)r_addr += this->st_value + ooff;
+			}
+			break;
+
+		case R_MIPS_NONE:
+			break;
+
+		default:
+			_dl_printf("%s: unsupported relocation '%s'\n",
+			    _dl_progname, symn);
+			_dl_exit(1);
+		}
+	}
+
+	return(fails);
+}
+
+/*
+ *	Relocate the Global Offset Table (GOT). Currently we don't
+ *	do lazy evaluation here because the GNU linker doesn't
+ *	follow the ABI spec which says that if an external symbol
+ *	is referenced by other relocations than CALL16 and 26 it
+ *	should not be given a stub and have a zero value in the
+ *	symbol table. By not doing so, we can't use pointers to
+ *	external functions and use them in comparisons...
+ */
+void
+_dl_md_reloc_got(elf_object_t *object, int lazy)
+{
+	int	i, n;
+	Elf32_Addr loff;
+	Elf32_Addr ooff;
+	Elf32_Addr *gotp;
+	const Elf32_Sym  *symp;
+	const Elf32_Sym  *this;
+	const char *strt;
+	Elf_Addr ooff;
+	const Elf_Sym *this;
+
+	if (object->status & STAT_GOT_DONE)
+		return;
+
+	lazy = 0;	/* XXX Fix ld before enabling lazy */
+	loff = object->load_offs;
+	strt = object->dyn.strtab;
+	gotp = object->dyn.pltgot;
+	n = object->Dyn.info[DT_MIPS_LOCAL_GOTNO - DT_LOPROC + DT_NUM];
+
+	/*
+	 *  Set up pointers for run time (lazy) resolving.
+	 */
+	gotp[0] = (int)_dl_rt_resolve;
+	if (gotp[1] & 0x80000000) {
+		gotp[1] = (int)object | 0x80000000;
+	}
+
+	/*  First do all local references. */
+	for (i = ((gotp[1] & 0x80000000) ? 2 : 1); i < n; i++) {
+		gotp[i] += loff;
+	}
+
+	gotp += n;
+
+	symp =  object->dyn.symtab;
+	symp += object->Dyn.info[DT_MIPS_GOTSYM - DT_LOPROC + DT_NUM];
+	n =  object->Dyn.info[DT_MIPS_SYMTABNO - DT_LOPROC + DT_NUM] -
+	    object->Dyn.info[DT_MIPS_GOTSYM - DT_LOPROC + DT_NUM];
+
+	this = NULL;
+	ooff = _dl_find_symbol("__got_start", object, &this,
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, SYM_NOTPLT,
+	    NULL);
+	if (this != NULL)
+		object->got_addr = ooff + this->st_value;
+
+	this = NULL;
+	ooff = _dl_find_symbol("__got_end", object, &this,
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, SYM_NOTPLT,
+	    NULL);
+	if (this != NULL)
+		object->got_size = ooff + this->st_value  - object->got_addr;
+
+	this = NULL;
+	ooff = _dl_find_symbol("__plt_start", object, &this,
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, SYM_NOTPLT,
+	    NULL);
+	if (this != NULL)
+		object->plt_addr = ooff + this->st_value;
+
+	this = NULL;
+	ooff = _dl_find_symbol("__plt_end", object, &this,
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, SYM_NOTPLT,
+	    NULL);
+	if (this != NULL)
+		object->plt_size = ooff + this->st_value  - object->plt_addr;
+
+	/*
+	 *  Then do all global references according to the ABI.
+	 *  Quickstart is not yet implemented.
+	 */
+	while (n--) {
+		if (symp->st_shndx == SHN_UNDEF &&
+		    ELF32_ST_TYPE(symp->st_info) == STT_FUNC) {
+DL_DEB(("got: '%s' = %x\n", strt + symp->st_name, symp->st_value));
+			if (symp->st_value == 0 || !lazy) {
+				this = 0;
+				ooff = _dl_find_symbol(strt + symp->st_name,
+				    _dl_objects, &this,
+				    SYM_SEARCH_ALL|SYM_NOWARNNOTFOUND|SYM_PLT,
+				    symp->st_size, object->load_name);
+				if (this)
+					*gotp = this->st_value + ooff;
+			} else
+				*gotp = symp->st_value + ooff;
+		} else if (symp->st_shndx == SHN_COMMON ||
+			symp->st_shndx == SHN_UNDEF) {
+			this = 0;
+			ooff = _dl_find_symbol(strt + symp->st_name,
+			    _dl_objects, &this,
+			    SYM_SEARCH_ALL|SYM_NOWARNNOTFOUND|SYM_PLT,
+			    symp->st_size, object->load_name);
+			if (this)
+				*gotp = this->st_value + ooff;
+		} else if (ELF32_ST_TYPE(symp->st_info) == STT_FUNC) {
+			*gotp += loff;
+		} else {	/* XXX ??? */	/* Resolve all others immediatly */
+			*gotp = symp->st_value + loff;
+		}
+		gotp++;
+		symp++;
+	}
+	object->status |= STAT_GOT_DONE;
+
+	if (object->got_addr != NULL && object->got_size != 0)
+		_dl_mprotect((void*)object->got_addr, object->got_size,
+		    PROT_READ);
+	if (object->plt_addr != NULL && object->plt_size != 0)
+		_dl_mprotect((void*)object->plt_addr, object->plt_size,
+		    PROT_READ|PROT_EXEC);
+}
+@
+
+
+1.1
+log
+@re-add a "not so important" directory that just went away
+without telling me so.
+It did even vanish from the CVS repository. I think, CVS
+is buggy.
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD source with the "new" command line as well,
+in order to be able to provide a MirBSD release which bases
+upon a fairly current OpenBSD base source code tree deemed
+stable enough.
+@
+text
+@@
+
+
+1.1.1.2
+log
+@sync with OpenBSD, this gives us a fair amount of fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: rtld_machine.c,v 1.12 2003/06/09 16:10:04 deraadt Exp $ */
+d14 5
+@
+
+
+1.1.1.3
+log
+@Import the complete OpenBSD source tree (base system)
+as of CTM delta 3496 (roughly 1200 UTC today) into the
+vendor branch.
+Attention: this is a big update. Don't even try to
+build this system, OpenBSD 3.4-beta, yet on your own.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: rtld_machine.c,v 1.13 2003/07/28 03:11:00 drahn Exp $ */
+d161 2
+a162 1
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, 0, NULL);
+d168 2
+a169 1
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, 0, NULL);
+d175 2
+a176 1
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, 0, NULL);
+d182 2
+a183 1
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, 0, NULL);
+@
+
+
+1.1.1.4
+log
+@Release Time. Synchronize with OpenBSD 3.4-current (base system).
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: rtld_machine.c,v 1.14 2003/09/02 15:17:51 drahn Exp $ */
+d75 1
+a75 1
+			sym->st_size, object);
+d161 1
+a161 1
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, 0, object);
+d167 1
+a167 1
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, 0, object);
+d173 1
+a173 1
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, 0, object);
+d179 1
+a179 1
+	    SYM_SEARCH_SELF|SYM_NOWARNNOTFOUND|SYM_PLT, 0, object);
+d196 1
+a196 1
+				    symp->st_size, object);
+d207 1
+a207 1
+			    symp->st_size, object);
+@
+
+

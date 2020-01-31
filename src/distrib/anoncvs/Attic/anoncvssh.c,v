@@ -1,0 +1,968 @@
+head	1.15;
+access;
+symbols
+	MIRBSD_7quater:1.3
+	MIRBSD_7_ALPHA:1.3.0.6
+	MIRBSD_7:1.3.0.4
+	MIRBSD_7ter:1.3
+	MIRBSD_7_DEV:1.3.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.15
+date	2004.08.27.19.21.57;	author tg;	state dead;
+branches;
+next	1.14;
+
+1.14
+date	2004.08.13.16.18.46;	author tg;	state Stab;
+branches;
+next	1.13;
+
+1.13
+date	2004.08.13.16.16.01;	author tg;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	2004.05.21.21.10.41;	author tg;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	2004.01.31.02.17.28;	author tg;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2004.01.12.22.49.07;	author tg;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2003.12.11.21.43.39;	author tg;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2003.12.05.14.24.45;	author tg;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2003.12.02.19.06.34;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2003.11.30.21.24.33;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2003.11.30.21.21.48;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2003.11.30.15.45.44;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2003.10.01.15.05.58;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.07.09.14.23.28;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.07.09.14.06.12;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.15
+log
+@move src/distrib/anoncvs to src/libexec/anoncvssh
+@
+text
+@/* $MirBSD: src/distrib/anoncvs/anoncvssh.c,v 1.14 2004/08/13 16:18:46 tg Stab $
+ *-
+ * Copyright (c) 2004
+ *	Thorsten "mirabile" Glaser <tg@@66h.42h.de>
+ *
+ * Licensee is hereby permitted to deal in this work without restric-
+ * tion, including unlimited rights to use, publically perform, modi-
+ * fy, merge, distribute, sell, give away or sublicence, provided the
+ * above copyright notices, these terms and the disclaimer are retai-
+ * ned in all redistributions, or reproduced in accompanying documen-
+ * tation or other materials provided with binary redistributions.
+ *
+ * Licensor hereby provides this work "AS IS" and WITHOUT WARRANTY of
+ * any kind, expressed or implied, to the maximum extent permitted by
+ * applicable law, but with the warranty of being written without ma-
+ * licious intent or gross negligence; in no event shall licensor, an
+ * author or contributor be held liable for any damage, direct, indi-
+ * rect or other, however caused, arising in any way out of the usage
+ * of covered work, even if advised of the possibility of such damage.
+ *-
+ * user shell to be used for chrooted access (anonymous or personali-
+ * zed, read-only or read-write) to cvs and possibly rsync.
+ * requires ANSI C.
+ */
+
+/*
+ * Copyright (c) 2002 Todd C. Miller <Todd.Miller@@courtesan.com>
+ * Copyright (c) 1997 Bob Beck <beck@@obtuse.com>
+ * Copyright (c) 1996 Thorsten Lockert <tholo@@sigmasoft.com>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include <sys/types.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <stdio.h>
+#include <stdlib.h>
+#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__)
+#include <paths.h>
+#endif
+#include <pwd.h>
+#include <unistd.h>
+#include <errno.h>
+
+/*
+ * You may need to change this path to ensure that RCS, CVS and diff
+ * can be found
+ */
+#ifndef	_PATH_DEFPATH
+#define	_PATH_DEFPATH	"/bin:/usr/bin"
+#endif
+
+/*
+ * This should not normally have to be changed
+ */
+#ifndef	_PATH_BSHELL
+#define	_PATH_BSHELL	"/bin/sh"
+#endif
+
+/*
+ * Location of CVS tree, relative to the anonymous CVS user's
+ * home directory
+ */
+#ifndef	LOCALROOT
+#define	LOCALROOT	"/cvs"
+#endif
+
+/*
+ * Account and host name to be used when accessing the
+ * CVS repository remotely
+ */
+#ifndef	HOSTNAME
+#if defined(FQDN) && defined(ANONCVS_USER)
+#define	HOSTNAME	ANONCVS_USER "@@" FQDN
+#else
+#define	HOSTNAME	"mirbsd-cvs@@mirbsd.bsdadvocacy.org"
+#endif
+#endif	/* ndef HOSTNAME */
+
+/*
+ * This is our own programme name
+ */
+#ifndef	ANONCVSSH_NAME
+#define	ANONCVSSH_NAME	"anoncvssh"
+#endif
+
+/*
+ * This is the rsync server to invoke
+ */
+#define	RSYNC		"/usr/bin/rsync"
+#define	FULL_RSYNC	RSYNC " --server "
+
+/*
+ * Niceness increase
+ */
+#ifndef	NICE_INC
+#define	NICE_INC	5
+#endif
+#if NICE_INC < 0
+#error "may not decrease niceness"
+#endif
+
+
+/****************************************************************/
+
+static const char progID[] = "@@(#) " HOSTNAME ":" LOCALROOT
+    "\n@@(#) $MirBSD: src/distrib/anoncvs/anoncvssh.c,v 1.14 2004/08/13 16:18:46 tg Stab $";
+
+#ifdef	USE_SYSLOG
+#include <string.h>
+#include <syslog.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#define	LOG_FACILITY	LOG_DAEMON
+#define	LOG_PRIO	LOG_INFO
+#define	DO_LOG(x)	syslog(LOG_NOTICE, x)
+#else	/* def USE_SYSLOG */
+#define	DO_LOG(x)	/* nothing */
+#endif	/* ! def USE_SYSLOG */
+
+int main(int, char *[]);
+
+char * const env[] = {
+	"PATH=" _PATH_DEFPATH,
+	"SHELL=" _PATH_BSHELL,
+	"CVSROOT=" LOCALROOT,
+	"HOME=/",
+#ifndef	ACCESS_READWRITE
+	"CVSREADONLYFS=1",
+#endif
+	NULL
+};
+
+int
+main(int argc, char *argv[])
+{
+	struct passwd *pw;
+#ifdef	DEBUG
+	int i;
+#endif
+	int niceness;
+
+	pw = getpwuid(getuid());
+	if (pw == NULL) {
+		fprintf(stderr, "no user for uid %d\n", getuid());
+		exit(1);
+	}
+	if (pw->pw_dir == NULL) {
+		fprintf(stderr, "no directory\n");
+		exit(1);
+	}
+
+#ifdef	USE_SYSLOG
+	openlog(ANONCVSSH_NAME, LOG_PID | LOG_NDELAY, LOG_FACILITY);
+#endif
+
+	/* drop priority by NICE_INC; anoncvs/-rsync is a background process */
+	errno = 0;
+	niceness = NICE_INC + getpriority(PRIO_PROCESS, 0);
+	if ((niceness == (NICE_INC - 1)) && errno) {
+		DO_LOG("Can't get process priority!");
+	} else if (setpriority(PRIO_PROCESS, 0, niceness)) {
+		DO_LOG("Can't set process priority!");
+	}
+
+#ifdef	ANONCVS_USER
+	/*
+	 * I love lusers who have to test every setuid binary on my machine.
+	 */
+	if (getuid() != 0 && (strcmp (pw->pw_name, ANONCVS_USER) != 0)) {
+		fprintf(stderr, "You're not supposed to be running me!\n");
+#ifdef	USE_SYSLOG
+		syslog(LOG_NOTICE,
+		       "User %s(%d) invoked %s - Possible twink?",
+		       pw->pw_name, pw->pw_uid, ANONCVSSH_NAME);
+#endif	/* def USE_SYSLOG */
+		exit(1);
+	}
+#endif	/* def ANONCVS_USER */
+
+	setuid(0);
+	if (chroot(pw->pw_dir) == -1) {
+		perror("chroot");
+		exit (1);
+	}
+	chdir("/");
+	setuid(pw->pw_uid);
+
+	/*
+	 * programme now "safe"
+	 */
+
+
+#ifdef	ACCESS_PSERVER
+	/* If we want pserver functionality */
+	if ((argc == 2) && (strcmp("pserver", argv[1]) == 0)) {
+#ifdef	USE_SYSLOG
+ 	        int slen;
+		struct sockaddr_in my_sa, peer_sa;
+		char *us, *them;
+
+		slen = sizeof(my_sa);
+		if (getsockname(0, (struct sockaddr *) &my_sa, &slen)
+		    != 0) {
+		  perror("getsockname");
+		  exit(1);
+		}
+		us = strdup(inet_ntoa(my_sa.sin_addr));
+		if (us == NULL) {
+		  fprintf(stderr, "malloc failed\n");
+		  exit(1);
+		}
+		slen = sizeof(peer_sa);
+		if (getpeername(0, (struct sockaddr *) &peer_sa, &slen)
+		    != 0) {
+		  perror("getpeername");
+		  exit(1);
+		}
+		them=strdup(inet_ntoa(peer_sa.sin_addr));
+		if (them == NULL) {
+		  fprintf(stderr, "malloc failed\n");
+		  exit(1);
+		}
+	        syslog(LOG_PRIO,
+		       "pserver connection from %s:%d to %s:%d\n",
+		       them, ntohs(peer_sa.sin_port),
+		       us, ntohs(my_sa.sin_port));
+#endif	/* def USE_SYSLOG */
+		execle("/usr/bin/cvs", "cvs",
+		    "--allow-root=" LOCALROOT, "pserver", (void *)NULL, env);
+		perror("execle: cvs");
+		fprintf(stderr, "unable to exec CVS pserver!\n");
+		exit(1);
+		/* NOTREACHED */
+	}
+#endif	/* def ACCESS_PSERVER */
+
+	if ((argc == 3) && (!strcmp(ANONCVSSH_NAME, argv[0])) &&
+	    (!strcmp("-c", argv[1]))) {
+		if ((!strcmp("cvs server", argv[2])) ||
+		    (!strcmp("cvs -d " LOCALROOT " server", argv[2]))) {
+			execle("/usr/bin/cvs", "cvs", "server",
+			    (void *)NULL, env);
+			perror("execle: cvs");
+			DO_LOG("chaining to CVS failed!");
+			fprintf(stderr, "unable to exec CVS server!\n");
+			exit(1);
+			/* NOTREACHED */
+		} else if (!strncmp(FULL_RSYNC, argv[2], strlen(FULL_RSYNC))) {
+#ifdef	ACCESS_RSYNC
+			int i = 0;
+			char *newarg[256];
+			char *p = argv[2] + 15;
+
+			newarg[0] = "rsync";
+		    lp:	newarg[++i] = strsep(&p, " ");
+			if ((newarg[i] != NULL) && (i < 255))
+				goto lp;
+			execve(RSYNC, newarg, env);
+			perror("execve: rsync");
+			DO_LOG("chaining to " RSYNC " failed!");
+			fprintf(stderr, "unable to exec RSYNC!\n");
+			exit(1);
+			/* NOTREACHED */
+#else
+			DO_LOG("access to RSYNC prohibited!");
+#endif
+		}
+	}
+
+	DO_LOG("parameter failure, printing help message");
+	fprintf(stderr, "\nTo use anonymous CVS or RSYNC, install "
+			"the latest version of the client access\n"
+			"software, as well as OpenSSH, on your "
+			"computer. Then, set your CVSROOT\n"
+			"environment variable to the following "
+			"value for CVS access:\n\t%s:%s\n"
+			"For RSYNC, be sure to specify the "
+			"parameter --rsync-path=" RSYNC "\n"
+			"when connecting, and use SSH instead "
+			"of RSH for both.\n", HOSTNAME, LOCALROOT);
+#ifdef	DEBUG
+	fprintf(stderr, "argc = %d\n", argc);
+	for (i = 0; i < argc; i++)
+		fprintf(stderr, "argv[%d] = \"%s\"\n", i, argv[i]);
+#endif
+	sleep(10);
+	exit(0);
+}
+@
+
+
+1.14
+log
+@increase niceness early; protect from negative values
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/distrib/anoncvs/anoncvssh.c,v 1.13 2004/08/13 16:16:01 tg Exp $
+d118 1
+a118 1
+    "\n@@(#) $MirBSD: src/distrib/anoncvs/anoncvssh.c,v 1.13 2004/08/13 16:16:01 tg Exp $";
+@
+
+
+1.13
+log
+@update licence; factor out niceness increase as a definition
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/share/misc/licence.template,v 1.11 2004/05/28 15:34:01 tg Rel $
+d110 4
+d118 1
+a118 1
+    "\n@@(#) $MirBSD: src/distrib/anoncvs/anoncvssh.c,v 1.12 2004/05/21 21:10:41 tg Exp $";
+d169 9
+a204 9
+
+	/* drop priority by NICE_INC; anoncvs/-rsync is a background process */
+	errno = 0;
+	niceness = NICE_INC + getpriority(PRIO_PROCESS, 0);
+	if ((niceness == (NICE_INC - 1)) && errno) {
+		DO_LOG("Can't get process priority!");
+	} else if (setpriority(PRIO_PROCESS, 0, niceness)) {
+		DO_LOG("Can't set process priority!");
+	}
+@
+
+
+1.12
+log
+@not-so-easy merge
+note: the release process is currently marked as broken, because
+the install.sub file needs some major fixes.
+they are so major I'll eventually rewrite the stuff now. let's see.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/share/misc/licence.template,v 1.10 2004/05/15 14:54:53 tg Rel $
+d4 1
+a4 1
+ *	Thorsten Glaser <x86@@ePost.de>
+d16 4
+a19 4
+ * licious intent or gross negligence; in no event shall an author or
+ * contributor be held liable for any direct, indirect or other dama-
+ * ge, however caused, arising in any way out of the usage of covered
+ * work, even if advised of the possibility of such damage.
+d104 7
+d114 1
+a114 1
+    "\n@@(#) $MirBSD: src/distrib/anoncvs/anoncvssh.c,v 1.11 2004/01/31 02:17:28 tg Exp $";
+d193 1
+a193 1
+	/* drop priority by 5; anoncvs/-rsync is a background process	*/
+d195 2
+a196 2
+	niceness = 5 + getpriority(PRIO_PROCESS, 0);
+	if ((niceness == 4) && errno) {
+@
+
+
+1.11
+log
+@* this time, make b-r for real
+* including X-Window
+* merge evilwm import
+* install all .cf etc. files, especially the MirBSD.cf one
+* cope in X for MirOS changes
+* refine anoncvssh: all defines in Makefile, etc.
+* cope for XFree86 1.1 licence
+* merge nlist.c import
+* nuke unused files
+* remove warnings
+* fix really bogus bug in rcdb again
+* offer bsd.slim for installation
+* fix the default route bug
+* sync distrib stuff
+(...)
+
+thanks for alpha-testing to
+ * Jannis "Kabelaffe" Konrad
+ * José António "T0ni" "jesus_" Matias de Jesus
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.8 2003/12/17 14:35:00 tg Exp $
+d4 1
+a4 1
+ *	Thorsten "mirabile" Glaser <x86@@ePost.de>
+d6 6
+a11 6
+ * Subject to these terms, everybody who obtained a copy of this work
+ * is hereby permitted to deal in the work without restriction inclu-
+ * ding without limitation the rights to use, distribute, sell, modi-
+ * fy, publically perform, give away, merge or sublicence it provided
+ * this notice is kept and the authors and contributors are given due
+ * credit in derivates or accompanying documents.
+d13 7
+a19 5
+ * This work is provided "as is" with no explicit or implicit warran-
+ * ties whatsoever to the maximum extent permitted by applicable law;
+ * in no event may an author or contributor be held liable for damage
+ * that is, directly or indirectly, caused by the work, even if advi-
+ * sed of the possibility of such damage.
+d107 1
+a107 1
+    "\n@@(#) $MirBSD: anoncvssh.c,v 1.10 2004/01/12 22:49:07 tg Exp $";
+@
+
+
+1.10
+log
+@ANSIfy, remove concatenation macroes
+tested with and survived -W -Wall -Werror -Wbounded (pgcc)
+@
+text
+@d3 1
+a3 1
+ * Copyright (c) 2003, 2004
+d19 2
+a20 1
+ * user shell to be used for anonymous (chrooted) cvs and rsync(NEW).
+d87 1
+a87 4
+#endif
+
+static const char progID[] = "@@(#) " HOSTNAME ":" LOCALROOT
+    "\n@@(#) $MirBSD: anoncvssh.c,v 1.9 2003/12/11 21:43:39 tg Exp $";
+d90 1
+a90 2
+ * We define PSERVER_SUPPORT to allow anoncvssh to spawn a "cvs pserver".
+ * You may undefine this if you aren't going to be running pserver.
+d92 2
+a93 2
+#ifndef	PSERVER_SUPPORT
+#define	PSERVER_SUPPORT
+d97 1
+a97 2
+ * Define USE_SYSLOG if you want anoncvssh to log pserver connections
+ * using syslog()
+d99 7
+a105 1
+#define	USE_SYSLOG
+d115 4
+a118 6
+#endif
+
+/* Define ANONCVS_USER if you want anoncvssh to complain if invoked by
+ * anyone other than root or ANONCVS_USER.
+ */
+/* #define ANONCVS_USER "anoncvs" */
+d127 1
+d129 1
+d139 1
+a139 1
+#endif /* DEBUG */
+d153 2
+a154 2
+	openlog("anoncvssh", LOG_PID | LOG_NDELAY, LOG_FACILITY);
+#endif	/* USE_SYSLOG */
+d164 3
+a166 3
+		       "User %s(%d) invoked anoncvssh - Possible twink?",
+		       pw->pw_name, pw->pw_uid);
+#endif	/* USE_SYSLOG */
+d169 1
+a169 1
+#endif	/* ANONCVS_USER */
+d180 1
+a180 1
+	 * program now "safe"
+d183 11
+a193 1
+#ifdef	PSERVER_SUPPORT
+d227 1
+a227 1
+#endif	/* USE_SYSLOG */
+d235 31
+d267 2
+d270 11
+a280 21
+	/* drop priority by 5; anoncvs/-rsync is a background process	*/
+	/* no error checking/warnings because it's uncritical		*/
+	niceness = 5 + getpriority(PRIO_PROCESS, 0);
+	if (!errno)
+		setpriority(PRIO_PROCESS, 0, niceness);
+
+#define	RSYNC	"/usr/bin/rsync --server "
+
+	if (argc != 3 ||
+		strcmp("anoncvssh",  argv[0]) != 0 ||
+		strcmp("-c",         argv[1]) != 0 ||
+		(((strcmp("cvs server", argv[2]) != 0 &&
+		 strcmp("cvs -d " LOCALROOT " server", argv[2]) != 0))
+		&& (strncmp(RSYNC, argv[2], strlen(RSYNC)) != 0))) {
+		fprintf(stderr, "\nTo use anonymous CVS install the latest ");
+		fprintf(stderr,"version of CVS on your local machine.\n");
+		fprintf(stderr,"Then set your CVSROOT environment variable ");
+		fprintf(stderr,"to the following value:\n");
+		fprintf(stderr,"\t%s:%s\n\n", HOSTNAME, LOCALROOT);
+		fprintf(stderr,"To use rsync, connect with ssh to %s", HOSTNAME);
+		fprintf(stderr,"\n\tusing --rsync-path=/usr/bin/rsync\n");
+d282 6
+a287 28
+		fprintf(stderr, "argc = %d\n", argc);
+		for (i = 0 ; i < argc ; i++)
+			fprintf(stderr, "argv[%d] = \"%s\"\n", i, argv[i]);
+#endif	/* DEBUG */
+		sleep(10);
+		exit(0);
+	}
+	if (!strncmp(RSYNC, argv[2], strlen(RSYNC))) {
+		int i = 0;
+		char *newarg[256];
+		char *p = argv[2] + 15;
+
+		newarg[0] = "rsync";
+	    lp:
+		newarg[++i] = strsep(&p, " ");
+		if ((newarg[i] != NULL) && (i < 255))
+			goto lp;
+		execve("/usr/bin/rsync", newarg, env);
+		perror("execve: rsync");
+		fprintf(stderr, "unable to exec RSYNC!\n");
+		exit(1);
+		/* NOTREACHED */
+	}
+	execle("/usr/bin/cvs", "cvs", "server", (void *)NULL, env);
+	perror("execle: cvs");
+	fprintf(stderr, "unable to exec CVS server!\n");
+	exit(1);
+	/* NOTREACHED */
+@
+
+
+1.9
+log
+@after some make build release, the set lists are corrected,
+the kernel sizes are modified etc.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: anoncvssh.c,v 1.8 2003/12/05 14:24:45 tg Exp $
+d3 2
+a4 2
+ * Copyright (c) 2003
+ *	Thorsten Glaser <x86@@ePost.de>, for the MirOS Project
+d9 1
+a9 1
+ * fy, publically perform, give away, merge or sublicense it provided
+d14 1
+a14 1
+ * ties whatsoever to the maximum extend permitted by applicable law;
+d20 1
+a52 22
+#undef	__CONCAT
+#if (defined(__STDC__) || defined(__cplusplus)) && !(__GNUC__ > 2)
+#define __CONCAT(x,y)		x ## y
+#else
+#define __CONCAT(x,y)		x/**/y
+#endif
+
+#undef	__CONCAT3
+#if (defined(__STDC__) || defined(__cplusplus)) && !(__GNUC__ > 2)
+#define __CONCAT3(x,y,z)	x ## y ## z
+#else
+#define __CONCAT3(x,y,z)	x/**/y/**/z
+#endif
+
+#ifndef __P
+#if defined(__STDC__) || defined(__cplusplus)
+#define	__P(protos)	protos		/* full-blown ANSI C */
+#else
+#define	__P(protos)	()		/* traditional C preprocessor */
+#endif
+#endif
+
+d57 1
+a57 1
+#ifndef _PATH_DEFPATH
+d64 2
+a65 2
+#ifndef _PATH_BSHELL
+#define _PATH_BSHELL	"/bin/sh"
+d72 1
+a72 1
+#ifndef LOCALROOT
+d80 1
+a80 1
+#ifndef HOSTNAME
+d82 1
+a82 1
+#define	HOSTNAME	__CONCAT3(ANONCVS_USER,"@@",FQDN)
+d89 1
+a89 1
+    "\n@@(#) $MirBSD: anoncvssh.c,v 1.8 2003/12/05 14:24:45 tg Exp $";
+d95 2
+a96 2
+#ifndef PSERVER_SUPPORT
+#define PSERVER_SUPPORT
+d103 1
+a103 1
+#define USE_SYSLOG
+d105 1
+a105 1
+#ifdef USE_SYSLOG
+d111 2
+a112 2
+#define LOG_FACILITY LOG_DAEMON
+#define LOG_PRIO LOG_INFO
+d120 1
+a120 1
+int main __P((int, char *[]));
+d123 3
+a125 3
+	__CONCAT("PATH=",_PATH_DEFPATH),
+	__CONCAT("SHELL=",_PATH_BSHELL),
+	__CONCAT("CVSROOT=",LOCALROOT),
+d132 1
+a132 3
+main(argc, argv)
+int argc;
+char *argv[];
+d135 1
+a135 1
+#ifdef DEBUG
+d150 1
+a150 1
+#ifdef USE_SYSLOG
+d152 1
+a152 1
+#endif /* USE_SYSLOG */
+d154 1
+a154 1
+#ifdef ANONCVS_USER
+d160 1
+a160 1
+#ifdef USE_SYSLOG
+d164 1
+a164 1
+#endif /* USE_SYSLOG */
+d167 1
+a167 2
+#endif /* ANONCVS_USER */
+
+d181 1
+a181 1
+#ifdef PSERVER_SUPPORT
+d184 1
+a184 1
+#ifdef USE_SYSLOG
+d215 1
+a215 1
+#endif /* USE_SYSLOG */
+d217 1
+a217 1
+		    __CONCAT("--allow-root=",LOCALROOT), "pserver", NULL, env);
+d237 1
+a237 1
+		 strcmp(__CONCAT3("cvs -d ",LOCALROOT," server"), argv[2]) != 0))
+d246 1
+a246 1
+#ifdef DEBUG
+d250 1
+a250 1
+#endif /* DEBUG */
+d270 1
+a270 1
+	execle("/usr/bin/cvs", "cvs", "server", NULL, env);
+@
+
+
+1.8
+log
+@* fix spacing, spelling; add rsync and sshd note
+* make anoncvssh call setpriority() to increase its
+  niceness upon startup, so to reduce load on the system
+* fix rsync entry in mtree, must be "optional"
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: anoncvssh.c,v 1.7 2003/12/02 19:06:34 tg Exp $
+d50 1
+d52 2
+a53 2
+#ifndef __CONCAT
+#if defined(__STDC__) || defined(__cplusplus)
+a57 1
+#endif
+d59 2
+a60 2
+#ifndef __CONCAT3
+#if defined(__STDC__) || defined(__cplusplus)
+a64 1
+#endif
+d110 1
+a110 1
+    "\n@@(#) $MirBSD: anoncvssh.c,v 1.7 2003/12/02 19:06:34 tg Exp $";
+@
+
+
+1.7
+log
+@fix display of instructions (whitespace missing)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.7 2003/12/01 16:18:24 tg Exp $
+d40 3
+a49 1
+#include <sys/types.h>
+d111 1
+a111 1
+    "\n@@(#) $MirBSD: anoncvssh.c,v 1.6 2003/11/30 21:24:33 tg Exp $";
+d162 1
+d249 6
+@
+
+
+1.6
+log
+@better ident
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: anoncvssh.c,v 1.5 2003/11/30 21:21:48 tg Exp $
+d3 2
+a4 1
+ * Copyright (c) 2003 Thorsten Glaser <x86@@ePost.de> for the MirOS Project
+d12 1
+d109 1
+a109 1
+    "\n@@(#) $MirBSD: anoncvssh.c,v 1.5 2003/11/30 21:21:48 tg Exp $";
+d261 1
+a261 1
+		fprintf(stderr,"using --rsync-path=/usr/bin/rsync\n");
+@
+
+
+1.5
+log
+@when doing something, do it right(tm).
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: anoncvssh.c,v 1.4 2003/11/30 15:45:44 tg Exp $
+d106 2
+a107 2
+static const char progID[] =
+    "@@(#): " HOSTNAME ":" LOCALROOT " | $MirBSD$";
+@
+
+
+1.4
+log
+@anoncvssh now handles rsync via user _anoncvs (mirbsd-cvs) as well
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.6 2003/10/22 08:19:40 tg Exp $
+d106 3
+d267 16
+@
+
+
+1.3
+log
+@nuke "bsdadvocacy.org", welcome "mirbsd.bsdadvocacy.org"
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: anoncvssh.c,v 1.2 2003/07/09 14:23:28 tg Exp $
+d3 1
+a3 1
+ * Copyright (c) 2003 Thorsten Glaser <x86@@ePost.de>
+d16 2
+d115 1
+a115 1
+ * Define USE_SYSLOG if you want anoncvssh to log pserver connections 
+d169 1
+a169 1
+	
+d171 1
+a171 1
+	/* 
+d175 1
+a175 1
+		fprintf(stderr, "You're not supposed to be running me!\n"); 
+d179 1
+a179 1
+		       pw->pw_name, pw->pw_uid); 
+d205 1
+a205 1
+		
+d228 1
+a228 1
+	        syslog(LOG_PRIO, 
+d242 3
+a244 1
+	if (argc != 3 || 
+d247 3
+a249 2
+		(strcmp("cvs server", argv[2]) != 0 &&
+		 strcmp(__CONCAT3("cvs -d ",LOCALROOT," server"), argv[2]) != 0)) {
+d255 2
+@
+
+
+1.2
+log
+@employ local changes that fix behaviour and make
+anoncvssh customizable by using the Makefile
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.4 2003/07/07 19:03:08 tg Exp $
+d100 1
+a100 1
+#define	HOSTNAME	"mirbsd-cvs@@bsdadvocacy.org"
+@
+
+
+1.1
+log
+@OpenBSD anoncvs.shar rev1.15
+@
+text
+@d1 17
+d97 4
+a100 1
+#define	HOSTNAME	"anoncvs@@anoncvs1.usa.openbsd.org"
+a101 6
+
+/*
+ * $CVSROOT is created based on HOSTNAME and LOCALROOT above
+ */
+#ifndef CVSROOT
+#define	CVSROOT		__CONCAT3(HOSTNAME,":",LOCALROOT)
+d249 1
+a249 1
+		fprintf(stderr,"\t%s\n\n", CVSROOT);
+a263 1
+
+@
+

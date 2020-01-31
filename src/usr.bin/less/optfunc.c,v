@@ -1,0 +1,850 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	MIRBSD_4:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.52.57;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.57;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.15.17.47.04;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: optfunc.c,v 1.3 2001/11/19 19:02:14 mpech Exp $	*/
+
+/*
+ * Copyright (c) 1984,1985,1989,1994,1995  Mark Nudelman
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice in the documentation and/or other materials provided with 
+ *    the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR 
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT 
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN 
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+/*
+ * Handling functions for command line options.
+ *
+ * Most options are handled by the generic code in option.c.
+ * But all string options, and a few non-string options, require
+ * special handling specific to the particular option.
+ * This special processing is done by the "handling functions" in this file.
+ *
+ * Each handling function is passed a "type" and, if it is a string
+ * option, the string which should be "assigned" to the option.
+ * The type may be one of:
+ *	INIT	The option is being initialized from the command line.
+ *	TOGGLE	The option is being changed from within the program.
+ *	QUERY	The setting of the option is merely being queried.
+ */
+
+#include "less.h"
+#include "option.h"
+
+extern int nbufs;
+extern int cbufs;
+extern int pr_type;
+extern int nohelp;
+extern int plusoption;
+extern int swindow;
+extern int sc_height;
+extern int any_display;
+extern char *prproto[];
+extern char *eqproto;
+extern IFILE curr_ifile;
+#if LOGFILE
+extern char *namelogfile;
+extern int force_logfile;
+extern int logfile;
+#endif
+#if TAGS
+public char *tagoption = NULL;
+extern char *tagfile;
+extern char *tags;
+extern int jump_sline;
+#endif
+#if MSOFTC
+extern int nm_fg_color, nm_bg_color;
+extern int bo_fg_color, bo_bg_color;
+extern int ul_fg_color, ul_bg_color;
+extern int so_fg_color, so_bg_color;
+extern int bl_fg_color, bl_bg_color;
+#endif
+
+
+#if LOGFILE
+/*
+ * Handler for -o option.
+ */
+	public void
+opt_o(type, s)
+	int type;
+	char *s;
+{
+	PARG parg;
+
+	switch (type)
+	{
+	case INIT:
+		namelogfile = s;
+		break;
+	case TOGGLE:
+		if (ch_getflags() & CH_CANSEEK)
+		{
+			error("Input is not a pipe", NULL_PARG);
+			return;
+		}
+		if (logfile >= 0)
+		{
+			error("Log file is already in use", NULL_PARG);
+			return;
+		}
+		s = skipsp(s);
+		namelogfile = glob(s);
+		use_logfile(namelogfile);
+		sync_logfile();
+		break;
+	case QUERY:
+		if (logfile < 0)
+			error("No log file", NULL_PARG);
+		else
+		{
+			parg.p_string = namelogfile;
+			error("Log file \"%s\"", &parg);
+		}
+		break;
+	}
+}
+
+/*
+ * Handler for -O option.
+ */
+	public void
+opt__O(type, s)
+	int type;
+	char *s;
+{
+	force_logfile = TRUE;
+	opt_o(type, s);
+}
+#endif
+
+/*
+ * Handlers for -l option.
+ */
+	public void
+opt_l(type, s)
+	int type;
+	char *s;
+{
+	int err;
+	int n;
+	char *t;
+	
+	switch (type)
+	{
+	case INIT:
+		t = s;
+		n = getnum(&t, 'l', &err);
+		if (err || n <= 0)
+		{
+			error("Line number is required after -l", NULL_PARG);
+			return;
+		}
+		plusoption = TRUE;
+		ungetsc(s);
+		break;
+	}
+}
+
+#if USERFILE
+	public void
+opt_k(type, s)
+	int type;
+	char *s;
+{
+	PARG parg;
+
+	switch (type)
+	{
+	case INIT:
+		if (lesskey(s))
+		{
+			parg.p_string = s;
+			error("Cannot use lesskey file \"%s\"", &parg);
+		}
+		break;
+	}
+}
+#endif
+
+#if TAGS
+/*
+ * Handler for -t option.
+ */
+	public void
+opt_t(type, s)
+	int type;
+	char *s;
+{
+	IFILE save_ifile;
+	POSITION pos;
+
+	switch (type)
+	{
+	case INIT:
+		tagoption = s;
+		/* Do the rest in main() */
+		break;
+	case TOGGLE:
+		findtag(skipsp(s));
+		if (tagfile == NULL)
+			break;
+		save_ifile = curr_ifile;
+		if (edit(tagfile))
+			break;
+		if ((pos = tagsearch()) == NULL_POSITION)
+		{
+			if (edit_ifile(save_ifile))
+				quit(QUIT_ERROR);
+			break;
+		}
+		jump_loc(pos, jump_sline);
+		break;
+	}
+}
+
+/*
+ * Handler for -T option.
+ */
+	public void
+opt__T(type, s)
+	int type;
+	char *s;
+{
+	PARG parg;
+
+	switch (type)
+	{
+	case INIT:
+		tags = s;
+		break;
+	case TOGGLE:
+		s = skipsp(s);
+		tags = glob(s);
+		break;
+	case QUERY:
+		parg.p_string = tags;
+		error("Tags file \"%s\"", &parg);
+		break;
+	}
+}
+#endif
+
+/*
+ * Handler for -p option.
+ */
+	public void
+opt_p(type, s)
+	int type;
+	char *s;
+{
+	switch (type)
+	{
+	case INIT:
+		/*
+		 * Unget a search command for the specified string.
+		 * {{ This won't work if the "/" command is
+		 *    changed or invalidated by a .lesskey file. }}
+		 */
+		plusoption = TRUE;
+		ungetsc(s);
+		ungetsc("/");
+		break;
+	}
+}
+
+/*
+ * Handler for -P option.
+ */
+	public void
+opt__P(type, s)
+	int type;
+	char *s;
+{
+	char **proto;
+	PARG parg;
+
+	switch (type)
+	{
+	case INIT:
+	case TOGGLE:
+		/*
+		 * Figure out which prototype string should be changed.
+		 */
+		switch (*s)
+		{
+		case 'm':  proto = &prproto[PR_MEDIUM];	s++;	break;
+		case 'M':  proto = &prproto[PR_LONG];	s++;	break;
+		case '=':  proto = &eqproto;		s++;	break;
+		default:   proto = &prproto[PR_SHORT];		break;
+		}
+		free(*proto);
+		*proto = save(s);
+		break;
+	case QUERY:
+		parg.p_string = prproto[pr_type];
+		error("%s", &parg);
+		break;
+	}
+}
+
+/*
+ * Handler for the -b option.
+ */
+	/*ARGSUSED*/
+	public void
+opt_b(type, s)
+	int type;
+	char *s;
+{
+	switch (type)
+	{
+	case TOGGLE:
+	case QUERY:
+		/*
+		 * Allocate the new number of buffers.
+		 */
+		cbufs = ch_nbuf(cbufs);
+		break;
+	case INIT:
+		break;
+	}
+}
+
+/*
+ * Handler for the -i option.
+ */
+	/*ARGSUSED*/
+	public void
+opt_i(type, s)
+	int type;
+	char *s;
+{
+	switch (type)
+	{
+	case TOGGLE:
+		chg_caseless();
+		break;
+	case QUERY:
+	case INIT:
+		break;
+	}
+}
+
+/*
+ * Handler for the -V option.
+ */
+	/*ARGSUSED*/
+	public void
+opt__V(type, s)
+	int type;
+	char *s;
+{
+	switch (type)
+	{
+	case TOGGLE:
+	case QUERY:
+	case INIT:
+		dispversion();
+		if (type == INIT)
+			quit(QUIT_OK);
+		break;
+	}
+}
+
+#if MSOFTC
+/*
+ *
+ */
+   	static void
+colordesc(s, fg_color, bg_color)
+	char *s;
+	int *fg_color;
+	int *bg_color;
+{
+	int fg, bg;
+	int err;
+	
+	fg = getnum(&s, 'D', &err);
+	if (err)
+	{
+		error("Missing fg color in -D", NULL_PARG);
+		return;
+	}
+	if (*s != '.')
+		bg = 0;
+	else
+	{
+		s++;
+		bg = getnum(&s, 'D', &err);
+		if (err)
+		{
+			error("Missing fg color in -D", NULL_PARG);
+			return;
+		}
+	}
+	*fg_color = fg;
+	*bg_color = bg;
+}
+
+/*
+ * Handler for the -D option.
+ */
+	/*ARGSUSED*/
+	public void
+opt_D(type, s)
+	int type;
+	char *s;
+{
+	switch (type)
+	{
+	case INIT:
+	case TOGGLE:
+		switch (*s++)
+		{
+		case 'n':
+			colordesc(s, &nm_fg_color, &nm_bg_color);
+			break;
+		case 'd':
+			colordesc(s, &bo_fg_color, &bo_bg_color);
+			break;
+		case 'u':
+			colordesc(s, &ul_fg_color, &ul_bg_color);
+			break;
+		case 'k':
+			colordesc(s, &bl_fg_color, &bl_bg_color);
+			break;
+		case 's':
+			colordesc(s, &so_fg_color, &so_bg_color);
+			break;
+		default:
+			error("-D must be followed by n, d, u, k or s", NULL_PARG);
+			break;
+		}
+		if (type == TOGGLE)
+		{
+			so_enter();
+			so_exit();
+		}
+		break;
+	case QUERY:
+		break;
+	}
+}
+#endif
+
+/*
+ * "-?" means display a help message.
+ * If from the command line, exit immediately.
+ */
+	/*ARGSUSED*/
+	public void
+opt_query(type, s)
+	int type;
+	char *s;
+{
+	if (nohelp)
+		return;
+	switch (type)
+	{
+	case QUERY:
+	case TOGGLE:
+		error("Use \"h\" for help", NULL_PARG);
+		break;
+	case INIT:
+		/*
+		 * This is "less -?".
+		 * It rather ungracefully grabs control, 
+		 * does the initializations normally done in main,
+		 * shows the help file and exits.
+		 */
+		raw_mode(1);
+		get_term();
+		open_getchr();
+		init();
+		any_display = TRUE;
+		help(1);
+		quit(QUIT_OK);
+		/*NOTREACHED*/
+	}
+}
+
+/*
+ * Get the "screen window" size.
+ */
+	public int
+get_swindow()
+{
+	if (swindow > 0)
+		return (swindow);
+	return (sc_height + swindow);
+}
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD source with the "new" command line as well,
+in order to be able to provide a MirBSD release which bases
+upon a fairly current OpenBSD base source code tree deemed
+stable enough.
+@
+text
+@d1 2
+d4 2
+a5 1
+ * Copyright (C) 1984-2002  Mark Nudelman
+d7 8
+a14 2
+ * You may distribute under the terms of either the GNU General Public
+ * License or the Less License, as specified in the README file.
+d16 11
+a26 2
+ * For more information about less, or for information on how to 
+ * contact the author, see the README file.
+d50 1
+a50 1
+extern int bufspace;
+a55 1
+extern int secure;
+a56 2
+extern char openquote;
+extern char closequote;
+a58 2
+extern char *hproto;
+extern char *wproto;
+a59 1
+extern char version[];
+d67 1
+d71 1
+a71 1
+#if MSDOS_COMPILER
+a90 5
+	if (secure)
+	{
+		error("log file support is not available", NULL_PARG);
+		return;
+	}
+d108 1
+a108 1
+		namelogfile = lglob(s);
+d153 1
+a153 1
+		n = getnum(&t, "l", &err);
+d176 1
+a176 1
+		if (lesskey(s, 0))
+d205 2
+a206 3
+		if (secure)
+		{
+			error("tags support is not available", NULL_PARG);
+d208 2
+a209 4
+		}
+		findtag(skipsp(s));
+		save_ifile = save_curr_ifile();
+		if (edit_tagfile())
+d213 2
+a214 1
+			reedit_ifile(save_ifile);
+a216 1
+		unsave_ifile(save_ifile);
+d239 1
+a239 1
+		tags = lglob(s);
+d255 1
+a255 1
+	register char *s;
+d278 1
+a278 1
+	register char *s;
+d280 1
+a280 1
+	register char **proto;
+a291 1
+		case 's':  proto = &prproto[PR_SHORT];	s++;	break;
+a294 2
+		case 'h':  proto = &hproto;		s++;	break;
+		case 'w':  proto = &wproto;		s++;	break;
+a317 1
+	case INIT:
+d319 1
+d321 1
+a321 1
+		 * Set the new number of buffers.
+d323 1
+a323 1
+		ch_setbufspace(bufspace);
+d325 1
+a325 1
+	case QUERY:
+d363 1
+d365 2
+a366 14
+		break;
+	case INIT:
+		/*
+		 * Force output to stdout per GNU standard for --version output.
+		 */
+		any_display = 1;
+		putstr("less ");
+		putstr(version);
+		putstr("\nCopyright (C) 2002 Mark Nudelman\n\n");
+		putstr("less comes with NO WARRANTY, to the extent permitted by law.\n");
+		putstr("For information about the terms of redistribution,\n");
+		putstr("see the file named README in the less distribution.\n");
+		putstr("Homepage: http://www.greenwoodsoftware.com/less\n");
+		quit(QUIT_OK);
+d371 1
+a371 1
+#if MSDOS_COMPILER
+d373 1
+a373 1
+ * Parse an MSDOS color descriptor.
+d384 1
+a384 1
+	fg = getnum(&s, "D", &err);
+d395 1
+a395 1
+		bg = getnum(&s, "D", &err);
+a401 2
+	if (*s != '\0')
+		error("Extra characters at end of -D option", NULL_PARG);
+a452 102
+ * Handler for the -x option.
+ */
+	public void
+opt_x(type, s)
+	int type;
+	register char *s;
+{
+	extern int tabstops[];
+	extern int ntabstops;
+	extern int tabdefault;
+	char msg[60+(4*TABSTOP_MAX)];
+	int i;
+	PARG p;
+
+	switch (type)
+	{
+	case INIT:
+	case TOGGLE:
+		/* Start at 1 because tabstops[0] is always zero. */
+		for (i = 1;  i < TABSTOP_MAX;  )
+		{
+			int n = 0;
+			s = skipsp(s);
+			while (*s >= '0' && *s <= '9')
+				n = (10 * n) + (*s++ - '0');
+			if (n > tabstops[i-1])
+				tabstops[i++] = n;
+			s = skipsp(s);
+			if (*s++ != ',')
+				break;
+		}
+		if (i < 2)
+			return;
+		ntabstops = i;
+		tabdefault = tabstops[ntabstops-1] - tabstops[ntabstops-2];
+		break;
+	case QUERY:
+		strlcpy(msg, "Tab stops ", sizeof(msg));
+		if (ntabstops > 2)
+		{
+			for (i = 1;  i < ntabstops;  i++)
+			{
+				if (i > 1)
+					strlcat(msg, ",", sizeof(msg));
+				snprintf(msg+strlen(msg),
+				    sizeof(msg)-strlen(msg), "%d", tabstops[i]);
+			}
+			snprintf(msg+strlen(msg), sizeof(msg)-strlen(msg),
+			    " and then ");
+		}
+		snprintf(msg+strlen(msg), sizeof(msg)-strlen(msg),
+		    "every %d spaces",
+			tabdefault);
+		p.p_string = msg;
+		error("%s", &p);
+		break;
+	}
+}
+
+
+/*
+ * Handler for the -" option.
+ */
+	public void
+opt_quote(type, s)
+	int type;
+	register char *s;
+{
+	char buf[3];
+	PARG parg;
+
+	switch (type)
+	{
+	case INIT:
+	case TOGGLE:
+		if (s[0] == '\0')
+		{
+			openquote = closequote = '\0';
+			break;
+		}
+		if (s[1] != '\0' && s[2] != '\0')
+		{
+			error("-\" must be followed by 1 or 2 chars", NULL_PARG);
+			return;
+		}
+		openquote = s[0];
+		if (s[1] == '\0')
+			closequote = openquote;
+		else
+			closequote = s[1];
+		break;
+	case QUERY:
+		buf[0] = openquote;
+		buf[1] = closequote;
+		buf[2] = '\0';
+		parg.p_string = buf;
+		error("quotes %s", &parg);
+		break;
+	}
+}
+
+/*
+d473 1
+a473 1
+		 * It rather ungracefully grabs control,
+@
+

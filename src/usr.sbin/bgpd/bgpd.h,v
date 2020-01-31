@@ -1,0 +1,1016 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.5
+	tg-mergefixes-1-branch:1.1.1.5.0.8
+	tg-mergefixes-1-base:1.1.1.5
+	MIROS_X:1.1.1.5.0.6
+	MIROS_X_BASE:1.1.1.5
+	tg-mergetmp-3:1.1.1.5
+	MIRBSD_XP_MIRPPC:1.1.1.5.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.5
+	MIRBSD_XP_SPARC:1.1.1.5.0.2
+	cvs-200405160640:1.1.1.5
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.12.22.21.20.11;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.12.22.21.20.11;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.01.02.18.12.24;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.01.26.19.05.44;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.01.27.19.20.49;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2004.05.16.07.19.20;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: bgpd.h,v 1.13 2003/12/22 15:22:13 henning Exp $ */
+
+/*
+ * Copyright (c) 2003 Henning Brauer <henning@@openbsd.org>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#ifndef __BGPD_H__
+#define __BGPD_H__
+
+#include <sys/types.h>
+#include <sys/queue.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include <stdarg.h>
+#include <syslog.h>
+
+#define	BGP_VERSION			4
+#define	BGP_PORT			179
+#define CONFFILE			"/etc/bgpd.conf"
+#define	BGPD_USER			"_bgpd"
+#define PEER_DESCR_LEN			32
+
+#define	MAX_PKTSIZE			4096
+#define	MIN_HOLDTIME			3
+
+#define BGPD_OPT_VERBOSE		0x0001
+#define BGPD_OPT_VERBOSE2		0x0002
+#define BGPD_OPT_NOACTION		0x0004
+
+enum {
+	PROC_MAIN,
+	PROC_SE,
+	PROC_RDE
+} bgpd_process;
+
+enum session_state {
+	STATE_NONE,
+	STATE_IDLE,
+	STATE_CONNECT,
+	STATE_ACTIVE,
+	STATE_OPENSENT,
+	STATE_OPENCONFIRM,
+	STATE_ESTABLISHED
+};
+
+enum session_events {
+	EVNT_NONE,
+	EVNT_START,
+	EVNT_STOP,
+	EVNT_CON_OPEN,
+	EVNT_CON_CLOSED,
+	EVNT_CON_OPENFAIL,
+	EVNT_CON_FATAL,
+	EVNT_TIMER_CONNRETRY,
+	EVNT_TIMER_HOLDTIME,
+	EVNT_TIMER_KEEPALIVE,
+	EVNT_RCVD_OPEN,
+	EVNT_RCVD_KEEPALIVE,
+	EVNT_RCVD_UPDATE,
+	EVNT_RCVD_NOTIFICATION
+};
+
+enum reconf_action {
+	RECONF_NONE,
+	RECONF_KEEP,
+	RECONF_REINIT,
+	RECONF_DELETE
+};
+
+struct buf {
+	TAILQ_ENTRY(buf)	 entries;
+	u_char			*buf;
+	ssize_t			 size;
+	ssize_t			 wpos;
+	ssize_t			 rpos;
+};
+
+struct msgbuf {
+	u_int32_t		 queued;
+	int			 sock;
+	TAILQ_HEAD(bufs, buf)	 bufs;
+};
+
+struct bgpd_config {
+	int			 opts;
+	u_int16_t		 as;
+	u_int32_t		 bgpid;
+	u_int16_t		 holdtime;
+	u_int16_t		 min_holdtime;
+	struct peer		*peers;
+};
+
+struct peer_buf_read {
+	u_char			 buf[MAX_PKTSIZE];
+	ssize_t			 read_len;
+	u_int16_t		 pkt_len;
+	u_int8_t		 type;
+	u_char			*wptr;
+	u_int8_t		 seen_hdr;
+};
+
+struct peer_config {
+	u_int32_t		 id;
+	char			 group[PEER_DESCR_LEN];
+	char			 descr[PEER_DESCR_LEN];
+	struct sockaddr_in	 remote_addr;
+	struct sockaddr_in	 local_addr;
+	u_int16_t		 remote_as;
+	u_int8_t		 ebgp;		/* 1 = ebgp, 0 = ibgp */
+	u_int8_t		 distance;	/* 1 = direct, >1 = multihop */
+	enum reconf_action	 reconf_action;
+};
+
+struct peer {
+	struct peer_config	 conf;
+	u_int32_t		 remote_bgpid;
+	u_int16_t		 holdtime;
+	enum session_state	 state;
+	time_t			 ConnectRetryTimer;
+	time_t			 KeepaliveTimer;
+	time_t			 HoldTimer;
+	time_t			 StartTimer;
+	u_int			 StartTimerInterval;
+	int			 sock;
+	int			 events;
+	struct msgbuf		 wbuf;
+	struct peer_buf_read	*rbuf;
+	struct peer		*next;
+};
+
+#define MRT_FILE_LEN	512
+enum mrtdump_type {
+	MRT_NONE,
+	MRT_TABLE_DUMP
+/*
+ *	MRT_UPDATE_START,
+ *	MRT_SESSION_START,
+ *	MRT_UPDATE_STOP,
+ *	MRT_SESSION_STOP,
+ */
+};
+
+enum mrtdump_state {
+	MRT_STATE_OPEN,
+	MRT_STATE_RUNNING,
+	MRT_STATE_DONE,
+	MRT_STATE_CLOSE,
+	MRT_STATE_REOPEN
+};
+
+LIST_HEAD(mrt_config, mrtdump_config);
+
+struct mrtdump_config {
+	enum mrtdump_type	 type;
+	u_int32_t		 id;
+	struct msgbuf		 msgbuf;
+	char			 name[MRT_FILE_LEN];	/* base file name */
+	char			 file[MRT_FILE_LEN];	/* actual file name */
+	time_t			 ReopenTimer;
+	time_t			 ReopenTimerInterval;
+	enum mrtdump_state	 state;
+	LIST_ENTRY(mrtdump_config)
+				 list;
+};
+
+/* ipc messages */
+
+#define	IMSG_HEADER_SIZE	sizeof(struct imsg_hdr)
+#define MAX_IMSGSIZE		8192
+
+struct imsg_readbuf {
+	u_char			 buf[MAX_IMSGSIZE];
+	ssize_t			 read_len;
+	u_int32_t		 peerid;
+	u_int16_t		 pkt_len;
+	u_int8_t		 type;
+	u_char			*wptr;
+	u_int8_t		 seen_hdr;
+};
+
+struct imsgbuf {
+	int			sock;
+	struct imsg_readbuf	r;
+	struct msgbuf		w;
+};
+
+enum imsg_type {
+	IMSG_NONE,
+	IMSG_RECONF_CONF,
+	IMSG_RECONF_PEER,
+	IMSG_RECONF_DONE,
+	IMSG_UPDATE,
+	IMSG_UPDATE_ERR,
+	IMSG_SESSION_UP,
+	IMSG_SESSION_DOWN,
+	IMSG_MRT_REQ,
+	IMSG_MRT_MSG,
+	IMSG_MRT_END,
+	IMSG_KROUTE_ADD,
+	IMSG_KROUTE_CHANGE,
+	IMSG_KROUTE_DELETE
+};
+
+struct imsg_hdr {
+	enum imsg_type	type;
+	u_int16_t	len;
+	u_int32_t	peerid;
+};
+
+struct imsg {
+	struct imsg_hdr	 hdr;
+	void		*data;
+};
+
+/* error subcode for UPDATE; needed in SE and RDE */
+enum suberr_update {
+	ERR_UPD_ATTRLIST = 1,
+	ERR_UPD_UNKNWN_WK_ATTR,
+	ERR_UPD_MISSNG_WK_ATTR,
+	ERR_UPD_ATTRFLAGS,
+	ERR_UPD_ATTRLEN,
+	ERR_UPD_ORIGIN,
+	ERR_UPD_LOOP,
+	ERR_UPD_NEXTHOP,
+	ERR_UPD_OPTATTR,
+	ERR_UPD_NETWORK,
+	ERR_UPD_ASPATH
+};
+
+struct kroute {
+	in_addr_t	prefix;
+	u_int8_t	prefixlen;
+	in_addr_t	nexthop;
+};
+
+/* prototypes */
+/* session.c */
+int		 session_main(struct bgpd_config *, int[2], int[2]);
+
+/* buffer.c */
+struct buf	*buf_open(ssize_t);
+int		 buf_add(struct buf *, void *, ssize_t);
+void		*buf_reserve(struct buf *, ssize_t);
+int		 buf_close(struct msgbuf *, struct buf *);
+void		 buf_free(struct buf *);
+void		 msgbuf_init(struct msgbuf *);
+void		 msgbuf_clear(struct msgbuf *);
+int		 msgbuf_write(struct msgbuf *);
+
+
+/* log.c */
+void		 log_init(int);
+void		 logit(int, const char *, ...);
+void		 vlog(int, const char *, va_list);
+void		 log_err(struct peer *, const char *, ...);
+void		 log_errx(struct peer *, const char *, ...);
+void		 fatal(const char *, int);
+void		 fatal_ensure(const char *, int, const char *);
+void		 log_statechange(struct peer *, enum session_state,
+		    enum session_events);
+void		 log_notification(struct peer *, u_int8_t, u_int8_t,
+		    u_char *, u_int16_t);
+void		 log_conn_attempt(struct peer *, struct in_addr);
+
+/* parse.y */
+int	 cmdline_symset(char *);
+int	 parse_config(char *, struct bgpd_config *, struct mrt_config *);
+
+/* config.c */
+int	 merge_config(struct bgpd_config *, struct bgpd_config *);
+
+/* imsg.c */
+void	 imsg_init(struct imsgbuf *, int);
+int	 imsg_get(struct imsgbuf *, struct imsg *);
+int	 imsg_compose(struct imsgbuf *, int, u_int32_t, void *, u_int16_t);
+void	 imsg_free(struct imsg *);
+
+/* rde.c */
+int	 rde_main(struct bgpd_config *, int[2], int[2]);
+
+/* mrt.c */
+int	 mrt_mergeconfig(struct mrt_config *, struct mrt_config *);
+
+/* kroute.c */
+int	kroute_init(void);
+int	kroute_add(int, struct kroute *);
+int	kroute_change(int, struct kroute *);
+int	kroute_delete(int, struct kroute *);
+
+#endif /* __BGPD_H__ */
+@
+
+
+1.1.1.1
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD again, for various reasons.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bgpd.h,v 1.47 2004/01/02 02:27:57 henning Exp $ */
+d19 1
+a19 1
+#define	__BGPD_H__
+a25 1
+#include <poll.h>
+d31 1
+a31 1
+#define	CONFFILE			"/etc/bgpd.conf"
+d33 1
+a33 1
+#define	PEER_DESCR_LEN			32
+a36 2
+#define	READ_BUF_SIZE			65535
+#define	RT_BUF_SIZE			16384
+d38 3
+a40 9
+#define	BGPD_OPT_VERBOSE		0x0001
+#define	BGPD_OPT_VERBOSE2		0x0002
+#define	BGPD_OPT_NOACTION		0x0004
+
+#define	BGPD_FLAG_NO_FIB_UPDATE		0x0001
+
+#define BGPD_LOG_UPDATES		0x0001
+
+#define	SOCKET_NAME			"/var/run/bgpd.sock"
+a81 5
+enum blockmodes {
+	BM_NORMAL,
+	BM_NONBLOCK
+};
+
+a101 3
+	int			 flags;
+	int			 log;
+	struct sockaddr_in	 listen_addr;
+d105 7
+a111 4
+struct buf_read {
+	u_char			 buf[READ_BUF_SIZE];
+	u_char			*rptr;
+	ssize_t			 wpos;
+a122 1
+	u_int8_t		 passive;
+d139 1
+a139 1
+	struct buf_read		*rbuf;
+d143 1
+a143 1
+#define	MRT_FILE_LEN	512
+d181 11
+a191 1
+#define	MAX_IMSGSIZE		8192
+d195 1
+a195 1
+	struct buf_read		r;
+d211 1
+d213 1
+a213 5
+	IMSG_KROUTE_DELETE,
+	IMSG_NEXTHOP_ADD,
+	IMSG_NEXTHOP_REMOVE,
+	IMSG_NEXTHOP_UPDATE,
+	IMSG_CTL_SHOW_NEIGHBOR
+a247 7
+struct kroute_nexthop {
+	in_addr_t	nexthop;
+	u_int8_t	valid;
+	u_int8_t	connected;
+	in_addr_t	gateway;
+};
+
+a248 3
+/* bgpd.c */
+void		 send_nexthop_update(struct kroute_nexthop *);
+
+a249 1
+void		 session_socket_blockmode(int, enum blockmodes);
+d262 1
+d267 3
+a269 5
+void		 log_peer_err(const struct peer *, const char *, ...);
+void		 log_peer_errx(const struct peer *, const char *, ...);
+void		 log_err(const char *, ...);
+void		 fatal(const char *);
+void		 fatalx(const char *);
+d271 1
+a271 1
+void		 log_statechange(const struct peer *, enum session_state,
+d273 1
+a273 1
+void		 log_notification(const struct peer *, u_int8_t, u_int8_t,
+d275 1
+a275 2
+void		 log_conn_attempt(const struct peer *, struct in_addr);
+char		*log_ntoa(in_addr_t);
+a285 1
+int	 imsg_read(struct imsgbuf *);
+d297 4
+a300 13
+int	kroute_init(int);
+int	kroute_change(struct kroute *);
+int	kroute_delete(struct kroute *);
+void	kroute_shutdown(void);
+void	kroute_fib_couple(void);
+void	kroute_fib_decouple(void);
+int	kroute_dispatch_msg(void);
+int	kroute_nexthop_add(in_addr_t);
+void	kroute_nexthop_delete(in_addr_t);
+
+/* control.c */
+int	control_init(void);
+void	control_cleanup(void);
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bgpd.h,v 1.80 2004/01/26 14:42:47 henning Exp $ */
+d4 1
+a4 1
+ * Copyright (c) 2003, 2004 Henning Brauer <henning@@openbsd.org>
+a21 1
+#include <sys/socket.h>
+a24 1
+#include <net/if.h>
+d28 1
+a34 1
+#define	TCP_SIGN_KEY_LEN		32
+a50 7
+#define	F_BGPD_INSERTED		0x01
+#define	F_KERNEL		0x02
+#define	F_CONNECTED		0x04
+#define	F_NEXTHOP		0x08
+#define	F_DOWN			0x10
+#define	F_STATIC		0x20
+
+d57 27
+d91 5
+a109 16
+struct bgpd_addr {
+	sa_family_t	af;
+	union {
+		struct in_addr		v4;
+		struct in6_addr		v6;
+		u_int8_t		addr8[16];
+		u_int16_t		addr16[8];
+		u_int32_t		addr32[4];
+	} ba;		    /* 128-bit address */
+#define v4	ba.v4
+#define v6	ba.v6
+#define addr8	ba.addr8
+#define addr16	ba.addr16
+#define addr32	ba.addr32
+};
+
+d119 1
+a127 6
+enum announce_type {
+	ANNOUNCE_SELF,
+	ANNOUNCE_NONE,
+	ANNOUNCE_ALL
+};
+
+a133 1
+	u_long			 max_prefix;
+d138 6
+d145 23
+a167 4
+	u_int16_t		 min_holdtime;
+	enum announce_type	 announce_type;
+	char			 tcp_sign_key[TCP_SIGN_KEY_LEN];
+	enum reconf_action	 reconf_action;
+d170 6
+a175 3
+struct network_config {
+	struct bgpd_addr	prefix;
+	u_int8_t		prefixlen;
+d178 1
+a178 1
+TAILQ_HEAD(network_head, network);
+d180 11
+a190 3
+struct network {
+	struct network_config	net;
+	TAILQ_ENTRY(network)	network_l;
+a199 1
+	pid_t			pid;
+a207 1
+	IMSG_RECONF_NETWORK,
+d221 1
+a221 11
+	IMSG_CTL_SHOW_NEIGHBOR,
+	IMSG_CTL_END,
+	IMSG_CTL_RELOAD,
+	IMSG_CTL_FIB_COUPLE,
+	IMSG_CTL_FIB_DECOUPLE,
+	IMSG_CTL_NEIGHBOR_UP,
+	IMSG_CTL_NEIGHBOR_DOWN,
+	IMSG_CTL_KROUTE,
+	IMSG_CTL_KROUTE_ADDR,
+	IMSG_CTL_SHOW_NEXTHOP,
+	IMSG_CTL_SHOW_INTERFACE
+a227 1
+	pid_t		pid;
+a234 3
+/* needed for session.h parse prototype */
+LIST_HEAD(mrt_head, mrt);
+
+d237 1
+a237 2
+	ERR_UPD_UNSPECIFIC,
+	ERR_UPD_ATTRLIST,
+a253 2
+	u_int8_t	flags;
+	u_short		ifindex;
+d257 4
+a260 26
+	struct bgpd_addr	nexthop;
+	u_int8_t		valid;
+	u_int8_t		connected;
+	struct bgpd_addr	gateway;
+	struct kroute		kr;
+};
+
+struct kif {
+	u_short			 ifindex;
+	int			 flags;
+	char			 ifname[IFNAMSIZ];
+	u_int8_t		 media_type;
+	u_int8_t		 link_state;
+	u_long			 baudrate;
+	u_int8_t		 nh_reachable;	/* for nexthop verification */
+};
+
+struct session_up {
+	u_int32_t		remote_bgpid;
+	struct bgpd_addr	local_addr;
+	struct bgpd_addr	remote_addr;
+};
+
+struct ctl_show_nexthop {
+	struct bgpd_addr	addr;
+	u_int8_t		valid;
+d266 4
+a269 1
+void		 send_imsg_session(int, pid_t, void *, u_int16_t);
+a279 2
+int		 msgbuf_writebound(struct msgbuf *);
+int		 msgbuf_unbounded(struct msgbuf *msgbuf);
+d283 1
+d285 3
+a287 6
+void		 log_peer_warn(const struct peer_config *, const char *, ...);
+void		 log_peer_warnx(const struct peer_config *, const char *, ...);
+void		 log_warn(const char *, ...);
+void		 log_warnx(const char *, ...);
+void		 log_info(const char *, ...);
+void		 log_debug(const char *, ...);
+d291 5
+a296 1
+char		*log_addr(struct bgpd_addr *);
+d300 4
+a309 1
+int	 imsg_compose_pid(struct imsgbuf *, int, pid_t, void *, u_int16_t);
+d312 6
+d319 9
+a327 10
+int	kr_init(int);
+int	kr_change(struct kroute *);
+int	kr_delete(struct kroute *);
+void	kr_shutdown(void);
+void	kr_fib_couple(void);
+void	kr_fib_decouple(void);
+int	kr_dispatch_msg(void);
+int	kr_nexthop_add(struct bgpd_addr *);
+void	kr_nexthop_delete(struct bgpd_addr *);
+void	kr_show_route(struct imsg *);
+a331 4
+int	control_imsg_relay(struct imsg *);
+
+/* pfkey.c */
+int	pfkey_signature(struct sockaddr *, struct sockaddr *, char *);
+@
+
+
+1.1.1.4
+log
+@using: ========= cvsim-base-obsd _MirBSD: cvsim-src-openbsd,v 1.3 2004/01/27 17:17:54 tg Exp $ =========
+
+In contrast to what people might believe now,
+I am not "specially" attracted by CVS Imports
+(neither am I a version number hunter).
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bgpd.h,v 1.82 2004/01/27 16:49:53 henning Exp $ */
+d130 2
+a131 2
+	struct bgpd_addr	 remote_addr;
+	struct bgpd_addr	 local_addr;
+d297 1
+a297 1
+char		*log_addr(const struct bgpd_addr *);
+d328 1
+a328 1
+int	pfkey_setkey(struct sockaddr *, struct sockaddr *, char *);
+@
+
+
+1.1.1.5
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bgpd.h,v 1.122 2004/05/07 10:06:15 djm Exp $ */
+a26 1
+#include <net/pfkeyv2.h>
+d36 1
+a36 4
+#define	PFTABLE_LEN			16
+#define	TCP_MD5_KEY_LEN			80
+#define	IPSEC_ENC_KEY_LEN		32
+#define IPSEC_AUTH_KEY_LEN		20
+a47 1
+#define	BGPD_FLAG_NO_EVALUATE		0x0002
+a58 1
+#define	F_LONGER		0x40
+d83 1
+a83 1
+	int			 fd;
+a95 1
+	u_int32_t	scope_id;	/* iface scope id for v6 */
+a111 1
+	struct sockaddr_in6	 listen6_addr;
+a120 1
+	ANNOUNCE_UNDEF,
+a125 45
+enum enforce_as {
+	ENFORCE_AS_UNDEF,
+	ENFORCE_AS_OFF,
+	ENFORCE_AS_ON
+};
+
+struct filter_set {
+	u_int8_t	flags;
+	u_int32_t	localpref;
+	u_int32_t	med;
+	struct in_addr	nexthop;
+	struct in6_addr	nexthop6;
+	u_int8_t	prepend;
+	char		pftable[PFTABLE_LEN];
+};
+
+enum auth_method {
+	AUTH_NONE,
+	AUTH_MD5SIG,
+	AUTH_IPSEC_MANUAL_ESP,
+	AUTH_IPSEC_MANUAL_AH,
+	AUTH_IPSEC_IKE_ESP,
+	AUTH_IPSEC_IKE_AH
+};
+
+struct peer_auth {
+	enum auth_method	method;
+	char			md5key[TCP_MD5_KEY_LEN];
+	u_int8_t		md5key_len;
+	u_int32_t		spi_in;
+	u_int32_t		spi_out;
+	u_int8_t		auth_alg_in;
+	u_int8_t		auth_alg_out;
+	char			auth_key_in[IPSEC_AUTH_KEY_LEN];
+	char			auth_key_out[IPSEC_AUTH_KEY_LEN];
+	u_int8_t		auth_keylen_in;
+	u_int8_t		auth_keylen_out;
+	u_int8_t		enc_alg_in;
+	u_int8_t		enc_alg_out;
+	char			enc_key_in[IPSEC_ENC_KEY_LEN];
+	char			enc_key_out[IPSEC_ENC_KEY_LEN];
+	u_int8_t		enc_keylen_in;
+	u_int8_t		enc_keylen_out;
+};
+
+a127 1
+	u_int32_t		 groupid;
+d132 1
+a132 4
+	u_int8_t		 template;
+	u_int8_t		 remote_masklen;
+	u_int8_t		 cloned;
+	u_int32_t		 max_prefix;
+a138 1
+	struct filter_set	 attrset;
+d140 1
+a140 3
+	enum enforce_as		 enforce_as;
+	struct peer_auth	 auth;
+	u_int8_t		 capabilities;
+a146 1
+	struct filter_set	attrset;
+d162 1
+a162 1
+	int			fd;
+a172 1
+	IMSG_RECONF_FILTER,
+a185 3
+	IMSG_PFTABLE_ADD,
+	IMSG_PFTABLE_REMOVE,
+	IMSG_PFTABLE_COMMIT,
+d196 1
+a196 5
+	IMSG_CTL_SHOW_INTERFACE,
+	IMSG_CTL_SHOW_RIB,
+	IMSG_CTL_SHOW_RIB_AS,
+	IMSG_CTL_SHOW_RIB_PREFIX,
+	IMSG_REFRESH
+d214 1
+a214 10
+/* error codes and subcodes needed in SE and RDE */
+enum err_codes {
+	ERR_HEADER = 1,
+	ERR_OPEN,
+	ERR_UPDATE,
+	ERR_HOLDTIMEREXPIRED,
+	ERR_FSM,
+	ERR_CEASE
+};
+
+a229 11
+enum suberr_cease {
+	ERR_CEASE_MAX_PREFIX = 1,
+	ERR_CEASE_ADMIN_DOWN,
+	ERR_CEASE_PEER_UNCONF,
+	ERR_CEASE_ADMIN_RESET,
+	ERR_CEASE_CONN_REJECT,
+	ERR_CEASE_OTHER_CHANGE,
+	ERR_CEASE_COLLISION,
+	ERR_CEASE_RSRC_EXHAUST
+};
+
+d231 1
+a231 1
+	struct in_addr	prefix;
+d233 1
+a233 1
+	struct in_addr	nexthop;
+a259 7
+	struct peer_config	conf;
+};
+
+struct pftable_msg {
+	char			pftable[PFTABLE_LEN];
+	struct bgpd_addr	addr;
+	u_int8_t		len;
+a266 137
+#define F_RIB_ELIGIBLE	0x01
+#define F_RIB_ACTIVE	0x02
+#define F_RIB_INTERNAL	0x04
+#define F_RIB_ANNOUNCE	0x08
+
+struct ctl_show_rib {
+	time_t			lastchange;
+	u_int32_t		local_pref;
+	u_int32_t		med;
+	u_int16_t		prefix_cnt;
+	u_int16_t		active_cnt;
+	struct bgpd_addr	nexthop;
+	struct bgpd_addr	prefix;
+	u_int8_t		prefixlen;
+	u_int8_t		origin;
+	u_int8_t		flags;
+	u_int16_t		aspath_len;
+	/* plus a aspath_len bytes long aspath */
+};
+
+struct ctl_show_rib_prefix {
+	time_t			lastchange;
+	struct bgpd_addr	prefix;
+	u_int8_t		prefixlen;
+	u_int8_t		flags;
+};
+
+enum as_spec {
+	AS_NONE,
+	AS_ALL,
+	AS_SOURCE,
+	AS_TRANSIT,
+	AS_EMPTY
+};
+
+struct as_filter {
+	u_int16_t	as;
+	enum as_spec	type;
+};
+
+enum filter_actions {
+	ACTION_NONE,
+	ACTION_ALLOW,
+	ACTION_DENY
+};
+
+enum directions {
+	DIR_IN=1,
+	DIR_OUT
+};
+
+enum from_spec {
+	FROM_ALL,
+	FROM_ADDRESS,
+	FROM_DESCR,
+	FROM_GROUP
+};
+
+enum comp_ops {
+	OP_NONE,
+	OP_RANGE,
+	OP_XRANGE,
+	OP_EQ,
+	OP_NE,
+	OP_LE,
+	OP_LT,
+	OP_GE,
+	OP_GT
+};
+
+/* set flags */
+#define	SET_LOCALPREF	0x01
+#define	SET_MED		0x02
+#define	SET_NEXTHOP	0x04
+#define	SET_NEXTHOP6	0x08
+#define	SET_PREPEND	0x10
+#define	SET_PFTABLE	0x20
+
+struct filter_peers {
+	u_int32_t	peerid;
+	u_int32_t	groupid;
+};
+
+/* special community type */
+#define COMMUNITY_ERROR			-1
+#define COMMUNITY_ANY			-2
+#define COMMUNITY_WELLKNOWN		0xffff
+#define COMMUNITY_NO_EXPORT		0xff01
+#define COMMUNITY_NO_ADVERTISE		0xff02
+#define COMMUNITY_NO_EXPSUBCONFED	0xff03
+
+struct filter_match {
+	struct {
+		struct bgpd_addr	addr;
+		u_int8_t		len;
+	} prefix;
+	struct {
+		sa_family_t		af;
+		enum comp_ops		op;
+		u_int8_t		len_min;
+		u_int8_t		len_max;
+	} prefixlen;
+	struct as_filter		as;
+	struct {
+		int			as;
+		int			type;
+	} community;
+};
+
+TAILQ_HEAD(filter_head, filter_rule);
+
+struct filter_rule {
+	TAILQ_ENTRY(filter_rule)	entries;
+	enum filter_actions		action;
+	enum directions			dir;
+	u_int8_t			quick;
+	struct filter_peers		peer;
+	struct filter_match		match;
+	struct filter_set		set;
+};
+
+struct rrefresh {
+	u_int16_t	afi;
+	u_int8_t	safi;
+};
+
+/* Address Family Numbers as per rfc1700 */
+#define AFI_IPv4	1
+#define AFI_IPv6	2
+#define AFI_ALL		0xffff
+
+/* Subsequent Address Family Identifier as per rfc2858 */
+#define SAFI_UNICAST	1
+#define SAFI_MULTICAST	2
+#define SAFI_BOTH	3
+#define SAFI_ALL	0xff
+
+d296 2
+a297 1
+const char	*log_addr(const struct bgpd_addr *);
+a301 4
+/* config.c */
+int	 check_file_secrecy(int, const char *);
+int	 host(const char *, struct bgpd_addr *, u_int8_t *);
+
+a307 4
+struct buf *imsg_create(struct imsgbuf *, int, u_int32_t, u_int16_t);
+struct buf *imsg_create_pid(struct imsgbuf *, int, pid_t, u_int16_t);
+int	 imsg_add(struct buf *, void *, u_int16_t);
+int	 imsg_close(struct imsgbuf *, struct buf *);
+d327 2
+a328 7
+/* pftable.c */
+int	pftable_exists(const char *);
+int	pftable_add(const char *);
+int	pftable_clear_all(void);
+int	pftable_addr_add(struct pftable_msg *);
+int	pftable_addr_remove(struct pftable_msg *);
+int	pftable_commit(void);
+@
+
+

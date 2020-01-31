@@ -1,0 +1,848 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.21.18.00;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.05.13;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.30.12;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.43.36;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.09.24;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/*
+ * Copyright (c) 1983, 1993, 2001
+ *      The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+#include "gprof.h"
+#include "search_list.h"
+#include "source.h"
+#include "symtab.h"
+#include "cg_arcs.h"
+#include "corefile.h"
+#include "hist.h"
+
+    /*
+     *        opcode of the `calls' instruction
+     */
+#define	CALLS	0xfb
+
+    /*
+     *        register for pc relative addressing
+     */
+#define	PC	0xf
+
+enum opermodes
+  {
+    literal, indexed, reg, regdef, autodec, autoinc, autoincdef,
+    bytedisp, bytedispdef, worddisp, worddispdef, longdisp, longdispdef,
+    immediate, absolute, byterel, bytereldef, wordrel, wordreldef,
+    longrel, longreldef
+  };
+typedef enum opermodes operandenum;
+
+#if 0
+/* Here to document only.  We can't use this when cross compiling as
+   the bitfield layout might not be the same as native.  */
+struct modebyte
+  {
+    unsigned int regfield:4;
+    unsigned int modefield:4;
+  };
+#endif
+
+/*
+ * A symbol to be the child of indirect calls:
+ */
+static Sym indirectchild;
+
+static operandenum vax_operandmode PARAMS ((unsigned char *));
+static char *vax_operandname PARAMS ((operandenum));
+static long vax_operandlength PARAMS ((unsigned char *));
+static bfd_signed_vma vax_offset PARAMS ((unsigned char *));
+void vax_find_call PARAMS ((Sym *, bfd_vma, bfd_vma));
+
+static operandenum
+vax_operandmode (modep)
+     unsigned char *modep;
+{
+  int usesreg = *modep & 0xf;
+
+  switch ((*modep >> 4) & 0xf)
+    {
+    case 0:
+    case 1:
+    case 2:
+    case 3:
+      return literal;
+    case 4:
+      return indexed;
+    case 5:
+      return reg;
+    case 6:
+      return regdef;
+    case 7:
+      return autodec;
+    case 8:
+      return usesreg != PC ? autoinc : immediate;
+    case 9:
+      return usesreg != PC ? autoincdef : absolute;
+    case 10:
+      return usesreg != PC ? bytedisp : byterel;
+    case 11:
+      return usesreg != PC ? bytedispdef : bytereldef;
+    case 12:
+      return usesreg != PC ? worddisp : wordrel;
+    case 13:
+      return usesreg != PC ? worddispdef : wordreldef;
+    case 14:
+      return usesreg != PC ? longdisp : longrel;
+    case 15:
+      return usesreg != PC ? longdispdef : longreldef;
+    }
+  /* NOTREACHED */
+  abort ();
+}
+
+static char *
+vax_operandname (mode)
+     operandenum mode;
+{
+
+  switch (mode)
+    {
+    case literal:
+      return "literal";
+    case indexed:
+      return "indexed";
+    case reg:
+      return "register";
+    case regdef:
+      return "register deferred";
+    case autodec:
+      return "autodecrement";
+    case autoinc:
+      return "autoincrement";
+    case autoincdef:
+      return "autoincrement deferred";
+    case bytedisp:
+      return "byte displacement";
+    case bytedispdef:
+      return "byte displacement deferred";
+    case byterel:
+      return "byte relative";
+    case bytereldef:
+      return "byte relative deferred";
+    case worddisp:
+      return "word displacement";
+    case worddispdef:
+      return "word displacement deferred";
+    case wordrel:
+      return "word relative";
+    case wordreldef:
+      return "word relative deferred";
+    case immediate:
+      return "immediate";
+    case absolute:
+      return "absolute";
+    case longdisp:
+      return "long displacement";
+    case longdispdef:
+      return "long displacement deferred";
+    case longrel:
+      return "long relative";
+    case longreldef:
+      return "long relative deferred";
+    }
+  /* NOTREACHED */
+  abort ();
+}
+
+static long
+vax_operandlength (modep)
+     unsigned char *modep;
+{
+
+  switch (vax_operandmode (modep))
+    {
+    case literal:
+    case reg:
+    case regdef:
+    case autodec:
+    case autoinc:
+    case autoincdef:
+      return 1;
+    case bytedisp:
+    case bytedispdef:
+    case byterel:
+    case bytereldef:
+      return 2;
+    case worddisp:
+    case worddispdef:
+    case wordrel:
+    case wordreldef:
+      return 3;
+    case immediate:
+    case absolute:
+    case longdisp:
+    case longdispdef:
+    case longrel:
+    case longreldef:
+      return 5;
+    case indexed:
+      return 1 + vax_operandlength (modep + 1);
+    }
+  /* NOTREACHED */
+  abort ();
+}
+
+static bfd_signed_vma
+vax_offset (modep)
+     unsigned char *modep;
+{
+  operandenum mode = vax_operandmode (modep);
+
+  ++modep;				/* skip over the mode */
+  switch (mode)
+    {
+    default:
+      fprintf (stderr, "[reladdr] not relative address\n");
+      return 0;
+    case byterel:
+      return 1 + bfd_get_signed_8 (core_bfd, modep);
+    case wordrel:
+      return 2 + bfd_get_signed_16 (core_bfd, modep);
+    case longrel:
+      return 4 + bfd_get_signed_32 (core_bfd, modep);
+    }
+}
+
+
+void
+vax_find_call (parent, p_lowpc, p_highpc)
+     Sym *parent;
+     bfd_vma p_lowpc;
+     bfd_vma p_highpc;
+{
+  unsigned char *instructp;
+  long length;
+  Sym *child;
+  operandenum mode;
+  operandenum firstmode;
+  bfd_vma pc, destpc;
+  static bfd_boolean inited = FALSE;
+
+  if (!inited)
+    {
+      inited = TRUE;
+      sym_init (&indirectchild);
+      indirectchild.cg.prop.fract = 1.0;
+      indirectchild.cg.cyc.head = &indirectchild;
+    }
+
+  if (core_text_space == 0)
+    {
+      return;
+    }
+  if (p_lowpc < s_lowpc)
+    {
+      p_lowpc = s_lowpc;
+    }
+  if (p_highpc > s_highpc)
+    {
+      p_highpc = s_highpc;
+    }
+  DBG (CALLDEBUG, printf ("[findcall] %s: 0x%lx to 0x%lx\n",
+			  parent->name, (unsigned long) p_lowpc,
+			  (unsigned long) p_highpc));
+  for (pc = p_lowpc; pc < p_highpc; pc += length)
+    {
+      length = 1;
+      instructp = ((unsigned char *) core_text_space
+		   + pc - core_text_sect->vma);
+      if ((*instructp & 0xff) == CALLS)
+	{
+	  /*
+	   *    maybe a calls, better check it out.
+	   *      skip the count of the number of arguments.
+	   */
+	  DBG (CALLDEBUG,
+	       printf ("[findcall]\t0x%lx:calls", (unsigned long) pc));
+	  firstmode = vax_operandmode (instructp + length);
+	  switch (firstmode)
+	    {
+	    case literal:
+	    case immediate:
+	      break;
+	    default:
+	      goto botched;
+	    }
+	  length += vax_operandlength (instructp + length);
+	  mode = vax_operandmode (instructp + length);
+	  DBG (CALLDEBUG,
+	       printf ("\tfirst operand is %s", vax_operandname (firstmode));
+	       printf ("\tsecond operand is %s\n", vax_operandname (mode)));
+	  switch (mode)
+	    {
+	    case regdef:
+	    case bytedispdef:
+	    case worddispdef:
+	    case longdispdef:
+	    case bytereldef:
+	    case wordreldef:
+	    case longreldef:
+	      /*
+	       *    indirect call: call through pointer
+	       *      either  *d(r)   as a parameter or local
+	       *              (r)     as a return value
+	       *              *f      as a global pointer
+	       *      [are there others that we miss?,
+	       *       e.g. arrays of pointers to functions???]
+	       */
+	      arc_add (parent, &indirectchild, (unsigned long) 0);
+	      length += vax_operandlength (instructp + length);
+	      continue;
+	    case byterel:
+	    case wordrel:
+	    case longrel:
+	      /*
+	       *    regular pc relative addressing
+	       *      check that this is the address of
+	       *      a function.
+	       */
+	      destpc = pc + vax_offset (instructp + length);
+	      if (destpc >= s_lowpc && destpc <= s_highpc)
+		{
+		  child = sym_lookup (&symtab, destpc);
+		  DBG (CALLDEBUG,
+		       printf ("[findcall]\tdestpc 0x%lx",
+			       (unsigned long) destpc);
+		       printf (" child->name %s", child->name);
+		       printf (" child->addr 0x%lx\n",
+			       (unsigned long) child->addr);
+		    );
+		  if (child->addr == destpc)
+		    {
+		      /*
+		       *    a hit
+		       */
+		      arc_add (parent, child, (unsigned long) 0);
+		      length += vax_operandlength (instructp + length);
+		      continue;
+		    }
+		  goto botched;
+		}
+	      /*
+	       *    else:
+	       *      it looked like a calls,
+	       *      but it wasn't to anywhere.
+	       */
+	      goto botched;
+	    default:
+	    botched:
+	      /*
+	       *    something funny going on.
+	       */
+	      DBG (CALLDEBUG, printf ("[findcall]\tbut it's a botch\n"));
+	      length = 1;
+	      continue;
+	    }
+	}
+    }
+}
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d30 3
+a35 1
+#include "symtab.h"
+d56 3
+d64 1
+d69 1
+a69 1
+Sym indirectchild;
+d71 5
+d79 1
+a79 1
+     struct modebyte *modep;
+d81 1
+a81 1
+  long usesreg = modep->regfield;
+d83 1
+a83 1
+  switch (modep->modefield)
+d175 1
+a175 1
+     struct modebyte *modep;
+d205 1
+a205 1
+      return 1 + vax_operandlength ((struct modebyte *) ((char *) modep) + 1);
+d211 3
+a213 3
+static bfd_vma
+vax_reladdr (modep)
+     struct modebyte *modep;
+a215 3
+  char *cp;
+  short *sp;
+  long *lp;
+d217 1
+a217 2
+  cp = (char *) modep;
+  ++cp;				/* skip over the mode */
+d222 1
+a222 1
+      return (bfd_vma) modep;
+d224 1
+a224 1
+      return (bfd_vma) (cp + sizeof *cp + *cp);
+d226 1
+a226 2
+      sp = (short *) cp;
+      return (bfd_vma) (cp + sizeof *sp + *sp);
+d228 1
+a228 2
+      lp = (long *) cp;
+      return (bfd_vma) (cp + sizeof *lp + *lp);
+d244 2
+a245 2
+  bfd_vma destpc;
+  static bool inited = FALSE;
+d270 1
+a270 3
+  for (instructp = (unsigned char *) core_text_space + p_lowpc;
+       instructp < (unsigned char *) core_text_space + p_highpc;
+       instructp += length)
+d273 3
+a275 1
+      if (*instructp == CALLS)
+d282 2
+a283 4
+	       printf ("[findcall]\t0x%lx:calls",
+		       ((unsigned long)
+			(instructp - (unsigned char *) core_text_space))));
+	  firstmode = vax_operandmode ((struct modebyte *) (instructp + length));
+d292 2
+a293 2
+	  length += vax_operandlength ((struct modebyte *) (instructp + length));
+	  mode = vax_operandmode ((struct modebyte *) (instructp + length));
+d315 1
+a315 2
+	      length += vax_operandlength (
+				  (struct modebyte *) (instructp + length));
+d325 1
+a325 2
+	      destpc = vax_reladdr ((struct modebyte *) (instructp + length))
+		- (bfd_vma) core_text_space;
+d342 1
+a342 2
+		      length += vax_operandlength ((struct modebyte *)
+						   (instructp + length));
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@d2 2
+a3 2
+ * Copyright (c) 1983, 2001 Regents of the University of California.
+ * All rights reserved.
+d5 23
+a27 13
+ * Redistribution and use in source and binary forms are permitted
+ * provided that: (1) source distributions retain this entire copyright
+ * notice and comment, and (2) distributions including binaries display
+ * the following acknowledgement:  ``This product includes software
+ * developed by the University of California, Berkeley and its contributors''
+ * in the documentation or other materials provided with the distribution
+ * and in all advertising materials mentioning features or use of this
+ * software. Neither the name of the University nor the names of its
+ * contributors may be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 2
+a3 2
+ * Copyright (c) 1983, 1993, 2001
+ *      The Regents of the University of California.  All rights reserved.
+d5 13
+a17 23
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+a19 3
+#include "search_list.h"
+#include "source.h"
+#include "symtab.h"
+d23 1
+a43 3
+#if 0
+/* Here to document only.  We can't use this when cross compiling as
+   the bitfield layout might not be the same as native.  */
+a48 1
+#endif
+d53 1
+a53 1
+static Sym indirectchild;
+a54 5
+static operandenum vax_operandmode PARAMS ((unsigned char *));
+static char *vax_operandname PARAMS ((operandenum));
+static long vax_operandlength PARAMS ((unsigned char *));
+static bfd_signed_vma vax_offset PARAMS ((unsigned char *));
+void vax_find_call PARAMS ((Sym *, bfd_vma, bfd_vma));
+d58 1
+a58 1
+     unsigned char *modep;
+d60 1
+a60 1
+  int usesreg = *modep & 0xf;
+d62 1
+a62 1
+  switch ((*modep >> 4) & 0xf)
+d154 1
+a154 1
+     unsigned char *modep;
+d184 1
+a184 1
+      return 1 + vax_operandlength (modep + 1);
+d190 3
+a192 3
+static bfd_signed_vma
+vax_offset (modep)
+     unsigned char *modep;
+d195 3
+d199 2
+a200 1
+  ++modep;				/* skip over the mode */
+d205 1
+a205 1
+      return 0;
+d207 1
+a207 1
+      return 1 + bfd_get_signed_8 (core_bfd, modep);
+d209 2
+a210 1
+      return 2 + bfd_get_signed_16 (core_bfd, modep);
+d212 2
+a213 1
+      return 4 + bfd_get_signed_32 (core_bfd, modep);
+d229 2
+a230 2
+  bfd_vma pc, destpc;
+  static bfd_boolean inited = FALSE;
+d255 3
+a257 1
+  for (pc = p_lowpc; pc < p_highpc; pc += length)
+d260 1
+a260 3
+      instructp = ((unsigned char *) core_text_space
+		   + pc - core_text_sect->vma);
+      if ((*instructp & 0xff) == CALLS)
+d267 4
+a270 2
+	       printf ("[findcall]\t0x%lx:calls", (unsigned long) pc));
+	  firstmode = vax_operandmode (instructp + length);
+d279 2
+a280 2
+	  length += vax_operandlength (instructp + length);
+	  mode = vax_operandmode (instructp + length);
+d302 2
+a303 1
+	      length += vax_operandlength (instructp + length);
+d313 2
+a314 1
+	      destpc = pc + vax_offset (instructp + length);
+d331 2
+a332 1
+		      length += vax_operandlength (instructp + length);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@a29 3
+#include "search_list.h"
+#include "source.h"
+#include "symtab.h"
+d33 1
+a53 3
+#if 0
+/* Here to document only.  We can't use this when cross compiling as
+   the bitfield layout might not be the same as native.  */
+a58 1
+#endif
+d63 1
+a63 1
+static Sym indirectchild;
+a64 5
+static operandenum vax_operandmode PARAMS ((unsigned char *));
+static char *vax_operandname PARAMS ((operandenum));
+static long vax_operandlength PARAMS ((unsigned char *));
+static bfd_signed_vma vax_offset PARAMS ((unsigned char *));
+void vax_find_call PARAMS ((Sym *, bfd_vma, bfd_vma));
+d68 1
+a68 1
+     unsigned char *modep;
+d70 1
+a70 1
+  int usesreg = *modep & 0xf;
+d72 1
+a72 1
+  switch ((*modep >> 4) & 0xf)
+d164 1
+a164 1
+     unsigned char *modep;
+d194 1
+a194 1
+      return 1 + vax_operandlength (modep + 1);
+d200 3
+a202 3
+static bfd_signed_vma
+vax_offset (modep)
+     unsigned char *modep;
+d205 3
+d209 2
+a210 1
+  ++modep;				/* skip over the mode */
+d215 1
+a215 1
+      return 0;
+d217 1
+a217 1
+      return 1 + bfd_get_signed_8 (core_bfd, modep);
+d219 2
+a220 1
+      return 2 + bfd_get_signed_16 (core_bfd, modep);
+d222 2
+a223 1
+      return 4 + bfd_get_signed_32 (core_bfd, modep);
+d239 2
+a240 2
+  bfd_vma pc, destpc;
+  static bfd_boolean inited = FALSE;
+d265 3
+a267 1
+  for (pc = p_lowpc; pc < p_highpc; pc += length)
+d270 1
+a270 3
+      instructp = ((unsigned char *) core_text_space
+		   + pc - core_text_sect->vma);
+      if ((*instructp & 0xff) == CALLS)
+d277 4
+a280 2
+	       printf ("[findcall]\t0x%lx:calls", (unsigned long) pc));
+	  firstmode = vax_operandmode (instructp + length);
+d289 2
+a290 2
+	  length += vax_operandlength (instructp + length);
+	  mode = vax_operandmode (instructp + length);
+d312 2
+a313 1
+	      length += vax_operandlength (instructp + length);
+d323 2
+a324 1
+	      destpc = pc + vax_offset (instructp + length);
+d341 2
+a342 1
+		      length += vax_operandlength (instructp + length);
+@
+

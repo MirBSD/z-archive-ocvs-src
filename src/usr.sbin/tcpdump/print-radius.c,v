@@ -1,0 +1,416 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410222040:1.1.1.2
+	tg-mergetmp-1:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.56.05;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.56.05;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.21.20.02;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: print-radius.c,v 1.6 2001/10/24 12:05:11 ho Exp $	*/
+
+/*
+ * Copyright (c) 1997 Thomas H. Ptacek. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ */
+
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include <stdio.h>
+#include <string.h>
+
+/* RADIUS support for tcpdump, Thomas Ptacek <tqbf@@enteract.com> */
+
+#include "interface.h"
+#include "radius.h"
+
+static void r_print_att(int code, int len, const u_char *val);
+static void r_print_int(int code, int len, const u_char *val);
+static void r_print_address(int code, int len, const u_char *val);
+static void r_print_string(int code, int len, const u_char *val);
+static void r_print_hex(int code, int len, const u_char *val);
+
+/* --------------------------------------------------------------- */
+
+struct radius_ctable {
+	int code;
+	char *name;
+};
+
+/* map opcodes to strings */
+
+#define DEFINED_OPCODES		11
+
+static struct radius_ctable radius_codes[] = {
+	{ -1, 					NULL	},
+	{ RADIUS_CODE_ACCESS_REQUEST,		"Axs?"	},
+	{ RADIUS_CODE_ACCESS_ACCEPT,		"Axs+"	},
+	{ RADIUS_CODE_ACCESS_REJECT,		"Axs-"	},
+	{ RADIUS_CODE_ACCOUNT_REQUEST,		"Act?"	},
+	{ RADIUS_CODE_ACCOUNT_RESPONSE,		"Act+"	},
+	{ RADIUS_CODE_ACCOUNT_STATUS,		"ActSt"	},
+	{ RADIUS_CODE_PASSCHG_REQUEST,		"Pchg?"	},
+	{ RADIUS_CODE_PASSCHG_ACCEPT,		"Pchg+"	},
+	{ RADIUS_CODE_PASSCHG_REJECT,		"Pchg-"	},
+	{ RADIUS_CODE_ACCOUNT_MESSAGE,		"ActMg"	},
+	{ RADIUS_CODE_ACCESS_CHALLENGE,		"Axs!"	},
+	{ -1,					NULL	}
+};
+
+/* --------------------------------------------------------------- */
+
+#define MAX_VALUES 20	
+
+struct radius_atable {
+	int code;
+	int encoding;
+	char *name;
+	char *values[MAX_VALUES];
+};
+
+/* map attributes to strings */
+
+/* the right way to do this is probably to read these values out
+ * of the actual RADIUS dictionary; this would require the machine
+ * running tcpdump to have that file installed, and it's not my
+ * program, so I'm not going to introduce new dependancies. Oh well. 
+ */
+
+static struct radius_atable radius_atts[] = {
+
+{ RADIUS_ATT_USER_NAME, 	RD_STRING, 	"Name", 	{ NULL } },
+{ RADIUS_ATT_PASSWORD, 		RD_HEX, 	"Pass", 	{ NULL } },
+{ RADIUS_ATT_CHAP_PASS, 	RD_HEX, 	"CPass",	{ NULL } },
+{ RADIUS_ATT_NAS_IP, 		RD_ADDRESS, 	"NAS-IP", 	{ NULL } },
+{ RADIUS_ATT_NAS_PORT, 		RD_INT, 	"NAS-Pt", 	{ NULL } },
+
+{ RADIUS_ATT_USER_SERVICE, 	RD_INT, 	"USvc", 	
+{ "", "Login", "Framed", "DB-Lgn", "DB-Frm", "Out", "Shell", NULL } },
+
+{ RADIUS_ATT_PROTOCOL, 		RD_INT, 	"FProt", 
+{ "", "PPP", "SLIP", NULL } },
+
+{ RADIUS_ATT_FRAMED_ADDRESS, 	RD_ADDRESS, 	"F-IP", 	{ NULL } },
+{ RADIUS_ATT_NETMASK, 		RD_ADDRESS, 	"F-Msk", 	{ NULL } },
+{ RADIUS_ATT_ROUTING, 		RD_INT, 	"F-Rtg", 	{ NULL } },
+{ RADIUS_ATT_FILTER, 		RD_STRING, 	"FltID", 	{ NULL } },
+{ RADIUS_ATT_MTU, 		RD_INT, 	"F-MTU", 	{ NULL } },
+{ RADIUS_ATT_COMPRESSION, 	RD_INT, 	"F-Comp", 	{ NULL } },
+{ RADIUS_ATT_LOGIN_HOST, 	RD_ADDRESS, 	"L-Hst", 	{ NULL } },
+
+{ RADIUS_ATT_LOGIN_SERVICE, 	RD_INT, 	"L-Svc", 
+{ "", "Telnt", "Rlog", "Clear", "PortM", NULL }				},
+
+{ RADIUS_ATT_LOGIN_TCP_PORT, 	RD_INT, 	"L-Pt", 	{ NULL } },
+{ RADIUS_ATT_OLD_PASSWORD, 	RD_HEX, 	"OPass", 	{ NULL } },
+{ RADIUS_ATT_PORT_MESSAGE, 	RD_STRING, 	"PMsg", 	{ NULL } },
+{ RADIUS_ATT_DIALBACK_NO, 	RD_STRING, 	"DB#", 		{ NULL } },
+{ RADIUS_ATT_DIALBACK_NAME, 	RD_STRING, 	"DBNm", 	{ NULL } },
+{ RADIUS_ATT_EXPIRATION, 	RD_DATE, 	"PExp", 	{ NULL } },
+{ RADIUS_ATT_FRAMED_ROUTE, 	RD_STRING, 	"F-Rt", 	{ NULL } },
+{ RADIUS_ATT_FRAMED_IPX, 	RD_ADDRESS, 	"F-IPX", 	{ NULL } },
+{ RADIUS_ATT_CHALLENGE_STATE, 	RD_STRING, 	"CState", 	{ NULL } },
+{ RADIUS_ATT_CLASS, 		RD_STRING, 	"Class", 	{ NULL } },
+{ RADIUS_ATT_VENDOR_SPECIFIC, 	RD_HEX, 	"Vendor", 	{ NULL } },
+{ RADIUS_ATT_SESSION_TIMEOUT, 	RD_INT, 	"S-TO", 	{ NULL } },
+{ RADIUS_ATT_IDLE_TIMEOUT, 	RD_INT, 	"I-TO", 	{ NULL } },
+{ RADIUS_ATT_TERMINATE_ACTION, 	RD_INT, 	"TermAct", 	{ NULL } },
+{ RADIUS_ATT_CALLED_ID, 	RD_STRING, 	"Callee", 	{ NULL } },
+{ RADIUS_ATT_CALLER_ID, 	RD_STRING, 	"Caller", 	{ NULL } },
+
+{ RADIUS_ATT_STATUS_TYPE, 	RD_INT, 	"Stat", 
+{ "", "Start", "Stop", NULL }					},
+
+{ -1,				-1,		NULL, 		{ NULL } }
+
+};
+
+typedef void (*aselector)(int code, int len, const u_char *data);
+aselector atselector[] = {
+	r_print_hex, 
+	r_print_int, 
+	r_print_int, 
+	r_print_address,
+	r_print_string,
+	r_print_hex
+};
+
+static void r_print_att(int code, int len, const u_char *data) {
+	struct radius_atable *atp;
+	int i;
+
+	for(atp = radius_atts; atp->code != -1; atp++) 
+		if(atp->code == code)
+			break;
+
+	if(atp->code == -1) {
+		if(vflag > 1) {
+			fprintf(stdout, " %d =", code);
+			atselector[RD_HEX](code, len, data);
+		} else 
+			fprintf(stdout, " %d", code);
+
+		return;
+	}
+
+	fprintf(stdout, " %s =", atp->name);
+
+	if(atp->encoding == RD_INT && *atp->values) {
+		u_int32_t k = ntohl((*(int *)data));
+
+		for(i = 0; atp->values[i] != NULL; i++) 
+			/* SHOOT ME */ ;
+
+		if(k < i) {
+			fprintf(stdout, " %s", 
+				atp->values[k]);
+			return;
+		}
+	}	
+			
+	atselector[atp->encoding](code, len, data);	
+}
+
+static void r_print_int(int code, int len, const u_char *data) {
+	if(len < 4) {
+		fputs(" ?", stdout);
+		return;
+	}
+
+	fprintf(stdout, " %d", ntohl((*(int *)data)));
+}
+
+static void r_print_address(int code, int len, const u_char *data) {
+	if(len < 4) {
+		fputs(" ?", stdout);
+		return;
+	}
+
+	fprintf(stdout, " %s", inet_ntoa((*(struct in_addr *)data)));
+}
+
+static void r_print_string(int code, int len, const u_char *data) {
+	char string[128];
+
+	if(!len) {
+		fputs(" ?", stdout);
+		return;
+	}
+
+	if(len > 127)
+		len = 127;
+
+	memset(string, 0, 128);
+	memcpy(string, data, len);
+
+	fprintf(stdout, " %s", string);
+}
+
+static void r_print_hex(int code, int len, const u_char *data) {
+	int i;	
+
+	/* excuse me */
+
+	fputs(" [", stdout);
+	
+	for(i = 0; i < len; i++)
+		fprintf(stdout, "%x", data[i]);
+
+	fputc(']', stdout);
+}
+
+void radius_print(register const u_char *data, u_int len) {
+	const struct radius_header *rhp;
+	const u_char *pp;
+	int i, l, ac, al;
+
+	if(len < sizeof(struct radius_header)) {
+		fputs(" [|radius]", stdout);
+		return;
+	}
+
+	rhp = (struct radius_header *) data;
+
+	if(rhp->code > DEFINED_OPCODES ||
+	   rhp->code < 1) 
+		fprintf(stdout, " Code:%d id:%x [%d]", 
+		rhp->code, rhp->id, ntohs(rhp->len));
+	else
+		fprintf(stdout, " %s id:%x [%d]", 
+			radius_codes[rhp->code].name,
+			rhp->id, ntohs(rhp->len));
+
+	if(ntohs(rhp->len) > len) {
+		fputs(" [|radius]", stdout);
+		return;
+	}
+
+	l = len - RADFIXEDSZ;
+	if(!l)
+		return;
+	else
+		pp = data + RADFIXEDSZ;
+
+	i = 0; /* XXX I don't see what 'i' is supposed to do here. */
+	while(l) {
+		if(!i) fputc(',', stdout); i = 0;
+
+		ac = *pp++;
+		al = *pp++;
+
+		if(al > l || al < 2) {
+			fputs(" [|radius]", stdout);
+			return;
+		}
+	
+		al -= 2;
+
+		r_print_att(ac, al, pp);
+
+		pp += al; l -= al + 2;
+	}
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: print-radius.c,v 1.7 2003/11/08 19:17:30 jmc Exp $	*/
+d91 1
+a91 1
+ * program, so I'm not going to introduce new dependencies. Oh well. 
+@
+

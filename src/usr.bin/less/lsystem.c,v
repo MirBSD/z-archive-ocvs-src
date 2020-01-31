@@ -1,0 +1,765 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.14
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.12
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.8
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309261655:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.3
+	cvs-200306082100:1.1.1.3
+	ctm-3316:1.1.1.3
+	ctm-3272:1.1.1.3
+	ctm-3264:1.1.1.3
+	cvs-200305071630:1.1.1.3
+	MIRBSD_4:1.1.1.3
+	ctm-3203:1.1.1.3
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.52.57;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.57;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.14.54.48;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.04.15.17.47.04;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: lsystem.c,v 1.3 2001/11/19 19:02:14 mpech Exp $	*/
+
+/*
+ * Copyright (c) 1984,1985,1989,1994,1995  Mark Nudelman
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice in the documentation and/or other materials provided with 
+ *    the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR 
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT 
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN 
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+/*
+ * Routines to execute other programs.
+ * Necessarily very OS dependent.
+ */
+
+#include <signal.h>
+#include "less.h"
+#include "position.h"
+
+#if MSOFTC
+#include <dos.h>
+#endif
+
+extern int screen_trashed;
+extern IFILE curr_ifile;
+
+
+#if HAVE_SYSTEM
+
+/*
+ * Pass the specified command to a shell to be executed.
+ * Like plain "system()", but handles resetting terminal modes, etc.
+ */
+	public void
+lsystem(cmd)
+	char *cmd;
+{
+	int inp;
+#if MSOFTC || OS2
+	int inp2;
+#endif
+	char *shell;
+	char *p;
+	IFILE save_ifile;
+
+	/*
+	 * Print the command which is to be executed,
+	 * unless the command starts with a "-".
+	 */
+	if (cmd[0] == '-')
+		cmd++;
+	else
+	{
+		clear_bot();
+		putstr("!");
+		putstr(cmd);
+		putstr("\n");
+	}
+
+	/*
+	 * Close the current input file.
+	 */
+	save_ifile = curr_ifile;
+	(void) edit_ifile(NULL_IFILE);
+
+	/*
+	 * De-initialize the terminal and take out of raw mode.
+	 */
+	deinit();
+	flush();	/* Make sure the deinit chars get out */
+	raw_mode(0);
+
+	/*
+	 * Restore signals to their defaults.
+	 */
+	init_signals(0);
+
+	/*
+	 * Force standard input to be the user's terminal
+	 * (the normal standard input), even if less's standard input 
+	 * is coming from a pipe.
+	 */
+	inp = dup(0);
+	close(0);
+	if (OPEN_TTYIN() < 0)
+		dup(inp);
+
+	/*
+	 * Pass the command to the system to be executed.
+	 * If we have a SHELL environment variable, use
+	 * <$SHELL -c "command"> instead of just <command>.
+	 * If the command is empty, just invoke a shell.
+	 */
+#if HAVE_SHELL
+	p = NULL;
+	if ((shell = getenv("SHELL")) != NULL && *shell != '\0')
+	{
+		if (*cmd == '\0')
+			p = save(shell);
+		else
+		{
+			p = (char *) ecalloc(strlen(shell) + strlen(cmd) + 7, 
+					sizeof(char));
+			sprintf(p, "%s -c \"%s\"", shell, cmd);
+		}
+	}
+	if (p == NULL)
+	{
+		if (*cmd == '\0')
+			p = save("sh");
+		else
+			p = save(cmd);
+	}
+
+	system(p);
+	free(p);
+#else
+#if OS2
+	if (*cmd == '\0')
+		cmd = "cmd.exe";
+#endif
+	system(cmd);
+#endif
+
+	/*
+	 * Restore standard input, reset signals, raw mode, etc.
+	 */
+	close(0);
+	dup(inp);
+	close(inp);
+
+	init_signals(1);
+	raw_mode(1);
+	init();
+	screen_trashed = 1;
+
+	/*
+	 * Reopen the current input file.
+	 */
+	if (edit_ifile(save_ifile))
+		quit(QUIT_ERROR);
+
+#if defined(SIGWINCH) || defined(SIGWIND)
+	/*
+	 * Since we were ignoring window change signals while we executed
+	 * the system command, we must assume the window changed.
+	 * Warning: this leaves a signal pending (in "sigs"),
+	 * so psignals() should be called soon after lsystem().
+	 */
+	winch(0);
+#endif
+}
+
+#endif
+
+#if PIPEC
+
+/*
+ * Pipe a section of the input file into the given shell command.
+ * The section to be piped is the section "between" the current
+ * position and the position marked by the given letter.
+ *
+ * The "current" position means the top line displayed if the mark
+ * is after the current screen, or the bottom line displayed if
+ * the mark is before the current screen.
+ * If the mark is on the current screen, the whole screen is displayed.
+ */
+	public int
+pipe_mark(c, cmd)
+	int c;
+	char *cmd;
+{
+	POSITION mpos, tpos, bpos;
+
+	/*
+	 * mpos = the marked position.
+	 * tpos = top of screen.
+	 * bpos = bottom of screen.
+	 */
+	mpos = markpos(c);
+	if (mpos == NULL_POSITION)
+		return (-1);
+	tpos = position(TOP);
+	if (tpos == NULL_POSITION)
+		tpos = ch_zero();
+	bpos = position(BOTTOM);
+
+ 	if (c == '.') 
+ 		return (pipe_data(cmd, tpos, bpos));
+ 	else if (mpos <= tpos)
+ 		return (pipe_data(cmd, mpos, tpos));
+ 	else if (bpos == NULL_POSITION)
+ 		return (pipe_data(cmd, tpos, bpos));
+ 	else
+ 		return (pipe_data(cmd, tpos, mpos));
+}
+
+/*
+ * Create a pipe to the given shell command.
+ * Feed it the file contents between the positions spos and epos.
+ */
+	public int
+pipe_data(cmd, spos, epos)
+	char *cmd;
+	POSITION spos;
+	POSITION epos;
+{
+	FILE *f;
+	int c;
+	extern FILE *popen();
+
+	/*
+	 * This is structured much like lsystem().
+	 * Since we're running a shell program, we must be careful
+	 * to perform the necessary deinitialization before running
+	 * the command, and reinitialization after it.
+	 */
+	if (ch_seek(spos) != 0)
+	{
+		error("Cannot seek to start position", NULL_PARG);
+		return (-1);
+	}
+
+	if ((f = popen(cmd, "w")) == NULL)
+	{
+		error("Cannot create pipe", NULL_PARG);
+		return (-1);
+	}
+	clear_bot();
+	putstr("!");
+	putstr(cmd);
+	putstr("\n");
+
+	deinit();
+	flush();
+	raw_mode(0);
+	init_signals(0);
+#ifdef SIGPIPE
+	SIGNAL(SIGPIPE, SIG_IGN);
+#endif
+
+	c = EOI;
+	while (epos == NULL_POSITION || spos++ <= epos)
+	{
+		/*
+		 * Read a character from the file and give it to the pipe.
+		 */
+		c = ch_forw_get();
+		if (c == EOI)
+			break;
+		if (putc(c, f) == EOF)
+			break;
+	}
+
+	/*
+	 * Finish up the last line.
+	 */
+ 	while (c != '\n' && c != EOI ) 
+ 	{
+ 		c = ch_forw_get();
+ 		if (c == EOI)
+ 			break;
+ 		if (putc(c, f) == EOF)
+ 			break;
+ 	}
+
+	pclose(f);
+
+#ifdef SIGPIPE
+	SIGNAL(SIGPIPE, SIG_DFL);
+#endif
+	init_signals(1);
+	raw_mode(1);
+	init();
+	screen_trashed = 1;
+#if defined(SIGWINCH) || defined(SIGWIND)
+	/* {{ Probably don't need this here. }} */
+	winch(0);
+#endif
+	return (0);
+}
+
+#endif
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: lsystem.c,v 1.4 2003/04/06 23:38:07 deraadt Exp $	*/
+d121 3
+a123 3
+			size_t l = strlen(shell) + strlen(cmd) + 7;
+			p = (char *) ecalloc(l, sizeof(char));
+			snprintf(p, l, "%s -c \"%s\"", shell, cmd);
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD source with the "new" command line as well,
+in order to be able to provide a MirBSD release which bases
+upon a fairly current OpenBSD base source code tree deemed
+stable enough.
+@
+text
+@d1 2
+d4 2
+a5 1
+ * Copyright (C) 1984-2002  Mark Nudelman
+d7 8
+a14 2
+ * You may distribute under the terms of either the GNU General Public
+ * License or the Less License, as specified in the README file.
+d16 11
+a26 2
+ * For more information about less, or for information on how to 
+ * contact the author, see the README file.
+d35 1
+a36 1
+#include <signal.h>
+d39 1
+a39 1
+#if MSDOS_COMPILER
+a40 6
+#ifdef _MSC_VER
+#include <direct.h>
+#define setdisk(n) _chdrive((n)+1)
+#else
+#include <dir.h>
+#endif
+d54 1
+a54 1
+lsystem(cmd, donemsg)
+a55 1
+	char *donemsg;
+d57 3
+a59 4
+	register int inp;
+#if HAVE_SHELL
+	register char *shell;
+	register char *p;
+d61 2
+a63 3
+#if MSDOS_COMPILER
+	char cwd[FILENAME_MAX+1];
+#endif
+a78 11
+#if MSDOS_COMPILER
+	/*
+	 * Working directory is global on MSDOS.
+	 * The child might change the working directory, so we
+	 * must save and restore CWD across calls to "system",
+	 * or else we won't find our file when we return and
+	 * try to "reedit_ifile" it.
+	 */
+	getcwd(cwd, FILENAME_MAX);
+#endif
+
+d82 1
+a82 1
+	save_ifile = save_curr_ifile();
+a90 3
+#if MSDOS_COMPILER==WIN32C
+	close_getchr();
+#endif
+a96 1
+#if HAVE_DUP
+d104 1
+a104 6
+#if OS2
+	/* The __open() system call translates "/dev/tty" to "con". */
+	if (__open("/dev/tty", OPEN_READ) < 0)
+#else
+	if (open("/dev/tty", OPEN_READ) < 0)
+#endif
+a105 1
+#endif
+d115 1
+a115 1
+	if ((shell = lgetenv("SHELL")) != NULL && *shell != '\0')
+d121 3
+a123 9
+			char *esccmd = shell_quote(cmd);
+			if (esccmd != NULL)
+			{
+				size_t len = strlen(shell) + strlen(esccmd) + 5;
+				p = (char *) ecalloc(len, sizeof(char));
+				snprintf(p, len, "%s %s %s", shell,
+				    shell_coption(), esccmd);
+				free(esccmd);
+			}
+d133 1
+d137 4
+a140 13
+#if MSDOS_COMPILER==DJGPPC
+	/*
+	 * Make stdin of the child be in cooked mode.
+	 */
+	setmode(0, O_TEXT);
+	/*
+	 * We don't need to catch signals of the child (it
+	 * also makes trouble with some DPMI servers).
+	 */
+	__djgpp_exception_toggle();
+  	system(cmd);
+	__djgpp_exception_toggle();
+#else
+a142 1
+#endif
+a143 1
+#if HAVE_DUP
+a149 1
+#endif
+a150 3
+#if MSDOS_COMPILER==WIN32C
+	open_getchr();
+#endif
+a152 8
+	if (donemsg != NULL)
+	{
+		putstr(donemsg);
+		putstr("  (press RETURN)");
+		get_return();
+		putchr('\n');
+		flush();
+	}
+a155 21
+#if MSDOS_COMPILER
+	/*
+	 * Restore the previous directory (possibly
+	 * changed by the child program we just ran).
+	 */
+	chdir(cwd);
+#if MSDOS_COMPILER != DJGPPC
+	/*
+	 * Some versions of chdir() don't change to the drive
+	 * which is part of CWD.  (DJGPP does this in chdir.)
+	 */
+	if (cwd[1] == ':')
+	{
+		if (cwd[0] >= 'a' && cwd[0] <= 'z')
+			setdisk(cwd[0] - 'a');
+		else if (cwd[0] >= 'A' && cwd[0] <= 'Z')
+			setdisk(cwd[0] - 'A');
+	}
+#endif
+#endif
+
+d159 2
+a160 1
+	reedit_ifile(save_ifile);
+d182 4
+a185 6
+ * If the mark is after the current screen, the section between
+ * the top line displayed and the mark is piped.
+ * If the mark is before the current screen, the section between
+ * the mark and the bottom line displayed is piped.
+ * If the mark is on the current screen, or if the mark is ".",
+ * the whole current screen is piped.
+d210 1
+a210 1
+ 		return (pipe_data(cmd, mpos, bpos));
+d227 2
+a228 2
+	register FILE *f;
+	register int c;
+a256 3
+#if MSDOS_COMPILER==WIN32C
+	close_getchr();
+#endif
+d258 1
+a258 1
+	LSIGNAL(SIGPIPE, SIG_IGN);
+d289 1
+a289 4
+	LSIGNAL(SIGPIPE, SIG_DFL);
+#endif
+#if MSDOS_COMPILER==WIN32C
+	open_getchr();
+a302 140
+
+#ifdef _OSK
+/*
+ *    Popen, and Pclose, for OS-9.
+ *
+ *    Based on code copyright (c) 1988 by Wolfgang Ocker, Puchheim,
+ *                                        Ulli Dessauer, Germering and
+ *                                        Reimer Mellin, Muenchen
+ *                                        (W-Germany)
+ *
+ *    These functions can be copied and distributed freely for any
+ *    non-commercial purposes.  It can only be incorporated into
+ *    commercial software with the written permission of the authors.
+ *
+ *    TOP-specific code stripped out and adapted for less by M.Gregorie, 1996
+ *
+ *    address:    Wolfgang Ocker
+ *                Lochhauserstrasse 35a
+ *                D-8039 Puchheim
+ *                West Germany
+ *
+ *    e-mail:     weo@@altger.UUCP, ud@@altger.UUCP, ram@@altger.UUCP
+ *                pyramid!tmpmbx!recco!weo
+ *                pyramid!tmpmbx!nitmar!ud
+ *                pyramid!tmpmbx!ramsys!ram
+ *
+ *                Martin Gregorie
+ *                10 Sadlers Mead
+ *                Harlow
+ *                Essex, CM18 6HG
+ *                U.K.
+ *
+ *                gregorie@@logica.com
+ */
+#include <strings.h>
+#include <errno.h>
+extern char **environ;
+extern char *getenv();
+extern int  os9forkc();
+static int pids[_NFILE] = { 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0 };
+/* 
+ * p o p e n
+ */
+FILE *popen(name, mode)
+	char *name;
+	char *mode;
+{
+    int          fd, fd2, fdsav, pid;
+    static char  *argv[] = {NULL, NULL, NULL };
+    static char  cmd[200];
+    static char  cmd_path[200];
+    char         *cp;
+    char         *shell;
+    FILE         *r;
+    if ((shell = getenv("SHELL")) == NULL)
+        return(NULL);
+    cp = name;
+    while (*cp == ' ')
+        cp++;
+    strlcpy(cmd_path, cp, sizeof(cmd_path));
+    if (cp = index(cmd_path, ' '))
+        *cp++ = '\0';
+    strlcpy(cmd, "ex ", sizeof(cmd));
+    strlcat(cmd, cmd_path, sizeof(cmd));
+    if (cp)
+    {
+        strlcat(cmd, " ", sizeof(cmd));
+        strlcat(cmd, cp, sizeof(cmd));
+    }
+    argv[0] = shell;
+    argv[1] = cmd;
+    /*
+         mode is "r" (stdout) or "w" (stdin)
+    */
+    switch(mode[0])
+    {
+        case 'w':   fd = 0;
+                    break;
+        case 'r':   fd = 1;
+                    break;
+        default:    return(NULL);
+    }
+    if (fd == 1)
+        fflush(stdout);
+    fdsav = dup(fd);
+    close(fd);
+ 
+    creat("/pipe", S_IWRITE+S_IREAD);
+    pid = os9exec(os9forkc, argv[0], argv, environ, 0, 0, 3);
+    fd2 = dup(fd);
+    close(fd);
+    dup(fdsav);
+    close(fdsav);
+    if (pid > 0)
+    {
+        pids[fd2] = pid;
+        r = fdopen(fd2, mode);
+    }
+    else
+    {
+        close(fd2);
+        r = NULL;
+    }
+    return(r);
+}
+
+/*
+ * p c l o s e
+ */
+int pclose(fp)
+	FILE *fp;
+{
+    unsigned int    status;
+    int             pid;
+    int             fd,
+                    i;
+    fd = fileno(fp);
+    if (pids[fd] == 0)
+        return(-1);
+    fflush(fp);
+    fclose(fp);
+    while ((pid = wait(&status)) != -1)
+        if (pid == pids[fd])
+            break;
+        else
+            for (i = 0; i < _NFILE; i++)
+                if (pids[i] == pid)
+                {
+                    pids[i] = 0;
+                    break;
+                }
+    if (pid == -1)
+        status = -1;
+    pids[fd] = 0;
+    return(status);
+}
+#endif /* _OSK */
+@
+
+

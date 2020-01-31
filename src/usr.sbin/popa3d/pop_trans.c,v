@@ -1,0 +1,456 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.55.49;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.55.49;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.21.19.26.47;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/* $OpenBSD: pop_trans.c,v 1.3 2002/09/06 19:17:52 deraadt Exp $ */
+
+/*
+ * TRANSACTION state handling.
+ */
+
+#include <sys/types.h>
+#include <stdio.h>
+#include <syslog.h>
+
+#include "params.h"
+#include "protocol.h"
+#include "database.h"
+#include "mailbox.h"
+
+static int pop_trans_quit(char *params)
+{
+	if (params) return POP_ERROR;
+	return POP_STATE;
+}
+
+static int pop_trans_noop(char *params)
+{
+	if (params) return POP_ERROR;
+	return POP_OK;
+}
+
+static int pop_trans_stat(char *params)
+{
+	if (params) return POP_ERROR;
+	if (pop_reply("+OK %d %ld", db.visible_count, db.visible_size))
+		return POP_CRASH_NETFAIL;
+	return POP_QUIET;
+}
+
+static int pop_trans_list_or_uidl(char *params, int uidl)
+{
+	int number;
+	struct db_message *msg;
+
+	if (params) {
+		number = pop_get_int(&params);
+		if (number < 1 || number > db.total_count || params)
+			return POP_ERROR;
+		msg = db.array[number - 1];
+		if (msg->flags & MSG_DELETED) return POP_ERROR;
+		if (uidl) {
+			if (pop_reply("+OK %d "
+			    "%02x%02x%02x%02x%02x%02x%02x%02x",
+			    number,
+			    msg->hash[3], msg->hash[2],
+			    msg->hash[1], msg->hash[0],
+			    msg->hash[7], msg->hash[6],
+			    msg->hash[5], msg->hash[4]))
+				return POP_CRASH_NETFAIL;
+		} else
+			if (pop_reply("+OK %d %ld", number, msg->size))
+				return POP_CRASH_NETFAIL;
+		return POP_QUIET;
+	}
+
+	if (pop_reply_ok()) return POP_CRASH_NETFAIL;
+	for (number = 1; number <= db.total_count; number++) {
+		msg = db.array[number - 1];
+		if (msg->flags & MSG_DELETED) continue;
+		if (uidl) {
+			if (pop_reply("%d "
+			    "%02x%02x%02x%02x%02x%02x%02x%02x",
+			    number,
+			    msg->hash[3], msg->hash[2],
+			    msg->hash[1], msg->hash[0],
+			    msg->hash[7], msg->hash[6],
+			    msg->hash[5], msg->hash[4]))
+				return POP_CRASH_NETFAIL;
+		} else
+			if (pop_reply("%d %ld", number, msg->size))
+				return POP_CRASH_NETFAIL;
+	}
+	if (pop_reply_terminate()) return POP_CRASH_NETFAIL;
+
+	return POP_QUIET;
+}
+
+static int pop_trans_list(char *params)
+{
+	return pop_trans_list_or_uidl(params, 0);
+}
+
+static int pop_trans_uidl(char *params)
+{
+	return pop_trans_list_or_uidl(params, 1);
+}
+
+static int pop_trans_retr(char *params)
+{
+	int number;
+	struct db_message *msg;
+	int event;
+
+	number = pop_get_int(&params);
+	if (number < 1 || number > db.total_count || params) return POP_ERROR;
+	msg = db.array[number - 1];
+	if (msg->flags & MSG_DELETED) return POP_ERROR;
+	if ((event = mailbox_get(msg, -1)) != POP_OK) return event;
+#if POP_SUPPORT_LAST
+	if (number > db.last) db.last = number;
+#endif
+	return POP_QUIET;
+}
+
+static int pop_trans_top(char *params)
+{
+	int number, lines;
+	struct db_message *msg;
+	int event;
+
+	number = pop_get_int(&params);
+	if (number < 1 || number > db.total_count) return POP_ERROR;
+	lines = pop_get_int(&params);
+	if (lines < 0 || params) return POP_ERROR;
+	msg = db.array[number - 1];
+	if (msg->flags & MSG_DELETED) return POP_ERROR;
+	if ((event = mailbox_get(msg, lines)) != POP_OK) return event;
+	return POP_QUIET;
+}
+
+static int pop_trans_dele(char *params)
+{
+	int number;
+	struct db_message *msg;
+
+	number = pop_get_int(&params);
+	if (number < 1 || number > db.total_count || params) return POP_ERROR;
+	msg = db.array[number - 1];
+	if (db_delete(msg)) return POP_ERROR;
+#if POP_SUPPORT_LAST
+	if (number > db.last) db.last = number;
+#endif
+	return POP_OK;
+}
+
+static int pop_trans_rset(char *params)
+{
+	struct db_message *msg;
+
+	if (params) return POP_ERROR;
+
+	if ((msg = db.head))
+	do {
+		msg->flags &= ~MSG_DELETED;
+	} while ((msg = msg->next));
+
+	db.visible_count = db.total_count;
+	db.visible_size = db.total_size;
+	db.flags &= ~DB_DIRTY;
+#if POP_SUPPORT_LAST
+	db.last = 0;
+#endif
+
+	return POP_OK;
+}
+
+#if POP_SUPPORT_LAST
+static int pop_trans_last(char *params)
+{
+	if (params) return POP_ERROR;
+	if (pop_reply("+OK %d", db.last)) return POP_CRASH_NETFAIL;
+	return POP_QUIET;
+}
+#endif
+
+static struct pop_command pop_trans_commands[] = {
+	{"QUIT", pop_trans_quit},
+	{"NOOP", pop_trans_noop},
+	{"STAT", pop_trans_stat},
+	{"LIST", pop_trans_list},
+	{"UIDL", pop_trans_uidl},
+	{"RETR", pop_trans_retr},
+	{"TOP", pop_trans_top},
+	{"DELE", pop_trans_dele},
+	{"RSET", pop_trans_rset},
+#if POP_SUPPORT_LAST
+	{"LAST", pop_trans_last},
+#endif
+	{NULL}
+};
+
+static int db_load(char *spool, char *mailbox)
+{
+	db_init();
+
+	if (mailbox_open(spool, mailbox)) return 1;
+
+	if (db_fix()) {
+		mailbox_close();
+		return 1;
+	}
+
+	return 0;
+}
+
+int do_pop_trans(char *spool, char *mailbox)
+{
+	int result;
+
+	if (!pop_sane()) return 1;
+
+	if (db_load(spool, mailbox)) {
+		syslog(SYSLOG_PRI_HI,
+			"Failed or refused to load %s/%s",
+			spool, mailbox);
+		pop_reply_error();
+		return 0;
+	}
+
+	syslog(SYSLOG_PRI_LO, "%d message%s (%ld byte%s) loaded",
+		db.total_count, db.total_count == 1 ? "" : "s",
+		db.total_size, db.total_size == 1 ? "" : "s");
+
+	if (pop_reply_ok())
+		result = POP_CRASH_NETFAIL;
+	else
+	switch ((result = pop_handle_state(pop_trans_commands))) {
+	case POP_STATE:
+		if (mailbox_update()) {
+			if (db.flags & DB_STALE) break;
+			syslog(SYSLOG_PRI_ERROR,
+				"Failed to update %s/%s",
+				spool, mailbox);
+			pop_reply_error();
+			break;
+		}
+
+		syslog(SYSLOG_PRI_LO, "%d (%ld) deleted, %d (%ld) left",
+			db.total_count - db.visible_count,
+			db.total_size - db.visible_size,
+			db.visible_count,
+			db.visible_size);
+		pop_reply_ok();
+		break;
+
+	case POP_CRASH_NETFAIL:
+		syslog(SYSLOG_PRI_LO, "Premature disconnect");
+		break;
+
+	case POP_CRASH_NETTIME:
+		syslog(SYSLOG_PRI_LO, "Connection timed out");
+	}
+
+	if (db.flags & DB_STALE)
+		syslog(SYSLOG_PRI_LO, "Another MUA active, giving up");
+	else
+	if (result == POP_CRASH_SERVER)
+		syslog(SYSLOG_PRI_ERROR,
+			"Server failure accessing %s/%s",
+			spool, mailbox);
+
+	mailbox_close();
+
+	return 0;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync MirBSD main source tree against OpenBSD-current,
+which should be fairly stable after the Hackathon now.
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: pop_trans.c,v 1.4 2003/05/12 19:28:22 camield Exp $ */
+d7 1
+d31 1
+a31 1
+	if (pop_reply("+OK %u %lu", db.visible_count, db.visible_size))
+d36 1
+a36 1
+static int pop_trans_list_or_uidl_all(int uidl)
+d38 1
+a38 1
+	unsigned int number;
+d41 21
+d67 1
+a67 1
+			if (pop_reply("%u "
+d76 1
+a76 1
+			if (pop_reply("%u %lu", number, msg->size))
+a79 2
+	return POP_QUIET;
+}
+a80 25
+static int pop_trans_list_or_uidl(char *params, int uidl)
+{
+	int number;
+	struct db_message *msg;
+
+	if (!params)
+		return pop_trans_list_or_uidl_all(uidl);
+
+	number = pop_get_int(&params);
+	if (number < 1 || number > db.total_count || params)
+		return POP_ERROR;
+	msg = db.array[number - 1];
+	if (msg->flags & MSG_DELETED) return POP_ERROR;
+	if (uidl) {
+		if (pop_reply("+OK %d "
+		    "%02x%02x%02x%02x%02x%02x%02x%02x",
+		    number,
+		    msg->hash[3], msg->hash[2],
+		    msg->hash[1], msg->hash[0],
+		    msg->hash[7], msg->hash[6],
+		    msg->hash[5], msg->hash[4]))
+			return POP_CRASH_NETFAIL;
+	} else
+		if (pop_reply("+OK %d %lu", number, msg->size))
+			return POP_CRASH_NETFAIL;
+d167 1
+a167 1
+	if (pop_reply("+OK %u", db.last)) return POP_CRASH_NETFAIL;
+d185 1
+a185 1
+	{NULL, NULL}
+d204 1
+a204 1
+	int event;
+d216 1
+a216 1
+	syslog(SYSLOG_PRI_LO, "%u message%s (%lu byte%s) loaded",
+d221 1
+a221 1
+		event = POP_CRASH_NETFAIL;
+d223 1
+a223 1
+	switch ((event = pop_handle_state(pop_trans_commands))) {
+d234 1
+a234 1
+		syslog(SYSLOG_PRI_LO, "%u (%lu) deleted, %u (%lu) left",
+d253 1
+a253 1
+	if (event == POP_CRASH_SERVER)
+@
+

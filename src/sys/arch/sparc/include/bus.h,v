@@ -1,0 +1,696 @@
+head	1.5;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.4
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.2
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_SPARC:1.3.0.2
+	MIRBSD_7quater:1.2.2.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.2.2.1.0.4
+	MIRBSD_7:1.2.2.1.0.2
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.2.2.1
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.5
+date	2004.11.13.02.25.36;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.07.15.19.31.56;	author tg;	state dead;
+branches;
+next	1.3;
+
+1.3
+date	2003.12.17.18.30.26;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.06.29.19.50.46;	author tg;	state dead;
+branches
+	1.2.2.1;
+next	1.1;
+
+1.1
+date	2003.06.29.17.30.58;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.06.29.17.30.58;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.07.09.16.43.54;	author tg;	state Exp;
+branches;
+next	;
+
+1.2.2.1
+date	2003.10.23.21.33.19;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@welcome back, sparc
+(usr.bin/pmdb was never deleted)
+@
+text
+@/*	$OpenBSD: bus.h,v 1.5 2003/07/08 20:29:36 mickey Exp $	*/
+/*
+ * Copyright (c) 2003, Miodrag Vallat.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * ``No-nonsense'' sparc bus_space implementation.
+ *
+ * This is a stripped down bus_space implementation for sparc, providing
+ * simple enough functions, suitable for inlining.
+ * To achieve this goal, it relies upon the following assumptions:
+ * - everything is memory-mapped. Hence, tags are basically not used,
+ *   and most operation are just simple pointer arithmetic with the handle.
+ * - interrupt functions are not implemented; callers will provide their
+ *   own wrappers on a need-to-do basis.
+ */
+
+#ifndef	_SPARC_BUS_H_
+#define	_SPARC_BUS_H_
+
+#include <machine/types.h>
+#include <machine/autoconf.h>
+
+#include <uvm/uvm_extern.h>
+
+#include <machine/pmap.h>
+
+typedef	u_int32_t	bus_space_handle_t;
+
+/*
+ * bus_space_tag_t are pointer to *modified* rom_reg structures.
+ * rr_iospace is used to also carry bus endianness information.
+ */
+typedef	struct rom_reg 	*bus_space_tag_t;
+
+#define	TAG_LITTLE_ENDIAN		0x80000000
+
+#define	SET_TAG_BIG_ENDIAN(t)		((t))->rr_iospace &= ~TAG_LITTLE_ENDIAN
+#define	SET_TAG_LITTLE_ENDIAN(t)	((t))->rr_iospace |= TAG_LITTLE_ENDIAN
+
+#define	IS_TAG_LITTLE_ENDIAN(t)		((t)->rr_iospace & TAG_LITTLE_ENDIAN)
+
+typedef	u_int32_t	bus_addr_t;
+typedef	u_int32_t	bus_size_t;
+
+/* 
+ * General bus_space function set
+ */
+
+static int bus_space_map(bus_space_tag_t, bus_addr_t, bus_size_t, int,
+    bus_space_handle_t *);
+static int bus_space_unmap(bus_space_tag_t, bus_space_handle_t,
+    bus_size_t);
+
+#define	BUS_SPACE_BARRIER_READ	0
+#define	BUS_SPACE_BARRIER_WRITE	1
+
+static void bus_space_barrier(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, bus_size_t, int);
+
+static void* bus_space_vaddr(bus_space_tag_t, bus_space_handle_t);
+static int bus_space_subregion(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, bus_size_t, bus_space_handle_t *);
+
+static __inline__ int
+bus_space_map(bus_space_tag_t tag, bus_addr_t addr, bus_size_t size, int flags,
+    bus_space_handle_t *handle)
+{
+	if ((*handle = (bus_space_handle_t)mapiodev(tag,
+	    addr, size)) != NULL)
+		return (0);
+
+	return (ENOMEM);
+}
+
+static __inline__ int
+bus_space_unmap(bus_space_tag_t tag, bus_space_handle_t handle, bus_size_t size)
+{
+	/*
+	 * The mapiodev() call eventually ended up as a set of pmap_kenter_pa()
+	 * calls. Although the iospace va will not be reclaimed, at least
+	 * relinquish the wiring.
+	 */
+	pmap_kremove((vaddr_t)handle, size);
+	pmap_update(pmap_kernel());
+	return (0);
+}
+
+static __inline__ void
+bus_space_barrier(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, bus_size_t size, int flags)
+{
+	/* no membar is necessary for sparc so far */
+}
+
+static __inline__ void *
+bus_space_vaddr(bus_space_tag_t tag, bus_space_handle_t handle)
+{
+	u_int32_t iospace = tag->rr_iospace;
+	void *rc;
+
+	tag->rr_iospace &= ~TAG_LITTLE_ENDIAN;
+	rc = (void *)(REG2PHYS(tag, 0) | PMAP_NC);
+	tag->rr_iospace = iospace;
+	return (rc);
+}
+
+static __inline__ int
+bus_space_subregion(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, bus_size_t size, bus_space_handle_t *newh)
+{
+	*newh = handle + offset;
+	return (0);
+}
+
+/*
+ * Read/Write/Region functions
+ * Most of these are straightforward and assume that everything is properly
+ * aligned.
+ */
+
+#define	bus_space_read_1(tag, handle, offset) \
+	((void)(tag), *(volatile u_int8_t *)((handle) + (offset)))
+#define	__bus_space_read_2(tag, handle, offset) \
+	*(volatile u_int16_t *)((handle) + (offset))
+#define	__bus_space_read_4(tag, handle, offset) \
+	*(volatile u_int32_t *)((handle) + (offset))
+#define	bus_space_read_2(tag, handle, offset) \
+	((IS_TAG_LITTLE_ENDIAN(tag)) ? \
+		letoh16(__bus_space_read_2(tag, handle, offset)) : \
+		__bus_space_read_2(tag, handle, offset))
+#define	bus_space_read_4(tag, handle, offset) \
+	((IS_TAG_LITTLE_ENDIAN(tag)) ? \
+		letoh32(__bus_space_read_4(tag, handle, offset)) : \
+		__bus_space_read_4(tag, handle, offset))
+
+static void bus_space_read_multi_1(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_read_multi_1(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t count)
+{
+	while ((int)--count >= 0)
+		*dest++ = bus_space_read_1(tag, handle, offset);
+}
+
+static void bus_space_read_multi_2(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int16_t *, size_t);
+
+static __inline__ void
+bus_space_read_multi_2(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int16_t *dest, size_t count)
+{
+	while ((int)--count >= 0)
+		*dest++ = bus_space_read_2(tag, handle, offset);
+}
+
+static void bus_space_read_multi_4(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int32_t *, size_t);
+
+static __inline__ void
+bus_space_read_multi_4(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int32_t *dest, size_t count)
+{
+	while ((int)--count >= 0)
+		*dest++ = bus_space_read_4(tag, handle, offset);
+}
+
+static void bus_space_read_raw_multi_2(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_read_raw_multi_2(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t size)
+{
+	size >>= 1;
+	while ((int)--size >= 0) {
+		*(u_int16_t *)dest =
+		    __bus_space_read_2(tag, handle, offset);
+		dest += 2;
+	}
+}
+
+static void bus_space_read_raw_multi_4(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_read_raw_multi_4(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t size)
+{
+	size >>= 2;
+	while ((int)--size >= 0) {
+		*(u_int32_t *)dest =
+		    __bus_space_read_4(tag, handle, offset);
+		dest += 4;
+	}
+}
+
+#define	bus_space_write_1(tag, handle, offset, value) \
+	((void)(tag), *(volatile u_int8_t *)((handle) + (offset)) = (value))
+#define	__bus_space_write_2(tag, handle, offset, value) \
+	*(volatile u_int16_t *)((handle) + (offset)) = (value)
+#define	__bus_space_write_4(tag, handle, offset, value) \
+	*(volatile u_int32_t *)((handle) + (offset)) = (value)
+#define	bus_space_write_2(tag, handle, offset, value) \
+	__bus_space_write_2(tag, handle, offset, \
+	    (IS_TAG_LITTLE_ENDIAN(tag)) ? htole16(value) : (value))
+#define	bus_space_write_4(tag, handle, offset, value) \
+	__bus_space_write_4(tag, handle, offset, \
+	    (IS_TAG_LITTLE_ENDIAN(tag)) ? htole32(value) : (value))
+
+static void bus_space_write_multi_1(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_write_multi_1(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t count)
+{
+	while ((int)--count >= 0)
+		bus_space_write_1(tag, handle, offset, *dest++);
+}
+
+static void bus_space_write_multi_2(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int16_t *, size_t);
+
+static __inline__ void
+bus_space_write_multi_2(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int16_t *dest, size_t count)
+{
+	while ((int)--count >= 0)
+		bus_space_write_2(tag, handle, offset, *dest++);
+}
+
+static void bus_space_write_multi_4(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int32_t *, size_t);
+
+static __inline__ void
+bus_space_write_multi_4(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int32_t *dest, size_t count)
+{
+	while ((int)--count >= 0)
+		bus_space_write_4(tag, handle, offset, *dest);
+}
+
+static void bus_space_write_raw_multi_2(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_write_raw_multi_2(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t size)
+{
+	size >>= 1;
+	while ((int)--size >= 0) {
+		__bus_space_write_2(tag, handle, offset,
+		    *(u_int16_t *)dest);
+		dest += 2;
+	}
+}
+
+static void bus_space_write_raw_multi_4(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_write_raw_multi_4(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t size)
+{
+	size >>= 2;
+	while ((int)--size >= 0) {
+		__bus_space_write_4(tag, handle, offset,
+		    *(u_int32_t *)dest);
+		dest += 4;
+	}
+}
+
+static void bus_space_set_multi_1(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t, size_t);
+
+static __inline__ void
+bus_space_set_multi_1(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t value, size_t count)
+{
+	while ((int)--count >= 0)
+		bus_space_write_1(tag, handle, offset, value);
+}
+
+static void bus_space_set_multi_2(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int16_t, size_t);
+
+static __inline__ void
+bus_space_set_multi_2(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int16_t value, size_t count)
+{
+	while ((int)--count >= 0)
+		bus_space_write_2(tag, handle, offset, value);
+}
+
+static void bus_space_set_multi_4(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int32_t, size_t);
+
+static __inline__ void
+bus_space_set_multi_4(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int32_t value, size_t count)
+{
+	while ((int)--count >= 0)
+		bus_space_write_4(tag, handle, offset, value);
+}
+
+static void bus_space_write_region_1(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_write_region_1(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t count)
+{
+	while ((int)--count >= 0)
+		bus_space_write_1(tag, handle, offset++, *dest++);
+}
+
+static void bus_space_write_region_2(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int16_t *, size_t);
+
+static __inline__ void
+bus_space_write_region_2(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int16_t *dest, size_t count)
+{
+	while ((int)--count >= 0) {
+		bus_space_write_2(tag, handle, offset, *dest++);
+		offset += 2;
+	}
+}
+
+static void bus_space_write_region_4(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int32_t *, size_t);
+
+static __inline__ void
+bus_space_write_region_4(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int32_t *dest, size_t count)
+{
+	while ((int)--count >= 0) {
+		bus_space_write_4(tag, handle, offset, *dest++);
+		offset +=4;
+	}
+}
+
+static void bus_space_write_raw_region_2(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_write_raw_region_2(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t size)
+{
+	size >>= 1;
+	while ((int)--size >= 0) {
+		__bus_space_write_2(tag, handle, offset, *(u_int16_t *)dest);
+		offset += 2;
+		dest += 2;
+	}
+}
+
+static void bus_space_write_raw_region_4(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_write_raw_region_4(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t size)
+{
+	size >>= 2;
+	while ((int)--size >= 0) {
+		__bus_space_write_4(tag, handle, offset, *(u_int32_t *)dest);
+		offset += 4;
+		dest += 4;
+	}
+}
+
+static void bus_space_read_region_1(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_read_region_1(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t count)
+{
+	while ((int)--count >= 0)
+		*dest++ = bus_space_read_1(tag, handle, offset++);
+}
+
+static void bus_space_read_region_2(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int16_t *, size_t);
+
+static __inline__ void
+bus_space_read_region_2(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int16_t *dest, size_t count)
+{
+	while ((int)--count >= 0) {
+		*dest++ = bus_space_read_2(tag, handle, offset);
+		offset += 2;
+	}
+}
+
+static void bus_space_read_region_4(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int32_t *, size_t);
+
+static __inline__ void
+bus_space_read_region_4(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int32_t *dest, size_t count)
+{
+	while ((int)--count >= 0) {
+		*dest++ = bus_space_read_4(tag, handle, offset);
+		offset += 4;
+	}
+}
+
+static void bus_space_set_region_1(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t, size_t);
+
+static __inline__ void
+bus_space_set_region_1(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t value, size_t count)
+{
+	while ((int)--count >= 0)
+		bus_space_write_1(tag, handle, offset++, value);
+}
+
+static void bus_space_set_region_2(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int16_t, size_t);
+
+static __inline__ void
+bus_space_set_region_2(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int16_t value, size_t count)
+{
+	while ((int)--count >= 0) {
+		bus_space_write_2(tag, handle, offset, value);
+		offset += 2;
+	}
+}
+
+static void bus_space_set_region_4(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int32_t, size_t);
+
+static __inline__ void
+bus_space_set_region_4(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int32_t value, size_t count)
+{
+	while ((int)--count >= 0) {
+		bus_space_write_4(tag, handle, offset, value);
+		offset += 4;
+	}
+}
+
+static void bus_space_read_raw_region_2(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_read_raw_region_2(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t size)
+{
+	size >>= 1;
+	while ((int)--size >= 0) {
+		*(u_int16_t *)dest = __bus_space_read_2(tag, handle, offset);
+		offset += 2;
+		dest += 2;
+	}
+}
+
+static void bus_space_read_raw_region_4(bus_space_tag_t, bus_space_handle_t,
+    bus_addr_t, u_int8_t *, size_t);
+
+static __inline__ void
+bus_space_read_raw_region_4(bus_space_tag_t tag, bus_space_handle_t handle,
+    bus_addr_t offset, u_int8_t *dest, size_t size)
+{
+	size >>= 2;
+	while ((int)--size >= 0) {
+		*(u_int32_t *)dest = __bus_space_read_4(tag, handle, offset);
+		offset += 4;
+		dest += 4;
+	}
+}
+
+#endif	/* _SPARC_BUS_H_ */
+@
+
+
+1.4
+log
+@sparc has to die :(
+
+it was nice while it lasted, but I couldn't even live up to
+my promise to provide XFree86 4.4.0 on sparc due to lack of
+time (and money and health).
+
+also, compat_freebsd dies, without prejudice.
+
+<mirabile> benz: sparc darf sterben?
+<mirabile> compat_freebsd darf sterben?
+<benz> na gut
+
+in addition, some set shuffling (it was a good idea originally
+to pull out gcc3 specifics to the egcs set, but with gcc3 being
+the only compiler that isn't it any more)
+@
+text
+@@
+
+
+1.3
+log
+@second (piecewise) attempt to merge MirBSD #7ter into HEAD
+@
+text
+@@
+
+
+1.2
+log
+@merge the import
+amd (automount dæmon) bites the dust
+rewrite fake-NLS emulation, copyright to me
+foobar! fnord!
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bus.h,v 1.4 2003/06/25 17:39:00 miod Exp $	*/
+d75 4
+@
+
+
+1.2.2.1
+log
+@o move machine-dependent ATM and PLIP options out of mi space
+  in i386 GENERIC kernel
+o bring back in all of the sparc32 stuff I could find
+
+maintained by: wbx@@
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bus.h,v 1.5 2003/07/08 20:29:36 mickey Exp $	*/
+a74 4
+
+#define	BUS_SPACE_BARRIER_READ	0
+#define	BUS_SPACE_BARRIER_WRITE	1
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@the previous cvs import did not finish due to 'memory fault'
+sync with OpenBSD-cvs
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Bring the entire base system and ports tree in sync with OpenBSD
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bus.h,v 1.5 2003/07/08 20:29:36 mickey Exp $	*/
+a74 4
+
+#define	BUS_SPACE_BARRIER_READ	0
+#define	BUS_SPACE_BARRIER_WRITE	1
+
+@
+

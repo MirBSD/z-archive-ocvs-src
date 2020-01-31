@@ -1,0 +1,236 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	cvs-200410222320:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200309171845:1.1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	cvs-20030329-2200:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.44.33;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.33;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.09.17.18.47.48;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@divert(-1)changequote(<<, >>)<<
+-----------------------------------------------------------------------------
+
+                     FEATURE(domainmap) Macro
+                                       
+   The existing virtusertable feature distributed with sendmail is a good
+   basic approach to virtual hosting, but it is missing a few key
+   features:
+
+    1. Ability to have a different map for each domain.
+    2. Ability to perform virtual hosting for domains which are not in $=w.
+    3. Ability to use a centralized network-accessible database (such as
+       PH) which is keyed on username alone (as opposed to the
+       fully-qualified email address).
+
+   The FEATURE(domainmap) macro neatly solves these problems.
+   
+   The basic syntax of the macro is:
+        FEATURE(domainmap, `domain.com', `map definition ...')dnl
+
+   To illustrate how it works, here is an example:
+        FEATURE(domainmap, `foo.com', `dbm -o /etc/mail/foo-users')dnl
+
+   In this example, mail sent to user@@foo.com will be rewritten by the
+   domainmap. The username will be looked up in the DBM map
+   /etc/mail/foo-users, which looks like this:
+        jsmith  johnsmith@@mailbox.foo.com
+        jdoe    janedoe@@sandbox.bar.com
+
+   So mail sent to jsmith@@foo.com will be relayed to
+   johnsmith@@mailbox.foo.com, and mail sent to jdoe@@foo.com will be
+   relayed to janedoe@@sandbox.bar.com.
+   
+   The FEATURE(domainmap) Macro supports the user+detail syntax by
+   stripping off the +detail portion before the domainmap lookup and
+   tacking it back on to the result. Using the example above, mail sent
+   to jsmith+sometext@@foo.com will be rewritten as
+   johnsmith+sometext@@mailbox.foo.com.
+   
+   If one of the elements in the $=w class (i.e., "local" delivery hosts)
+   is a domain specified in a FEATURE(domainmap) entry, you need to use
+   the LOCAL_USER(username) macro to specify the list of users for whom
+   domainmap lookups should not be done.
+
+   To use this macro, simply copy this file into the cf/feature directory
+   in the sendmail source tree.  For more information, please see the
+   following URL:
+
+      http://www-dev.cso.uiuc.edu/sendmail/domainmap/
+
+   Feedback is welcome.
+
+                                             Mark D. Roth <roth@@uiuc.edu>
+
+-----------------------------------------------------------------------------
+>>changequote(`, ')undivert(-1)divert
+
+ifdef(`_DOMAIN_MAP_',`',`dnl
+LOCAL_RULE_0
+# do mapping for domains where applicable
+R$* $=O $* <@@ $={MappedDomain} .>	$@@ $>Recurse $1 $2 $3	Strip extraneous routing
+R$+ <@@ $={MappedDomain} .>		$>DomainMapLookup $1 <@@ $2 .>	domain mapping
+
+LOCAL_RULESETS
+###########################################################################
+###   Ruleset DomainMapLookup -- special rewriting for mapped domains   ###
+###########################################################################
+
+SDomainMapLookup
+R $=L <@@ $=w .>		$@@ $1 <@@ $2 .>		weed out local users, in case
+#						Cw contains a mapped domain
+R $+ <@@ $+>		$: $1 <@@ $2 > <$&{addr_type}>	check if sender
+R $+ <@@ $+> <e s>	$#smtp $@@ $2 $: $1 @@ $2		do not process sender
+ifdef(`DOMAINMAP_NO_REGEX',`dnl
+R $+ <@@ $+> <$*>	$: $1 <@@ $2> <$2>	find domain
+R $+ <$+> <$+ . $+>	$1 <$2> < $(dequote $3 "_" $4 $) >
+#						change "." to "_"
+R $+ <$+> <$+ .>	$: $1 <$2> < $(dequote "domain_" $3 $) >
+#						prepend "domain_"
+dnl',`dnl
+R $+ <@@ $+> <$*>	$: $1 <@@ $2> <$2 :NOTDONE:>	find domain
+R $+ <$+> <$+ . :NOTDONE:>	$1 <$2> < $(domainmap_regex $3 $: $3 $) >
+#						change "." and "-" to "_"
+R $+ <$+> <$+>		$: $1 <$2> < $(dequote "domain_" $3 $) >
+#						prepend "domain_"
+dnl')
+R $+ <$+> <$+>		$: $1 <$2> <$3> $1	find user name
+R $+ <$+> <$+> $+ + $*	$: $1 <$2> <$3> $4	handle user+detail syntax
+R $+ <$+> <$+> $+	$: $1 <$2> $( $3 $4 $: <ERROR> $)
+#						do actual domain map lookup
+R $+ <$+> <ERROR>	$#error $@@ 5.1.1 $: "550 email address lookup in domain map failed"
+R $+ <@@ $+> $* <TEMP> $*	$#dsmtp $@@ localhost $: $1 @@ $2
+#						queue it up for later delivery
+R $+ + $* <$+> $+ @@ $+		$: $1 + $2 <$3> $4 + $2 @@ $5
+#						reset original user+detail
+R $+ <$+> $+		$@@ $>Recurse $3		recanonify
+
+ifdef(`DOMAINMAP_NO_REGEX',`',`dnl
+LOCAL_CONFIG
+K domainmap_regex regex -a.:NOTDONE: -s1,2 -d_ (.*)[-\.]([^-\.]*)$
+')define(`_DOMAIN_MAP_',`1')')
+
+LOCAL_CONFIG
+C{MappedDomain} _ARG_
+K `domain_'translit(_ARG_, `.-', `__') _ARG2_ -T<TEMP>
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Fuck. Two times two upgrades to the same product in row.
+Man, can't you guys handle this more smoothly?
+
+Well, sendmail 8.12.10 or so, and OpenBSD-current.
+@
+text
+@d49 1
+a49 1
+      http://www-dev.cites.uiuc.edu/sendmail/domainmap/
+@
+

@@ -1,0 +1,384 @@
+head	1.1;
+access;
+symbols
+	MIRBSD_7_DEV:1.1.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.12.02.13.58.17;	author tg;	state dead;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2003.12.02.13.58.17;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.12.02.14.02.13;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2003.12.03.18.25.49;	author tg;	state Exp;
+branches;
+next	1.1.2.4;
+
+1.1.2.4
+date	2003.12.09.22.19.37;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@file conf.l was initially added on branch MIRBSD_7_DEV.
+@
+text
+@@
+
+
+1.1.2.1
+log
+@commit vexecctl on behalf of wbx@@ (minus y.tab.c)
+@
+text
+@a0 247
+%{
+/*
+ * $MirBSD$
+ * $Id: conf.l,v 1.1 2003/09/10 10:01:59 brian Exp $
+ *
+ * Vexecctl lexer.
+ *
+ */
+
+#include <sys/types.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <err.h>
+
+#include "y.tab.h"
+#include "my_stack.h"
+
+/*
+ * Max nesting depth. It's 16 both because it's a nice number
+ * and it's the age I first made my Stephanie own release. :)
+ */
+#define MAX_INCL_DEPTH	16
+
+/*
+ * Ghetto macro to do some recursive freeing of our file stack.
+ */
+#define filestack_free(s)					\
+		while (s) {					\
+			if (s->prev) {				\
+				s = s->prev;			\
+				if (s->next->name) {		\
+					free(s->next->name);	\
+					s->next->name = NULL;	\
+				}				\
+				free(s->next);			\
+				s->next = NULL;			\
+			} else {				\
+				if (s->name) {			\
+					free(s->name);		\
+					s->next->name = NULL;	\
+				}				\
+				free(s);			\
+				s = NULL;			\
+			}					\
+		}						\
+
+void yyerror(const char *);
+
+YY_BUFFER_STATE incl_stack[MAX_INCL_DEPTH];
+int incl_depth = 0;
+extern int verbose, no_mem;
+struct my_stack *filestack;
+%}
+
+INCLUDE		[Ii][Nn][Cc][Ll][Uu][Dd][Ee]
+STRING		[0-9a-zA-Z]+
+
+%s incl
+
+%%
+
+{INCLUDE}	{ BEGIN(incl); }
+
+<incl>{STRING}/([ \t]*\n) {
+			/*
+			 * Make sure we're not going too deep...
+			 * XXX: Should we skip the include and continue
+			 *      with the rest of the file, or error?
+			 */
+			if (incl_depth >= MAX_INCL_DEPTH) {
+				(void) fprintf(stderr, "ERROR: "
+				    "Nesting too deep: File %s "
+				    "included from %s.\n", yytext,
+				    (filestack ? filestack->name :
+				    "(unknown)"));
+
+				filestack_free(filestack);
+
+				exit(1);
+			}
+
+			/*
+			 * Save current lexer state.
+			 */
+			incl_stack[incl_depth++] = YY_CURRENT_BUFFER;
+
+			/*
+			 * Try to open the included file.
+			 */
+			yyin = fopen(yytext, "r");
+			if (!yyin) {
+				err(1, "Can't open %s", yytext);
+			}
+
+			/*
+			 * Let the user know, if verbose...
+			 */
+			if (verbose) {
+				(void) fprintf(stderr, "=> Including "
+				    "\"%s\"\n", yytext);
+			}
+
+			if (!no_mem && filestack) {
+				filestack->next = (struct my_stack *)
+				    malloc(sizeof(*(filestack->next)));
+				if (!(filestack->next)) {
+					warnx("WARNING: Memory shortage"
+					    " during runtime. Turning"
+					    " on verbose mode.");
+					filestack_free(filestack);
+					no_mem = 1;
+					verbose = 1;
+				} else {
+					filestack->next->prev = filestack;
+					filestack = filestack->next;
+					filestack->name = strdup(yytext);
+					if (!(filestack->name)) {
+						warnx("WARNING: Memory"
+						    " shortage during "
+						    "runtime. Turning "
+						    "on verbose mode.");
+						filestack_free(filestack);
+						no_mem = 1;
+						verbose = 1;
+					}
+
+					filestack->line = 1;
+				}
+			}
+
+			/*
+			 * Create a new lexer state buffer, and switch
+			 * to it.
+			 */
+			yy_switch_to_buffer(yy_create_buffer(yyin,
+			    YY_BUF_SIZE));
+
+			/*
+			 * Return to initial start condition, and
+			 * start parsing the new file.
+			 */
+			BEGIN(0);
+		}
+
+<incl>[ \t]+	;
+
+<incl>.		{
+			yyerror("Unexpected token in include statement");
+
+			/*
+			 * Eat up current line and continue parsing.
+			 * XXX: Make -c (checking mode) and only continue
+			 *      when checking the files, but when
+			 *      actually loading, error out?
+			 */
+			while (input() != '\n');
+
+			BEGIN(0);
+		}
+
+<<EOF>>		{
+			if (verbose) {
+				if (no_mem) {
+					(void) fprintf(stderr, "=> EOF\n");
+				} else {
+					(void) fprintf(stderr, "=> EOF"
+					    " from %s\n", filestack->name);
+				}
+			}
+
+			if (--incl_depth < 0) {
+				yyterminate();
+			} else {
+				if (!no_mem && filestack) {
+					filestack = filestack->prev;
+					free(filestack->next);
+				}
+
+				yy_delete_buffer(YY_CURRENT_BUFFER);
+				yy_switch_to_buffer(incl_stack[incl_depth]);
+			}
+		}
+
+	/* path */
+\/[^ \t]+	{
+			yylval.string = strdup(yytext);
+			return (PATH);
+		}
+
+	/* string (fingerprint, type, options) */
+{STRING} 	{
+			yylval.string = strdup(yytext);
+			if (!(yylval.string)) {
+				(void) fprintf(stderr, "WARNING: Out"
+				    " of memory during run-time! "
+				    "Attempting recover...\n");
+
+				/*
+				 * Sleep a little bit and let the
+				 * machine calm down. ;)
+				 */
+				usleep(600);
+
+				yylval.string = strdup(yytext);
+				if (!(yylval.string)) {
+					(void) fprintf(stderr, "ERROR:"
+					    " No memory. Aborting.\n");
+					exit(1);
+				}
+
+				(void) fprintf(stderr, "Recovered.\n");
+			}
+
+			return (STRING);
+		}
+
+
+	/* comments, white-outs */
+[ \t\r]		|
+#.*		;
+#.*\n		|
+^\n		{ (filestack->line)++; }
+
+	/* eol on a line with data. need a call to ioctl, return eol */
+\n		{
+			(filestack->line)++;
+			return (EOL);
+		}
+
+.		{ yyerror("Invalid character"); }
+
+%%
+
+int yywrap(void) {
+	return (1);
+}
+
+void yyerror(const char *string) {
+	if (!no_mem && filestack) {
+		(void) fprintf(stderr, "%s:%u: %s at \"%s\"\n",
+		    filestack->name, filestack->line, string, yytext);
+	} else {
+		(void) fprintf(stderr, "%s at \"%s\"\n", string, yytext);
+	}
+}
+@
+
+
+1.1.2.2
+log
+@* y.tab.c is a generated file
+* whitespace cleanup
+* remove $Id tags, because they are overwritten
+  by cvs anyways. The importer should either have
+  changed them to read $Stephanie$ or whatever
+  source they have been taken from, or changed the
+  first dollar sign to an underscore (for an example,
+  see /sys/arch/i386/conf/RAMDISK*).
+@
+text
+@d3 2
+a4 1
+ * $MirBSD: conf.l,v 1.1.2.1 2003/12/02 13:58:17 tg Exp $
+@
+
+
+1.1.2.3
+log
+@first round of
+ * licence
+ * white-space
+cleanup.
+@
+text
+@d3 1
+a3 1
+ * $MirBSD: conf.l,v 1.1.2.2 2003/12/02 14:02:13 tg Exp $
+d5 1
+a5 1
+ * Vexecctl lexer. Contributed by Brett Lymn <blymn@@baesystems.com.au> (licence to ask).
+@
+
+
+1.1.2.4
+log
+@Apparently the author permitted us to throw the same licence as
+the .c file onto the .l and .y files (wbx@@ correct me if I'm wrong).
+
+The licencing audit of vexec(ctl) is now done (I think), unless
+wbx@@ wants to add his own (c) for work he'd done.
+@
+text
+@d2 2
+a3 5
+/* $MirBSD$
+ *-
+ * Copyright (c) 1998-1999 Brett Lymn
+ *	<blymn@@baesystems.com.au> <blymn@@baea.com.au> <brett_lymn@@yahoo.com.au>
+ * All rights reserved.
+d5 1
+a5 1
+ * This code has been donated to The NetBSD Foundation by the Author.
+a6 23
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. The name of the author may not be used to endorse or promote products
+ *    derived from this software withough specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR "AS IS" AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *-
+ * Waldemar Brodkorb <miros@@thinknow.de>
+ * Stephanie for OpenBSD 3.4 / MirOS BSD
+ *
+ * Based on Brett Lymn's original code; contains enhancements.
+@
+
+

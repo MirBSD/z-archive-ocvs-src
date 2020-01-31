@@ -1,0 +1,1707 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2
+	tg-mergefixes-1-branch:1.2.0.4
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.2
+	MIROS_X_BASE:1.2
+	tg-mergetmp-3:1.2
+	cvs-200411261545:1.1.1.6
+	MIRBSD_XP_MIRPPC:1.1.1.5.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.5
+	MIRBSD_XP_SPARC:1.1.1.5.0.2
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.5
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.4
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.4
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.3
+	cvs-200306082100:1.1.1.3
+	ctm-3316:1.1.1.3
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.11.26.16.46.12;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.48.32;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.48.32;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.21.19.02.40;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.05.17.31.07;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.12.22.21.10.39;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2004.05.16.08.24.52;	author tg;	state Stab;
+branches;
+next	1.1.1.6;
+
+1.1.1.6
+date	2004.11.26.15.51.34;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@* merge
+* fix a time_t bug I apparently introduced,
+  which would show up in ~2038
+* fix some more time_t and bcopy stuff
+* fix all the Makefiles (bad ho@@!)
+* check for tests
+
+There's quite some discussion ongoing at license-discuss@@opensource.org
+recently, not only about licences. The D-FSL was submitted, and it's
+apparent that we can be liable for known bugs in our code too, depending
+on the mood of the judge. That's why I rather full-update this one.
+We're now en par with #7-stable again.
+@
+text
+@/* $MirBSD$ */
+/* $OpenBSD: util.c,v 1.48 2004/08/08 19:11:06 deraadt Exp $	 */
+/* $EOM: util.c,v 1.23 2000/11/23 12:22:08 niklas Exp $	 */
+
+/*
+ * Copyright (c) 1998, 1999, 2001 Niklas Hallqvist.  All rights reserved.
+ * Copyright (c) 2000, 2001, 2004 Håkan Olsson.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * This code was written under funding by Ericsson Radio Systems.
+ */
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <limits.h>
+#include <netdb.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <errno.h>
+
+#include "sysdep.h"
+
+#include "log.h"
+#include "message.h"
+#include "monitor.h"
+#include "sysdep.h"
+#include "transport.h"
+#include "util.h"
+
+/*
+ * Set if -N is given, allowing name lookups to be done, possibly stalling
+ * the daemon for quite a while.
+ */
+int	allow_name_lookups = 0;
+
+/*
+ * This is set to true in case of regression-test mode, when it will
+ * cause predictable random numbers be generated.
+ */
+int	regrand = 0;
+
+/*
+ * If in regression-test mode, this is the seed used.
+ */
+u_long	seed;
+
+/*
+ * XXX These might be turned into inlines or macros, maybe even
+ * machine-dependent ones, for performance reasons.
+ */
+u_int16_t
+decode_16(u_int8_t *cp)
+{
+	return cp[0] << 8 | cp[1];
+}
+
+u_int32_t
+decode_32(u_int8_t *cp)
+{
+	return cp[0] << 24 | cp[1] << 16 | cp[2] << 8 | cp[3];
+}
+
+u_int64_t
+decode_64(u_int8_t *cp)
+{
+	return (u_int64_t) cp[0] << 56 | (u_int64_t) cp[1] << 48 |
+	    (u_int64_t) cp[2] << 40 | (u_int64_t) cp[3] << 32 |
+	    cp[4] << 24 | cp[5] << 16 | cp[6] << 8 | cp[7];
+}
+
+#if 0
+/*
+ * XXX I severly doubt that we will need this.  IPv6 does not have the legacy
+ * of representation in host byte order, AFAIK.
+ */
+
+void
+decode_128(u_int8_t *cp, u_int8_t *cpp)
+{
+#if BYTE_ORDER == LITTLE_ENDIAN
+	int	i;
+
+	for (i = 0; i < 16; i++)
+		cpp[i] = cp[15 - i];
+#elif BYTE_ORDER == BIG_ENDIAN
+	memmove(cpp, cp, 16);
+#else
+#error "Byte order unknown!"
+#endif
+}
+#endif
+
+void
+encode_16(u_int8_t *cp, u_int16_t x)
+{
+	*cp++ = x >> 8;
+	*cp = x & 0xff;
+}
+
+void
+encode_32(u_int8_t *cp, u_int32_t x)
+{
+	*cp++ = x >> 24;
+	*cp++ = (x >> 16) & 0xff;
+	*cp++ = (x >> 8) & 0xff;
+	*cp = x & 0xff;
+}
+
+void
+encode_64(u_int8_t *cp, u_int64_t x)
+{
+	*cp++ = x >> 56;
+	*cp++ = (x >> 48) & 0xff;
+	*cp++ = (x >> 40) & 0xff;
+	*cp++ = (x >> 32) & 0xff;
+	*cp++ = (x >> 24) & 0xff;
+	*cp++ = (x >> 16) & 0xff;
+	*cp++ = (x >> 8) & 0xff;
+	*cp = x & 0xff;
+}
+
+#if 0
+/*
+ * XXX I severly doubt that we will need this.  IPv6 does not have the legacy
+ * of representation in host byte order, AFAIK.
+ */
+
+void
+encode_128(u_int8_t *cp, u_int8_t *cpp)
+{
+	decode_128(cpp, cp);
+}
+#endif
+
+/* Check a buffer for all zeroes.  */
+int
+zero_test(const u_int8_t *p, size_t sz)
+{
+	while (sz-- > 0)
+		if (*p++ != 0)
+			return 0;
+	return 1;
+}
+
+/* Check a buffer for all ones.  */
+int
+ones_test(const u_int8_t *p, size_t sz)
+{
+	while (sz-- > 0)
+		if (*p++ != 0xff)
+			return 0;
+	return 1;
+}
+
+/*
+ * Generate a random data, len bytes long.
+ */
+u_int8_t *
+getrandom(u_int8_t *buf, size_t len)
+{
+	u_int32_t	tmp = 0;
+	size_t		i;
+
+	for (i = 0; i < len; i++) {
+		if (i % sizeof tmp == 0)
+			tmp = sysdep_random();
+
+		buf[i] = tmp & 0xff;
+		tmp >>= 8;
+	}
+
+	return buf;
+}
+
+static __inline int
+hex2nibble(char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
+/*
+ * Convert hexadecimal string in S to raw binary buffer at BUF sized SZ
+ * bytes.  Return 0 if everything is OK, -1 otherwise.
+ */
+int
+hex2raw(char *s, u_int8_t *buf, size_t sz)
+{
+	u_int8_t *bp;
+	char	*p;
+	int	tmp;
+
+	if (strlen(s) > sz * 2)
+		return -1;
+	for (p = s + strlen(s) - 1, bp = &buf[sz - 1]; bp >= buf; bp--) {
+		*bp = 0;
+		if (p >= s) {
+			tmp = hex2nibble(*p--);
+			if (tmp == -1)
+				return -1;
+			*bp = tmp;
+		}
+		if (p >= s) {
+			tmp = hex2nibble(*p--);
+			if (tmp == -1)
+				return -1;
+			*bp |= tmp << 4;
+		}
+	}
+	return 0;
+}
+
+int
+text2sockaddr(char *address, char *port, struct sockaddr **sa)
+{
+	struct addrinfo *ai, hints;
+
+	memset(&hints, 0, sizeof hints);
+	if (!allow_name_lookups)
+		hints.ai_flags = AI_NUMERICHOST;
+	hints.ai_family = PF_UNSPEC;
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_protocol = IPPROTO_UDP;
+
+	if (getaddrinfo(address, port, &hints, &ai))
+		return -1;
+
+	*sa = malloc(sysdep_sa_len(ai->ai_addr));
+	if (!*sa) {
+		freeaddrinfo(ai);
+		return -1;
+	}
+
+	memcpy(*sa, ai->ai_addr, sysdep_sa_len(ai->ai_addr));
+	freeaddrinfo(ai);
+	return 0;
+}
+
+/*
+ * Convert a sockaddr to text. With zflag non-zero fill out with zeroes,
+ * i.e 10.0.0.10 --> "010.000.000.010"
+ */
+int
+sockaddr2text(struct sockaddr *sa, char **address, int zflag)
+{
+	char	buf[NI_MAXHOST], *token, *bstart, *ep;
+	int	addrlen, i, j;
+	long	val;
+
+	if (getnameinfo(sa, sysdep_sa_len(sa), buf, sizeof buf, 0, 0,
+			allow_name_lookups ? 0 : NI_NUMERICHOST))
+		return -1;
+
+	if (zflag == 0) {
+		*address = strdup(buf);
+		if (!*address)
+			return -1;
+	} else
+		switch (sa->sa_family) {
+		case AF_INET:
+			addrlen = sizeof "000.000.000.000";
+			*address = malloc(addrlen);
+			if (!*address)
+				return -1;
+			buf[addrlen] = '\0';
+			bstart = buf;
+			**address = '\0';
+			while ((token = strsep(&bstart, ".")) != NULL) {
+				if (strlen(*address) > 12) {
+					free(*address);
+					return -1;
+				}
+				val = strtol(token, &ep, 10);
+				if (ep == token || val < (long)0 ||
+				    val > (long)UCHAR_MAX) {
+					free(*address);
+					return -1;
+				}
+				snprintf(*address + strlen(*address),
+				    addrlen - strlen(*address), "%03ld", val);
+				if (bstart)
+					strlcat(*address, ".", addrlen);
+			}
+			break;
+
+		case AF_INET6:
+			/*
+			 * XXX In the algorithm below there are some magic
+			 * numbers we probably could give explaining names.
+			 */
+			addrlen =
+			    sizeof "0000:0000:0000:0000:0000:0000:0000:0000";
+			*address = malloc(addrlen);
+			if (!*address)
+				return -1;
+
+			for (i = 0, j = 0; i < 8; i++) {
+				snprintf((*address) + j, addrlen - j,
+				    "%02x%02x",
+				    ((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr[2*i],
+				    ((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr[2*i + 1]);
+				j += 4;
+				(*address)[j] =
+				    (j < (addrlen - 1)) ? ':' : '\0';
+				j++;
+			}
+			break;
+
+		default:
+			*address = strdup("<error>");
+			if (!*address)
+				return -1;
+		}
+
+	return 0;
+}
+
+/*
+ * sockaddr_addrlen and sockaddr_addrdata return the relevant sockaddr info
+ * depending on address family.  Useful to keep other code shorter(/clearer?).
+ */
+int
+sockaddr_addrlen(struct sockaddr *sa)
+{
+	switch (sa->sa_family) {
+	case AF_INET6:
+		return sizeof((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr;
+	case AF_INET:
+		return sizeof((struct sockaddr_in *)sa)->sin_addr.s_addr;
+	default:
+		log_print("sockaddr_addrlen: unsupported protocol family %d",
+		    sa->sa_family);
+		return 0;
+	}
+}
+
+u_int8_t *
+sockaddr_addrdata(struct sockaddr *sa)
+{
+	switch (sa->sa_family) {
+	case AF_INET6:
+		return (u_int8_t *)&((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr;
+	case AF_INET:
+		return (u_int8_t *)&((struct sockaddr_in *)sa)->sin_addr.s_addr;
+	default:
+		log_print("sockaddr_addrdata: unsupported protocol family %d",
+		    sa->sa_family);
+		return 0;
+	}
+}
+
+in_port_t
+sockaddr_port(struct sockaddr *sa)
+{
+	switch (sa->sa_family) {
+	case AF_INET6:
+		return ((struct sockaddr_in6 *)sa)->sin6_port;
+	case AF_INET:
+		return ((struct sockaddr_in *)sa)->sin_port;
+	default:
+		log_print("sockaddr_port: unsupported protocol family %d",
+		    sa->sa_family);
+		return 0;
+	}
+}
+
+/* Utility function used to set the port of a sockaddr.  */
+void
+sockaddr_set_port(struct sockaddr *sa, in_port_t port)
+{
+	switch (sa->sa_family) {
+	case AF_INET:
+		((struct sockaddr_in *)sa)->sin_port = htons (port);
+		break;
+
+	case AF_INET6:
+		((struct sockaddr_in6 *)sa)->sin6_port = htons (port);
+		break;
+	}
+}
+
+/*
+ * Convert network address to text. The network address does not need
+ * to be properly aligned.
+ */
+void
+util_ntoa(char **buf, int af, u_int8_t *addr)
+{
+	struct sockaddr_storage from;
+	struct sockaddr *sfrom = (struct sockaddr *) & from;
+	socklen_t	fromlen = sizeof from;
+
+	memset(&from, 0, fromlen);
+	sfrom->sa_family = af;
+#ifndef USE_OLD_SOCKADDR
+	switch (af) {
+	case AF_INET:
+		sfrom->sa_len = sizeof(struct sockaddr_in);
+		break;
+	case AF_INET6:
+		sfrom->sa_len = sizeof(struct sockaddr_in6);
+		break;
+	}
+#endif
+	memcpy(sockaddr_addrdata(sfrom), addr, sockaddr_addrlen(sfrom));
+
+	if (sockaddr2text(sfrom, buf, 0)) {
+		log_print("util_ntoa: could not make printable address out "
+		    "of sockaddr %p", sfrom);
+		*buf = 0;
+	}
+}
+
+/*
+ * Perform sanity check on files containing secret information.
+ * Returns -1 on failure, 0 otherwise.
+ * Also, if FILE_SIZE is a not a null pointer, store file size here.
+ */
+
+int
+check_file_secrecy_fd(int fd, char *name, size_t *file_size)
+{
+	struct stat st;
+
+	if (fstat(fd, &st) == -1) {
+		log_error("check_file_secrecy: stat (\"%s\") failed", name);
+		return -1;
+	}
+	if (st.st_uid != 0 && st.st_uid != getuid()) {
+		log_print("check_file_secrecy_fd: "
+		    "not loading %s - file owner is not process user", name);
+		errno = EPERM;
+		return -1;
+	}
+	if ((st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
+		log_print("check_file_secrecy_fd: not loading %s - too open "
+		    "permissions", name);
+		errno = EPERM;
+		return -1;
+	}
+	if (file_size)
+		*file_size = (size_t)st.st_size;
+
+	return 0;
+}
+
+/* Special for compiling with Boehms GC. See Makefile and sysdep.h  */
+#if defined (USE_BOEHM_GC)
+char *
+gc_strdup(const char *x)
+{
+	char *strcpy(char *,const char *);
+	char *y = malloc(strlen(x) + 1);
+	return strcpy(y,x);
+}
+#endif
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 3
+a3 2
+/*	$OpenBSD: util.c,v 1.32 2003/03/13 10:31:44 ho Exp $	*/
+/*	$EOM: util.c,v 1.23 2000/11/23 12:22:08 niklas Exp $	*/
+d7 1
+a7 1
+ * Copyright (c) 2000, 2001 Håkan Olsson.  All rights reserved.
+a16 5
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Ericsson Radio Systems.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+d50 1
+d59 1
+a59 1
+int allow_name_lookups = 0;
+d65 1
+a65 1
+int regrand = 0;
+d70 1
+a70 1
+unsigned long seed;
+d77 1
+a77 1
+decode_16 (u_int8_t *cp)
+d79 1
+a79 1
+  return cp[0] << 8 | cp[1];
+d83 1
+a83 1
+decode_32 (u_int8_t *cp)
+d85 1
+a85 1
+  return cp[0] << 24 | cp[1] << 16 | cp[2] << 8 | cp[3];
+d89 1
+a89 1
+decode_64 (u_int8_t *cp)
+d91 3
+a93 3
+  return (u_int64_t)cp[0] << 56 | (u_int64_t)cp[1] << 48
+    | (u_int64_t)cp[2] << 40 | (u_int64_t)cp[3] << 32
+    | cp[4] << 24 | cp[5] << 16 | cp[6] << 8 | cp[7];
+d103 1
+a103 1
+decode_128 (u_int8_t *cp, u_int8_t *cpp)
+d106 1
+a106 1
+  int i;
+d108 2
+a109 2
+  for (i = 0; i < 16; i++)
+    cpp[i] = cp[15 - i];
+d111 1
+a111 1
+  bcopy (cp, cpp, 16);
+d119 1
+a119 1
+encode_16 (u_int8_t *cp, u_int16_t x)
+d121 2
+a122 2
+  *cp++ = x >> 8;
+  *cp = x & 0xff;
+d126 1
+a126 1
+encode_32 (u_int8_t *cp, u_int32_t x)
+d128 4
+a131 4
+  *cp++ = x >> 24;
+  *cp++ = (x >> 16) & 0xff;
+  *cp++ = (x >> 8) & 0xff;
+  *cp = x & 0xff;
+d135 1
+a135 1
+encode_64 (u_int8_t *cp, u_int64_t x)
+d137 8
+a144 8
+  *cp++ = x >> 56;
+  *cp++ = (x >> 48) & 0xff;
+  *cp++ = (x >> 40) & 0xff;
+  *cp++ = (x >> 32) & 0xff;
+  *cp++ = (x >> 24) & 0xff;
+  *cp++ = (x >> 16) & 0xff;
+  *cp++ = (x >> 8) & 0xff;
+  *cp = x & 0xff;
+d154 1
+a154 1
+encode_128 (u_int8_t *cp, u_int8_t *cpp)
+d156 1
+a156 1
+  decode_128 (cpp, cp);
+d162 1
+a162 1
+zero_test (const u_int8_t *p, size_t sz)
+d164 4
+a167 4
+  while (sz-- > 0)
+    if (*p++ != 0)
+      return 0;
+  return 1;
+d172 1
+a172 1
+ones_test (const u_int8_t *p, size_t sz)
+d174 4
+a177 4
+  while (sz-- > 0)
+    if (*p++ != 0xff)
+      return 0;
+  return 1;
+d184 1
+a184 1
+getrandom (u_int8_t *buf, size_t len)
+d186 2
+a187 2
+  u_int32_t tmp = 0;
+  int i;
+d189 3
+a191 4
+  for (i = 0; i < len; i++)
+    {
+      if (i % sizeof tmp == 0)
+	tmp = sysdep_random ();
+d193 3
+a195 3
+      buf[i] = tmp & 0xff;
+      tmp >>= 8;
+    }
+d197 1
+a197 1
+  return buf;
+d201 1
+a201 1
+hex2nibble (char c)
+d203 7
+a209 7
+  if (c >= '0' && c <= '9')
+    return c - '0';
+  if (c >= 'a' && c <= 'f')
+    return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F')
+    return c - 'A' + 10;
+  return -1;
+d217 1
+a217 1
+hex2raw (char *s, u_int8_t *buf, size_t sz)
+d219 20
+a238 22
+  char *p;
+  u_int8_t *bp;
+  int tmp;
+
+  if (strlen (s) > sz * 2)
+    return -1;
+  for (p = s + strlen (s) - 1, bp = &buf[sz - 1]; bp >= buf; bp--)
+    {
+      *bp = 0;
+      if (p >= s)
+	{
+	  tmp = hex2nibble (*p--);
+	  if (tmp == -1)
+	    return -1;
+	  *bp = tmp;
+	}
+      if (p >= s)
+	{
+	  tmp = hex2nibble (*p--);
+	  if (tmp == -1)
+	    return -1;
+	  *bp |= tmp << 4;
+d240 1
+a240 2
+    }
+  return 0;
+d244 1
+a244 1
+text2sockaddr (char *address, char *port, struct sockaddr **sa)
+d246 8
+a253 2
+#ifdef HAVE_GETNAMEINFO
+  struct addrinfo *ai, hints;
+d255 8
+a262 28
+  memset (&hints, 0, sizeof hints);
+  if (!allow_name_lookups)
+    hints.ai_flags = AI_NUMERICHOST;
+  hints.ai_family = PF_UNSPEC;
+  hints.ai_socktype = SOCK_DGRAM;
+  hints.ai_protocol = IPPROTO_UDP;
+
+  if (getaddrinfo (address, port, &hints, &ai))
+    return -1;
+
+  *sa = malloc (sysdep_sa_len (ai->ai_addr));
+  if (!sa)
+    return -1;
+
+  memcpy (*sa, ai->ai_addr, sysdep_sa_len (ai->ai_addr));
+  freeaddrinfo (ai);
+  return 0;
+#else
+  int af = strchr (address, ':') != NULL ? AF_INET6 : AF_INET;
+  size_t sz = af == AF_INET
+    ? sizeof (struct sockaddr_in) : sizeof (struct sockaddr_in6);
+  long lport;
+  struct servent *sp;
+  char *ep;
+
+  *sa = calloc (1, sz);
+  if (!*sa)
+    return -1;
+d264 3
+a266 30
+#ifndef USE_OLD_SOCKADDR
+  (*sa)->sa_len = sz;
+#endif
+  (*sa)->sa_family = af;
+  if (inet_pton (af, address, sockaddr_addrdata (*sa)) != 1)
+    {
+      free (*sa);
+      return -1;
+    }
+  if (!port)
+    return 0;
+  sp = getservbyname (port, "udp");
+  if (!sp)
+    {
+      lport = strtol (port, &ep, 10);
+      if (ep == port || lport < 0 || lport > USHRT_MAX)
+	{
+	  free (*sa);
+	  return -1;
+	}
+      lport = htons (lport);
+    }
+  else
+    lport = sp->s_port;
+  if ((*sa)->sa_family == AF_INET)
+    ((struct sockaddr_in *)*sa)->sin_port = lport;
+  else
+    ((struct sockaddr_in6 *)*sa)->sin6_port = lport;
+  return 0;
+#endif
+d274 1
+a274 1
+sockaddr2text (struct sockaddr *sa, char **address, int zflag)
+d276 3
+a278 30
+  char buf[NI_MAXHOST];
+  char *token, *bstart, *ep;
+  int addrlen;
+  long val;
+  int i, j;
+
+#ifdef HAVE_GETNAMEINFO
+  if (getnameinfo (sa, sysdep_sa_len (sa), buf, sizeof buf, 0, 0,
+		   allow_name_lookups ? 0 : NI_NUMERICHOST))
+    return -1;
+#else
+  switch (sa->sa_family)
+    {
+    case AF_INET:
+    case AF_INET6:
+      if (inet_ntop (sa->sa_family, sa->sa_data, buf, NI_MAXHOST - 1) == NULL)
+	{
+	  log_error ("sockaddr2text: inet_ntop (%d, %p, %p, %d) failed",
+		     sa->sa_family, sa->sa_data, buf, NI_MAXHOST - 1);
+	  return -1;
+	}
+      buf[NI_MAXHOST - 1] = '\0';
+      break;
+
+    default:
+      log_print ("sockaddr2text: unsupported protocol family %d\n",
+		  sa->sa_family);
+      return -1;
+    }
+#endif
+d280 2
+a281 22
+  if (zflag == 0)
+    {
+      *address = strdup (buf);
+      if (!*address)
+	return -1;
+    }
+  else
+    switch (sa->sa_family)
+      {
+      case AF_INET:
+	addrlen = sizeof "000.000.000.000";
+	*address = malloc (addrlen);
+	if (!*address)
+	  return -1;
+	buf[addrlen] = '\0';
+	bstart = buf;
+	**address = '\0';
+	while ((token = strsep (&bstart, ".")) != NULL)
+	  {
+	    if (strlen (*address) > 12)
+	      {
+		free (*address);
+a282 40
+	      }
+	    val = strtol (token, &ep, 10);
+	    if (ep == token || val < 0 || val > UCHAR_MAX)
+	      {
+		free (*address);
+		return -1;
+	      }
+	    snprintf (*address + strlen (*address),
+		      addrlen - strlen (*address), "%03ld", val);
+	    if (bstart)
+	      strlcat (*address, ".", addrlen);
+	  }
+	break;
+
+      case AF_INET6:
+	/*
+	 * XXX In the algorithm below there are some magic numbers we
+	 * probably could give explaining names.
+	 */
+	addrlen = sizeof "0000:0000:0000:0000:0000:0000:0000:0000";
+	*address = malloc (addrlen);
+	if (!*address)
+	  return -1;
+
+	for (i = 0, j = 0; i < 8; i++)
+	  {
+	    snprintf ((*address) + j, addrlen - j, "%02x%02x",
+		      ((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr[2 * i],
+		      ((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr[2 * i + 1]);
+	    j += 4;
+	    (*address)[j] = (j < (addrlen - 1)) ? ':' : '\0';
+	    j++;
+	  }
+	break;
+
+      default:
+	*address = strdup ("<error>");
+	if (!*address)
+	  return -1;
+      }
+d284 62
+a345 1
+  return 0;
+d353 1
+a353 1
+sockaddr_addrlen (struct sockaddr *sa)
+d355 10
+a364 11
+  switch (sa->sa_family)
+    {
+    case AF_INET6:
+      return sizeof ((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr;
+    case AF_INET:
+      return sizeof ((struct sockaddr_in *)sa)->sin_addr.s_addr;
+    default:
+      log_print ("sockaddr_addrlen: unsupported protocol family %d",
+		 sa->sa_family);
+      return 0;
+    }
+d368 1
+a368 1
+sockaddr_addrdata (struct sockaddr *sa)
+d370 40
+a409 11
+  switch (sa->sa_family)
+    {
+    case AF_INET6:
+      return (u_int8_t *)&((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr;
+    case AF_INET:
+      return (u_int8_t *)&((struct sockaddr_in *)sa)->sin_addr.s_addr;
+    default:
+      log_print ("sockaddr_addrdata: unsupported protocol family %d",
+		 sa->sa_family);
+      return 0;
+    }
+d417 1
+a417 1
+util_ntoa (char **buf, int af, u_int8_t *addr)
+d419 3
+a421 3
+  struct sockaddr_storage from;
+  struct sockaddr *sfrom = (struct sockaddr *)&from;
+  socklen_t fromlen = sizeof from;
+d423 2
+a424 2
+  memset (&from, 0, fromlen);
+  sfrom->sa_family = af;
+d426 8
+a433 9
+  switch (af)
+    {
+    case AF_INET:
+      sfrom->sa_len = sizeof (struct sockaddr_in);
+      break;
+    case AF_INET6:
+      sfrom->sa_len = sizeof (struct sockaddr_in6);
+      break;
+    }
+d435 1
+a435 1
+  memcpy (sockaddr_addrdata (sfrom), addr, sockaddr_addrlen (sfrom));
+d437 5
+a441 6
+  if (sockaddr2text (sfrom, buf, 0))
+    {
+      log_print ("util_ntoa: "
+		 "could not make printable address out of sockaddr %p", sfrom);
+      *buf = 0;
+    }
+d449 1
+d451 1
+a451 1
+check_file_secrecy (char *name, size_t *file_size)
+d453 1
+a453 1
+  struct stat st;
+d455 18
+a472 19
+  if (stat (name, &st) == -1)
+    {
+      log_error ("check_file_secrecy: stat (\"%s\") failed", name);
+      return -1;
+    }
+  if (st.st_uid != geteuid () && st.st_uid != getuid ())
+    {
+      log_print ("check_file_secrecy: "
+		 "not loading %s - file owner is not process user", name);
+      errno = EPERM;
+      return -1;
+    }
+  if ((st.st_mode & (S_IRWXG | S_IRWXO)) != 0)
+    {
+      log_print ("conf_file_secrecy: not loading %s - too open permissions",
+		 name);
+      errno = EPERM;
+      return -1;
+    }
+d474 2
+a475 2
+  if (file_size)
+    *file_size = (size_t)st.st_size;
+d477 8
+a484 1
+  return 0;
+d486 1
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync MirBSD main source tree against OpenBSD-current,
+which should be fairly stable after the Hackathon now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: util.c,v 1.33 2003/05/15 00:28:53 ho Exp $	*/
+a53 1
+#include "monitor.h"
+d502 1
+a502 1
+  if (monitor_stat (name, &st) == -1)
+d507 1
+a507 1
+  if (st.st_uid != 0 && st.st_uid != getuid ())
+@
+
+
+1.1.1.3
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: util.c,v 1.34 2003/06/03 14:28:16 ho Exp $	*/
+d16 5
+@
+
+
+1.1.1.4
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: util.c,v 1.35 2003/12/14 14:50:23 ho Exp $	*/
+a448 16
+		 sa->sa_family);
+      return 0;
+    }
+}
+
+in_port_t
+sockaddr_port (struct sockaddr *sa)
+{
+  switch (sa->sa_family)
+    {
+    case AF_INET6:
+      return ((struct sockaddr_in6 *)sa)->sin6_port;
+    case AF_INET:
+      return ((struct sockaddr_in *)sa)->sin_port;
+    default:
+      log_print ("sockaddr_port: unsupported protocol family %d",
+@
+
+
+1.1.1.5
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 2
+a2 2
+/* $OpenBSD: util.c,v 1.37 2004/04/15 18:39:26 deraadt Exp $	 */
+/* $EOM: util.c,v 1.23 2000/11/23 12:22:08 niklas Exp $	 */
+d58 1
+a58 1
+int	allow_name_lookups = 0;
+d64 1
+a64 1
+int	regrand = 0;
+d69 1
+a69 1
+u_long	seed;
+d76 1
+a76 1
+decode_16(u_int8_t *cp)
+d78 1
+a78 1
+	return cp[0] << 8 | cp[1];
+d82 1
+a82 1
+decode_32(u_int8_t *cp)
+d84 1
+a84 1
+	return cp[0] << 24 | cp[1] << 16 | cp[2] << 8 | cp[3];
+d88 1
+a88 1
+decode_64(u_int8_t *cp)
+d90 3
+a92 3
+	return (u_int64_t) cp[0] << 56 | (u_int64_t) cp[1] << 48 |
+	    (u_int64_t) cp[2] << 40 | (u_int64_t) cp[3] << 32 |
+	    cp[4] << 24 | cp[5] << 16 | cp[6] << 8 | cp[7];
+d102 1
+a102 1
+decode_128(u_int8_t *cp, u_int8_t *cpp)
+d105 1
+a105 1
+	int	i;
+d107 2
+a108 2
+	for (i = 0; i < 16; i++)
+		cpp[i] = cp[15 - i];
+d110 1
+a110 1
+	bcopy(cp, cpp, 16);
+d118 1
+a118 1
+encode_16(u_int8_t *cp, u_int16_t x)
+d120 2
+a121 2
+	*cp++ = x >> 8;
+	*cp = x & 0xff;
+d125 1
+a125 1
+encode_32(u_int8_t *cp, u_int32_t x)
+d127 4
+a130 4
+	*cp++ = x >> 24;
+	*cp++ = (x >> 16) & 0xff;
+	*cp++ = (x >> 8) & 0xff;
+	*cp = x & 0xff;
+d134 1
+a134 1
+encode_64(u_int8_t *cp, u_int64_t x)
+d136 8
+a143 8
+	*cp++ = x >> 56;
+	*cp++ = (x >> 48) & 0xff;
+	*cp++ = (x >> 40) & 0xff;
+	*cp++ = (x >> 32) & 0xff;
+	*cp++ = (x >> 24) & 0xff;
+	*cp++ = (x >> 16) & 0xff;
+	*cp++ = (x >> 8) & 0xff;
+	*cp = x & 0xff;
+d153 1
+a153 1
+encode_128(u_int8_t *cp, u_int8_t *cpp)
+d155 1
+a155 1
+	decode_128(cpp, cp);
+d161 1
+a161 1
+zero_test(const u_int8_t *p, size_t sz)
+d163 4
+a166 4
+	while (sz-- > 0)
+		if (*p++ != 0)
+			return 0;
+	return 1;
+d171 1
+a171 1
+ones_test(const u_int8_t *p, size_t sz)
+d173 4
+a176 4
+	while (sz-- > 0)
+		if (*p++ != 0xff)
+			return 0;
+	return 1;
+d183 1
+a183 1
+getrandom(u_int8_t *buf, size_t len)
+d185 2
+a186 2
+	u_int32_t	tmp = 0;
+	size_t		i;
+d188 4
+a191 3
+	for (i = 0; i < len; i++) {
+		if (i % sizeof tmp == 0)
+			tmp = sysdep_random();
+d193 3
+a195 3
+		buf[i] = tmp & 0xff;
+		tmp >>= 8;
+	}
+d197 1
+a197 1
+	return buf;
+d201 1
+a201 1
+hex2nibble(char c)
+d203 7
+a209 7
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+d217 1
+a217 1
+hex2raw(char *s, u_int8_t *buf, size_t sz)
+d219 22
+a240 20
+	u_int8_t *bp;
+	char	*p;
+	int	tmp;
+
+	if (strlen(s) > sz * 2)
+		return -1;
+	for (p = s + strlen(s) - 1, bp = &buf[sz - 1]; bp >= buf; bp--) {
+		*bp = 0;
+		if (p >= s) {
+			tmp = hex2nibble(*p--);
+			if (tmp == -1)
+				return -1;
+			*bp = tmp;
+		}
+		if (p >= s) {
+			tmp = hex2nibble(*p--);
+			if (tmp == -1)
+				return -1;
+			*bp |= tmp << 4;
+		}
+d242 2
+a243 1
+	return 0;
+d247 1
+a247 1
+text2sockaddr(char *address, char *port, struct sockaddr ** sa)
+d250 1
+a250 15
+	struct addrinfo *ai, hints;
+
+	memset(&hints, 0, sizeof hints);
+	if (!allow_name_lookups)
+		hints.ai_flags = AI_NUMERICHOST;
+	hints.ai_family = PF_UNSPEC;
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_protocol = IPPROTO_UDP;
+
+	if (getaddrinfo(address, port, &hints, &ai))
+		return -1;
+
+	*sa = malloc(sysdep_sa_len(ai->ai_addr));
+	if (!sa)
+		return -1;
+d252 17
+a268 3
+	memcpy(*sa, ai->ai_addr, sysdep_sa_len(ai->ai_addr));
+	freeaddrinfo(ai);
+	return 0;
+d270 10
+a279 10
+	int	af = strchr(address, ':') != NULL ? AF_INET6 : AF_INET;
+	size_t	sz = af == AF_INET ? sizeof(struct sockaddr_in) :
+	    sizeof(struct sockaddr_in6);
+	long	lport;
+	struct servent *sp;
+	char	*ep;
+
+	*sa = calloc(1, sz);
+	if (!*sa)
+		return -1;
+d282 1
+a282 1
+	(*sa)->sa_len = sz;
+d284 26
+a309 22
+	(*sa)->sa_family = af;
+	if (inet_pton(af, address, sockaddr_addrdata(*sa)) != 1) {
+		free(*sa);
+		return -1;
+	}
+	if (!port)
+		return 0;
+	sp = getservbyname(port, "udp");
+	if (!sp) {
+		lport = strtol(port, &ep, 10);
+		if (ep == port || lport < 0 || lport > (long) USHRT_MAX) {
+			free(*sa);
+			return -1;
+		}
+		lport = htons(lport);
+	} else
+		lport = sp->s_port;
+	if ((*sa)->sa_family == AF_INET)
+		((struct sockaddr_in *) *sa)->sin_port = lport;
+	else
+		((struct sockaddr_in6 *) *sa)->sin6_port = lport;
+	return 0;
+d318 1
+a318 1
+sockaddr2text(struct sockaddr *sa, char **address, int zflag)
+d320 5
+a324 3
+	char	buf[NI_MAXHOST], *token, *bstart, *ep;
+	int	addrlen, i, j;
+	long	val;
+d327 3
+a329 3
+	if (getnameinfo(sa, sysdep_sa_len(sa), buf, sizeof buf, 0, 0,
+			allow_name_lookups ? 0 : NI_NUMERICHOST))
+		return -1;
+d331 18
+a348 16
+	switch (sa->sa_family) {
+	case AF_INET:
+	case AF_INET6:
+		if (inet_ntop(sa->sa_family, sa->sa_data, buf, NI_MAXHOST - 1) == NULL) {
+			log_error("sockaddr2text: inet_ntop (%d, %p, %p, %d) failed",
+			    sa->sa_family, sa->sa_data, buf, NI_MAXHOST - 1);
+			return -1;
+		}
+		buf[NI_MAXHOST - 1] = '\0';
+		break;
+
+	default:
+		log_print("sockaddr2text: unsupported protocol family %d\n",
+			  sa->sa_family);
+		return -1;
+	}
+d351 63
+a413 57
+	if (zflag == 0) {
+		*address = strdup(buf);
+		if (!*address)
+			return -1;
+	} else
+		switch (sa->sa_family) {
+		case AF_INET:
+			addrlen = sizeof "000.000.000.000";
+			*address = malloc(addrlen);
+			if (!*address)
+				return -1;
+			buf[addrlen] = '\0';
+			bstart = buf;
+			**address = '\0';
+			while ((token = strsep(&bstart, ".")) != NULL) {
+				if (strlen(*address) > 12) {
+					free(*address);
+					return -1;
+				}
+				val = strtol(token, &ep, 10);
+				if (ep == token || val < (long) 0 ||
+				    val > (long) UCHAR_MAX) {
+					free(*address);
+					return -1;
+				}
+				snprintf(*address + strlen(*address),
+				    addrlen - strlen(*address), "%03ld", val);
+				if (bstart)
+					strlcat(*address, ".", addrlen);
+			}
+			break;
+
+		case AF_INET6:
+			/*
+			 * XXX In the algorithm below there are some magic numbers we
+			 * probably could give explaining names.
+			 */
+			addrlen = sizeof "0000:0000:0000:0000:0000:0000:0000:0000";
+			*address = malloc(addrlen);
+			if (!*address)
+				return -1;
+
+			for (i = 0, j = 0; i < 8; i++) {
+				snprintf((*address) + j, addrlen - j, "%02x%02x",
+				    ((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr[2*i],
+				    ((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr[2*i + 1]);
+				j += 4;
+				(*address)[j] = (j < (addrlen - 1)) ? ':' : '\0';
+				j++;
+			}
+			break;
+
+		default:
+			*address = strdup("<error>");
+			if (!*address)
+				return -1;
+		}
+d415 1
+a415 1
+	return 0;
+d423 1
+a423 1
+sockaddr_addrlen(struct sockaddr *sa)
+d425 11
+a435 10
+	switch (sa->sa_family) {
+	case AF_INET6:
+		return sizeof((struct sockaddr_in6 *) sa)->sin6_addr.s6_addr;
+	case AF_INET:
+		return sizeof((struct sockaddr_in *) sa)->sin_addr.s_addr;
+	default:
+		log_print("sockaddr_addrlen: unsupported protocol family %d",
+		    sa->sa_family);
+		return 0;
+	}
+d439 1
+a439 1
+sockaddr_addrdata(struct sockaddr *sa)
+d441 11
+a451 10
+	switch (sa->sa_family) {
+	case AF_INET6:
+		return (u_int8_t *) & ((struct sockaddr_in6 *) sa)->sin6_addr.s6_addr;
+	case AF_INET:
+		return (u_int8_t *) & ((struct sockaddr_in *) sa)->sin_addr.s_addr;
+	default:
+		log_print("sockaddr_addrdata: unsupported protocol family %d",
+		    sa->sa_family);
+		return 0;
+	}
+d455 1
+a455 1
+sockaddr_port(struct sockaddr *sa)
+d457 11
+a467 10
+	switch (sa->sa_family) {
+	case AF_INET6:
+		return ((struct sockaddr_in6 *) sa)->sin6_port;
+	case AF_INET:
+		return ((struct sockaddr_in *) sa)->sin_port;
+	default:
+		log_print("sockaddr_port: unsupported protocol family %d",
+		    sa->sa_family);
+		return 0;
+	}
+d475 1
+a475 1
+util_ntoa(char **buf, int af, u_int8_t *addr)
+d477 3
+a479 3
+	struct sockaddr_storage from;
+	struct sockaddr *sfrom = (struct sockaddr *) & from;
+	socklen_t	fromlen = sizeof from;
+d481 2
+a482 2
+	memset(&from, 0, fromlen);
+	sfrom->sa_family = af;
+d484 9
+a492 8
+	switch (af) {
+	case AF_INET:
+		sfrom->sa_len = sizeof(struct sockaddr_in);
+		break;
+	case AF_INET6:
+		sfrom->sa_len = sizeof(struct sockaddr_in6);
+		break;
+	}
+d494 1
+a494 1
+	memcpy(sockaddr_addrdata(sfrom), addr, sockaddr_addrlen(sfrom));
+d496 6
+a501 5
+	if (sockaddr2text(sfrom, buf, 0)) {
+		log_print("util_ntoa: "
+		    "could not make printable address out of sockaddr %p", sfrom);
+		*buf = 0;
+	}
+d510 1
+a510 1
+check_file_secrecy(char *name, size_t *file_size)
+d512 1
+a512 1
+	struct stat st;
+d514 22
+a535 18
+	if (monitor_stat(name, &st) == -1) {
+		log_error("check_file_secrecy: stat (\"%s\") failed", name);
+		return -1;
+	}
+	if (st.st_uid != 0 && st.st_uid != getuid()) {
+		log_print("check_file_secrecy: "
+		    "not loading %s - file owner is not process user", name);
+		errno = EPERM;
+		return -1;
+	}
+	if ((st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
+		log_print("conf_file_secrecy: not loading %s - too open permissions",
+		    name);
+		errno = EPERM;
+		return -1;
+	}
+	if (file_size)
+		*file_size = (size_t) st.st_size;
+d537 1
+a537 1
+	return 0;
+@
+
+
+1.1.1.6
+log
+@another bunch of fixes from obsd, and a big isakmpd update (need testers!)
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: util.c,v 1.48 2004/08/08 19:11:06 deraadt Exp $	 */
+d6 1
+a6 1
+ * Copyright (c) 2000, 2001, 2004 Håkan Olsson.  All rights reserved.
+d243 1
+a243 1
+text2sockaddr(char *address, char *port, struct sockaddr **sa)
+d245 1
+d259 1
+a259 2
+	if (!*sa) {
+		freeaddrinfo(ai);
+a260 1
+	}
+d265 38
+d316 1
+d320 18
+d359 2
+a360 2
+				if (ep == token || val < (long)0 ||
+				    val > (long)UCHAR_MAX) {
+d373 2
+a374 2
+			 * XXX In the algorithm below there are some magic
+			 * numbers we probably could give explaining names.
+d376 1
+a376 2
+			addrlen =
+			    sizeof "0000:0000:0000:0000:0000:0000:0000:0000";
+d382 1
+a382 2
+				snprintf((*address) + j, addrlen - j,
+				    "%02x%02x",
+d386 1
+a386 2
+				(*address)[j] =
+				    (j < (addrlen - 1)) ? ':' : '\0';
+d409 1
+a409 1
+		return sizeof((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr;
+d411 1
+a411 1
+		return sizeof((struct sockaddr_in *)sa)->sin_addr.s_addr;
+d424 1
+a424 1
+		return (u_int8_t *)&((struct sockaddr_in6 *)sa)->sin6_addr.s6_addr;
+d426 1
+a426 1
+		return (u_int8_t *)&((struct sockaddr_in *)sa)->sin_addr.s_addr;
+d439 1
+a439 1
+		return ((struct sockaddr_in6 *)sa)->sin6_port;
+d441 1
+a441 1
+		return ((struct sockaddr_in *)sa)->sin_port;
+a448 15
+/* Utility function used to set the port of a sockaddr.  */
+void
+sockaddr_set_port(struct sockaddr *sa, in_port_t port)
+{
+	switch (sa->sa_family) {
+	case AF_INET:
+		((struct sockaddr_in *)sa)->sin_port = htons (port);
+		break;
+
+	case AF_INET6:
+		((struct sockaddr_in6 *)sa)->sin6_port = htons (port);
+		break;
+	}
+}
+
+d475 2
+a476 2
+		log_print("util_ntoa: could not make printable address out "
+		    "of sockaddr %p", sfrom);
+a485 1
+
+d487 1
+a487 1
+check_file_secrecy_fd(int fd, char *name, size_t *file_size)
+d491 1
+a491 1
+	if (fstat(fd, &st) == -1) {
+d496 1
+a496 1
+		log_print("check_file_secrecy_fd: "
+d502 2
+a503 2
+		log_print("check_file_secrecy_fd: not loading %s - too open "
+		    "permissions", name);
+d508 1
+a508 1
+		*file_size = (size_t)st.st_size;
+a511 11
+
+/* Special for compiling with Boehms GC. See Makefile and sysdep.h  */
+#if defined (USE_BOEHM_GC)
+char *
+gc_strdup(const char *x)
+{
+	char *strcpy(char *,const char *);
+	char *y = malloc(strlen(x) + 1);
+	return strcpy(y,x);
+}
+#endif
+@
+
+

@@ -1,0 +1,291 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@// @;
+
+
+1.2
+date	2004.06.10.19.02.02;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.39;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.39;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@// transbmp.cpp : implementation of the CTransBmp class
+//
+
+#include "stdafx.h"
+#include "transbmp.h"
+
+#ifdef _DEBUG
+#undef THIS_FILE
+static char BASED_CODE THIS_FILE[] = __FILE__;
+#endif
+
+// Colors
+#define rgbWhite RGB(255,255,255)
+// Raster op codes
+#define DSa     0x008800C6L
+#define DSx     0x00660046L
+
+
+/////////////////////////////////////////////////////////////////////////////
+// CTransBmp construction/destruction
+
+CTransBmp::CTransBmp()
+{
+    m_iWidth = 0;
+    m_iHeight = 0;
+    m_hbmMask = NULL;
+}
+
+CTransBmp::~CTransBmp()
+{
+}
+
+void CTransBmp::GetMetrics()
+{
+    // Get the width and height
+    BITMAP bm;
+    GetObject(sizeof(bm), &bm);
+    m_iWidth = bm.bmWidth;
+    m_iHeight = bm.bmHeight;
+}
+
+
+int CTransBmp::GetWidth()
+{
+    if ((m_iWidth == 0) || (m_iHeight == 0)){
+        GetMetrics();
+    }
+    return m_iWidth;
+}
+
+int CTransBmp::GetHeight()
+{
+    if ((m_iWidth == 0) || (m_iHeight == 0)){
+        GetMetrics();
+    }
+    return m_iHeight;
+}
+
+void CTransBmp::Draw(HDC hDC, int x, int y)
+{
+    ASSERT(hDC);
+    // Create a memory DC
+    HDC hdcMem = ::CreateCompatibleDC(hDC);
+    // Select the bitmap into the mem DC
+    HBITMAP hbmold = 
+        (HBITMAP)::SelectObject(hdcMem,
+                                (HBITMAP)(m_hObject));
+    // Blt the bits
+    ::BitBlt(hDC,
+             x, y,
+             GetWidth(), GetHeight(),
+             hdcMem,
+             0, 0,
+             SRCCOPY);
+    ::SelectObject(hdcMem, hbmold);
+    ::DeleteDC(hdcMem); 
+}
+
+void CTransBmp::Draw(CDC* pDC, int x, int y)
+{
+    ASSERT(pDC);
+    HDC hDC = pDC->GetSafeHdc();
+    Draw(hDC, x, y);
+}
+
+void CTransBmp::CreateMask(HDC hDC)
+{
+    // Nuke any existing mask
+    if (m_hbmMask) {
+        ::DeleteObject(m_hbmMask);
+    }
+    // Create memory DCs to work with
+    HDC hdcMask = ::CreateCompatibleDC(hDC);
+    HDC hdcImage = ::CreateCompatibleDC(hDC);
+    // Create a monochrome bitmap for the mask
+    m_hbmMask = ::CreateBitmap(GetWidth(),
+                               GetHeight(),
+                               1,
+                               1,
+                               NULL);
+    // Select the mono bitmap into its DC
+    HBITMAP hbmOldMask = (HBITMAP)::SelectObject(hdcMask, m_hbmMask);
+    // Select the image bitmap into its DC
+    HBITMAP hbmOldImage = (HBITMAP)::SelectObject(hdcImage, m_hObject);
+    // Set the transparency color to be the top-left pixel
+    ::SetBkColor(hdcImage, ::GetPixel(hdcImage, 0, 0));
+    // Make the mask
+    ::BitBlt(hdcMask,
+             0, 0,
+             GetWidth(), GetHeight(),
+             hdcImage,
+             0, 0,
+             SRCCOPY);
+    // Tidy up
+    ::SelectObject(hdcMask, hbmOldMask);
+    ::SelectObject(hdcImage, hbmOldImage);
+    ::DeleteDC(hdcMask);
+    ::DeleteDC(hdcImage);
+}
+
+void CTransBmp::DrawTrans(HDC hDC, int x, int y)
+{
+    ASSERT(hDC);
+    if (!m_hbmMask) CreateMask(hDC);
+    ASSERT(m_hbmMask);
+    int dx = GetWidth();
+    int dy = GetHeight();
+
+    // Create a memory DC to do the drawing to
+    HDC hdcOffScr = ::CreateCompatibleDC(hDC);
+    // Create a bitmap for the off-screen DC that is really
+    // color compatible with the destination DC.
+    HBITMAP hbmOffScr = ::CreateBitmap(dx, dy, 
+                             (BYTE)GetDeviceCaps(hDC, PLANES),
+                             (BYTE)GetDeviceCaps(hDC, BITSPIXEL),
+                             NULL);
+    // Select the buffer bitmap into the off-screen DC
+    HBITMAP hbmOldOffScr = (HBITMAP)::SelectObject(hdcOffScr, hbmOffScr);
+
+    // Copy the image of the destination rectangle to the
+    // off-screen buffer DC so we can play with it
+    ::BitBlt(hdcOffScr, 0, 0, dx, dy, hDC, x, y, SRCCOPY);
+
+    // Create a memory DC for the source image
+    HDC hdcImage = ::CreateCompatibleDC(hDC); 
+    HBITMAP hbmOldImage = (HBITMAP)::SelectObject(hdcImage, m_hObject);
+
+    // Create a memory DC for the mask
+    HDC hdcMask = ::CreateCompatibleDC(hDC);
+    HBITMAP hbmOldMask = (HBITMAP)::SelectObject(hdcMask, m_hbmMask);
+
+    // XOR the image with the destination
+    ::SetBkColor(hdcOffScr,rgbWhite);
+    ::BitBlt(hdcOffScr, 0, 0, dx, dy ,hdcImage, 0, 0, DSx);
+    // AND the destination with the mask
+    ::BitBlt(hdcOffScr, 0, 0, dx, dy, hdcMask, 0,0, DSa);
+    // XOR the destination with the image again
+    ::BitBlt(hdcOffScr, 0, 0, dx, dy, hdcImage, 0, 0, DSx);
+
+    // Copy the resultant image back to the screen DC
+    ::BitBlt(hDC, x, y, dx, dy, hdcOffScr, 0, 0, SRCCOPY);
+
+    // Tidy up
+    ::SelectObject(hdcOffScr, hbmOldOffScr);
+    ::SelectObject(hdcImage, hbmOldImage);
+    ::SelectObject(hdcMask, hbmOldMask);
+    ::DeleteObject(hbmOffScr);
+    ::DeleteDC(hdcOffScr);
+    ::DeleteDC(hdcImage);
+    ::DeleteDC(hdcMask);
+}
+
+void CTransBmp::DrawTrans(CDC* pDC, int x, int y)
+{
+    ASSERT(pDC);
+    HDC hDC = pDC->GetSafeHdc();
+    DrawTrans(hDC, x, y);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

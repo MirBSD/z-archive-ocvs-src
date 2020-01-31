@@ -1,0 +1,239 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.04.06.16.22.05;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.35.49;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.35.49;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove a bunch of other unneeded files *g*
+g++ g77 gobjc and their testsuites
+gcc texinfo documentation
+
+gcc.1 -> pgcc.1
+
+=> {man,info} gcc should yield gcc 3.2 documentation now
+@
+text
+@#! /bin/sh
+
+# (C) 1998-1999 Free Software Foundation
+# Originally by Alexandre Oliva <oliva@@dcc.unicamp.br>
+
+# This script is Free Software, and it can be copied, distributed and
+# modified as defined in the GNU General Public License.  A copy of
+# its license can be downloaded from http://www.gnu.org/copyleft/gpl.html
+
+# This script processes *.{sum,log} files, producing a shell-script
+# that sends e-mail to the appropriate lists and renames files to
+# *.sent.  It currently handles only gcc, but it should be quite easy
+# to modify it to handle other packages and its mailing lists.
+
+# The scripts assumes it is run in the root directory of the build
+# tree, and it will include all .sum files it finds in the mail
+# report.
+
+# configure flags are extracted from ./config.status
+
+# if the BOOT_CFLAGS environment variable is set, it will be included
+# in the mail report too.
+
+# The usage pattern of this script is as follows:
+
+# test_summary | more   # so as to observe what should be done
+
+# test_summary | sh     # so as to actually send e-mail and move log files
+
+# It accepts a few command line arguments.  For example:
+# -o: re-reads logs that have been mailed already (.sum.sent)
+# -t: prevents logs from being renamed
+# -p: prepend specified file (or list of files: -p "a b") to the report
+# -i: append specified file (or list of files: -i "a b") to the report
+# -m: specify the e-mail address to send notes to.  An appropriate default
+#     should be selected from the log files.
+# -f: force reports to be mailed; if omitted, only reports that differ
+#     from the sent.* version are sent.
+
+# Find a good awk.
+if test -z "$AWK" ; then
+  for AWK in gawk nawk awk ; do
+    if type $AWK 2>&1 | grep 'not found' > /dev/null 2>&1 ; then
+      :
+    else
+      break
+    fi
+  done
+fi
+
+: ${filesuffix=}; export fileprefix
+: ${move=true}; export move
+: ${forcemail=false}; export forcemail
+while true; do
+    case "$1" in 
+      -o) filesuffix=.sent; move=false; : ${mailto=nobody}; shift;;
+      -t) move=false; shift;;
+      -p) prepend_logs=${prepend_logs+"$prepend_logs "}"$2"; shift 2;;
+      -i) append_logs=${append_logs+"$append_logs "}"$2"; shift 2;;
+      -m) mailto=$2; forcemail=true; shift 2;;
+      -f) unset mailto; forcemail=true; shift;;
+      *) break;;
+    esac
+done
+: ${mailto="\" address \""}; export mailto
+files=`find . -name \*.sum$filesuffix -print`
+anyfile=false anychange=$forcemail &&
+for file in $files; do
+    [ -f $file ] &&
+    anyfile=true &&
+    { $anychange ||
+      anychange=`diff -u $file.sent $file 2>/dev/null |
+	if test ! -f $file.sent ||
+	   egrep '^[-+](XPASS|FAIL)' >/dev/null; then
+	    echo true
+	else
+	    echo false
+	fi
+      `
+    }
+    true
+done &&
+$anyfile &&
+if $forcemail || $anychange; then :; else mailto=nobody; fi &&
+$AWK '
+BEGIN {
+  lang="";
+  address="gcc-testresults@@gcc.gnu.org";
+  version="gcc";
+  print "cat <<\EOF |";
+'${prepend_logs+"  system(\"cat $prepend_logs\"); "}'
+}
+$1 ~ /\/configure$/ { $1 = "configure flags:"; configflags = $0 }
+/^Running target / { print ""; print; }
+/^Target / { if (host != "") next; else host = $3; }
+/^Native / { if (host != "") next; else host = $4; }
+/^[ 	]*=== [^ 	]+ tests ===/ {
+  if (lang == "") lang = " "$2" "; else lang = " ";
+}
+/--disable-haifa/ { prefix="haifa-disabled "; }
+/--enable-haifa/ { prefix="haifa-enabled "; }
+$2 == "version" { save = $0; $1 = ""; $2 = ""; version = $0; gsub(/^ */, "", version); gsub(/\r$/, "", version); $0 = save; }
+/\===.*Summary/ { print ""; print; blanks=1; }
+/tests ===/ || /^(Target|Host|Native)/ || $2 == "version" { print; blanks=1; }
+/^(XPASS|FAIL|# of )/ { print; }
+# dumpall != 0 && /^X?(PASS|FAIL|UNTESTED)|^testcase/ { dumpall=0; }
+# dumpall != 0 { print; }
+# /^FAIL/ { dumpall=1; }
+/^$/ && blanks>0 { print; --blanks; }
+END { if (lang != "") {
+  print "";
+  print "Compiler version: " prefix version lang;
+  print "Platform: " host;
+  print configflags;
+  '${BOOT_CFLAGS+'print "BOOT_CFLAGS='"${BOOT_CFLAGS}"'";'}'
+  if (boot_cflags != 0) print boot_cflags;
+'${append_logs+"  system(\"cat $append_logs\"); "}'
+  print "EOF";
+  print "Mail -s \"Results for " prefix version lang "testsuite on " host "\" '"${mailto}"' &&";
+}}
+{ next; }
+' ./config.status $files | sed "s/\([\`\$\\\\]\)/\\\\\\1/g" &&
+if $move; then
+    for file in $files `ls -1 $files | sed s/sum$/log/`; do
+      [ -f $file ] && echo "mv `pwd`/$file `pwd`/$file.sent &&"
+    done
+fi &&
+echo true
+exit 0
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

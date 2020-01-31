@@ -1,0 +1,1027 @@
+head	1.3;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.4
+	tg-mergefixes-1-branch:1.1.1.4.0.6
+	tg-mergefixes-1-base:1.1.1.4
+	MIROS_X:1.1.1.4.0.4
+	MIROS_X_BASE:1.1.1.4
+	tg-mergetmp-3:1.1.1.4
+	MIRBSD_XP_MIRPPC:1.1.1.4.0.2
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.4
+	cvs-200312222040:1.1.1.4
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309261655:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	cvs-200307072125:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.11.13.21.06.07;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.04.06.04.28.59;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.50;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.50;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.35.07;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.07.06.15.43.18;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.12.22.20.59.36;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@shave some off my work for the first MirHackathon and let
+the zombies walk around for bsiegert@@'s voodoo
+@
+text
+@/*	$OpenBSD: macintr.c,v 1.22 2003/12/20 22:40:26 miod Exp $	*/
+
+/*-
+ * Copyright (c) 1995 Per Fogelstrom
+ * Copyright (c) 1993, 1994 Charles M. Hannum.
+ * Copyright (c) 1990 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * William Jolitz and Don Ahn.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@@(#)isa.c	7.2 (Berkeley) 5/12/91
+ */
+
+#include <sys/param.h>
+#include <sys/device.h>
+#include <sys/ioctl.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+#include <sys/systm.h>
+
+#include <uvm/uvm.h>
+#include <ddb/db_var.h>
+
+#include <machine/autoconf.h>
+#include <machine/intr.h>
+#include <machine/psl.h>
+#include <machine/pio.h>
+#include <machine/powerpc.h>
+
+#include <dev/ofw/openfirm.h>
+
+#define ICU_LEN 64
+#define LEGAL_IRQ(x) ((x >= 0) && (x < ICU_LEN))
+
+int m_intrtype[ICU_LEN], m_intrmask[ICU_LEN], m_intrlevel[ICU_LEN];
+struct intrhand *m_intrhand[ICU_LEN];
+int m_hwirq[ICU_LEN], m_virq[64];
+unsigned int imen_m = 0xffffffff;
+int m_virq_max = 0;
+
+struct evcnt m_evirq[ICU_LEN*2];
+
+static int fakeintr(void *);
+static char *intr_typename(int type);
+static void intr_calculatemasks(void);
+static void enable_irq(int x);
+static __inline int cntlzw(int x);
+static int mapirq(int irq);
+static int read_irq(void);
+static void mac_intr_do_pending_int(void);
+
+extern u_int32_t *heathrow_FCR;
+
+#define HWIRQ_MAX 27
+#define HWIRQ_MASK 0x0fffffff
+
+#define INT_STATE_REG0  (interrupt_reg + 0x20)
+#define INT_ENABLE_REG0 (interrupt_reg + 0x24)
+#define INT_CLEAR_REG0  (interrupt_reg + 0x28)
+#define INT_LEVEL_REG0  (interrupt_reg + 0x2c)
+#define INT_STATE_REG1  (INT_STATE_REG0  - 0x10)
+#define INT_ENABLE_REG1 (INT_ENABLE_REG0 - 0x10)
+#define INT_CLEAR_REG1  (INT_CLEAR_REG0  - 0x10)
+#define INT_LEVEL_REG1  (INT_LEVEL_REG0  - 0x10)
+
+struct macintr_softc {
+	struct device sc_dev;
+};
+
+int	macintr_match(struct device *parent, void *cf, void *aux);
+void	macintr_attach(struct device *, struct device *, void *);
+void	mac_do_pending_int(void);
+void	mac_ext_intr(void);
+
+struct cfattach macintr_ca = {
+	sizeof(struct macintr_softc),
+	macintr_match,
+	macintr_attach
+};
+
+struct cfdriver macintr_cd = {
+	NULL, "macintr", DV_DULL
+};
+
+int
+macintr_match(struct device *parent, void *cf, void *aux)
+{
+	struct confargs *ca = aux;
+	char type[40];
+
+	/*
+	 * Match entry according to "present" openfirmware entry.
+	 */
+	if (strcmp(ca->ca_name, "interrupt-controller") == 0 ) {
+		OF_getprop(ca->ca_node, "device_type", type, sizeof(type));
+		if (strcmp(type,  "interrupt-controller") == 0)
+			return 1;
+	}
+
+	/*
+	 * Check name for legacy interrupt controller, this is
+	 * faked to allow old firmware which does not have an entry
+	 * to attach to this device.
+	 */
+	if (strcmp(ca->ca_name, "legacy-interrupt-controller") == 0 )
+		return 1;
+	return 0;
+}
+
+u_int8_t *interrupt_reg;
+typedef void  (void_f) (void);
+extern void_f *pending_int_f;
+int macintr_prog_button (void *arg);
+
+intr_establish_t macintr_establish;
+intr_disestablish_t macintr_disestablish;
+extern intr_establish_t *mac_intr_establish_func;
+extern intr_disestablish_t *mac_intr_disestablish_func;
+void macintr_collect_preconf_intr(void);
+
+void
+macintr_attach(struct device *parent, struct device *self, void *aux)
+{
+	struct confargs *ca = aux;
+	extern intr_establish_t *intr_establish_func;
+	extern intr_disestablish_t *intr_disestablish_func;
+
+	interrupt_reg = (void *)mapiodev(ca->ca_baseaddr,0x100); /* XXX */
+
+	install_extint(mac_ext_intr);
+	pending_int_f = mac_intr_do_pending_int;
+	intr_establish_func  = macintr_establish;
+	intr_disestablish_func  = macintr_disestablish;
+	mac_intr_establish_func  = macintr_establish;
+	mac_intr_disestablish_func  = macintr_disestablish;
+
+	macintr_collect_preconf_intr();
+
+	mac_intr_establish(parent, 0x14, IST_LEVEL, IPL_HIGH,
+	    macintr_prog_button, (void *)0x14, "prog button");
+
+	ppc_intr_enable(1);
+
+	printf("\n");
+}
+
+void
+macintr_collect_preconf_intr()
+{
+	int i;
+	for (i = 0; i < ppc_configed_intr_cnt; i++) {
+		printf("\n\t%s irq %d level %d fun %p arg %p",
+			ppc_configed_intr[i].ih_what,
+			ppc_configed_intr[i].ih_irq,
+			ppc_configed_intr[i].ih_level,
+			ppc_configed_intr[i].ih_fun,
+			ppc_configed_intr[i].ih_arg
+			);
+		macintr_establish(NULL,
+			ppc_configed_intr[i].ih_irq,
+			IST_LEVEL,
+			ppc_configed_intr[i].ih_level,
+			ppc_configed_intr[i].ih_fun,
+			ppc_configed_intr[i].ih_arg,
+			ppc_configed_intr[i].ih_what);
+	}
+}
+
+
+/*
+ * programmer_button function to fix args to Debugger.
+ * deal with any enables/disables, if necessary.
+ */
+int
+macintr_prog_button (void *arg)
+{
+#ifdef DDB
+	if (db_console)
+		Debugger();
+#else
+	printf("programmer button pressed, debugger not available\n");
+#endif
+	return 1;
+}
+
+static int
+fakeintr(void *arg)
+{
+
+	return 0;
+}
+
+void nameinterrupt( int replace, char *newstr);
+
+/*
+ * Register an interrupt handler.
+ */
+void *
+macintr_establish(void * lcv, int irq, int type, int level,
+    int (*ih_fun)(void *), void *ih_arg, char *name)
+{
+	struct intrhand **p, *q, *ih;
+	static struct intrhand fakehand;
+
+	fakehand.ih_next = NULL;
+	fakehand.ih_fun  = fakeintr;
+
+#if 0
+printf("macintr_establish, hI %d L %d ", irq, type);
+printf("addr reg0 %x\n", INT_STATE_REG0);
+#endif
+	nameinterrupt(irq, name);
+	irq = mapirq(irq);
+#if 0
+printf("vI %d ", irq);
+#endif
+
+	/* no point in sleeping unless someone can free memory. */
+	ih = malloc(sizeof *ih, M_DEVBUF, cold ? M_NOWAIT : M_WAITOK);
+	if (ih == NULL)
+		panic("intr_establish: can't malloc handler info");
+
+	if (!LEGAL_IRQ(irq) || type == IST_NONE)
+		panic("intr_establish: bogus irq or type");
+
+	switch (m_intrtype[irq]) {
+	case IST_NONE:
+		m_intrtype[irq] = type;
+		break;
+	case IST_EDGE:
+	case IST_LEVEL:
+		if (type == m_intrtype[irq])
+			break;
+	case IST_PULSE:
+		if (type != IST_NONE)
+			panic("intr_establish: can't share %s with %s",
+			    intr_typename(m_intrtype[irq]),
+			    intr_typename(type));
+		break;
+	}
+
+	/*
+	 * Figure out where to put the handler.
+	 * This is O(N^2), but we want to preserve the order, and N is
+	 * generally small.
+	 */
+	for (p = &m_intrhand[irq]; (q = *p) != NULL; p = &q->ih_next)
+		;
+
+	/*
+	 * Actually install a fake handler momentarily, since we might be doing
+	 * this with interrupts enabled and DON'T WANt the real routine called
+	 * until masking is set up.
+	 */
+	fakehand.ih_level = level;
+	*p = &fakehand;
+
+	intr_calculatemasks();
+
+	/*
+	 * Poke the real handler in now.
+	 */
+	ih->ih_fun = ih_fun;
+	ih->ih_arg = ih_arg;
+	ih->ih_count = 0;
+	ih->ih_next = NULL;
+	ih->ih_level = level;
+	ih->ih_irq = irq;
+	*p = ih;
+
+	return (ih);
+}
+
+/*
+ * Deregister an interrupt handler.
+ */
+void
+macintr_disestablish(void *lcp, void *arg)
+{
+	struct intrhand *ih = arg;
+	int irq = ih->ih_irq;
+	struct intrhand **p, *q;
+
+	if (!LEGAL_IRQ(irq))
+		panic("intr_disestablish: bogus irq");
+
+	/*
+	 * Remove the handler from the chain.
+	 * This is O(n^2), too.
+	 */
+	for (p = &m_intrhand[irq]; (q = *p) != NULL && q != ih; p = &q->ih_next)
+		;
+	if (q)
+		*p = q->ih_next;
+	else
+		panic("intr_disestablish: handler not registered");
+	free((void *)ih, M_DEVBUF);
+
+	intr_calculatemasks();
+
+	if (m_intrhand[irq] == NULL)
+		m_intrtype[irq] = IST_NONE;
+}
+
+
+static char *
+intr_typename(int type)
+{
+	switch (type) {
+        case IST_NONE :
+		return ("none");
+        case IST_PULSE:
+		return ("pulsed");
+        case IST_EDGE:
+		return ("edge-triggered");
+        case IST_LEVEL:
+		return ("level-triggered");
+	default:
+		panic("intr_typename: invalid type %d", type);
+#if 1 /* XXX */
+		return ("unknown");
+#endif
+	}
+}
+/*
+ * Recalculate the interrupt masks from scratch.
+ * We could code special registry and deregistry versions of this function that
+ * would be faster, but the code would be nastier, and we don't expect this to
+ * happen very much anyway.
+ */
+static void
+intr_calculatemasks()
+{
+	int irq, level;
+	struct intrhand *q;
+
+	/* First, figure out which levels each IRQ uses. */
+	for (irq = 0; irq < ICU_LEN; irq++) {
+		register int levels = 0;
+		for (q = m_intrhand[irq]; q; q = q->ih_next)
+			levels |= 1 << q->ih_level;
+		m_intrlevel[irq] = levels;
+	}
+
+	/* Then figure out which IRQs use each level. */
+	for (level = IPL_NONE; level < IPL_NUM; level++) {
+		register int irqs = 0;
+		for (irq = 0; irq < ICU_LEN; irq++)
+			if (m_intrlevel[irq] & (1 << level))
+				irqs |= 1 << irq;
+		imask[level] = irqs | SINT_MASK;
+	}
+
+	/*
+	 * There are tty, network and disk drivers that use free() at interrupt
+	 * time, so imp > (tty | net | bio).
+	 *
+	 * Enforce a hierarchy that gives slow devices a better chance at not
+	 * dropping data.
+	 */
+	imask[IPL_NET] |= imask[IPL_BIO];
+	imask[IPL_TTY] |= imask[IPL_NET];
+	imask[IPL_IMP] |= imask[IPL_TTY];
+	imask[IPL_CLOCK] |= imask[IPL_IMP] | SPL_CLOCK;
+
+	/*
+	 * These are pseudo-levels.
+	 */
+	imask[IPL_NONE] = 0x00000000;
+	imask[IPL_HIGH] = 0xffffffff;
+
+	/* And eventually calculate the complete masks. */
+	for (irq = 0; irq < ICU_LEN; irq++) {
+		register int irqs = 1 << irq;
+		for (q = m_intrhand[irq]; q; q = q->ih_next)
+			irqs |= imask[q->ih_level];
+		m_intrmask[irq] = irqs | SINT_MASK;
+	}
+
+	/* Lastly, determine which IRQs are actually in use. */
+	{
+		register int irqs = 0;
+		for (irq = 0; irq < ICU_LEN; irq++) {
+			if (m_intrhand[irq])
+				irqs |= 1 << irq;
+		}
+		imen_m = ~irqs;
+		enable_irq(~imen_m);
+	}
+}
+static void
+enable_irq(int x)
+{
+	int state0, state1, v;
+	int irq;
+
+	x &= HWIRQ_MASK;	/* XXX Higher bits are software interrupts. */
+
+	state0 = state1 = 0;
+	while (x) {
+		v = 31 - cntlzw(x);
+		irq = m_hwirq[v];
+		if (irq < 32)
+			state0 |= 1 << irq;
+		else
+			state1 |= 1 << (irq - 32);
+
+		x &= ~(1 << v);
+	}
+
+	if (heathrow_FCR)
+		out32rb(INT_ENABLE_REG1, state1);
+
+	out32rb(INT_ENABLE_REG0, state0);
+}
+
+int m_virq_inited = 0;
+
+/*
+ * Map 64 irqs into 32 (bits).
+ */
+static int
+mapirq(int irq)
+{
+	int v;
+	int i;
+
+	if (m_virq_inited == 0) {
+		m_virq_max = 0;
+		for (i = 0; i < ICU_LEN; i++) {
+			m_virq[i] = 0;
+		}
+		m_virq_inited = 1;
+	}
+
+	/* irq in table already? */
+	if (m_virq[irq] != 0)
+		return m_virq[irq];
+
+	if (irq < 0 || irq >= 64)
+		panic("invalid irq");
+	m_virq_max++;
+	v = m_virq_max;
+	if (v > HWIRQ_MAX)
+		panic("virq overflow");
+
+	m_hwirq[v] = irq;
+	m_virq[irq] = v;
+#if 0
+printf("\nmapirq %x to %x\n", irq, v);
+#endif
+
+	return v;
+}
+
+/*
+ * Count leading zeros.
+ */
+static __inline int
+cntlzw(int x)
+{
+	int a;
+
+	__asm __volatile ("cntlzw %0,%1" : "=r"(a) : "r"(x));
+
+	return a;
+}
+
+/*
+ * external interrupt handler
+ */
+void
+mac_ext_intr()
+{
+	int irq = 0;
+	int o_imen, r_imen;
+	int pcpl;
+	struct intrhand *ih;
+	volatile unsigned long int_state;
+
+	pcpl = cpl;	/* Turn off all */
+
+	int_state = read_irq();
+	if (int_state == 0)
+		goto out;
+
+start:
+	irq = 31 - cntlzw(int_state);
+	intrcnt[m_hwirq[irq]]++;
+
+	o_imen = imen_m;
+	r_imen = 1 << irq;
+
+	if ((cpl & r_imen) != 0) {
+		ipending |= r_imen;	/* Masked! Mark this as pending */
+		imen_m |= r_imen;
+		enable_irq(~imen_m);
+	} else {
+		splraise(m_intrmask[irq]);
+
+		ih = m_intrhand[irq];
+		while (ih) {
+			(*ih->ih_fun)(ih->ih_arg);
+			ih = ih->ih_next;
+		}
+
+		uvmexp.intrs++;
+		m_evirq[m_hwirq[irq]].ev_count++;
+	}
+	int_state &= ~r_imen;
+	if (int_state)
+		goto start;
+
+out:
+	splx(pcpl);	/* Process pendings. */
+}
+
+void
+mac_intr_do_pending_int()
+{
+	struct intrhand *ih;
+	int irq;
+	int pcpl;
+	int hwpend;
+	int s;
+	static int processing;
+
+	if (processing)
+		return;
+
+	processing = 1;
+	pcpl = splhigh();		/* Turn off all */
+	s = ppc_intr_disable();
+
+	hwpend = ipending & ~pcpl;	/* Do now unmasked pendings */
+	imen_m &= ~hwpend;
+	enable_irq(~imen_m);
+	hwpend &= HWIRQ_MASK;
+	while (hwpend) {
+		irq = 31 - cntlzw(hwpend);
+		hwpend &= ~(1L << irq);
+		ih = m_intrhand[irq];
+		while(ih) {
+			(*ih->ih_fun)(ih->ih_arg);
+			ih = ih->ih_next;
+		}
+
+		m_evirq[m_hwirq[irq]].ev_count++;
+	}
+
+	/*out32rb(INT_ENABLE_REG, ~imen_m);*/
+
+	do {
+		if((ipending & SINT_CLOCK) & ~pcpl) {
+			ipending &= ~SINT_CLOCK;
+			softclock();
+		}
+		if((ipending & SINT_NET) & ~pcpl) {
+			extern int netisr;
+			int pisr = netisr;
+			netisr = 0;
+			ipending &= ~SINT_NET;
+			softnet(pisr);
+		}
+		if((ipending & SINT_TTY) & ~pcpl) {
+			ipending &= ~SINT_TTY;
+			softtty();
+		}
+	} while (ipending & (SINT_NET|SINT_CLOCK|SINT_TTY) & ~cpl);
+	ipending &= pcpl;
+	cpl = pcpl;	/* Don't use splx... we are here already! */
+	ppc_intr_enable(s);
+	processing = 0;
+}
+
+static int
+read_irq()
+{
+	int rv = 0;
+	int state0, state1, p;
+	int state0save, state1save;
+
+	state0 = in32rb(INT_STATE_REG0);
+	if (state0)
+		out32rb(INT_CLEAR_REG0, state0);
+		state0save = state0;
+	while (state0) {
+		p = 31 - cntlzw(state0);
+		rv |= 1 << m_virq[p];
+		state0 &= ~(1 << p);
+	}
+
+	if (heathrow_FCR)			/* has heathrow? */
+		state1 = in32rb(INT_STATE_REG1);
+	else
+		state1 = 0;
+
+	if (state1)
+		out32rb(INT_CLEAR_REG1, state1);
+	state1save = state1;
+	while (state1) {
+		p = 31 - cntlzw(state1);
+		rv |= 1 << m_virq[p + 32];
+		state1 &= ~(1 << p);
+	}
+#if 0
+printf("mac_intr int_stat 0:%x 1:%x\n", state0save, state1save);
+#endif
+
+	/* 1 << 0 is invalid. */
+	return rv & ~1;
+}
+@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: macintr.c,v 1.16 2003/02/12 22:40:59 jason Exp $	*/
+d20 1
+a20 5
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+d100 1
+a100 1
+struct cfattach macintr_ca = { 
+d111 1
+a111 4
+macintr_match(parent, cf, aux) 
+	struct device *parent;
+	void *cf;
+	void *aux;
+d121 1
+a121 1
+		if (strcmp(type,  "interrupt-controller") == 0) {
+a122 1
+		}
+d130 1
+a130 1
+	if (strcmp(ca->ca_name, "legacy-interrupt-controller") == 0 ) {
+a131 1
+	}
+d147 1
+a147 3
+macintr_attach(parent, self, aux)
+	struct device *parent, *self;
+	void *aux;
+d165 1
+a165 1
+		macintr_prog_button, (void *)0x14, "prog button");
+d171 1
+d177 1
+a177 1
+		printf("\n\t%s irq %d level %d fun %x arg %x",
+d212 1
+a212 2
+fakeintr(arg)
+	void *arg;
+d224 2
+a225 8
+macintr_establish(lcv, irq, type, level, ih_fun, ih_arg, name)
+	void * lcv;
+	int irq;
+	int type;
+	int level;
+	int (*ih_fun)(void *);
+	void *ih_arg;
+	char *name;
+d303 1
+a303 3
+macintr_disestablish(lcp, arg)
+	void *lcp;
+	void *arg;
+d332 1
+a332 2
+intr_typename(type)
+	int type;
+a333 1
+
+d371 1
+a371 1
+	for (level = 0; level < 5; level++) {
+d417 1
+a417 2
+enable_irq(x)
+	int x;
+d428 1
+a428 1
+		if (irq < 32) {
+d430 1
+a430 1
+		} else {
+d432 1
+a432 1
+		}
+d436 1
+a436 1
+	if (heathrow_FCR) {
+d438 1
+a438 1
+	}
+d448 1
+a448 2
+mapirq(irq)
+	int irq;
+d462 1
+a462 1
+	if (m_virq[irq] != 0) {
+a463 1
+	}
+d485 1
+a485 2
+cntlzw(x)
+	int x;
+d550 1
+a550 1
+	int emsr, dmsr;
+d558 1
+a558 3
+	asm volatile("mfmsr %0" : "=r"(emsr));
+	dmsr = emsr & ~PSL_EE;
+	asm volatile("mtmsr %0" :: "r"(dmsr));
+d597 1
+a597 1
+	asm volatile("mtmsr %0" :: "r"(emsr));
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: macintr.c,v 1.17 2003/06/02 23:27:49 millert Exp $	*/
+d20 5
+a24 1
+ * 3. Neither the name of the University nor the names of its contributors
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD base system minus kerberos from CTM,
+kernel source from CVS right now (no diffs though)
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: macintr.c,v 1.18 2003/07/02 21:30:13 drahn Exp $	*/
+d571 1
+a571 1
+	int s;
+d579 3
+a581 1
+	s = ppc_intr_disable();
+d620 1
+a620 1
+	ppc_intr_enable(s);
+@
+
+
+1.1.1.4
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: macintr.c,v 1.22 2003/12/20 22:40:26 miod Exp $	*/
+d100 1
+a100 1
+struct cfattach macintr_ca = {
+d111 4
+a114 1
+macintr_match(struct device *parent, void *cf, void *aux)
+d124 1
+a124 1
+		if (strcmp(type,  "interrupt-controller") == 0)
+d126 1
+d134 1
+a134 1
+	if (strcmp(ca->ca_name, "legacy-interrupt-controller") == 0 )
+d136 1
+d152 3
+a154 1
+macintr_attach(struct device *parent, struct device *self, void *aux)
+d172 1
+a172 1
+	    macintr_prog_button, (void *)0x14, "prog button");
+a177 1
+
+d183 1
+a183 1
+		printf("\n\t%s irq %d level %d fun %p arg %p",
+d218 2
+a219 1
+fakeintr(void *arg)
+d231 8
+a238 2
+macintr_establish(void * lcv, int irq, int type, int level,
+    int (*ih_fun)(void *), void *ih_arg, char *name)
+d316 3
+a318 1
+macintr_disestablish(void *lcp, void *arg)
+d347 2
+a348 1
+intr_typename(int type)
+d350 1
+d388 1
+a388 1
+	for (level = IPL_NONE; level < IPL_NUM; level++) {
+d434 2
+a435 1
+enable_irq(int x)
+d446 1
+a446 1
+		if (irq < 32)
+d448 1
+a448 1
+		else
+d450 1
+a450 1
+
+d454 1
+a454 1
+	if (heathrow_FCR)
+d456 1
+a456 1
+
+d466 2
+a467 1
+mapirq(int irq)
+d481 1
+a481 1
+	if (m_virq[irq] != 0)
+d483 1
+d505 2
+a506 1
+cntlzw(int x)
+@
+
+

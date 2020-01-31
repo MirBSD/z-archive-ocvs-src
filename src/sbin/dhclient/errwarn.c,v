@@ -1,0 +1,502 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	cvs-200411261545:1.1.1.2
+	cvs-200411231505:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2004.01.26.18.28.38;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2004.01.26.18.28.38;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.05.16.08.22.56;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/* errwarn.c
+
+   Errors and warnings... */
+
+/*
+ * Copyright (c) 1996 The Internet Software Consortium.
+ * All Rights Reserved.
+ * Copyright (c) 1995 RadioMail Corporation.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of RadioMail Corporation, the Internet Software
+ *    Consortium nor the names of its contributors may be used to endorse
+ *    or promote products derived from this software without specific
+ *    prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY RADIOMAIL CORPORATION, THE INTERNET
+ * SOFTWARE CONSORTIUM AND CONTRIBUTORS ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL RADIOMAIL CORPORATION OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+ * OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * This software was written for RadioMail Corporation by Ted Lemon
+ * under a contract with Vixie Enterprises.   Further modifications have
+ * been made for the Internet Software Consortium under a contract
+ * with Vixie Laboratories.
+ */
+
+#include "dhcpd.h"
+#include <errno.h>
+
+static void do_percentm PROTO ((char *obuf, size_t size, char *ibuf));
+
+static char mbuf [1024];
+static char fbuf [1024];
+
+int warnings_occurred;
+
+/* Log an error message, then exit... */
+
+void error (char * fmt, ...)
+     KandR (char *fmt;)
+     va_dcl
+{
+  va_list list;
+
+  do_percentm (fbuf, sizeof(fbuf), fmt);
+
+  va_start (list, fmt);
+  vsnprintf (mbuf, sizeof mbuf, fbuf, list);
+  va_end (list);
+
+#ifndef DEBUG
+  syslog (log_priority | LOG_ERR, "%s", mbuf);
+#endif
+
+  /* Also log it to stderr? */
+  if (log_perror) {
+	  write (2, mbuf, strlen (mbuf));
+	  write (2, "\n", 1);
+  }
+
+  syslog (LOG_CRIT, "exiting.");
+  if (log_perror) {
+	fprintf (stderr, "exiting.\n");
+	fflush (stderr);
+  }
+  cleanup ();
+  exit (1);
+}
+
+/* Log a warning message... */
+
+int warn (char * fmt, ...)
+     KandR (char *fmt;)
+     va_dcl
+{
+  va_list list;
+
+  do_percentm (fbuf, sizeof(fbuf), fmt);
+
+  va_start (list, fmt);
+  vsnprintf (mbuf, sizeof mbuf, fbuf, list);
+  va_end (list);
+
+#ifndef DEBUG
+  syslog (log_priority | LOG_ERR, "%s", mbuf);
+#endif
+
+  if (log_perror) {
+	  write (2, mbuf, strlen (mbuf));
+	  write (2, "\n", 1);
+  }
+
+  return 0;
+}
+
+/* Log a note... */
+
+int note (char * fmt, ...)
+     KandR (char *fmt;)
+     va_dcl
+{
+  va_list list;
+
+  do_percentm (fbuf, sizeof(fbuf), fmt);
+
+  va_start (list, fmt);
+  vsnprintf (mbuf, sizeof mbuf, fbuf, list);
+  va_end (list);
+
+#ifndef DEBUG
+  syslog (log_priority | LOG_INFO, "%s", mbuf);
+#endif
+
+  if (log_perror) {
+	  write (2, mbuf, strlen (mbuf));
+	  write (2, "\n", 1);
+  }
+
+  return 0;
+}
+
+/* Log a debug message... */
+
+int debug (char * fmt, ...)
+     KandR (char *fmt;)
+     va_dcl
+{
+  va_list list;
+
+  do_percentm (fbuf, sizeof(fbuf), fmt);
+
+  va_start (list, fmt);
+  vsnprintf (mbuf, sizeof mbuf, fbuf, list);
+  va_end (list);
+
+#ifndef DEBUG
+  syslog (log_priority | LOG_DEBUG, "%s", mbuf);
+#endif
+
+  if (log_perror) {
+	  write (2, mbuf, strlen (mbuf));
+	  write (2, "\n", 1);
+  }
+
+  return 0;
+}
+
+/* Find %m in the input string and substitute an error message string. */
+
+static void do_percentm (obuf, size, ibuf)
+     char *obuf;
+     size_t size;
+     char *ibuf;
+{
+	char ch;
+	char *s = ibuf;
+	char *t = obuf;
+	size_t prlen;
+	size_t fmt_left;
+	int saved_errno = errno;
+
+	/* 
+	 * We wouldn't need this mess if printf handled %m, or if 
+	 * strerror() had been invented before syslog().
+	 */
+	for (fmt_left = size; (ch = *s); ++s) {
+		if (ch == '%' && s[1] == 'm') {
+			++s;
+			prlen = snprintf(t, fmt_left, "%s",
+			    strerror(saved_errno));
+			if (prlen >= fmt_left)
+				prlen = fmt_left - 1;
+			t += prlen;
+			fmt_left -= prlen;
+		} else {
+			if (fmt_left > 1) {
+				*t++ = ch;
+				fmt_left--;
+			}
+		}
+	}
+	*t = '\0';
+}
+
+
+int parse_warn (char * fmt, ...)
+	KandR (char *fmt;)
+	va_dcl
+{
+	va_list list;
+	static char spaces [] = "                                                                                ";
+	
+	do_percentm (mbuf, sizeof(mbuf), fmt);
+	snprintf (fbuf, sizeof fbuf, "%s line %d: %s",
+		  tlname, lexline, mbuf);
+	VA_start (list, fmt);
+	vsnprintf (mbuf, sizeof mbuf, fbuf, list);
+	va_end (list);
+
+#ifndef DEBUG
+	syslog (log_priority | LOG_ERR, "%s", mbuf);
+	syslog (log_priority | LOG_ERR, "%s", token_line);
+	if (lexline < 81)
+		syslog (log_priority | LOG_ERR,
+			"%s^", &spaces [sizeof spaces - lexchar]);
+#endif
+
+	if (log_perror) {
+		write (2, mbuf, strlen (mbuf));
+		write (2, "\n", 1);
+		write (2, token_line, strlen (token_line));
+		write (2, "\n", 1);
+		write (2, spaces, lexchar - 1);
+		write (2, "^\n", 2);
+	}
+
+	warnings_occurred = 1;
+
+	return 0;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@@
+
+
+1.1.1.2
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: errwarn.c,v 1.7 2004/05/04 22:23:01 mickey Exp $	*/
+d3 1
+a3 1
+/* Errors and warnings... */
+d43 1
+d46 1
+a46 1
+#include "dhcpd.h"
+d48 2
+a49 1
+static void do_percentm(char *obuf, size_t size, char *ibuf);
+d51 1
+a51 2
+static char mbuf[1024];
+static char fbuf[1024];
+d53 1
+a53 1
+int warnings_occurred;
+d55 3
+a57 5
+/*
+ * Log an error message, then exit.
+ */
+void
+error(char *fmt, ...)
+d59 1
+a59 1
+	va_list list;
+d61 1
+a61 1
+	do_percentm(fbuf, sizeof(fbuf), fmt);
+d63 3
+a65 3
+	va_start(list, fmt);
+	vsnprintf(mbuf, sizeof(mbuf), fbuf, list);
+	va_end(list);
+d68 1
+a68 1
+	syslog(log_priority | LOG_ERR, "%s", mbuf);
+d71 14
+a84 5
+	/* Also log it to stderr? */
+	if (log_perror) {
+		write(2, mbuf, strlen(mbuf));
+		write(2, "\n", 1);
+	}
+d86 1
+a86 7
+	syslog(LOG_CRIT, "exiting.");
+	if (log_perror) {
+		fprintf(stderr, "exiting.\n");
+		fflush(stderr);
+	}
+	exit(1);
+}
+d88 3
+a90 5
+/*
+ * Log a warning message...
+ */
+int
+warning(char *fmt, ...)
+d92 1
+a92 1
+	va_list list;
+d94 1
+a94 1
+	do_percentm(fbuf, sizeof(fbuf), fmt);
+d96 3
+a98 3
+	va_start(list, fmt);
+	vsnprintf(mbuf, sizeof(mbuf), fbuf, list);
+	va_end(list);
+d101 1
+a101 1
+	syslog(log_priority | LOG_ERR, "%s", mbuf);
+d104 4
+a107 4
+	if (log_perror) {
+		write(2, mbuf, strlen(mbuf));
+		write(2, "\n", 1);
+	}
+d109 1
+a109 1
+	return (0);
+d112 5
+a116 5
+/*
+ * Log a note...
+ */
+int
+note(char *fmt, ...)
+d118 1
+a118 1
+	va_list list;
+d120 1
+a120 1
+	do_percentm(fbuf, sizeof(fbuf), fmt);
+d122 3
+a124 3
+	va_start(list, fmt);
+	vsnprintf(mbuf, sizeof(mbuf), fbuf, list);
+	va_end(list);
+d127 1
+a127 1
+	syslog(log_priority | LOG_INFO, "%s", mbuf);
+d130 4
+a133 4
+	if (log_perror) {
+		write(2, mbuf, strlen(mbuf));
+		write(2, "\n", 1);
+	}
+d135 1
+a135 1
+	return (0);
+d138 5
+a142 5
+/*
+ * Log a debug message...
+ */
+int
+debug(char *fmt, ...)
+d144 1
+a144 1
+	va_list list;
+d146 1
+a146 1
+	do_percentm(fbuf, sizeof(fbuf), fmt);
+d148 3
+a150 3
+	va_start(list, fmt);
+	vsnprintf(mbuf, sizeof(mbuf), fbuf, list);
+	va_end(list);
+d153 1
+a153 1
+	syslog(log_priority | LOG_DEBUG, "%s", mbuf);
+d156 4
+a159 4
+	if (log_perror) {
+		write(2, mbuf, strlen(mbuf));
+		write(2, "\n", 1);
+	}
+d161 1
+a161 1
+	return (0);
+d164 6
+a169 5
+/*
+ * Find %m in the input string and substitute an error message string.
+ */
+static void
+do_percentm(char *obuf, size_t size, char *ibuf)
+d178 2
+a179 2
+	/*
+	 * We wouldn't need this mess if printf handled %m, or if
+d201 4
+a204 2
+int
+parse_warn(char *fmt, ...)
+d207 8
+a214 9
+	static char spaces[] =
+	    "                                        "
+	    "                                        "; /* 80 spaces */
+
+	do_percentm(mbuf, sizeof(mbuf), fmt);
+	snprintf(fbuf, sizeof(fbuf), "%s line %d: %s", tlname, lexline, mbuf);
+	va_start(list, fmt);
+	vsnprintf(mbuf, sizeof(mbuf), fbuf, list);
+	va_end(list);
+d217 2
+a218 2
+	syslog(log_priority | LOG_ERR, "%s", mbuf);
+	syslog(log_priority | LOG_ERR, "%s", token_line);
+d220 2
+a221 2
+		syslog(log_priority | LOG_ERR,
+		    "%s^", &spaces[sizeof(spaces) - lexchar]);
+d225 6
+a230 6
+		write(2, mbuf, strlen(mbuf));
+		write(2, "\n", 1);
+		write(2, token_line, strlen(token_line));
+		write(2, "\n", 1);
+		write(2, spaces, lexchar - 1);
+		write(2, "^\n", 2);
+d235 1
+a235 1
+	return (0);
+@
+

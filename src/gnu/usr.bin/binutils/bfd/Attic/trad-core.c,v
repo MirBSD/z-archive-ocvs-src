@@ -1,0 +1,776 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.54.24;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.00.48;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.11;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.11;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.27.09;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.59;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.04.42;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.08.49;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* BFD back end for traditional Unix core files (U-area and raw sections)
+   Copyright 1988, 1989, 1991, 1992, 1993, 1994, 1995, 1996, 1998, 1999,
+   2000, 2001, 2002
+   Free Software Foundation, Inc.
+   Written by John Gilmore of Cygnus Support.
+
+This file is part of BFD, the Binary File Descriptor library.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "bfd.h"
+#include "sysdep.h"
+#include "libbfd.h"
+#include "libaout.h"           /* BFD a.out internal data structures */
+
+#include <sys/param.h>
+#ifdef HAVE_DIRENT_H
+# include <dirent.h>
+#else
+# ifdef HAVE_SYS_NDIR_H
+#  include <sys/ndir.h>
+# endif
+# ifdef HAVE_SYS_DIR_H
+#  include <sys/dir.h>
+# endif
+# ifdef HAVE_NDIR_H
+#  include <ndir.h>
+# endif
+#endif
+#include <signal.h>
+
+#include <sys/user.h>		/* After a.out.h  */
+
+#ifdef TRAD_HEADER
+#include TRAD_HEADER
+#endif
+
+struct trad_core_struct
+{
+  asection *data_section;
+  asection *stack_section;
+  asection *reg_section;
+  struct user u;
+};
+
+#define core_upage(bfd) (&((bfd)->tdata.trad_core_data->u))
+#define core_datasec(bfd) ((bfd)->tdata.trad_core_data->data_section)
+#define core_stacksec(bfd) ((bfd)->tdata.trad_core_data->stack_section)
+#define core_regsec(bfd) ((bfd)->tdata.trad_core_data->reg_section)
+
+/* forward declarations */
+
+const bfd_target *trad_unix_core_file_p PARAMS ((bfd *abfd));
+char * trad_unix_core_file_failing_command PARAMS ((bfd *abfd));
+int trad_unix_core_file_failing_signal PARAMS ((bfd *abfd));
+bfd_boolean trad_unix_core_file_matches_executable_p
+  PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+static void swap_abort PARAMS ((void));
+
+/* Handle 4.2-style (and perhaps also sysV-style) core dump file.  */
+
+/* ARGSUSED */
+const bfd_target *
+trad_unix_core_file_p (abfd)
+     bfd *abfd;
+
+{
+  int val;
+  struct user u;
+  struct trad_core_struct *rawptr;
+  bfd_size_type amt;
+
+#ifdef TRAD_CORE_USER_OFFSET
+  /* If defined, this macro is the file position of the user struct.  */
+  if (bfd_seek (abfd, (file_ptr) TRAD_CORE_USER_OFFSET, SEEK_SET) != 0)
+    return 0;
+#endif
+
+  val = bfd_bread ((void *) &u, (bfd_size_type) sizeof u, abfd);
+  if (val != sizeof u)
+    {
+      /* Too small to be a core file */
+      bfd_set_error (bfd_error_wrong_format);
+      return 0;
+    }
+
+  /* Sanity check perhaps??? */
+  if (u.u_dsize > 0x1000000)	/* Remember, it's in pages...  */
+    {
+      bfd_set_error (bfd_error_wrong_format);
+      return 0;
+    }
+  if (u.u_ssize > 0x1000000)
+    {
+      bfd_set_error (bfd_error_wrong_format);
+      return 0;
+    }
+
+  /* Check that the size claimed is no greater than the file size.  */
+  {
+    FILE *stream = bfd_cache_lookup (abfd);
+    struct stat statbuf;
+    if (stream == NULL)
+      return 0;
+    if (fstat (fileno (stream), &statbuf) < 0)
+      {
+	bfd_set_error (bfd_error_system_call);
+	return 0;
+      }
+    if ((unsigned long) (NBPG * (UPAGES + u.u_dsize
+#ifdef TRAD_CORE_DSIZE_INCLUDES_TSIZE
+				 - u.u_tsize
+#endif
+				 + u.u_ssize))
+	> (unsigned long) statbuf.st_size)
+      {
+	bfd_set_error (bfd_error_wrong_format);
+	return 0;
+      }
+#ifndef TRAD_CORE_ALLOW_ANY_EXTRA_SIZE
+    if ((unsigned long) (NBPG * (UPAGES + u.u_dsize + u.u_ssize)
+#ifdef TRAD_CORE_EXTRA_SIZE_ALLOWED
+	/* Some systems write the file too big.  */
+			 + TRAD_CORE_EXTRA_SIZE_ALLOWED
+#endif
+			 )
+	< (unsigned long) statbuf.st_size)
+      {
+	/* The file is too big.  Maybe it's not a core file
+	   or we otherwise have bad values for u_dsize and u_ssize).  */
+	bfd_set_error (bfd_error_wrong_format);
+	return 0;
+      }
+#endif
+  }
+
+  /* OK, we believe you.  You're a core file (sure, sure).  */
+
+  /* Allocate both the upage and the struct core_data at once, so
+     a single free() will free them both.  */
+  amt = sizeof (struct trad_core_struct);
+  rawptr = (struct trad_core_struct *) bfd_zmalloc (amt);
+  if (rawptr == NULL)
+    return 0;
+
+  abfd->tdata.trad_core_data = rawptr;
+
+  rawptr->u = u; /*Copy the uarea into the tdata part of the bfd */
+
+  /* Create the sections.  */
+
+  core_stacksec(abfd) = bfd_make_section_anyway (abfd, ".stack");
+  if (core_stacksec (abfd) == NULL)
+    goto fail;
+  core_datasec (abfd) = bfd_make_section_anyway (abfd, ".data");
+  if (core_datasec (abfd) == NULL)
+    goto fail;
+  core_regsec (abfd) = bfd_make_section_anyway (abfd, ".reg");
+  if (core_regsec (abfd) == NULL)
+    goto fail;
+
+  core_stacksec (abfd)->flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+  core_datasec (abfd)->flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+  core_regsec (abfd)->flags = SEC_HAS_CONTENTS;
+
+  core_datasec (abfd)->_raw_size =  NBPG * u.u_dsize
+#ifdef TRAD_CORE_DSIZE_INCLUDES_TSIZE
+    - NBPG * u.u_tsize
+#endif
+      ;
+  core_stacksec (abfd)->_raw_size = NBPG * u.u_ssize;
+  core_regsec (abfd)->_raw_size = NBPG * UPAGES; /* Larger than sizeof struct u */
+
+  /* What a hack... we'd like to steal it from the exec file,
+     since the upage does not seem to provide it.  FIXME.  */
+#ifdef HOST_DATA_START_ADDR
+  core_datasec (abfd)->vma = HOST_DATA_START_ADDR;
+#else
+  core_datasec (abfd)->vma = HOST_TEXT_START_ADDR + (NBPG * u.u_tsize);
+#endif
+
+#ifdef HOST_STACK_START_ADDR
+  core_stacksec (abfd)->vma = HOST_STACK_START_ADDR;
+#else
+  core_stacksec (abfd)->vma = HOST_STACK_END_ADDR - (NBPG * u.u_ssize);
+#endif
+
+  /* This is tricky.  As the "register section", we give them the entire
+     upage and stack.  u.u_ar0 points to where "register 0" is stored.
+     There are two tricks with this, though.  One is that the rest of the
+     registers might be at positive or negative (or both) displacements
+     from *u_ar0.  The other is that u_ar0 is sometimes an absolute address
+     in kernel memory, and on other systems it is an offset from the beginning
+     of the `struct user'.
+
+     As a practical matter, we don't know where the registers actually are,
+     so we have to pass the whole area to GDB.  We encode the value of u_ar0
+     by setting the .regs section up so that its virtual memory address
+     0 is at the place pointed to by u_ar0 (by setting the vma of the start
+     of the section to -u_ar0).  GDB uses this info to locate the regs,
+     using minor trickery to get around the offset-or-absolute-addr problem.  */
+  core_regsec (abfd)->vma = - (bfd_vma) (unsigned long) u.u_ar0;
+
+  core_datasec (abfd)->filepos = NBPG * UPAGES;
+  core_stacksec (abfd)->filepos = (NBPG * UPAGES) + NBPG * u.u_dsize
+#ifdef TRAD_CORE_DSIZE_INCLUDES_TSIZE
+    - NBPG * u.u_tsize
+#endif
+      ;
+  core_regsec (abfd)->filepos = 0; /* Register segment is the upage */
+
+  /* Align to word at least */
+  core_stacksec (abfd)->alignment_power = 2;
+  core_datasec (abfd)->alignment_power = 2;
+  core_regsec (abfd)->alignment_power = 2;
+
+  return abfd->xvec;
+
+ fail:
+  bfd_release (abfd, abfd->tdata.any);
+  abfd->tdata.any = NULL;
+  bfd_section_list_clear (abfd);
+  return NULL;
+}
+
+char *
+trad_unix_core_file_failing_command (abfd)
+     bfd *abfd;
+{
+#ifndef NO_CORE_COMMAND
+  char *com = abfd->tdata.trad_core_data->u.u_comm;
+  if (*com)
+    return com;
+  else
+#endif
+    return 0;
+}
+
+/* ARGSUSED */
+int
+trad_unix_core_file_failing_signal (ignore_abfd)
+     bfd *ignore_abfd ATTRIBUTE_UNUSED;
+{
+#ifdef TRAD_UNIX_CORE_FILE_FAILING_SIGNAL
+  return TRAD_UNIX_CORE_FILE_FAILING_SIGNAL(ignore_abfd);
+#else
+  return -1;		/* FIXME, where is it? */
+#endif
+}
+
+/* ARGSUSED */
+bfd_boolean
+trad_unix_core_file_matches_executable_p  (core_bfd, exec_bfd)
+     bfd *core_bfd ATTRIBUTE_UNUSED;
+     bfd *exec_bfd ATTRIBUTE_UNUSED;
+{
+  return TRUE;		/* FIXME, We have no way of telling at this point */
+}
+
+/* If somebody calls any byte-swapping routines, shoot them.  */
+static void
+swap_abort ()
+{
+  abort (); /* This way doesn't require any declaration for ANSI to fuck up */
+}
+#define	NO_GET	((bfd_vma (*) PARAMS ((   const bfd_byte *))) swap_abort )
+#define	NO_PUT	((void    (*) PARAMS ((bfd_vma, bfd_byte *))) swap_abort )
+#define	NO_SIGNED_GET \
+  ((bfd_signed_vma (*) PARAMS ((const bfd_byte *))) swap_abort )
+
+const bfd_target trad_core_vec =
+  {
+    "trad-core",
+    bfd_target_unknown_flavour,
+    BFD_ENDIAN_UNKNOWN,		/* target byte order */
+    BFD_ENDIAN_UNKNOWN,		/* target headers byte order */
+    (HAS_RELOC | EXEC_P |	/* object flags */
+     HAS_LINENO | HAS_DEBUG |
+     HAS_SYMS | HAS_LOCALS | WP_TEXT | D_PAGED),
+    (SEC_HAS_CONTENTS | SEC_ALLOC | SEC_LOAD | SEC_RELOC), /* section flags */
+    0,			                                   /* symbol prefix */
+    ' ',						   /* ar_pad_char */
+    16,							   /* ar_max_namelen */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 64 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 32 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 16 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 64 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 32 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 16 bit hdrs */
+
+    {				/* bfd_check_format */
+     _bfd_dummy_target,		/* unknown format */
+     _bfd_dummy_target,		/* object file */
+     _bfd_dummy_target,		/* archive */
+     trad_unix_core_file_p	/* a core file */
+    },
+    {				/* bfd_set_format */
+     bfd_false, bfd_false,
+     bfd_false, bfd_false
+    },
+    {				/* bfd_write_contents */
+     bfd_false, bfd_false,
+     bfd_false, bfd_false
+    },
+
+       BFD_JUMP_TABLE_GENERIC (_bfd_generic),
+       BFD_JUMP_TABLE_COPY (_bfd_generic),
+       BFD_JUMP_TABLE_CORE (trad_unix),
+       BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
+       BFD_JUMP_TABLE_SYMBOLS (_bfd_nosymbols),
+       BFD_JUMP_TABLE_RELOCS (_bfd_norelocs),
+       BFD_JUMP_TABLE_WRITE (_bfd_generic),
+       BFD_JUMP_TABLE_LINK (_bfd_nolink),
+       BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
+
+    NULL,
+
+    (PTR) 0			/* backend_data */
+};
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d3 1
+a3 1
+   2000
+d50 7
+a56 7
+  struct trad_core_struct
+    {
+      asection *data_section;
+      asection *stack_section;
+      asection *reg_section;
+      struct user u;
+    };
+d66 5
+a70 5
+char *		trad_unix_core_file_failing_command PARAMS ((bfd *abfd));
+int		trad_unix_core_file_failing_signal PARAMS ((bfd *abfd));
+boolean		trad_unix_core_file_matches_executable_p
+			 PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+static void	swap_abort PARAMS ((void));
+d83 1
+d87 1
+a87 1
+  if (bfd_seek (abfd, TRAD_CORE_USER_OFFSET, SEEK_SET) != 0)
+d91 1
+a91 1
+  val = bfd_read ((void *)&u, 1, sizeof u, abfd);
+d153 2
+a154 2
+  rawptr = (struct trad_core_struct *)
+		bfd_zmalloc (sizeof (struct trad_core_struct));
+d162 1
+a162 2
+  /* Create the sections.  This is raunchy, but bfd_close wants to free
+     them separately.  */
+d164 1
+a164 1
+  core_stacksec(abfd) = (asection *) bfd_zalloc (abfd, sizeof (asection));
+d166 2
+a167 2
+    return NULL;
+  core_datasec (abfd) = (asection *) bfd_zalloc (abfd, sizeof (asection));
+d169 2
+a170 2
+    return NULL;
+  core_regsec (abfd) = (asection *) bfd_zalloc (abfd, sizeof (asection));
+d172 1
+a172 5
+    return NULL;
+
+  core_stacksec (abfd)->name = ".stack";
+  core_datasec (abfd)->name = ".data";
+  core_regsec (abfd)->name = ".reg";
+d214 1
+a214 1
+  core_regsec (abfd)->vma = - (bfd_vma) u.u_ar0;
+d229 1
+a229 4
+  abfd->sections = core_stacksec (abfd);
+  core_stacksec (abfd)->next = core_datasec (abfd);
+  core_datasec (abfd)->next = core_regsec (abfd);
+  abfd->section_count = 3;
+d231 5
+a235 1
+  return abfd->xvec;
+d264 1
+a264 1
+boolean
+d269 1
+a269 1
+  return true;		/* FIXME, We have no way of telling at this point */
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d3 1
+a3 1
+   2000, 2001, 2002
+d50 7
+a56 7
+struct trad_core_struct
+{
+  asection *data_section;
+  asection *stack_section;
+  asection *reg_section;
+  struct user u;
+};
+d66 5
+a70 5
+char * trad_unix_core_file_failing_command PARAMS ((bfd *abfd));
+int trad_unix_core_file_failing_signal PARAMS ((bfd *abfd));
+bfd_boolean trad_unix_core_file_matches_executable_p
+  PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+static void swap_abort PARAMS ((void));
+a82 1
+  bfd_size_type amt;
+d86 1
+a86 1
+  if (bfd_seek (abfd, (file_ptr) TRAD_CORE_USER_OFFSET, SEEK_SET) != 0)
+d90 1
+a90 1
+  val = bfd_bread ((void *) &u, (bfd_size_type) sizeof u, abfd);
+d152 2
+a153 2
+  amt = sizeof (struct trad_core_struct);
+  rawptr = (struct trad_core_struct *) bfd_zmalloc (amt);
+d161 2
+a162 1
+  /* Create the sections.  */
+d164 1
+a164 1
+  core_stacksec(abfd) = bfd_make_section_anyway (abfd, ".stack");
+d166 2
+a167 2
+    goto fail;
+  core_datasec (abfd) = bfd_make_section_anyway (abfd, ".data");
+d169 2
+a170 2
+    goto fail;
+  core_regsec (abfd) = bfd_make_section_anyway (abfd, ".reg");
+d172 5
+a176 1
+    goto fail;
+d218 1
+a218 1
+  core_regsec (abfd)->vma = - (bfd_vma) (unsigned long) u.u_ar0;
+d233 5
+a238 6
+
+ fail:
+  bfd_release (abfd, abfd->tdata.any);
+  abfd->tdata.any = NULL;
+  bfd_section_list_clear (abfd);
+  return NULL;
+d267 1
+a267 1
+bfd_boolean
+d272 1
+a272 1
+  return TRUE;		/* FIXME, We have no way of telling at this point */
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d3 1
+a3 1
+   2000, 2001, 2002, 2003, 2004
+d74 1
+d251 1
+d263 1
+d278 4
+a281 7
+
+#define	NO_GET ((bfd_vma (*) (const void *)) swap_abort)
+#define	NO_PUT ((void (*) (bfd_vma, void *)) swap_abort)
+#define	NO_GETS ((bfd_signed_vma (*) (const void *)) swap_abort)
+#define	NO_GET64 ((bfd_uint64_t (*) (const void *)) swap_abort)
+#define	NO_PUT64 ((void (*) (bfd_uint64_t, void *)) swap_abort)
+#define	NO_GETS64 ((bfd_int64_t (*) (const void *)) swap_abort)
+d296 6
+a301 6
+    NO_GET64, NO_GETS64, NO_PUT64,	/* 64 bit data */
+    NO_GET, NO_GETS, NO_PUT,		/* 32 bit data */
+    NO_GET, NO_GETS, NO_PUT,		/* 16 bit data */
+    NO_GET64, NO_GETS64, NO_PUT64,	/* 64 bit hdrs */
+    NO_GET, NO_GETS, NO_PUT,		/* 32 bit hdrs */
+    NO_GET, NO_GETS, NO_PUT,		/* 16 bit hdrs */
+d304 4
+a307 4
+      _bfd_dummy_target,		/* unknown format */
+      _bfd_dummy_target,		/* object file */
+      _bfd_dummy_target,		/* archive */
+      trad_unix_core_file_p		/* a core file */
+d310 2
+a311 2
+      bfd_false, bfd_false,
+      bfd_false, bfd_false
+d314 2
+a315 2
+      bfd_false, bfd_false,
+      bfd_false, bfd_false
+d318 9
+a326 9
+    BFD_JUMP_TABLE_GENERIC (_bfd_generic),
+    BFD_JUMP_TABLE_COPY (_bfd_generic),
+    BFD_JUMP_TABLE_CORE (trad_unix),
+    BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
+    BFD_JUMP_TABLE_SYMBOLS (_bfd_nosymbols),
+    BFD_JUMP_TABLE_RELOCS (_bfd_norelocs),
+    BFD_JUMP_TABLE_WRITE (_bfd_generic),
+    BFD_JUMP_TABLE_LINK (_bfd_nolink),
+    BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
+d331 1
+a331 1
+  };
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d3 1
+a3 1
+   2000, 2001, 2002
+d50 7
+a56 7
+struct trad_core_struct
+{
+  asection *data_section;
+  asection *stack_section;
+  asection *reg_section;
+  struct user u;
+};
+d66 5
+a70 5
+char * trad_unix_core_file_failing_command PARAMS ((bfd *abfd));
+int trad_unix_core_file_failing_signal PARAMS ((bfd *abfd));
+bfd_boolean trad_unix_core_file_matches_executable_p
+  PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+static void swap_abort PARAMS ((void));
+a82 1
+  bfd_size_type amt;
+d86 1
+a86 1
+  if (bfd_seek (abfd, (file_ptr) TRAD_CORE_USER_OFFSET, SEEK_SET) != 0)
+d90 1
+a90 1
+  val = bfd_bread ((void *) &u, (bfd_size_type) sizeof u, abfd);
+d152 2
+a153 2
+  amt = sizeof (struct trad_core_struct);
+  rawptr = (struct trad_core_struct *) bfd_zmalloc (amt);
+d161 2
+a162 1
+  /* Create the sections.  */
+d164 1
+a164 1
+  core_stacksec(abfd) = bfd_make_section_anyway (abfd, ".stack");
+d166 2
+a167 2
+    goto fail;
+  core_datasec (abfd) = bfd_make_section_anyway (abfd, ".data");
+d169 2
+a170 2
+    goto fail;
+  core_regsec (abfd) = bfd_make_section_anyway (abfd, ".reg");
+d172 5
+a176 1
+    goto fail;
+d218 1
+a218 1
+  core_regsec (abfd)->vma = - (bfd_vma) (unsigned long) u.u_ar0;
+d233 5
+a238 6
+
+ fail:
+  bfd_release (abfd, abfd->tdata.any);
+  abfd->tdata.any = NULL;
+  bfd_section_list_clear (abfd);
+  return NULL;
+d267 1
+a267 1
+bfd_boolean
+d272 1
+a272 1
+  return TRUE;		/* FIXME, We have no way of telling at this point */
+@
+

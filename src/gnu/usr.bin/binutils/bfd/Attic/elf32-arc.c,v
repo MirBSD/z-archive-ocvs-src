@@ -1,0 +1,712 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.49.55;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.00.17;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.38.59;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.38.59;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.26.21;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.37;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.04.09;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* ARC-specific support for 32-bit ELF
+   Copyright 1994, 1995, 1997, 1999, 2001, 2002
+   Free Software Foundation, Inc.
+   Contributed by Doug Evans (dje@@cygnus.com).
+
+   This file is part of BFD, the Binary File Descriptor library.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "bfd.h"
+#include "sysdep.h"
+#include "libbfd.h"
+#include "elf-bfd.h"
+#include "elf/arc.h"
+#include "libiberty.h"
+
+static reloc_howto_type *bfd_elf32_bfd_reloc_type_lookup
+  PARAMS ((bfd *abfd, bfd_reloc_code_real_type code));
+static void arc_info_to_howto_rel
+  PARAMS ((bfd *, arelent *, Elf_Internal_Rela *));
+static bfd_boolean arc_elf_object_p
+  PARAMS ((bfd *));
+static void arc_elf_final_write_processing
+  PARAMS ((bfd *, bfd_boolean));
+static bfd_reloc_status_type arc_elf_b22_pcrel
+  PARAMS ((bfd *, arelent *, asymbol *, PTR, asection *, bfd *, char **));
+
+/* Try to minimize the amount of space occupied by relocation tables
+   on the ROM (not that the ROM won't be swamped by other ELF overhead).  */
+
+#define USE_REL	1
+
+static reloc_howto_type elf_arc_howto_table[] =
+{
+  /* This reloc does nothing.  */
+  HOWTO (R_ARC_NONE,		/* type  */
+	 0,			/* rightshift  */
+	 2,			/* size (0 = byte, 1 = short, 2 = long)  */
+	 32,			/* bitsize  */
+	 FALSE,			/* pc_relative  */
+	 0,			/* bitpos  */
+	 complain_overflow_bitfield, /* complain_on_overflow  */
+	 bfd_elf_generic_reloc,	/* special_function  */
+	 "R_ARC_NONE",		/* name  */
+	 TRUE,			/* partial_inplace  */
+	 0,			/* src_mask  */
+	 0,			/* dst_mask  */
+	 FALSE),		/* pcrel_offset  */
+
+  /* A standard 32 bit relocation.  */
+  HOWTO (R_ARC_32,		/* type  */
+	 0,			/* rightshift  */
+	 2,			/* size (0 = byte, 1 = short, 2 = long)  */
+	 32,			/* bitsize  */
+	 FALSE,			/* pc_relative  */
+	 0,			/* bitpos  */
+	 complain_overflow_bitfield, /* complain_on_overflow  */
+	 bfd_elf_generic_reloc,	/* special_function  */
+	 "R_ARC_32",		/* name  */
+	 TRUE,			/* partial_inplace  */
+	 0xffffffff,		/* src_mask  */
+	 0xffffffff,		/* dst_mask  */
+	 FALSE),		/* pcrel_offset  */
+
+  /* A 26 bit absolute branch, right shifted by 2.  */
+  HOWTO (R_ARC_B26,		/* type  */
+	 2,			/* rightshift  */
+	 2,			/* size (0 = byte, 1 = short, 2 = long)  */
+	 26,			/* bitsize  */
+	 FALSE,			/* pc_relative  */
+	 0,			/* bitpos  */
+	 complain_overflow_bitfield, /* complain_on_overflow  */
+	 bfd_elf_generic_reloc,	/* special_function  */
+	 "R_ARC_B26",		/* name  */
+	 TRUE,			/* partial_inplace  */
+	 0x00ffffff,		/* src_mask  */
+	 0x00ffffff,		/* dst_mask  */
+	 FALSE),		/* pcrel_offset  */
+
+  /* A relative 22 bit branch; bits 21-2 are stored in bits 26-7.  */
+  HOWTO (R_ARC_B22_PCREL,	/* type  */
+	 2,			/* rightshift  */
+	 2,			/* size (0 = byte, 1 = short, 2 = long)  */
+	 22,			/* bitsize  */
+	 TRUE,			/* pc_relative  */
+	 7,			/* bitpos  */
+	 complain_overflow_signed, /* complain_on_overflow  */
+	 arc_elf_b22_pcrel,	/* special_function  */
+	 "R_ARC_B22_PCREL",	/* name  */
+	 TRUE,			/* partial_inplace  */
+	 0x07ffff80,		/* src_mask  */
+	 0x07ffff80,		/* dst_mask  */
+	 FALSE),		/* pcrel_offset  */
+};
+
+/* Map BFD reloc types to ARC ELF reloc types.  */
+
+struct arc_reloc_map
+{
+  bfd_reloc_code_real_type bfd_reloc_val;
+  unsigned char elf_reloc_val;
+};
+
+static const struct arc_reloc_map arc_reloc_map[] =
+{
+  { BFD_RELOC_NONE, R_ARC_NONE, },
+  { BFD_RELOC_32, R_ARC_32 },
+  { BFD_RELOC_CTOR, R_ARC_32 },
+  { BFD_RELOC_ARC_B26, R_ARC_B26 },
+  { BFD_RELOC_ARC_B22_PCREL, R_ARC_B22_PCREL },
+};
+
+static reloc_howto_type *
+bfd_elf32_bfd_reloc_type_lookup (abfd, code)
+     bfd *abfd ATTRIBUTE_UNUSED;
+     bfd_reloc_code_real_type code;
+{
+  unsigned int i;
+
+  for (i = ARRAY_SIZE (arc_reloc_map); i--;)
+    if (arc_reloc_map[i].bfd_reloc_val == code)
+      return elf_arc_howto_table + arc_reloc_map[i].elf_reloc_val;
+
+  return NULL;
+}
+
+/* Set the howto pointer for an ARC ELF reloc.  */
+
+static void
+arc_info_to_howto_rel (abfd, cache_ptr, dst)
+     bfd *abfd ATTRIBUTE_UNUSED;
+     arelent *cache_ptr;
+     Elf_Internal_Rela *dst;
+{
+  unsigned int r_type;
+
+  r_type = ELF32_R_TYPE (dst->r_info);
+  BFD_ASSERT (r_type < (unsigned int) R_ARC_max);
+  cache_ptr->howto = &elf_arc_howto_table[r_type];
+}
+
+/* Set the right machine number for an ARC ELF file.  */
+
+static bfd_boolean
+arc_elf_object_p (abfd)
+     bfd *abfd;
+{
+  unsigned int mach = bfd_mach_arc_6;
+
+  if (elf_elfheader(abfd)->e_machine == EM_ARC)
+    {
+      unsigned long arch = elf_elfheader (abfd)->e_flags & EF_ARC_MACH;
+
+      switch (arch)
+	{
+	case E_ARC_MACH_ARC5:
+	  mach = bfd_mach_arc_5;
+	  break;
+	default:
+	case E_ARC_MACH_ARC6:
+	  mach = bfd_mach_arc_6;
+	  break;
+	case E_ARC_MACH_ARC7:
+	  mach = bfd_mach_arc_7;
+	  break;
+	case E_ARC_MACH_ARC8:
+	  mach = bfd_mach_arc_8;
+	  break;
+	}
+    }
+  return bfd_default_set_arch_mach (abfd, bfd_arch_arc, mach);
+}
+
+/* The final processing done just before writing out an ARC ELF object file.
+   This gets the ARC architecture right based on the machine number.  */
+
+static void
+arc_elf_final_write_processing (abfd, linker)
+     bfd *abfd;
+     bfd_boolean linker ATTRIBUTE_UNUSED;
+{
+  unsigned long val;
+
+  switch (bfd_get_mach (abfd))
+    {
+    case bfd_mach_arc_5:
+      val = E_ARC_MACH_ARC5;
+      break;
+    default:
+    case bfd_mach_arc_6:
+      val = E_ARC_MACH_ARC6;
+      break;
+    case bfd_mach_arc_7:
+      val = E_ARC_MACH_ARC7;
+      break;
+    case bfd_mach_arc_8:
+      val = E_ARC_MACH_ARC8;
+      break;
+    }
+  elf_elfheader (abfd)->e_flags &=~ EF_ARC_MACH;
+  elf_elfheader (abfd)->e_flags |= val;
+}
+
+bfd_reloc_status_type
+arc_elf_b22_pcrel (abfd, reloc_entry, symbol, data, input_section,
+		   output_bfd, error_message)
+     bfd * abfd;
+     arelent * reloc_entry;
+     asymbol * symbol;
+     PTR data;
+     asection * input_section;
+     bfd * output_bfd;
+     char ** error_message;
+{
+  /* If linking, back up the final symbol address by the address of the
+     reloc.  This cannot be accomplished by setting the pcrel_offset
+     field to TRUE, as bfd_install_relocation will detect this and refuse
+     to install the offset in the first place, but bfd_perform_relocation
+     will still insist on removing it.  */
+  if (output_bfd == (bfd *) NULL)
+    reloc_entry->addend -= reloc_entry->address;
+
+  /* Fall through to the default elf reloc handler.  */
+  return bfd_elf_generic_reloc (abfd, reloc_entry, symbol, data,
+				input_section, output_bfd, error_message);
+}
+
+#define TARGET_LITTLE_SYM bfd_elf32_littlearc_vec
+#define TARGET_LITTLE_NAME "elf32-littlearc"
+#define TARGET_BIG_SYM bfd_elf32_bigarc_vec
+#define TARGET_BIG_NAME	"elf32-bigarc"
+#define ELF_ARCH bfd_arch_arc
+#define ELF_MACHINE_CODE EM_ARC
+#define ELF_MAXPAGESIZE	0x1000
+
+#define elf_info_to_howto 0
+#define elf_info_to_howto_rel arc_info_to_howto_rel
+#define elf_backend_object_p arc_elf_object_p
+#define elf_backend_final_write_processing arc_elf_final_write_processing
+
+#include "elf32-target.h"
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 2
+a3 1
+   Copyright 1994, 1995, 1997, 1999, 2001 Free Software Foundation, Inc.
+d27 1
+d32 2
+a33 2
+  PARAMS ((bfd *, arelent *, Elf32_Internal_Rel *));
+static boolean arc_elf_object_p
+d36 3
+a38 1
+  PARAMS ((bfd *, boolean));
+d43 1
+a43 1
+#define USE_REL
+d52 1
+a52 1
+	 false,			/* pc_relative  */
+d57 1
+a57 1
+	 false,			/* partial_inplace  */
+d60 1
+a60 1
+	 false),		/* pcrel_offset  */
+d67 1
+a67 1
+	 false,			/* pc_relative  */
+d72 1
+a72 1
+	 false,			/* partial_inplace  */
+d75 1
+a75 1
+	 false),		/* pcrel_offset  */
+d82 1
+a82 1
+	 false,			/* pc_relative  */
+d87 1
+a87 1
+	 false,			/* partial_inplace  */
+d90 1
+a90 1
+	 false),		/* pcrel_offset  */
+d97 1
+a97 1
+	 true,			/* pc_relative  */
+d100 1
+a100 1
+	 bfd_elf_generic_reloc,	/* special_function  */
+d102 1
+a102 1
+	 false,			/* partial_inplace  */
+d105 1
+a105 2
+	 true),			/* pcrel_offset  */
+
+d132 4
+a135 5
+  for (i = 0; i < sizeof (arc_reloc_map) / sizeof (struct arc_reloc_map); i++)
+    {
+      if (arc_reloc_map[i].bfd_reloc_val == code)
+	return &elf_arc_howto_table[arc_reloc_map[i].elf_reloc_val];
+    }
+d145 1
+a145 1
+     Elf32_Internal_Rel *dst;
+d156 1
+a156 1
+static boolean
+d160 1
+a160 1
+  int mach = bfd_mach_arc_6;
+d192 1
+a192 1
+     boolean linker ATTRIBUTE_UNUSED;
+a211 1
+  elf_elfheader (abfd)->e_machine = EM_ARC;
+d214 24
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 2
+   Copyright 1994, 1995, 1997, 1999, 2001, 2002
+   Free Software Foundation, Inc.
+a25 1
+#include "libiberty.h"
+d30 2
+a31 2
+  PARAMS ((bfd *, arelent *, Elf_Internal_Rela *));
+static bfd_boolean arc_elf_object_p
+d34 1
+a34 3
+  PARAMS ((bfd *, bfd_boolean));
+static bfd_reloc_status_type arc_elf_b22_pcrel
+  PARAMS ((bfd *, arelent *, asymbol *, PTR, asection *, bfd *, char **));
+d39 1
+a39 1
+#define USE_REL	1
+d48 1
+a48 1
+	 FALSE,			/* pc_relative  */
+d53 1
+a53 1
+	 TRUE,			/* partial_inplace  */
+d56 1
+a56 1
+	 FALSE),		/* pcrel_offset  */
+d63 1
+a63 1
+	 FALSE,			/* pc_relative  */
+d68 1
+a68 1
+	 TRUE,			/* partial_inplace  */
+d71 1
+a71 1
+	 FALSE),		/* pcrel_offset  */
+d78 1
+a78 1
+	 FALSE,			/* pc_relative  */
+d83 1
+a83 1
+	 TRUE,			/* partial_inplace  */
+d86 1
+a86 1
+	 FALSE),		/* pcrel_offset  */
+d93 1
+a93 1
+	 TRUE,			/* pc_relative  */
+d96 1
+a96 1
+	 arc_elf_b22_pcrel,	/* special_function  */
+d98 1
+a98 1
+	 TRUE,			/* partial_inplace  */
+d101 2
+a102 1
+	 FALSE),		/* pcrel_offset  */
+d129 5
+a133 4
+  for (i = ARRAY_SIZE (arc_reloc_map); i--;)
+    if (arc_reloc_map[i].bfd_reloc_val == code)
+      return elf_arc_howto_table + arc_reloc_map[i].elf_reloc_val;
+
+d143 1
+a143 1
+     Elf_Internal_Rela *dst;
+d154 1
+a154 1
+static bfd_boolean
+d158 1
+a158 1
+  unsigned int mach = bfd_mach_arc_6;
+d190 1
+a190 1
+     bfd_boolean linker ATTRIBUTE_UNUSED;
+d210 1
+a212 24
+}
+
+bfd_reloc_status_type
+arc_elf_b22_pcrel (abfd, reloc_entry, symbol, data, input_section,
+		   output_bfd, error_message)
+     bfd * abfd;
+     arelent * reloc_entry;
+     asymbol * symbol;
+     PTR data;
+     asection * input_section;
+     bfd * output_bfd;
+     char ** error_message;
+{
+  /* If linking, back up the final symbol address by the address of the
+     reloc.  This cannot be accomplished by setting the pcrel_offset
+     field to TRUE, as bfd_install_relocation will detect this and refuse
+     to install the offset in the first place, but bfd_perform_relocation
+     will still insist on removing it.  */
+  if (output_bfd == (bfd *) NULL)
+    reloc_entry->addend -= reloc_entry->address;
+
+  /* Fall through to the default elf reloc handler.  */
+  return bfd_elf_generic_reloc (abfd, reloc_entry, symbol, data,
+				input_section, output_bfd, error_message);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 2
+   Copyright 1994, 1995, 1997, 1999, 2001, 2002
+   Free Software Foundation, Inc.
+a25 1
+#include "libiberty.h"
+d30 2
+a31 2
+  PARAMS ((bfd *, arelent *, Elf_Internal_Rela *));
+static bfd_boolean arc_elf_object_p
+d34 1
+a34 3
+  PARAMS ((bfd *, bfd_boolean));
+static bfd_reloc_status_type arc_elf_b22_pcrel
+  PARAMS ((bfd *, arelent *, asymbol *, PTR, asection *, bfd *, char **));
+d39 1
+a39 1
+#define USE_REL	1
+d48 1
+a48 1
+	 FALSE,			/* pc_relative  */
+d53 1
+a53 1
+	 TRUE,			/* partial_inplace  */
+d56 1
+a56 1
+	 FALSE),		/* pcrel_offset  */
+d63 1
+a63 1
+	 FALSE,			/* pc_relative  */
+d68 1
+a68 1
+	 TRUE,			/* partial_inplace  */
+d71 1
+a71 1
+	 FALSE),		/* pcrel_offset  */
+d78 1
+a78 1
+	 FALSE,			/* pc_relative  */
+d83 1
+a83 1
+	 TRUE,			/* partial_inplace  */
+d86 1
+a86 1
+	 FALSE),		/* pcrel_offset  */
+d93 1
+a93 1
+	 TRUE,			/* pc_relative  */
+d96 1
+a96 1
+	 arc_elf_b22_pcrel,	/* special_function  */
+d98 1
+a98 1
+	 TRUE,			/* partial_inplace  */
+d101 2
+a102 1
+	 FALSE),		/* pcrel_offset  */
+d129 5
+a133 4
+  for (i = ARRAY_SIZE (arc_reloc_map); i--;)
+    if (arc_reloc_map[i].bfd_reloc_val == code)
+      return elf_arc_howto_table + arc_reloc_map[i].elf_reloc_val;
+
+d143 1
+a143 1
+     Elf_Internal_Rela *dst;
+d154 1
+a154 1
+static bfd_boolean
+d158 1
+a158 1
+  unsigned int mach = bfd_mach_arc_6;
+d190 1
+a190 1
+     bfd_boolean linker ATTRIBUTE_UNUSED;
+d210 1
+a212 24
+}
+
+bfd_reloc_status_type
+arc_elf_b22_pcrel (abfd, reloc_entry, symbol, data, input_section,
+		   output_bfd, error_message)
+     bfd * abfd;
+     arelent * reloc_entry;
+     asymbol * symbol;
+     PTR data;
+     asection * input_section;
+     bfd * output_bfd;
+     char ** error_message;
+{
+  /* If linking, back up the final symbol address by the address of the
+     reloc.  This cannot be accomplished by setting the pcrel_offset
+     field to TRUE, as bfd_install_relocation will detect this and refuse
+     to install the offset in the first place, but bfd_perform_relocation
+     will still insist on removing it.  */
+  if (output_bfd == (bfd *) NULL)
+    reloc_entry->addend -= reloc_entry->address;
+
+  /* Fall through to the default elf reloc handler.  */
+  return bfd_elf_generic_reloc (abfd, reloc_entry, symbol, data,
+				input_section, output_bfd, error_message);
+@
+

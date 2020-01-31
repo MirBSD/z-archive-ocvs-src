@@ -1,0 +1,382 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2
+	tg-mergefixes-1-branch:1.2.0.8
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.6
+	MIROS_X_BASE:1.2
+	tg-mergetmp-3:1.2
+	MIRBSD_XP_MIRPPC:1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.2
+	cvs-200409190125:1.1.1.2
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.01.10.04.57.46;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.55.57;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.55.57;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.49.16;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Jumbo patch from wbx@@ to replace the
+bcopy(3), bcmp(3) and bzero(3) func-
+tions, having been deprecated earli-
+er, by their ISO counterparts, name-
+ly memmove(3) and the gcc3-optimized
+memcmp(3) and memset(3) functions.
+
+I didn't read every single line (be-
+cause of the time of day), but looks
+fine and builds through. I just nee-
+ded to nuke three cases of whitespa-
+ce at EOL. Good work wbx@@.
+
+I've also sprinkled in a few patches
+of mine addressing the issue that in
+some kernel header files, bcopy() is
+used as well... also there have been
+quite some string cleaning fixes and
+a missing header.
+@
+text
+@/*	$OpenBSD: debug.c,v 1.2 2003/06/04 04:46:13 jason Exp $	*/
+
+/*
+ * Copyright (c) 2000 Network Security Technologies, Inc. http://www.netsec.net
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <net/if.h>
+#include <net/if_dl.h>
+#include <net/if_types.h>
+#include <net/ppp_defs.h>
+#include <netinet/in.h>
+#include <netinet/if_ether.h>
+#include <string.h>
+#include <ctype.h>
+
+#include "pppoe.h"
+
+void
+debug_packet(u_int8_t *pkt, int len)
+{
+	struct ether_header eh;
+	struct pppoe_header ph;
+
+	if (option_verbose == 0)
+		return;
+
+	if (len < sizeof(eh)) {
+		printf("short packet (%d)\n", len);
+		return;
+	}
+	memmove(&eh, pkt, sizeof(eh));
+	pkt += sizeof(eh);
+	len -= sizeof(eh);
+	eh.ether_type = ntohs(eh.ether_type);
+
+	if (eh.ether_type == ETHERTYPE_PPPOE && option_verbose < 2)
+		return;
+
+	printf("%s -> %s %04x[",
+	    ether_ntoa((struct ether_addr *)eh.ether_shost),
+	    ether_ntoa((struct ether_addr *)eh.ether_dhost),
+	    eh.ether_type);
+	switch (eh.ether_type) {
+	case ETHERTYPE_PPPOEDISC:
+		printf("discovery]");
+		break;
+	case ETHERTYPE_PPPOE:
+		printf("session]");
+		break;
+	default:
+		printf("unknown]\n");
+		return;
+	}
+	
+	if (len < sizeof(ph)) {
+		printf("short packet (%d)\n", len);
+		return;
+	}
+	memmove(&ph, pkt, sizeof(ph));
+	pkt += sizeof(ph);
+	len -= sizeof(ph);
+	ph.sessionid = ntohs(ph.sessionid);
+	ph.len = ntohs(ph.len);
+
+	if (ph.len <= len)
+		len = ph.len;
+	else {
+		printf("missing (%d)\n", ph.len - len);
+		return;
+	}
+
+	printf(": version %d, type %d, ",
+	    PPPOE_VER(ph.vertype), PPPOE_TYPE(ph.vertype));
+	switch (ph.code) {
+	case PPPOE_CODE_SESSION:
+		printf("session");
+	case PPPOE_CODE_PADO:
+		printf("PADO");
+		break;
+	case PPPOE_CODE_PADI:
+		printf("PADI");
+		break;
+	case PPPOE_CODE_PADR:
+		printf("PADR");
+		break;
+	case PPPOE_CODE_PADS:
+		printf("PADS");
+		break;
+	case PPPOE_CODE_PADT:
+		printf("PADT");
+		break;
+	default:
+		printf("unknown");
+		break;
+	}
+	printf(", len %d\n", len);
+
+	while (len > 0 && eh.ether_type == ETHERTYPE_PPPOEDISC) {
+		int i;
+		u_int16_t ttype, tlen;
+
+		if (len < sizeof(ttype)) {
+			printf("|\n");
+			return;
+		}
+		memmove(&ttype, pkt, sizeof(ttype));
+		len -= sizeof(ttype);
+		pkt += sizeof(ttype);
+		ttype = ntohs(ttype);
+		printf("\ttag ");
+		switch (ttype) {
+		case PPPOE_TAG_END_OF_LIST:
+			printf("end-of-list");
+			break;
+		case PPPOE_TAG_SERVICE_NAME:
+			printf("service-name");
+			break;
+		case PPPOE_TAG_AC_NAME:
+			printf("ac-name");
+			break;
+		case PPPOE_TAG_HOST_UNIQ:
+			printf("host-uniq");
+			break;
+		case PPPOE_TAG_AC_COOKIE:
+			printf("ac-cookie");
+			break;
+		case PPPOE_TAG_VENDOR_SPEC:
+			printf("vendor-spec");
+			break;
+		case PPPOE_TAG_RELAY_SESSION:
+			printf("relay-session");
+			break;
+		case PPPOE_TAG_SERVICE_NAME_ERROR:
+			printf("service-name-error");
+			break;
+		case PPPOE_TAG_AC_SYSTEM_ERROR:
+			printf("ac-system-error");
+			break;
+		case PPPOE_TAG_GENERIC_ERROR:
+			printf("generic-error");
+			break;
+		default:
+			printf("unknown %04x", ttype);
+			break;
+		}
+
+		if (len < sizeof(tlen)) {
+			printf("|\n");
+			return;
+		}
+		memmove(&tlen, pkt, sizeof(tlen));
+		len -= sizeof(tlen);
+		pkt += sizeof(tlen);
+		tlen = ntohs(tlen);
+		printf(", len %d", tlen);
+
+		if (len < tlen) {
+			printf("|\n");
+			return;
+		}
+		for (i = 0; i < tlen; i++) {
+			if (isprint(pkt[i]))
+				printf("%c", pkt[i]);
+			else
+				printf("\\%03o", pkt[i]);
+		}
+		len -= tlen;
+	}
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: debug.c,v 1.1.1.1 2000/06/18 07:30:41 jason Exp $	*/
+a4 1
+ * All rights reserved.
+a13 6
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Network Security
+ *	Technologies, Inc.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+d57 1
+a57 1
+	bcopy(pkt, &eh, sizeof(eh));
+d85 1
+a85 1
+	bcopy(pkt, &ph, sizeof(ph));
+d132 1
+a132 1
+		bcopy(pkt, &ttype, sizeof(ttype));
+d177 1
+a177 1
+		bcopy(pkt, &tlen, sizeof(tlen));
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: debug.c,v 1.2 2003/06/04 04:46:13 jason Exp $	*/
+d5 1
+d15 6
+@
+

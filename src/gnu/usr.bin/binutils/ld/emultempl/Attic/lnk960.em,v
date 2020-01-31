@@ -1,0 +1,1155 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.3
+date	2004.08.11.21.22.42;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.05.55;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.05;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.05;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.25.31;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.43.26;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.08.50;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.18.55;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@# This shell script emits a C file. -*- C -*-
+# It does some substitutions.
+cat >e${EMULATION_NAME}.c <<EOF
+/* intel coff loader emulation specific stuff
+   Copyright 1991, 1992, 1994, 1995, 1996, 1999, 2000, 2001, 2002, 2003
+   Free Software Foundation, Inc.
+   Written by Steve Chamberlain steve@@cygnus.com
+
+This file is part of GLD, the Gnu Linker.
+
+GLD is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2, or (at your option)
+any later version.
+
+GLD is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GLD; see the file COPYING.  If not, write to
+the Free Software Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "libiberty.h"
+#include "bfd.h"
+#include "sysdep.h"
+#include "bfdlink.h"
+
+/*#include "archures.h"*/
+#include "ld.h"
+#include "ldmain.h"
+#include "ldmisc.h"
+#include "ldexp.h"
+#include "ldlang.h"
+#include "ldfile.h"
+#include "ldemul.h"
+
+typedef struct lib_list {
+  char *name;
+  struct lib_list *next;
+} lib_list_type;
+
+static lib_list_type *hll_list;
+static lib_list_type **hll_list_tail = &hll_list;
+
+static lib_list_type *syslib_list;
+static lib_list_type **syslib_list_tail = &syslib_list;
+
+static void append PARAMS ((lib_list_type ***, char *));
+static void lnk960_hll PARAMS ((char *));
+static void lnk960_syslib PARAMS ((char *));
+static void lnk960_before_parse PARAMS ((void));
+static void add_on PARAMS ((lib_list_type *, lang_input_file_enum_type));
+static void lnk960_after_parse PARAMS ((void));
+static void lnk960_before_allocation PARAMS ((void));
+static void lnk960_after_allocation PARAMS ((void));
+static void lnk960_set_output_arch PARAMS ((void));
+static char *lnk960_choose_target PARAMS ((int, char **));
+static char *lnk960_get_script PARAMS ((int *));
+
+
+static void
+append (list, name)
+     lib_list_type ***list;
+     char *name;
+{
+  lib_list_type *element = (lib_list_type *) xmalloc (sizeof (lib_list_type));
+
+  element->name = name;
+  element->next = (lib_list_type *) NULL;
+  **list = element;
+  *list = &element->next;
+
+}
+
+static bfd_boolean had_hll = FALSE;
+static bfd_boolean had_hll_name = FALSE;
+
+static void
+lnk960_hll (name)
+     char *name;
+{
+  had_hll = TRUE;
+  if (name != (char *) NULL)
+    {
+      had_hll_name = TRUE;
+      append (&hll_list_tail, name);
+    }
+}
+
+static void 
+lnk960_syslib (name)
+     char *name;
+{
+  append (&syslib_list_tail, name);
+}
+
+
+#ifdef GNU960
+
+static void 
+lnk960_before_parse ()
+{
+  static char *env_variables[] = { "G960LIB", "G960BASE", 0 };
+  char **p;
+  char *env ;
+
+  for (p = env_variables; *p; p++)
+    {
+      env = (char *) getenv (*p);
+      if (env)
+	ldfile_add_library_path (concat (env, "/lib/libcoff", ""), FALSE);
+    }
+
+  env = (char *) getenv ("I960BASE");
+  if (env)
+    ldfile_add_library_path(concat (env, "/lib", ""), FALSE);
+
+  ldfile_output_architecture = bfd_arch_i960;
+  ldfile_output_machine = bfd_mach_i960_core;
+}
+
+#else	/* not GNU960 */
+
+static void 
+lnk960_before_parse ()
+{
+  char *name = getenv ("I960BASE");
+
+  if (name == (char *) NULL)
+    {
+      name = getenv("G960BASE");
+      if (name == (char *) NULL)
+	einfo ("%P%F I960BASE and G960BASE not set\n");
+    }
+
+
+  ldfile_add_library_path (concat (name, "/lib", ""), FALSE);
+  ldfile_output_architecture = bfd_arch_i960;
+  ldfile_output_machine = bfd_mach_i960_core;
+}
+
+#endif	/* GNU960 */
+
+
+static void
+add_on (list, search)
+     lib_list_type *list;
+     lang_input_file_enum_type search;
+{
+  while (list)
+    {
+      lang_add_input_file (list->name, search, (char *) NULL);
+      list = list->next;
+    }
+}
+static void
+lnk960_after_parse ()
+{
+  /* If there has been no arch, default to -KB */
+  if (ldfile_output_machine_name[0] == 0)
+    ldfile_add_arch ("KB");
+
+  /* if there has been no hll list then add our own */
+  
+  if (had_hll && !had_hll_name)
+    {
+      append (&hll_list_tail, "cg");
+      if (ldfile_output_machine == bfd_mach_i960_ka_sa
+	  || ldfile_output_machine == bfd_mach_i960_ca)
+	append (&hll_list_tail, "fpg");
+    }
+  
+  add_on (hll_list, lang_input_file_is_l_enum);
+  add_on (syslib_list, lang_input_file_is_search_file_enum);
+}
+
+static void
+lnk960_before_allocation ()
+{
+}
+
+static void
+lnk960_after_allocation ()
+{
+  if (!link_info.relocateable)
+    {
+      lang_abs_symbol_at_end_of (".text", "_etext");
+      lang_abs_symbol_at_end_of (".data", "_edata");
+      lang_abs_symbol_at_beginning_of (".bss", "_bss_start");
+      lang_abs_symbol_at_end_of (".bss", "_end");
+    }
+}
+
+
+static struct
+ {
+   unsigned  long number;
+   char *name; 
+ }
+machine_table[] =
+{
+  { bfd_mach_i960_core	,"CORE" },
+  { bfd_mach_i960_kb_sb	,"KB" },
+  { bfd_mach_i960_kb_sb	,"SB" },
+  { bfd_mach_i960_mc	,"MC" },
+  { bfd_mach_i960_xa	,"XA" },
+  { bfd_mach_i960_ca	,"CA" },
+  { bfd_mach_i960_ka_sa	,"KA" },
+  { bfd_mach_i960_ka_sa	,"SA" },
+  { bfd_mach_i960_jx	,"JX" },
+  { bfd_mach_i960_hx	,"HX" },
+
+  { bfd_mach_i960_core	,"core" },
+  { bfd_mach_i960_kb_sb	,"kb" },
+  { bfd_mach_i960_kb_sb	,"sb" },
+  { bfd_mach_i960_mc	,"mc" },
+  { bfd_mach_i960_xa	,"xa" },
+  { bfd_mach_i960_ca	,"ca" },
+  { bfd_mach_i960_ka_sa	,"ka" },
+  { bfd_mach_i960_ka_sa	,"sa" },
+  { bfd_mach_i960_jx	,"jx" },
+  { bfd_mach_i960_hx	,"hx" },
+
+  { 0, (char *) NULL }
+};
+
+static void
+lnk960_set_output_arch ()
+{
+  /* Set the output architecture and machine if possible */
+  unsigned int i;
+  ldfile_output_machine = bfd_mach_i960_core;
+  for (i= 0; machine_table[i].name != (char*) NULL; i++)
+    {
+      if (strcmp (ldfile_output_machine_name, machine_table[i].name) == 0)
+	{
+	  ldfile_output_machine = machine_table[i].number;
+	  break;
+	}
+    }
+  bfd_set_arch_mach (output_bfd, ldfile_output_architecture,
+		     ldfile_output_machine);
+}
+
+static char *
+lnk960_choose_target (argc, argv)
+    int argc ATTRIBUTE_UNUSED;
+    char **argv ATTRIBUTE_UNUSED;
+{
+#ifdef GNU960
+
+  return bfd_make_targ_name (BFD_COFF_FORMAT, 0);
+
+#else
+
+  char *from_outside = getenv (TARGET_ENVIRON);
+  if (from_outside != (char *) NULL)
+    return from_outside;
+#ifdef LNK960_LITTLE
+  return "coff-Intel-little";
+#else
+  return "coff-Intel-big";
+#endif
+#endif
+
+}
+
+static char *
+lnk960_get_script (isfile)
+     int *isfile;
+EOF
+
+if test -n "$COMPILE_IN"
+then
+# Scripts compiled in.
+
+# sed commands to quote an ld script as a C string.
+sc="-f stringify.sed"
+
+cat >>e${EMULATION_NAME}.c <<EOF
+{			     
+  *isfile = 0;
+
+  if (link_info.relocateable && config.build_constructors)
+    return
+EOF
+sed $sc ldscripts/${EMULATION_NAME}.xu                 >> e${EMULATION_NAME}.c
+echo '  ; else if (link_info.relocateable) return'     >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xr                 >> e${EMULATION_NAME}.c
+echo '  ; else if (!config.text_read_only) return'     >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xbn                >> e${EMULATION_NAME}.c
+echo '  ; else if (!config.magic_demand_paged) return' >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xn                 >> e${EMULATION_NAME}.c
+echo '  ; else return'                                 >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.x                  >> e${EMULATION_NAME}.c
+echo '; }'                                             >> e${EMULATION_NAME}.c
+
+else
+# Scripts read from the filesystem.
+
+cat >>e${EMULATION_NAME}.c <<EOF
+{			     
+  *isfile = 1;
+
+  if (link_info.relocateable && config.build_constructors)
+    return "ldscripts/${EMULATION_NAME}.xu";
+  else if (link_info.relocateable)
+    return "ldscripts/${EMULATION_NAME}.xr";
+  else if (!config.text_read_only)
+    return "ldscripts/${EMULATION_NAME}.xbn";
+  else if (!config.magic_demand_paged)
+    return "ldscripts/${EMULATION_NAME}.xn";
+  else
+    return "ldscripts/${EMULATION_NAME}.x";
+}
+EOF
+
+fi
+
+cat >>e${EMULATION_NAME}.c <<EOF
+
+struct ld_emulation_xfer_struct ld_lnk960_emulation = 
+{
+  lnk960_before_parse,
+  lnk960_syslib,
+  lnk960_hll,
+  lnk960_after_parse,
+  NULL,			/* after_open */
+  lnk960_after_allocation,
+  lnk960_set_output_arch,
+  lnk960_choose_target,
+  lnk960_before_allocation,
+  lnk960_get_script,
+  "lnk960",
+  "",
+  NULL,	/* finish */
+  NULL,	/* create output section statements */
+  NULL,	/* open dynamic archive */
+  NULL,	/* place orphan */
+  NULL,	/* set symbols */
+  NULL,	/* parse args */
+  NULL,	/* add_options */
+  NULL,	/* handle_option */
+  NULL,	/* unrecognized file */
+  NULL,	/* list options */
+  NULL,	/* recognized file */
+  NULL,	/* find_potential_libraries */
+  NULL	/* new_vers_pattern */
+};
+EOF
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweißer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d5 1
+a5 1
+   Copyright 1991, 1992, 1994, 1995, 1996, 1999, 2000
+d50 12
+d64 1
+a64 1
+append(list, name)
+d68 1
+a68 2
+  lib_list_type *element = 
+    (lib_list_type *)(xmalloc(sizeof(lib_list_type)));
+d71 1
+a71 1
+  element->next = (lib_list_type *)NULL;
+d77 2
+a78 2
+static boolean had_hll = false;
+static boolean had_hll_name = false;
+d81 1
+a81 1
+lnk960_hll(name)
+d84 6
+a89 5
+  had_hll = true;
+  if (name != (char *)NULL) {
+    had_hll_name = true;
+    append(&hll_list_tail, name);
+  }
+d93 1
+a93 1
+lnk960_syslib(name)
+d96 1
+a96 1
+  append(&syslib_list_tail,name);
+d103 1
+a103 1
+lnk960_before_parse()
+d109 5
+a113 4
+  for ( p = env_variables; *p; p++ ){
+    env =  (char *) getenv(*p);
+    if (env) {
+      ldfile_add_library_path(concat(env,"/lib/libcoff",""), false);
+a114 1
+  }
+d116 3
+a118 4
+  env= (char *) getenv("I960BASE");
+  if ( env ) {
+    ldfile_add_library_path(concat(env,"/lib",""), false);
+  }
+d127 1
+a127 1
+lnk960_before_parse()
+d129 1
+a129 1
+  char *name = getenv("I960BASE");
+d131 5
+a135 4
+  if (name == (char *)NULL) {
+    name = getenv("G960BASE");
+    if (name == (char *)NULL) {
+      einfo("%P%F I960BASE and G960BASE not set\n");
+a136 1
+  }
+d139 1
+a139 1
+  ldfile_add_library_path(concat(name,"/lib",""), false);
+d148 1
+a148 1
+add_on(list, search)
+d152 5
+a156 6
+  while (list) {
+    lang_add_input_file(list->name,
+			search,
+			(char *)NULL);
+    list = list->next;
+  }
+d159 1
+a159 1
+lnk960_after_parse()
+d162 2
+a163 3
+  if (ldfile_output_machine_name[0] ==0) {
+    ldfile_add_arch("KB");
+  }
+d167 6
+a172 7
+  if(had_hll && !had_hll_name) {
+    append(&hll_list_tail,"cg");
+    if (ldfile_output_machine == bfd_mach_i960_ka_sa ||
+  	ldfile_output_machine == bfd_mach_i960_ca) {
+        {
+	  append(&hll_list_tail,"fpg");
+        }
+a173 1
+  }
+d175 2
+a176 2
+  add_on(hll_list, lang_input_file_is_l_enum);
+  add_on(syslib_list, lang_input_file_is_search_file_enum);
+d180 1
+a180 1
+lnk960_before_allocation()
+d185 1
+a185 1
+lnk960_after_allocation()
+d187 7
+a193 6
+  if (link_info.relocateable == false) {
+    lang_abs_symbol_at_end_of(".text","_etext");
+    lang_abs_symbol_at_end_of(".data","_edata");
+    lang_abs_symbol_at_beginning_of(".bss","_bss_start");
+    lang_abs_symbol_at_end_of(".bss","_end");
+  }
+d230 1
+a230 1
+lnk960_set_output_arch()
+d235 7
+a241 4
+  for (i= 0; machine_table[i].name != (char*)NULL; i++) {
+    if (strcmp(ldfile_output_machine_name,machine_table[i].name)==0) {
+      ldfile_output_machine = machine_table[i].number;
+      break;
+d243 2
+a244 2
+  }
+  bfd_set_arch_mach(output_bfd, ldfile_output_architecture, ldfile_output_machine);
+d248 3
+a250 1
+lnk960_choose_target()
+d254 1
+a254 1
+  return bfd_make_targ_name(BFD_COFF_FORMAT, 0);
+d258 2
+a259 2
+  char *from_outside = getenv(TARGET_ENVIRON);
+  if (from_outside != (char *)NULL)
+d271 1
+a271 1
+lnk960_get_script(isfile)
+d286 1
+a286 1
+  if (link_info.relocateable == true && config.build_constructors == true)
+d289 10
+a298 10
+sed $sc ldscripts/${EMULATION_NAME}.xu                     >> e${EMULATION_NAME}.c
+echo '  ; else if (link_info.relocateable == true) return' >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xr                     >> e${EMULATION_NAME}.c
+echo '  ; else if (!config.text_read_only) return'         >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xbn                    >> e${EMULATION_NAME}.c
+echo '  ; else if (!config.magic_demand_paged) return'     >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xn                     >> e${EMULATION_NAME}.c
+echo '  ; else return'                                     >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.x                      >> e${EMULATION_NAME}.c
+echo '; }'                                                 >> e${EMULATION_NAME}.c
+d307 1
+a307 1
+  if (link_info.relocateable == true && config.build_constructors == true)
+d309 1
+a309 1
+  else if (link_info.relocateable == true)
+d344 2
+d349 2
+a350 1
+  NULL 	/* find_potential_libraries */
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d5 1
+a5 1
+   Copyright 1991, 1992, 1994, 1995, 1996, 1999, 2000, 2001, 2002, 2003
+a49 12
+static void append PARAMS ((lib_list_type ***, char *));
+static void lnk960_hll PARAMS ((char *));
+static void lnk960_syslib PARAMS ((char *));
+static void lnk960_before_parse PARAMS ((void));
+static void add_on PARAMS ((lib_list_type *, lang_input_file_enum_type));
+static void lnk960_after_parse PARAMS ((void));
+static void lnk960_before_allocation PARAMS ((void));
+static void lnk960_after_allocation PARAMS ((void));
+static void lnk960_set_output_arch PARAMS ((void));
+static char *lnk960_choose_target PARAMS ((int, char **));
+static char *lnk960_get_script PARAMS ((int *));
+
+d52 1
+a52 1
+append (list, name)
+d56 2
+a57 1
+  lib_list_type *element = (lib_list_type *) xmalloc (sizeof (lib_list_type));
+d60 1
+a60 1
+  element->next = (lib_list_type *) NULL;
+d66 2
+a67 2
+static bfd_boolean had_hll = FALSE;
+static bfd_boolean had_hll_name = FALSE;
+d70 1
+a70 1
+lnk960_hll (name)
+d73 5
+a77 6
+  had_hll = TRUE;
+  if (name != (char *) NULL)
+    {
+      had_hll_name = TRUE;
+      append (&hll_list_tail, name);
+    }
+d81 1
+a81 1
+lnk960_syslib (name)
+d84 1
+a84 1
+  append (&syslib_list_tail, name);
+d91 1
+a91 1
+lnk960_before_parse ()
+d97 4
+a100 5
+  for (p = env_variables; *p; p++)
+    {
+      env = (char *) getenv (*p);
+      if (env)
+	ldfile_add_library_path (concat (env, "/lib/libcoff", ""), FALSE);
+d102 1
+d104 4
+a107 3
+  env = (char *) getenv ("I960BASE");
+  if (env)
+    ldfile_add_library_path(concat (env, "/lib", ""), FALSE);
+d116 1
+a116 1
+lnk960_before_parse ()
+d118 1
+a118 1
+  char *name = getenv ("I960BASE");
+d120 4
+a123 5
+  if (name == (char *) NULL)
+    {
+      name = getenv("G960BASE");
+      if (name == (char *) NULL)
+	einfo ("%P%F I960BASE and G960BASE not set\n");
+d125 1
+d128 1
+a128 1
+  ldfile_add_library_path (concat (name, "/lib", ""), FALSE);
+d137 1
+a137 1
+add_on (list, search)
+d141 6
+a146 5
+  while (list)
+    {
+      lang_add_input_file (list->name, search, (char *) NULL);
+      list = list->next;
+    }
+d149 1
+a149 1
+lnk960_after_parse ()
+d152 3
+a154 2
+  if (ldfile_output_machine_name[0] == 0)
+    ldfile_add_arch ("KB");
+d158 7
+a164 6
+  if (had_hll && !had_hll_name)
+    {
+      append (&hll_list_tail, "cg");
+      if (ldfile_output_machine == bfd_mach_i960_ka_sa
+	  || ldfile_output_machine == bfd_mach_i960_ca)
+	append (&hll_list_tail, "fpg");
+d166 1
+d168 2
+a169 2
+  add_on (hll_list, lang_input_file_is_l_enum);
+  add_on (syslib_list, lang_input_file_is_search_file_enum);
+d173 1
+a173 1
+lnk960_before_allocation ()
+d178 1
+a178 1
+lnk960_after_allocation ()
+d180 6
+a185 7
+  if (!link_info.relocateable)
+    {
+      lang_abs_symbol_at_end_of (".text", "_etext");
+      lang_abs_symbol_at_end_of (".data", "_edata");
+      lang_abs_symbol_at_beginning_of (".bss", "_bss_start");
+      lang_abs_symbol_at_end_of (".bss", "_end");
+    }
+d222 1
+a222 1
+lnk960_set_output_arch ()
+d227 4
+a230 7
+  for (i= 0; machine_table[i].name != (char*) NULL; i++)
+    {
+      if (strcmp (ldfile_output_machine_name, machine_table[i].name) == 0)
+	{
+	  ldfile_output_machine = machine_table[i].number;
+	  break;
+	}
+d232 2
+a233 2
+  bfd_set_arch_mach (output_bfd, ldfile_output_architecture,
+		     ldfile_output_machine);
+d237 1
+a237 3
+lnk960_choose_target (argc, argv)
+    int argc ATTRIBUTE_UNUSED;
+    char **argv ATTRIBUTE_UNUSED;
+d241 1
+a241 1
+  return bfd_make_targ_name (BFD_COFF_FORMAT, 0);
+d245 2
+a246 2
+  char *from_outside = getenv (TARGET_ENVIRON);
+  if (from_outside != (char *) NULL)
+d258 1
+a258 1
+lnk960_get_script (isfile)
+d273 1
+a273 1
+  if (link_info.relocateable && config.build_constructors)
+d276 10
+a285 10
+sed $sc ldscripts/${EMULATION_NAME}.xu                 >> e${EMULATION_NAME}.c
+echo '  ; else if (link_info.relocateable) return'     >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xr                 >> e${EMULATION_NAME}.c
+echo '  ; else if (!config.text_read_only) return'     >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xbn                >> e${EMULATION_NAME}.c
+echo '  ; else if (!config.magic_demand_paged) return' >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xn                 >> e${EMULATION_NAME}.c
+echo '  ; else return'                                 >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.x                  >> e${EMULATION_NAME}.c
+echo '; }'                                             >> e${EMULATION_NAME}.c
+d294 1
+a294 1
+  if (link_info.relocateable && config.build_constructors)
+d296 1
+a296 1
+  else if (link_info.relocateable)
+a330 2
+  NULL,	/* add_options */
+  NULL,	/* handle_option */
+d334 1
+a334 2
+  NULL,	/* find_potential_libraries */
+  NULL	/* new_vers_pattern */
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d50 12
+d64 3
+a66 1
+append (lib_list_type ***list, char *name)
+d81 2
+a82 1
+lnk960_hll (char *name)
+d92 3
+a94 2
+static void
+lnk960_syslib (char *name)
+d102 2
+a103 2
+static void
+lnk960_before_parse (void)
+d126 2
+a127 2
+static void
+lnk960_before_parse (void)
+d148 3
+a150 1
+add_on (lib_list_type *list, lang_input_file_enum_type search)
+a157 1
+
+d159 1
+a159 1
+lnk960_after_parse (void)
+d166 1
+a166 1
+
+d174 1
+a174 1
+
+d180 1
+a180 1
+lnk960_before_allocation (void)
+d185 1
+a185 1
+lnk960_after_allocation (void)
+d187 1
+a187 1
+  if (!link_info.relocatable)
+d200 1
+a200 1
+   char *name;
+d230 1
+a230 1
+lnk960_set_output_arch (void)
+d248 3
+a250 1
+lnk960_choose_target (int argc ATTRIBUTE_UNUSED, char **argv ATTRIBUTE_UNUSED)
+d271 2
+a272 1
+lnk960_get_script (int *isfile)
+d283 1
+a283 1
+{
+d286 1
+a286 1
+  if (link_info.relocatable && config.build_constructors)
+d290 1
+a290 1
+echo '  ; else if (link_info.relocatable) return'     >> e${EMULATION_NAME}.c
+d304 1
+a304 1
+{
+d307 1
+a307 1
+  if (link_info.relocatable && config.build_constructors)
+d309 1
+a309 1
+  else if (link_info.relocatable)
+d324 1
+a324 1
+struct ld_emulation_xfer_struct ld_lnk960_emulation =
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d5 1
+a5 1
+   Copyright 1991, 1992, 1994, 1995, 1996, 1999, 2000, 2001, 2002, 2003
+a49 12
+static void append PARAMS ((lib_list_type ***, char *));
+static void lnk960_hll PARAMS ((char *));
+static void lnk960_syslib PARAMS ((char *));
+static void lnk960_before_parse PARAMS ((void));
+static void add_on PARAMS ((lib_list_type *, lang_input_file_enum_type));
+static void lnk960_after_parse PARAMS ((void));
+static void lnk960_before_allocation PARAMS ((void));
+static void lnk960_after_allocation PARAMS ((void));
+static void lnk960_set_output_arch PARAMS ((void));
+static char *lnk960_choose_target PARAMS ((int, char **));
+static char *lnk960_get_script PARAMS ((int *));
+
+d52 1
+a52 1
+append (list, name)
+d56 2
+a57 1
+  lib_list_type *element = (lib_list_type *) xmalloc (sizeof (lib_list_type));
+d60 1
+a60 1
+  element->next = (lib_list_type *) NULL;
+d66 2
+a67 2
+static bfd_boolean had_hll = FALSE;
+static bfd_boolean had_hll_name = FALSE;
+d70 1
+a70 1
+lnk960_hll (name)
+d73 5
+a77 6
+  had_hll = TRUE;
+  if (name != (char *) NULL)
+    {
+      had_hll_name = TRUE;
+      append (&hll_list_tail, name);
+    }
+d81 1
+a81 1
+lnk960_syslib (name)
+d84 1
+a84 1
+  append (&syslib_list_tail, name);
+d91 1
+a91 1
+lnk960_before_parse ()
+d97 4
+a100 5
+  for (p = env_variables; *p; p++)
+    {
+      env = (char *) getenv (*p);
+      if (env)
+	ldfile_add_library_path (concat (env, "/lib/libcoff", ""), FALSE);
+d102 1
+d104 4
+a107 3
+  env = (char *) getenv ("I960BASE");
+  if (env)
+    ldfile_add_library_path(concat (env, "/lib", ""), FALSE);
+d116 1
+a116 1
+lnk960_before_parse ()
+d118 1
+a118 1
+  char *name = getenv ("I960BASE");
+d120 4
+a123 5
+  if (name == (char *) NULL)
+    {
+      name = getenv("G960BASE");
+      if (name == (char *) NULL)
+	einfo ("%P%F I960BASE and G960BASE not set\n");
+d125 1
+d128 1
+a128 1
+  ldfile_add_library_path (concat (name, "/lib", ""), FALSE);
+d137 1
+a137 1
+add_on (list, search)
+d141 6
+a146 5
+  while (list)
+    {
+      lang_add_input_file (list->name, search, (char *) NULL);
+      list = list->next;
+    }
+d149 1
+a149 1
+lnk960_after_parse ()
+d152 3
+a154 2
+  if (ldfile_output_machine_name[0] == 0)
+    ldfile_add_arch ("KB");
+d158 7
+a164 6
+  if (had_hll && !had_hll_name)
+    {
+      append (&hll_list_tail, "cg");
+      if (ldfile_output_machine == bfd_mach_i960_ka_sa
+	  || ldfile_output_machine == bfd_mach_i960_ca)
+	append (&hll_list_tail, "fpg");
+d166 1
+d168 2
+a169 2
+  add_on (hll_list, lang_input_file_is_l_enum);
+  add_on (syslib_list, lang_input_file_is_search_file_enum);
+d173 1
+a173 1
+lnk960_before_allocation ()
+d178 1
+a178 1
+lnk960_after_allocation ()
+d180 6
+a185 7
+  if (!link_info.relocateable)
+    {
+      lang_abs_symbol_at_end_of (".text", "_etext");
+      lang_abs_symbol_at_end_of (".data", "_edata");
+      lang_abs_symbol_at_beginning_of (".bss", "_bss_start");
+      lang_abs_symbol_at_end_of (".bss", "_end");
+    }
+d222 1
+a222 1
+lnk960_set_output_arch ()
+d227 4
+a230 7
+  for (i= 0; machine_table[i].name != (char*) NULL; i++)
+    {
+      if (strcmp (ldfile_output_machine_name, machine_table[i].name) == 0)
+	{
+	  ldfile_output_machine = machine_table[i].number;
+	  break;
+	}
+d232 2
+a233 2
+  bfd_set_arch_mach (output_bfd, ldfile_output_architecture,
+		     ldfile_output_machine);
+d237 1
+a237 3
+lnk960_choose_target (argc, argv)
+    int argc ATTRIBUTE_UNUSED;
+    char **argv ATTRIBUTE_UNUSED;
+d241 1
+a241 1
+  return bfd_make_targ_name (BFD_COFF_FORMAT, 0);
+d245 2
+a246 2
+  char *from_outside = getenv (TARGET_ENVIRON);
+  if (from_outside != (char *) NULL)
+d258 1
+a258 1
+lnk960_get_script (isfile)
+d273 1
+a273 1
+  if (link_info.relocateable && config.build_constructors)
+d276 10
+a285 10
+sed $sc ldscripts/${EMULATION_NAME}.xu                 >> e${EMULATION_NAME}.c
+echo '  ; else if (link_info.relocateable) return'     >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xr                 >> e${EMULATION_NAME}.c
+echo '  ; else if (!config.text_read_only) return'     >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xbn                >> e${EMULATION_NAME}.c
+echo '  ; else if (!config.magic_demand_paged) return' >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.xn                 >> e${EMULATION_NAME}.c
+echo '  ; else return'                                 >> e${EMULATION_NAME}.c
+sed $sc ldscripts/${EMULATION_NAME}.x                  >> e${EMULATION_NAME}.c
+echo '; }'                                             >> e${EMULATION_NAME}.c
+d294 1
+a294 1
+  if (link_info.relocateable && config.build_constructors)
+d296 1
+a296 1
+  else if (link_info.relocateable)
+a330 2
+  NULL,	/* add_options */
+  NULL,	/* handle_option */
+d334 1
+a334 2
+  NULL,	/* find_potential_libraries */
+  NULL	/* new_vers_pattern */
+@
+

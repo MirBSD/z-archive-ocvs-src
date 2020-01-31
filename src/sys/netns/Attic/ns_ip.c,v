@@ -1,0 +1,754 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.4
+	cvs-200405160640:1.1.1.6
+	cvs-200401271800:1.1.1.6
+	cvs-200401261630:1.1.1.6
+	cvs-200401021645:1.1.1.5
+	MIRBSD_7_ALPHA:1.1.1.4.0.6
+	MIRBSD_7:1.1.1.4.0.4
+	cvs-200312222040:1.1.1.5
+	MIRBSD_7ter:1.1.1.4
+	MIRBSD_7_DEV:1.1.1.4.0.2
+	cvs-200310020700:1.1.1.4
+	cvs-200309271030:1.1.1.4
+	cvs-200309261655:1.1.1.4
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.4
+	cvs-200308171200:1.1.1.4
+	ctm-3496:1.1.1.4
+	ctm-3449:1.1.1.4
+	ctm-3437:1.1.1.4
+	cvs-200307191805:1.1.1.4
+	ctm-3425:1.1.1.4
+	cvs-200307091500:1.1.1.3
+	cvs-200307072125:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200307021520:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.3
+	cvs-200306082100:1.1.1.3
+	ctm-3316:1.1.1.3
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.2
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.03.21.15.14.55;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.52.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.18;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.05.18.57.51;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.05.17.41.36;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.07.18.13.50.56;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2003.12.22.21.05.15;	author tg;	state Exp;
+branches;
+next	1.1.1.6;
+
+1.1.1.6
+date	2004.01.26.18.55.05;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke netccitt, netiso, netns (as announced earlier)
+netatalk stays in as per bsiegert@@
+
+sync kernel
+sync bktr(4) options with reality
+@
+text
+@/*	$OpenBSD: ns_ip.c,v 1.15 2002/08/28 15:43:03 pefo Exp $	*/
+/*	$NetBSD: ns_ip.c,v 1.16 1996/05/09 22:29:40 scottr Exp $	*/
+
+/*
+ * Copyright (c) 1984, 1985, 1986, 1987, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@@(#)ns_ip.c	8.1 (Berkeley) 6/10/93
+ */
+
+/*
+ * Software interface driver for encapsulating ns in ip.
+ */
+
+#ifdef NSIP
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/malloc.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+#include <sys/errno.h>
+#include <sys/ioctl.h>
+#include <sys/protosw.h>
+
+#include <machine/cpu.h>	/* XXX for setsoftnet().  This must die. */
+
+#include <net/if.h>
+#include <net/netisr.h>
+#include <net/route.h>
+
+#include <netinet/in.h>
+#include <netinet/in_systm.h>
+#include <netinet/in_var.h>
+#include <netinet/ip.h>
+#include <netinet/ip_var.h>
+
+#include <netns/ns.h>
+#include <netns/ns_if.h>
+#include <netns/ns_var.h>
+#include <netns/idp.h>
+
+#include <machine/stdarg.h>
+
+struct ifnet_en {
+	struct ifnet ifen_ifnet;
+	struct route ifen_route;
+	struct in_addr ifen_src;
+	struct in_addr ifen_dst;
+	struct ifnet_en *ifen_next;
+};
+
+#define LOMTU	(1024+512);
+
+int	nsipif_unit;			/* XXX */
+struct ifnet nsipif;
+struct ifnet_en *nsip_list;		/* list of all hosts and gateways or
+					broadcast addrs */
+
+struct ifnet_en *
+nsipattach()
+{
+	register struct ifnet_en *m;
+	register struct ifnet *ifp;
+
+	if (nsipif.if_mtu == 0) {
+		ifp = &nsipif;
+		sprintf(ifp->if_xname, "nsip%d", nsipif_unit);
+		ifp->if_mtu = LOMTU;
+		ifp->if_ioctl = nsipioctl;
+		ifp->if_output = nsipoutput;
+		ifp->if_start = nsipstart;
+		ifp->if_flags = IFF_POINTOPOINT;
+	}
+
+	MALLOC((m), struct ifnet_en *, sizeof(*m), M_PCB, M_NOWAIT);
+	if (m == NULL) return (NULL);
+	m->ifen_next = nsip_list;
+	nsip_list = m;
+	ifp = &m->ifen_ifnet;
+
+	sprintf(ifp->if_xname, "nsip%d", nsipif_unit++);
+	ifp->if_mtu = LOMTU;
+	ifp->if_ioctl = nsipioctl;
+	ifp->if_output = nsipoutput;
+	ifp->if_start = nsipstart;
+	ifp->if_flags = IFF_POINTOPOINT;
+	if_attach(ifp);
+
+	/*
+	 * XXX Emulate the side effect of incrementing nsipif.if_unit
+	 * XXX in the days before if_xname.
+	 */
+	bzero(nsipif.if_xname, sizeof(nsipif.if_xname));
+	sprintf(nsipif.if_xname, "nsip%d", nsipif_unit);
+
+	return (m);
+}
+
+
+/*
+ * Process an ioctl request.
+ */
+/* ARGSUSED */
+int
+nsipioctl(ifp, cmd, data)
+	register struct ifnet *ifp;
+	u_long cmd;
+	caddr_t data;
+{
+	int error = 0;
+	struct ifreq *ifr;
+
+	switch (cmd) {
+
+	case SIOCSIFADDR:
+		ifp->if_flags |= IFF_UP;
+		/* fall into: */
+
+	case SIOCSIFDSTADDR:
+		/*
+		 * Everything else is done at a higher level.
+		 */
+		break;
+
+	case SIOCSIFFLAGS:
+		ifr = (struct ifreq *)data;
+		if ((ifr->ifr_flags & IFF_UP) == 0)
+			error = nsip_free(ifp);
+
+
+	default:
+		error = EINVAL;
+	}
+	return (error);
+}
+
+struct mbuf *nsip_badlen;
+struct mbuf *nsip_lastin;
+int nsip_hold_input;
+
+void
+idpip_input(struct mbuf *m, ...)
+{
+	struct ifnet *ifp;
+	register struct ip *ip;
+	register struct idp *idp;
+	register struct ifqueue *ifq = &nsintrq;
+	int len, s;
+	va_list	ap;
+
+	va_start(ap, m);
+	ifp = va_arg(ap, struct ifnet *);
+	va_end(ap);
+
+	if (nsip_hold_input) {
+		if (nsip_lastin) {
+			m_freem(nsip_lastin);
+		}
+		nsip_lastin = m_copym(m, 0, (int)M_COPYALL, M_DONTWAIT);
+	}
+	/*
+	 * Get IP and IDP header together in first mbuf.
+	 */
+	nsipif.if_ipackets++;
+	s = sizeof (struct ip) + sizeof (struct idp);
+	if (((m->m_flags & M_EXT) || m->m_len < s) &&
+	    (m = m_pullup(m, s)) == 0) {
+		nsipif.if_ierrors++;
+		return;
+	}
+	ip = mtod(m, struct ip *);
+	if (ip->ip_hl > (sizeof (struct ip) >> 2)) {
+		ip_stripoptions(m, (struct mbuf *)0);
+		if (m->m_len < s) {
+			if ((m = m_pullup(m, s)) == 0) {
+				nsipif.if_ierrors++;
+				return;
+			}
+			ip = mtod(m, struct ip *);
+		}
+	}
+
+	/*
+	 * Make mbuf data length reflect IDP length.
+	 * If not enough data to reflect IDP length, drop.
+	 */
+	m->m_data += sizeof (struct ip);
+	m->m_len -= sizeof (struct ip);
+	m->m_pkthdr.len -= sizeof (struct ip);
+	idp = mtod(m, struct idp *);
+	len = ntohs(idp->idp_len);
+	if (len & 1) len++;		/* Preserve Garbage Byte */
+	if (ip->ip_len != len) {
+		if (len > ip->ip_len) {
+			nsipif.if_ierrors++;
+			if (nsip_badlen) m_freem(nsip_badlen);
+			nsip_badlen = m;
+			return;
+		}
+		/* Any extra will be trimmed off by the NS routines */
+	}
+
+	/*
+	 * Place interface pointer before the data
+	 * for the receiving protocol.
+	 */
+	m->m_pkthdr.rcvif = ifp;
+	/*
+	 * Deliver to NS
+	 */
+	s = splimp();
+	if (IF_QFULL(ifq)) {
+		IF_DROP(ifq);
+		m_freem(m);
+		splx(s);
+		return;
+	}
+	IF_ENQUEUE(ifq, m);
+	schednetisr(NETISR_NS);
+	splx(s);
+	return;
+}
+
+/* ARGSUSED */
+int
+nsipoutput(ifp, m, dst, rt)
+	struct ifnet *ifp;
+	register struct mbuf *m;
+	struct sockaddr *dst;
+	struct rtentry *rt;
+{
+
+	register struct ip *ip;
+	register int len = 0;
+	register struct idp *idp = mtod(m, struct idp *);
+	struct ifnet_en *ifn = (struct ifnet_en *)ifp;
+	struct route ro;
+	int error;
+
+	ifn->ifen_ifnet.if_opackets++;
+	nsipif.if_opackets++;
+	ro.ro_rt = rt;
+	ro.ro_dst = *dst;
+
+	/*
+	 * Calculate data length and make space
+	 * for IP header.
+	 */
+	len =  ntohs(idp->idp_len);
+	if (len & 1) len++;		/* Preserve Garbage Byte */
+	/* following clause not necessary on vax */
+	if (3 & (int)m->m_data) {
+		/* force longword alignment of ip hdr */
+		struct mbuf *m0 = m_gethdr(M_DONTWAIT, MT_HEADER);
+		if (m0 == 0) {
+			m_freem(m);
+			return (ENOBUFS);
+		}
+		M_MOVE_HDR(m0, m);
+		MH_ALIGN(m0, sizeof (struct ip));
+		m0->m_flags = m->m_flags & M_COPYFLAGS;
+		m0->m_next = m;
+		m0->m_len = sizeof (struct ip);
+		m0->m_pkthdr.len = m0->m_len + m->m_len;
+	} else {
+		M_PREPEND(m, sizeof (struct ip), M_DONTWAIT);
+		if (m == 0)
+			return (ENOBUFS);
+	}
+	/*
+	 * Fill in IP header.
+	 */
+	ip = mtod(m, struct ip *);
+	*(long *)ip = 0;
+	ip->ip_p = IPPROTO_IDP;
+	ip->ip_src = ifn->ifen_src;
+	ip->ip_dst = ifn->ifen_dst;
+	ip->ip_len = (u_short)len + sizeof (struct ip);
+	ip->ip_ttl = MAXTTL;
+
+	/*
+	 * Output final datagram.
+	 */
+	error =  (ip_output(m, (struct mbuf *)0, &ro, SO_BROADCAST, (void *)NULL, (void *)NULL));
+	if (error) {
+		ifn->ifen_ifnet.if_oerrors++;
+		ifn->ifen_ifnet.if_ierrors = error;
+	}
+	return (error);
+}
+
+void
+nsipstart(ifp)
+	struct ifnet *ifp;
+{
+	panic("nsip_start called");
+}
+
+struct ifreq ifr = {"nsip0"};		/* XXX */
+
+int
+nsip_route(m)
+	register struct mbuf *m;
+{
+	register struct nsip_req *rq = mtod(m, struct nsip_req *);
+	struct sockaddr_ns *ns_dst = satosns(&rq->rq_ns);
+	struct sockaddr_in *ip_dst = satosin(&rq->rq_ip);
+	struct route ro;
+	struct ifnet_en *ifn;
+	struct sockaddr_in *src;
+
+	/*
+	 * First, make sure we already have an ns address:
+	 */
+	if (ns_hosteqnh(ns_thishost, ns_zerohost))
+		return (EADDRNOTAVAIL);
+	/*
+	 * Now, determine if we can get to the destination
+	 */
+	bzero((caddr_t)&ro, sizeof (ro));
+	ro.ro_dst = *sintosa(ip_dst);
+	rtalloc(&ro);
+	if (ro.ro_rt == 0 || ro.ro_rt->rt_ifp == 0) {
+		return (ENETUNREACH);
+	}
+
+	/*
+	 * And see how he's going to get back to us:
+	 * i.e., what return ip address do we use?
+	 */
+	{
+		register struct in_ifaddr *ia;
+		struct ifnet *ifp = ro.ro_rt->rt_ifp;
+
+		for (ia = in_ifaddr.tqh_first; ia != 0;
+		    ia = ia->ia_list.tqe_next)
+			if (ia->ia_ifp == ifp)
+				break;
+		if (ia == NULL)
+			ia = in_ifaddr.tqh_first;
+		if (ia == NULL) {
+			RTFREE(ro.ro_rt);
+			return (EADDRNOTAVAIL);
+		}
+		src = satosin(&ia->ia_addr);
+	}
+
+	/*
+	 * Is there a free (pseudo-)interface or space?
+	 */
+	for (ifn = nsip_list; ifn; ifn = ifn->ifen_next) {
+		if ((ifn->ifen_ifnet.if_flags & IFF_UP) == 0)
+			break;
+	}
+	if (ifn == NULL)
+		ifn = nsipattach();
+	if (ifn == NULL) {
+		RTFREE(ro.ro_rt);
+		return (ENOBUFS);
+	}
+	ifn->ifen_route = ro;
+	ifn->ifen_dst =  ip_dst->sin_addr;
+	ifn->ifen_src = src->sin_addr;
+
+	/*
+	 * now configure this as a point to point link
+	 */
+	bzero(ifr.ifr_name, sizeof(ifr.ifr_name));
+	sprintf(ifr.ifr_name, "nsip%d", nsipif_unit - 1);
+	ifr.ifr_dstaddr = *snstosa(ns_dst);
+	(void)ns_control((struct socket *)0, SIOCSIFDSTADDR, (caddr_t)&ifr,
+			(struct ifnet *)ifn);
+	satons_addr(ifr.ifr_addr).x_host = ns_thishost;
+	return (ns_control((struct socket *)0, SIOCSIFADDR, (caddr_t)&ifr,
+			(struct ifnet *)ifn));
+}
+
+int
+nsip_free(ifp)
+struct ifnet *ifp;
+{
+	register struct ifnet_en *ifn = (struct ifnet_en *)ifp;
+	struct route *ro = & ifn->ifen_route;
+
+	if (ro->ro_rt) {
+		RTFREE(ro->ro_rt);
+		ro->ro_rt = 0;
+	}
+	ifp->if_flags &= ~IFF_UP;
+	return (0);
+}
+
+void *
+nsip_ctlinput(cmd, sa, v)
+	int cmd;
+	struct sockaddr *sa;
+	void *v;
+{
+	struct sockaddr_in *sin;
+
+	if ((unsigned)cmd >= PRC_NCMDS)
+		return NULL;
+	if (sa->sa_family != AF_INET && sa->sa_family != AF_IMPLINK)
+		return NULL;
+	sin = satosin(sa);
+	if (sin->sin_addr.s_addr == INADDR_ANY)
+		return NULL;
+
+	switch (cmd) {
+
+	case PRC_ROUTEDEAD:
+	case PRC_REDIRECT_NET:
+	case PRC_REDIRECT_HOST:
+	case PRC_REDIRECT_TOSNET:
+	case PRC_REDIRECT_TOSHOST:
+		nsip_rtchange(&sin->sin_addr);
+		break;
+	}
+	return NULL;
+}
+
+int
+nsip_rtchange(dst)
+	register struct in_addr *dst;
+{
+	register struct ifnet_en *ifn;
+
+	for (ifn = nsip_list; ifn; ifn = ifn->ifen_next) {
+		if (ifn->ifen_dst.s_addr == dst->s_addr &&
+			ifn->ifen_route.ro_rt) {
+				RTFREE(ifn->ifen_route.ro_rt);
+				ifn->ifen_route.ro_rt = 0;
+		}
+	}
+	return 0;
+}
+#endif
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of now, CTM delta 3255, just before the i386 flag day
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: ns_ip.c,v 1.16 2003/05/03 21:16:30 deraadt Exp $	*/
+d96 1
+a96 2
+		snprintf(ifp->if_xname, sizeof ifp->if_xname,
+		    "nsip%d", nsipif_unit);
+d110 1
+a110 2
+	snprintf(ifp->if_xname, sizeof ifp->if_xname,
+	    "nsip%d", nsipif_unit++);
+d123 1
+a123 2
+	snprintf(nsipif.if_xname, sizeof nsipif.if_xname,
+	    "nsip%d", nsipif_unit);
+d398 1
+a398 2
+	snprintf(ifr.ifr_name, sizeof ifr.ifr_name,
+	    "nsip%d", nsipif_unit - 1);
+@
+
+
+1.1.1.3
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: ns_ip.c,v 1.17 2003/06/02 23:28:19 millert Exp $	*/
+d16 5
+a20 1
+ * 3. Neither the name of the University nor the names of its contributors
+@
+
+
+1.1.1.4
+log
+@Synchronize source tree with OpenBSD
+note: due to recent changes in the codebase of OpenBSD,
+out libcom_err will be incompatible with theirs...
+but this is no issue because we don't provide a dynamically
+linked one, and theirs won't be provided longer any more anyways.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: ns_ip.c,v 1.18 2003/07/09 22:03:16 itojun Exp $	*/
+d221 2
+a222 2
+	if (ntohs(ip->ip_len) - (ip->ip_hl << 2) != len) {
+		if (len > ip->ip_len - (ip->ip_hl << 2)) {
+d306 1
+a306 5
+	if (len + sizeof (struct ip) > IP_MAXPACKET) {
+		m_freem(m);
+		return EMSGSIZE;
+	}
+	ip->ip_len = htons(len + sizeof (struct ip));
+d312 1
+a312 2
+	error = ip_output(m, (struct mbuf *)0, &ro, SO_BROADCAST, (void *)NULL,
+	    (void *)NULL);
+@
+
+
+1.1.1.5
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: ns_ip.c,v 1.19 2003/12/10 07:22:44 itojun Exp $	*/
+d87 2
+a88 2
+	struct ifnet_en *m;
+	struct ifnet *ifp;
+d134 1
+a134 1
+	struct ifnet *ifp;
+d173 3
+a175 3
+	struct ip *ip;
+	struct idp *idp;
+	struct ifqueue *ifq = &nsintrq;
+d256 1
+a256 1
+	struct mbuf *m;
+d261 3
+a263 3
+	struct ip *ip;
+	int len = 0;
+	struct idp *idp = mtod(m, struct idp *);
+d336 1
+a336 1
+	struct mbuf *m;
+d338 1
+a338 1
+	struct nsip_req *rq = mtod(m, struct nsip_req *);
+d365 1
+a365 1
+		struct in_ifaddr *ia;
+d416 1
+a416 1
+	struct ifnet_en *ifn = (struct ifnet_en *)ifp;
+d458 1
+a458 1
+	struct in_addr *dst;
+d460 1
+a460 1
+	struct ifnet_en *ifn;
+@
+
+
+1.1.1.6
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: ns_ip.c,v 1.20 2004/01/03 14:08:54 espie Exp $	*/
+d67 1
+a67 1
+#include <sys/stdarg.h>
+@
+
+

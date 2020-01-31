@@ -1,0 +1,430 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307030815:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.13.16.12.36;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.35.08;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.35.08;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.20.23.12;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@there hasn't been a.out-b since ages
+@
+text
+@/*	$OpenBSD: rdsetroot.c,v 1.7 2001/05/11 15:21:35 deraadt Exp $	*/
+/*	$NetBSD: rdsetroot.c,v 1.2 1995/10/13 16:38:39 gwr Exp $	*/
+
+/*
+ * Copyright (c) 1994 Gordon W. Ross
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * Copy a ramdisk image into the space reserved for it.
+ * Kernel variables: rd_root_size, rd_root_image
+ */
+
+#include <sys/types.h>
+#include <sys/file.h>
+#include <sys/mman.h>
+
+#include <stdio.h>
+#include <unistd.h>
+#include <a.out.h>
+
+extern off_t lseek();
+
+struct exec head;
+char *file;
+
+/* Virtual addresses of the symbols we frob. */
+long rd_root_image_va, rd_root_size_va;
+
+/* Offsets relative to start of data segment. */
+long rd_root_image_off, rd_root_size_off;
+
+/* value in the location at rd_root_size_off */
+int rd_root_size_val;
+
+/* pointers to pieces of mapped file */
+char *dataseg;
+
+/* and lengths */
+int data_len;
+int data_off;
+int data_pgoff;
+
+void	find_rd_root_image(char *);
+
+int
+main(argc,argv)
+	char **argv;
+{
+	int fd, n;
+	int *ip;
+	char *cp;
+
+	if (argc < 2) {
+		printf("%s: missing file name\n", argv[0]);
+		exit(1);
+	}
+	file = argv[1];
+
+	fd = open(file, O_RDWR);
+	if (fd < 0) {
+		perror(file);
+		exit(1);
+	}
+
+	n = read(fd, &head, sizeof(head));
+	if (n < sizeof(head)) {
+		printf("%s: reading header\n", file);
+		exit(1);
+	}
+
+	if (N_BADMAG(head)) {
+		printf("%s: bad magic number\n", file);
+		exit(1);
+	}
+
+#ifdef	DEBUG
+	printf(" text:  %9d\n", head.a_text);
+	printf(" data:  %9d\n", head.a_data);
+	printf("  bss:  %9d\n", head.a_bss);
+	printf(" syms:  %9d\n", head.a_syms);
+	printf("entry: 0x%08X\n", head.a_entry);
+	printf("trsiz:  %9d\n", head.a_trsize);
+	printf("drsiz:  %9d\n", head.a_drsize);
+#endif
+
+	if (head.a_syms <= 0) {
+		printf("%s: no symbols\n", file);
+		exit(1);
+	}
+	if (head.a_trsize ||
+		head.a_drsize)
+	{
+		printf("%s: has relocations\n");
+		exit(1);
+	}
+
+	find_rd_root_image(file);
+
+	/*
+	 * Map in the whole data segment.
+	 * The file offset needs to be page aligned.
+	 */
+	data_off = N_DATOFF(head);
+
+#ifdef BROKEN_NMAGIC
+	/*
+	 * XXX it seems that our ld has a bug when generating NMAGIC files.
+	 * the data segment ends up one page too far into the file.
+	 */
+	if (N_GETMAGIC(head) == NMAGIC)
+		data_off += __LDPGSZ;
+#endif
+
+	data_len = head.a_data;
+	/* align... */
+	data_pgoff = N_PAGSIZ(head) - 1;
+	data_pgoff &= data_off;
+	data_off -= data_pgoff;
+	data_len += data_pgoff;
+	/* map in in... */
+	dataseg = mmap(NULL,	/* any address is ok */
+				   data_len, /* length */
+				   PROT_READ | PROT_WRITE,
+				   MAP_SHARED,
+				   fd, data_off);
+	if (dataseg == MAP_FAILED) {
+		printf("%s: can not map data seg\n", file);
+		perror(file);
+		exit(1);
+	}
+	dataseg += data_pgoff;
+
+	/*
+	 * Find value in the location: rd_root_size
+	 */
+	ip = (int*) (dataseg + rd_root_size_off);
+	rd_root_size_val = *ip;
+#ifdef	DEBUG
+	printf("rd_root_size  val: 0x%08X (%d blocks)\n",
+		rd_root_size_val, (rd_root_size_val >> 9));
+#endif
+
+	/*
+	 * Copy the symbol table and string table.
+	 */
+#ifdef	DEBUG
+	printf("copying root image...\n");
+#endif
+	n = read(0, dataseg + rd_root_image_off,
+			 rd_root_size_val);
+	if (n < 0) {
+		perror("read");
+		exit(1);
+	}
+
+	msync(dataseg - data_pgoff, data_len, 0);
+
+#ifdef	DEBUG
+	printf("...copied %d bytes\n", n);
+#endif
+	close(fd);
+	exit(0);
+}
+
+
+/*
+ * Find locations of the symbols to patch.
+ */
+struct nlist wantsyms[] = {
+	{ "_rd_root_size", 0 },
+	{ "_rd_root_image", 0 },
+	{ NULL, 0 },
+};
+
+void
+find_rd_root_image(file)
+	char *file;
+{
+	int data_va;
+	int std_entry;
+
+	if (nlist(file, wantsyms)) {
+		printf("%s: no rd_root_image symbols?\n", file);
+		exit(1);
+	}
+	std_entry = N_TXTADDR(head) +
+	    (head.a_entry & (N_PAGSIZ(head)-1));
+	data_va = N_DATADDR(head);
+	if (head.a_entry != std_entry) {
+		printf("%s: warning: non-standard entry point: 0x%08x\n",
+			   file, head.a_entry);
+		printf("\texpecting entry=0x%X\n", std_entry);
+		data_va += (head.a_entry - std_entry);
+	}
+
+	rd_root_size_off = wantsyms[0].n_value - data_va;
+	rd_root_image_off     = wantsyms[1].n_value - data_va;
+#ifdef	DEBUG
+	printf(".data segment  va: 0x%08X\n", data_va);
+	printf("rd_root_size   va: 0x%08X\n", wantsyms[0].n_value);
+	printf("rd_root_image  va: 0x%08X\n", wantsyms[1].n_value);
+	printf("rd_root_size  off: 0x%08X\n", rd_root_size_off);
+	printf("rd_root_image off: 0x%08X\n", rd_root_image_off);
+#endif
+
+	/*
+	 * Sanity check locations of db_* symbols
+	 */
+	if (rd_root_image_off < 0 || rd_root_image_off >= head.a_data) {
+		printf("%s: rd_root_image not in data segment?\n", file);
+		exit(1);
+	}
+	if (rd_root_size_off < 0 || rd_root_size_off >= head.a_data) {
+		printf("%s: rd_root_size not in data segment?\n", file);
+		exit(1);
+	}
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: rdsetroot.c,v 1.8 2003/10/27 20:58:46 millert Exp $	*/
+a66 1
+__dead void usage(void);
+d72 1
+a72 1
+	int ch, fd, n, xflag;
+d74 1
+d76 5
+a80 16
+	xflag = 0;
+	while ((ch = getopt(argc, argv, "x")) != -1) {
+		switch (ch) {
+		case 'x':
+			xflag = 1;
+			break;
+		default:
+			usage();
+		}
+	}
+	argc -= optind;
+	argv += optind;
+
+	if (argc != 1)
+		usage();
+	file = argv[0];
+d82 1
+a82 1
+	fd = open(file, O_RDWR, 0644);
+d116 1
+a116 1
+		printf("%s: has relocations\n", file);
+d172 6
+a177 14
+	if (xflag) {
+		n = write(STDOUT_FILENO, dataseg + rd_root_image_off,
+		    rd_root_size_val);
+		if (n != rd_root_size_val) {
+			perror("write");
+			exit(1);
+		}
+	} else {
+		n = read(STDIN_FILENO, dataseg + rd_root_image_off,
+		    rd_root_size_val);
+		if (n < 0) {
+			perror("read");
+			exit(1);
+		}
+d179 1
+a179 2
+		msync(dataseg - data_pgoff, data_len, 0);
+	}
+a239 9
+}
+
+__dead void
+usage(void)
+{
+	extern char *__progname;
+
+	fprintf(stderr, "usage: %s [-x] file_name\n", __progname);
+	exit(1);
+@
+

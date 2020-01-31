@@ -1,0 +1,431 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.44.01;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.01;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.57.58;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl -w
+
+# Tests for the command-line switches
+
+BEGIN {
+    chdir 't' if -d 't';
+    @@INC = '../lib';
+}
+
+require "./test.pl";
+
+plan(tests => 19);
+
+# due to a bug in VMS's piping which makes it impossible for runperl()
+# to emulate echo -n (ie. stdin always winds up with a newline), these 
+# tests almost totally fail.
+$TODO = "runperl() unable to emulate echo -n due to pipe bug" if $^O eq 'VMS';
+
+my $r;
+my @@tmpfiles = ();
+END { unlink @@tmpfiles }
+
+# Tests for -0
+
+$r = runperl(
+    switches	=> [ '-0', ],
+    stdin	=> 'foo\0bar\0baz\0',
+    prog	=> 'print qq(<$_>) while <>',
+);
+is( $r, "<foo\0><bar\0><baz\0>", "-0" );
+
+$r = runperl(
+    switches	=> [ '-l', '-0', '-p' ],
+    stdin	=> 'foo\0bar\0baz\0',
+    prog	=> '1',
+);
+is( $r, "foo\nbar\nbaz\n", "-0 after a -l" );
+
+$r = runperl(
+    switches	=> [ '-0', '-l', '-p' ],
+    stdin	=> 'foo\0bar\0baz\0',
+    prog	=> '1',
+);
+is( $r, "foo\0bar\0baz\0", "-0 before a -l" );
+
+$r = runperl(
+    switches	=> [ sprintf("-0%o", ord 'x') ],
+    stdin	=> 'fooxbarxbazx',
+    prog	=> 'print qq(<$_>) while <>',
+);
+is( $r, "<foox><barx><bazx>", "-0 with octal number" );
+
+$r = runperl(
+    switches	=> [ '-00', '-p' ],
+    stdin	=> 'abc\ndef\n\nghi\njkl\nmno\n\npq\n',
+    prog	=> 's/\n/-/g;$_.=q(/)',
+);
+is( $r, 'abc-def--/ghi-jkl-mno--/pq-/', '-00 (paragraph mode)' );
+
+$r = runperl(
+    switches	=> [ '-0777', '-p' ],
+    stdin	=> 'abc\ndef\n\nghi\njkl\nmno\n\npq\n',
+    prog	=> 's/\n/-/g;$_.=q(/)',
+);
+is( $r, 'abc-def--ghi-jkl-mno--pq-/', '-0777 (slurp mode)' );
+
+# Tests for -c
+
+my $filename = 'swctest.tmp';
+SKIP: {
+    local $TODO = '';   # this one works on VMS
+
+    open my $f, ">$filename" or skip( "Can't write temp file $filename: $!" );
+    print $f <<'SWTEST';
+BEGIN { print "block 1\n"; }
+CHECK { print "block 2\n"; }
+INIT  { print "block 3\n"; }
+	print "block 4\n";
+END   { print "block 5\n"; }
+SWTEST
+    close $f or die "Could not close: $!";
+    $r = runperl(
+	switches	=> [ '-c' ],
+	progfile	=> $filename,
+	stderr		=> 1,
+    );
+    # Because of the stderr redirection, we can't tell reliably the order
+    # in which the output is given
+    ok(
+	$r =~ /$filename syntax OK/
+	&& $r =~ /\bblock 1\b/
+	&& $r =~ /\bblock 2\b/
+	&& $r !~ /\bblock 3\b/
+	&& $r !~ /\bblock 4\b/
+	&& $r !~ /\bblock 5\b/,
+	'-c'
+    );
+    push @@tmpfiles, $filename;
+}
+
+# Tests for -l
+
+$r = runperl(
+    switches	=> [ sprintf("-l%o", ord 'x') ],
+    prog	=> 'print for qw/foo bar/'
+);
+is( $r, 'fooxbarx', '-l with octal number' );
+
+# Tests for -s
+
+$r = runperl(
+    switches	=> [ '-s' ],
+    prog	=> 'for (qw/abc def ghi/) {print defined $$_ ? $$_ : q(-)}',
+    args	=> [ '--', '-abc=2', '-def', ],
+);
+is( $r, '21-', '-s switch parsing' );
+
+# Bug ID 20011106.084
+$filename = 'swstest.tmp';
+SKIP: {
+    open my $f, ">$filename" or skip( "Can't write temp file $filename: $!" );
+    print $f <<'SWTEST';
+#!perl -s
+print $x
+SWTEST
+    close $f or die "Could not close: $!";
+    $r = runperl(
+	switches    => [ '-s' ],
+	progfile    => $filename,
+	args	    => [ '-x=foo' ],
+    );
+    is( $r, 'foo', '-s on the shebang line' );
+    push @@tmpfiles, $filename;
+}
+
+# Tests for -m and -M
+
+$filename = 'swtest.pm';
+SKIP: {
+    open my $f, ">$filename" or skip( "Can't write temp file $filename: $!",4 );
+    print $f <<'SWTESTPM';
+package swtest;
+sub import { print map "<$_>", @@_ }
+1;
+SWTESTPM
+    close $f or die "Could not close: $!";
+    $r = runperl(
+	switches    => [ '-Mswtest' ],
+	prog	    => '1',
+    );
+    is( $r, '<swtest>', '-M' );
+    $r = runperl(
+	switches    => [ '-Mswtest=foo' ],
+	prog	    => '1',
+    );
+    is( $r, '<swtest><foo>', '-M with import parameter' );
+    $r = runperl(
+	switches    => [ '-mswtest' ],
+	prog	    => '1',
+    );
+
+    {
+        local $TODO = '';  # this one works on VMS
+        is( $r, '', '-m' );
+    }
+    $r = runperl(
+	switches    => [ '-mswtest=foo,bar' ],
+	prog	    => '1',
+    );
+    is( $r, '<swtest><foo><bar>', '-m with import parameters' );
+    push @@tmpfiles, $filename;
+}
+
+# Tests for -V
+
+{
+    local $TODO = '';   # these ones should work on VMS
+
+    # basic perl -V should generate significant output.
+    # we don't test actual format since it could change
+    like( runperl( switches => ['-V'] ), qr/(\n.*){20}/,
+          '-V generates 20+ lines' );
+
+    # lookup a known config var
+    chomp( $r=runperl( switches => ['-V:osname'] ) );
+    is( $r, "osname='$^O';", 'perl -V:osname');
+
+    # lookup a nonexistent var
+    chomp( $r=runperl( switches => ['-V:this_var_makes_switches_test_fail'] ) );
+    is( $r, "this_var_makes_switches_test_fail='UNKNOWN';",
+        'perl -V:unknown var');
+
+    # regexp lookup
+    # platforms that don't like this quoting can either skip this test
+    # or fix test.pl _quote_args
+    $r = runperl( switches => ['"-V:i\D+size"'] );
+    # should be unlike( $r, qr/^$|not found|UNKNOWN/ );
+    like( $r, qr/^(?!.*(not found|UNKNOWN))./, 'perl -V:re got a result' );
+
+    # make sure each line we got matches the re
+    ok( !( grep !/^i\D+size=/, split /^/, $r ), '-V:re correct' );
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d3 1
+a3 3
+# Tests for the command-line switches:
+# -0, -c, -l, -s, -m, -M, -V, -v, -h, -z, -i
+# Some switches have their own tests, see MANIFEST.
+d12 1
+a12 3
+plan(tests => 26);
+
+use Config;
+a66 6
+$r = runperl(
+    switches	=> [ '-066' ],
+    prog	=> 'BEGIN { print qq{($/)} } print qq{[$/]}',
+);
+is( $r, "(\066)[\066]", '$/ set at compile-time' );
+
+d123 2
+a124 2
+#!perl -sn
+BEGIN { print $x; exit }
+d128 1
+d180 1
+a180 1
+    # we don't test actual format too much since it could change
+a183 4
+    like( runperl( switches => ['-V'] ),
+	  qr/\ASummary of my perl5 .*configuration:/,
+          '-V looks okay' );
+
+a201 69
+}
+
+# Tests for -v
+
+{
+    local $TODO = '';   # these ones should work on VMS
+
+    my $v = sprintf "%vd", $^V;
+    like( runperl( switches => ['-v'] ),
+	  qr/This is perl, v$v built for $Config{archname}.+Copyright.+Larry Wall.+Artistic License.+GNU General Public License/s,
+          '-v looks okay' );
+
+}
+
+# Tests for -h
+
+{
+    local $TODO = '';   # these ones should work on VMS
+
+    like( runperl( switches => ['-h'] ),
+	  qr/Usage: .+(?i:perl(?:$Config{_exe})?).+switches.+programfile.+arguments/,
+          '-h looks okay' );
+
+}
+
+# Tests for -z (which does not exist)
+
+{
+    local $TODO = '';   # these ones should work on VMS
+
+    like( runperl( switches => ['-z'], stderr => 1 ),
+	  qr/\QUnrecognized switch: -z  (-h will show valid options)./,
+          '-z correctly unknown' );
+
+}
+
+# Tests for -i
+
+{
+    local $TODO = '';   # these ones should work on VMS
+
+    sub do_i_unlink { 1 while unlink("file", "file.bak") }
+
+    open(FILE, ">file") or die "$0: Failed to create 'file': $!";
+    print FILE <<__EOF__;
+foo yada dada
+bada foo bing
+king kong foo
+__EOF__
+    close FILE;
+
+    END { do_i_unlink() }
+
+    runperl( switches => ['-pi.bak'], prog => 's/foo/bar/', args => ['file'] );
+
+    open(FILE, "file") or die "$0: Failed to open 'file': $!";
+    chomp(my @@file = <FILE>);
+    close FILE;
+
+    open(BAK, "file.bak") or die "$0: Failed to open 'file': $!";
+    chomp(my @@bak = <BAK>);
+    close BAK;
+
+    is(join(":", @@file),
+       "bar yada dada:bada bar bing:king kong bar",
+       "-i new file");
+    is(join(":", @@bak),
+       "foo yada dada:bada foo bing:king kong foo",
+       "-i backup file");
+@
+

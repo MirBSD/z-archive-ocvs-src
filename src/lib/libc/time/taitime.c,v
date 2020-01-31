@@ -1,0 +1,1681 @@
+head	1.24;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.24
+	tg-mergefixes-1-branch:1.24.0.100
+	tg-mergefixes-1-base:1.24
+	MIROS_X:1.24
+	MIROS_X_BASE:1.24
+	tg-mergetmp-3:1.24
+	MIRBSD_XP_MIRPPC:1.9.0.4
+	MIRBSD_XP_SPARC_BASE:1.9
+	MIRBSD_XP_SPARC:1.9.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.24
+date	2004.12.24.06.16.35;	author tg;	state Exp;
+branches;
+next	1.23;
+
+1.23
+date	2004.12.23.17.25.12;	author tg;	state Exp;
+branches;
+next	1.22;
+
+1.22
+date	2004.11.22.17.31.02;	author tg;	state Exp;
+branches;
+next	1.21;
+
+1.21
+date	2004.11.22.15.32.18;	author tg;	state Exp;
+branches;
+next	1.20;
+
+1.20
+date	2004.11.22.04.58.18;	author tg;	state Exp;
+branches;
+next	1.19;
+
+1.19
+date	2004.11.22.04.26.41;	author tg;	state Exp;
+branches;
+next	1.18;
+
+1.18
+date	2004.11.22.03.09.37;	author tg;	state Exp;
+branches;
+next	1.17;
+
+1.17
+date	2004.11.22.03.09.16;	author tg;	state Exp;
+branches;
+next	1.16;
+
+1.16
+date	2004.11.22.02.58.33;	author tg;	state Exp;
+branches;
+next	1.15;
+
+1.15
+date	2004.11.22.02.53.05;	author tg;	state Exp;
+branches;
+next	1.14;
+
+1.14
+date	2004.11.02.21.21.48;	author tg;	state Exp;
+branches;
+next	1.13;
+
+1.13
+date	2004.11.02.05.00.29;	author tg;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	2004.10.31.16.53.52;	author tg;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	2004.10.23.21.42.03;	author tg;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2004.10.23.20.10.26;	author tg;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2004.10.09.00.45.41;	author tg;	state Stab;
+branches;
+next	1.8;
+
+1.8
+date	2004.08.14.00.01.51;	author tg;	state Stab;
+branches;
+next	1.7;
+
+1.7
+date	2004.08.06.22.58.09;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2004.06.23.16.58.40;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2004.06.23.14.47.04;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.06.23.12.44.14;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.06.23.12.37.11;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.06.09.20.06.20;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2004.06.09.19.20.16;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.24
+log
+@clean up the mktime class functions (time2sub), now that
+the gmtime/localtime class functions (localsub) work
+- time2sub mostly rewritten
+- passes FSF testsuite in 63 bit
+- passes FSF testsuite in 64 bit PARTIALLY: only for UTC timezone
+  (the testsuite checks Japan and USA zones itself, too bad)
+- much cleaner design
+
+get rid of override_mktime kludge
+@
+text
+@/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.23 2004/12/23 17:25:12 tg Exp $ */
+
+/*-
+ * Copyright (c) 2004
+ *	Thorsten "mirabile" Glaser <tg@@66h.42h.de>
+ *
+ * Licensee is hereby permitted to deal in this work without restric-
+ * tion, including unlimited rights to use, publicly perform, modify,
+ * merge, distribute, sell, give away or sublicence, provided all co-
+ * pyright notices above, these terms and the disclaimer are retained
+ * in all redistributions or reproduced in accompanying documentation
+ * or other materials provided with binary redistributions.
+ *
+ * All advertising materials mentioning features or use of this soft-
+ * ware must display the following acknowledgement:
+ *	This product includes material provided by Thorsten Glaser.
+ *
+ * Licensor hereby provides this work "AS IS" and WITHOUT WARRANTY of
+ * any kind, expressed or implied, to the maximum extent permitted by
+ * applicable law, but with the warranty of being written without ma-
+ * licious intent or gross negligence; in no event shall licensor, an
+ * author or contributor be held liable for any damage, direct, indi-
+ * rect or other, however caused, arising in any way out of the usage
+ * of this work, even if advised of the possibility of such damage.
+ */
+
+#include <sys/param.h>
+#include <stdint.h>
+#include "private.h"
+#include "tzfile.h"
+
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.23 2004/12/23 17:25:12 tg Exp $");
+
+static __inline tai64_t *_tai_leaps(void);
+
+
+tai64_t
+tai_time(tai64_t *v)
+{
+	struct timeval tv;
+	register int64_t t = __TAI64_BIAS;
+
+	/*
+	 * We expect the kernel to count absolute seconds
+	 * since the epoch 1970-01-01 00:00:00 UTC.
+	 */
+	gettimeofday(&tv, NULL);
+
+	t += tv.tv_sec;
+	if (__predict_false(v != NULL))
+		*v = t;
+
+	return t;
+}
+
+void
+taina_time(tai64na_t *t)
+{
+	struct timespec tp;
+
+	if (__predict_false(t == NULL))
+		return;
+
+	t->atto = 0;
+	clock_gettime(CLOCK_REALTIME, &tp);
+	t->secs = tp.tv_sec + __TAI64_BIAS;
+	t->nano = (int32_t)tp.tv_nsec;
+}
+
+
+void
+exporttai(u_int8_t *dst, tai64na_t *src)
+{
+	struct {
+		u_int64_t secs;
+		u_int32_t nano;
+		u_int32_t atto;
+	}     *target = (void *)dst;
+
+	if (__predict_false((src == NULL) || (dst == NULL)))
+		return;
+
+	target->secs = htobe64(__BOUNDINT0(0x7FFFFFFFFFFFFFFFLL, src->secs));
+	target->nano = htobe32(__BOUNDINTU(999999999, src->nano));
+	target->atto = htobe32(__BOUNDINTU(999999999, src->atto));
+}
+
+void
+importtai(u_int8_t *src, tai64na_t *dst)
+{
+	struct {
+		u_int64_t secs;
+		u_int32_t nano;
+		u_int32_t atto;
+	}     *source = (void *)src;
+
+	if (__predict_false((src == NULL) || (dst == NULL)))
+		return;
+
+	dst->secs = betoh64(source->secs);
+	dst->nano = __BOUNDINTU(999999999, betoh32(source->nano));
+	dst->atto = __BOUNDINTU(999999999, betoh32(source->atto));
+}
+
+
+tai64_t
+utc2tai(int64_t s)
+{
+	tai64_t *t = _tai_leaps();
+	tai64_t i = s;
+
+	if (s & 0x8000000000000000ULL)
+		return i + __TAI64_BIAS;
+
+	while (__predict_true((*t) && ((int64_t)(*t - __TAI64_BIAS) <= i))) {
+		++i;
+		++t;
+	}
+
+	return i + __TAI64_BIAS;
+}
+
+int64_t
+tai2utc(tai64_t s)
+{
+	tai64_t *t = _tai_leaps();
+	int64_t i = s - __TAI64_BIAS;
+
+	if (s & 0x8000000000000000ULL)
+		return i;
+
+	while (__predict_true((*t) && ((*t) <= s))) {
+		--i;
+		++t;
+	}
+
+	return i;
+}
+
+
+/* private interface */
+tai64_t _leaps[TZ_MAX_LEAPS + 1] = {0};
+int _leaps_initialised = 0;
+
+/* private interface */
+void
+_pushleap(time_t leap)
+{
+	tai64_t *t = _leaps;
+	tai64_t i = timet2tai(leap);
+
+	while (__predict_true(*t))
+		++t;
+	*t++ = i;
+	*t = 0;
+}
+
+/* private interface */
+static __inline tai64_t *
+_tai_leaps(void)
+{
+	extern void _initialise_leaps(void);
+
+	if (__predict_false(!_leaps_initialised)) {
+		_leaps_initialised = 1;
+		_initialise_leaps();
+	}
+	return _leaps;
+}
+
+tai64_t *
+tai_leaps(void)
+{
+	return _tai_leaps();
+}
+
+int
+tai_isleap(tai64_t x)
+{
+	tai64_t *t;
+
+	t = _tai_leaps();
+	while (__predict_true(*t))
+		if (__predict_false((*t) == x))
+			return 1;
+		else if (__predict_false((*t) > x))
+			return 0;
+		else
+			++t;
+	return 0;
+}
+
+/* normally a macro */
+#ifndef timet2tai
+tai64_t
+timet2tai(time_t x)
+{
+	return (((u_int64_t)x < 0x4000000000000000ULL)
+	    ? ((tai64_t)((u_int64_t)x + __TAI64_BIAS))
+	    : (((u_int64_t)x < 0x8000000000000000ULL)
+	    ? ((tai64_t)0x7FFFFFFFFFFFFFFFULL)
+	    : (((u_int64_t)x < 0xC000000000000000ULL)
+	    ? ((tai64_t)0ULL)
+	    : ((tai64_t)((u_int64_t)x + __TAI64_BIAS)))));
+}
+#endif
+
+/* normally a macro */
+#ifndef tai2timet
+time_t
+tai2timet(tai64_t x)
+{
+	return (((u_int64_t)x & 0x8000000000000000ULL)
+	    ? 0
+	    : ((u_int64_t)x - __TAI64_BIAS));
+}
+#endif
+
+tai64_t
+mjd2tai(mjd_t m)
+{
+	int64_t x = (m.mjd - 40587LL) * 86400LL;
+	tai64_t t;
+
+	x += (m.sec > 86399) ? 86399 : m.sec;
+	t = utc2tai(x);
+	if (m.sec > 86399)
+		++t;
+
+	return t;
+}
+
+mjd_t
+tai2mjd(tai64_t tai)
+{
+	int64_t x = tai2utc(tai);
+	mjd_t m;
+
+	m.sec = (int32_t)(x % 86400LL);
+	m.mjd = (x / 86400LL) + 40587LL;
+
+	while (__predict_false(m.sec < 0)) {
+		m.sec += 86400;
+		--m.mjd;
+	}
+
+	if (__predict_false(tai_isleap(tai)))
+		++m.sec;
+
+	return m;
+}
+
+/*
+ * For more information on DJB products, such as libtai,
+ * please go to http://cr.yp.to/
+ */
+
+/* from caldate_frommjd libtai-0.60 */
+/* hacked up for time_t-64 support */
+
+struct tm
+mjd2tm(mjd_t m)
+{
+	time_t year;
+	int month, day, yday, wday, sec, leap;
+	struct tm res;
+
+	memset(&res, 0, sizeof(res));
+
+	year = m.mjd;
+	sec = m.sec;
+
+	while (sec < 0) {
+		sec += 86400;
+		--year;
+	}
+
+	while (sec > 86400) {
+		sec -= 86400;
+		++year;
+	}
+
+	leap = (sec == 86400);
+	if (__predict_false(leap))
+		--sec;
+
+	day = (int32_t)(year % 146097LL) + 678881;
+	year /= 146097LL;
+	while (__predict_false(day >= 146097)) {
+		day -= 146097;
+		++year;
+	}
+
+	/* year * 146097 + day - 678881 is MJD; 0 <= day < 146097 */
+	/* 2000-03-01, MJD 51604, is year 5, day 0 */
+
+	wday = (day + 3) % 7;
+
+	year *= 4;
+	if (__predict_false(day == 146096)) {
+		year += 3;
+		day = 36524;
+	} else {
+		year += day / 36524LL;
+		day %= 36524;
+	}
+	year *= 25;
+	year += day / 1461;
+	day %= 1461;
+	year *= 4;
+
+	yday = (day < 306);
+	if (__predict_false(day == 1460)) {
+		year += 3;
+		day = 365;
+	} else {
+		year += day / 365;
+		day %= 365;
+	}
+	yday += day;
+
+	day *= 10;
+	month = (day + 5) / 306;
+	day = (day + 5) % 306;
+	day /= 10;
+	if (__predict_false(month >= 10)) {
+		yday -= 306;
+		++year;
+		month -= 10;
+	} else {
+		yday += 59;
+		month += 2;
+	}
+	if (__predict_false(year < 1))
+		--year;
+
+	res.tm_sec = (sec % 60);
+	if (__predict_false(leap))
+		++res.tm_sec;
+	sec /= 60;
+	res.tm_min = (sec % 60);
+	res.tm_hour = (sec / 60);
+	res.tm_mday = day + 1;
+	res.tm_mon = month;
+	res.tm_year = year - 1900;
+	res.tm_wday = wday;
+	res.tm_yday = yday;
+
+	return res;
+}
+
+/* from caldate_mjd libtai-0.60 */
+/* hacked up for time_t-64 support */
+
+mjd_t
+tm2mjd(struct tm tm)
+{
+	static unsigned long times365[4] = {
+		0, 365, 730, 1095
+	};
+	static unsigned long times36524[4] = {
+		0, 36524UL, 73048UL, 109572UL
+	};
+	static unsigned long montab[12] = {
+		0, 31, 61, 92, 122, 153, 184, 214, 245, 275, 306, 337
+	};
+	/* month length after february is (306 * m + 5) / 10 */
+
+	time_t d = tm.tm_year + 1900LL;
+	int m = tm.tm_mon;
+	int y;
+	long sec;
+	mjd_t res;
+
+	if (__predict_false(d < 0))
+		++d;
+	y = (int)(d % 400LL);
+	d = 146097LL * (d / 400) + tm.tm_mday - 678882LL;
+	sec = tm.tm_sec - tm.tm_gmtoff + 60 * (tm.tm_min + 60 * tm.tm_hour);
+
+	while (__predict_false(sec < 0L)) {
+		sec += 86400L;
+		--d;
+	}
+	while (__predict_false(sec > 86400L)) {
+		sec -= 86400L;
+		++d;
+	}
+
+	if (m >= 2) {
+		m -= 2;
+	} else {
+		m += 10;
+		--y;
+	}
+
+	y += (m / 12);
+	m %= 12;
+	if (__predict_false(m < 0)) {
+		m += 12;
+		--y;
+	}
+	d += montab[m];
+
+	d += 146097LL * (y / 400LL);
+	y %= 400;
+	while (__predict_false(y < 0)) {
+		y += 400;
+		d -= 146097LL;
+	}
+
+	d += times365[y & 3];
+	y /= 4;
+
+	d += 1461LL * (y % 25);
+	y /= 25;
+
+	d += times36524[y & 3];
+
+	res.mjd = d;
+	res.sec = (int32_t)sec;
+
+	return res;
+}
+@
+
+
+1.23
+log
+@gmtime(3) and localtime(3) use an internal conversion engine called
+localsub() which first splits off the time_t into the usual tuple
+(day, seconds, leap second information) then performs a conversion.
+There is little effort to convert the internal temporary tuple to
+a mjd_t which makes us able to use mjd2tm() internally.
+The results are good:
+
+:: before
+tm:             Thu Dec 23 16:43:27 2004 yday=357 dst=0 zone=<NULL> 0
+gmtime:         Thu Jan -8 16:43:27 2005 yday=-9 dst=0 zone=<UTC> 0
+localtime:      Thu Jan -8 17:43:27 2005 yday=-9 dst=0 zone=<CET> 3600
+
+:: after
+tm:             Thu Dec 23 16:43:27 2004 yday=357 dst=0 zone=<NULL> 0
+gmtime:         Thu Dec 23 16:43:27 2004 yday=357 dst=0 zone=<UTC> 0
+localtime:      Thu Dec 23 17:43:27 2004 yday=357 dst=0 zone=<CET> 3600
+
+while here, clean up unused variables, simplify exporttai() and importtai()
+and fix -Wall -Werror -W -pedantic -Wno-long-long compilates.
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/share/misc/licence.template,v 1.20 2004/12/03 16:18:37 tg Rel $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.22 2004/11/22 17:31:02 tg Exp $");
+d78 1
+a78 1
+	} *target = (void *)dst;
+d95 1
+a95 1
+	} *source = (void *)src;
+a251 30
+
+#ifdef TAI64_OVERRIDES_MKTIME
+time_t
+mktime(struct tm *tmp)
+{
+	extern time_t _real_mktime(struct tm *);
+	time_t t, i;
+
+	i = t = tai2timet(mjd2tai(tm2mjd(*tmp)));
+	if (__predict_true(_real_mktime(tmp) != -1)) {
+		i = tai2timet(mjd2tai(tm2mjd(*tmp)));
+		if (__predict_true((i != 0) && (i != -1)))
+			return i;
+	}
+	{
+		struct tm r = mjd2tm(tai2mjd(timet2tai(i + tmp->tm_gmtoff)));
+
+		tmp->tm_sec = r.tm_sec;
+		tmp->tm_min = r.tm_min;
+		tmp->tm_hour = r.tm_hour;
+		tmp->tm_mday = r.tm_mday;
+		tmp->tm_mon = r.tm_mon;
+		tmp->tm_year = r.tm_year;
+	}
+	if (__predict_false(_real_mktime(tmp) != -1))
+		return tai2timet(mjd2tai(tm2mjd(*tmp)));
+	*tmp = *(localtime(&i));
+	return t;
+}
+#endif
+@
+
+
+1.22
+log
+@don't add/subtract leaps outside of leap second counting
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.21 2004/11/22 15:32:18 tg Exp $ */
+d24 1
+a24 1
+ * of covered work, even if advised of the possibility of such damage.
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.21 2004/11/22 15:32:18 tg Exp $");
+d78 1
+a78 1
+	}      target;
+d83 3
+a85 5
+	target.secs = htobe64(__BOUNDINT0(0x7FFFFFFFFFFFFFFFULL, src->secs));
+	target.nano = htobe32(__BOUNDINTU(999999999, src->nano));
+	target.atto = htobe32(__BOUNDINTU(999999999, src->atto));
+
+	memmove(dst, &target, sizeof(target));
+d95 1
+a95 1
+	}      source;
+d100 3
+a102 5
+	memmove(&source, src, sizeof(source));
+
+	dst->secs = betoh64(source.secs);
+	dst->nano = __BOUNDINTU(999999999, betoh32(source.nano));
+	dst->atto = __BOUNDINTU(999999999, betoh32(source.atto));
+d115 1
+a115 1
+	while (__predict_true((*t) && ((*t - __TAI64_BIAS) <= i))) {
+d298 2
+a377 3
+	res.tm_isdst = 0;
+	res.tm_gmtoff = 0;
+	res.tm_zone = NULL;
+@
+
+
+1.21
+log
+@indent, lint
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.20 2004/11/22 04:58:18 tg Exp $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.20 2004/11/22 04:58:18 tg Exp $");
+d114 1
+a114 1
+	tai64_t i = s + __TAI64_BIAS;
+d116 4
+a119 1
+	while (__predict_true((*t) && ((*t) <= i))) {
+d124 1
+a124 1
+	return i;
+d132 3
+@
+
+
+1.20
+log
+@we're now pretty far passing the AC_FUNC_MKTIME suite
+(actually, as far as we can go, and better than any 32-bit OS)
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.19 2004/11/22 04:26:41 tg Exp $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.19 2004/11/22 04:26:41 tg Exp $");
+d41 1
+a41 1
+	register int64_t t = __TAI64BIAS;
+d45 1
+a45 1
+	 * since 1970-01-01 00:00:00 TAI. (__TAI64BIAS)
+d50 1
+a50 1
+	if (v != NULL)
+d61 1
+a61 1
+	if (t == NULL)
+d66 2
+a67 2
+	t->secs = tp.tv_sec + __TAI64BIAS;
+	t->nano = tp.tv_nsec;
+d70 1
+d74 5
+a78 2
+	u_int64_t *targ64;
+	u_int32_t *targ32;
+d80 1
+a80 1
+	if ((src == NULL) || (dst == NULL))
+d83 3
+a85 4
+	targ32 = (u_int32_t *)dst;
+	targ64 = (u_int64_t *)dst;
+
+	targ64[0] = htobe64(__BOUNDINT0(0x7FFFFFFFFFFFFFFFULL, src->secs));
+d87 1
+a87 2
+	targ32[2] = htobe32(__BOUNDINT0(999999999, src->nano));
+	targ32[3] = htobe32(__BOUNDINT0(999999999, src->atto));
+d93 5
+a97 2
+	u_int64_t *s64;
+	u_int32_t *s32;
+d99 1
+a99 1
+	if ((src == NULL) || (dst == NULL))
+d102 1
+a102 2
+	s32 = (u_int32_t *)src;
+	s64 = (u_int64_t *)src;
+d104 3
+a106 3
+	dst->secs = betoh64(s64[0]);
+	dst->nano = __BOUNDINT0(999999999, betoh32(s32[2]));
+	dst->atto = __BOUNDINT0(999999999, betoh32(s32[3]));
+d113 2
+a114 1
+	tai64_t *t, i = s + __TAI64BIAS;
+d116 1
+a116 2
+	t = _tai_leaps();
+	while ((*t) && ((*t) <= i)) {
+d127 2
+a128 2
+	tai64_t *t;
+	int64_t i = s - __TAI64BIAS;
+d130 1
+a130 2
+	t = _tai_leaps();
+	while ((*t) && ((*t) <= s)) {
+d138 1
+d147 2
+a148 1
+	tai64_t *t, i;
+d150 1
+a150 2
+	t = _leaps;
+	while (*t)
+a151 2
+
+	i = timet2tai(leap);
+d156 1
+d162 1
+a162 1
+	if (!_leaps_initialised) {
+d181 2
+a182 2
+	while (*t)
+		if ((*t) == x)
+d184 1
+a184 1
+		else if ((*t) > x)
+d197 1
+a197 1
+	    ? ((tai64_t)((u_int64_t)x + __TAI64BIAS))
+d202 1
+a202 1
+	    : ((tai64_t)((u_int64_t)x + __TAI64BIAS)))));
+d213 1
+a213 1
+	    : ((u_int64_t)x - __TAI64BIAS));
+d220 1
+a220 1
+	int64_t x;
+d223 1
+a223 3
+	x = (m.sec > 86399) ? 86399 : m.sec;
+	x += (m.mjd - 40587LL) * 86400LL;
+
+d234 1
+a234 1
+	int64_t x;
+d237 1
+a237 2
+	x = tai2utc(tai);
+	m.sec = x % 86400;
+d239 2
+a240 1
+	while (m.sec < 0) {
+d242 1
+a242 1
+		m.mjd--;
+d245 2
+a246 2
+	if (tai_isleap(tai))
+		m.sec++;
+a256 1
+	struct tm r;
+d259 1
+a259 1
+	if (_real_mktime(tmp) != -1) {
+d261 1
+a261 1
+		if ((i != 0) && (i != -1))
+d264 11
+a274 8
+	r = mjd2tm(tai2mjd(timet2tai(i + tmp->tm_gmtoff)));
+	tmp->tm_sec = r.tm_sec;
+	tmp->tm_min = r.tm_min;
+	tmp->tm_hour = r.tm_hour;
+	tmp->tm_mday = r.tm_mday;
+	tmp->tm_mon = r.tm_mon;
+	tmp->tm_year = r.tm_year;
+	if (_real_mktime(tmp) != -1)
+d292 2
+a293 2
+	int64_t year, month, day, sec;
+	int yday, wday, leap;
+d296 1
+a296 1
+	day = m.mjd;
+d301 1
+a301 1
+		day--;
+d306 1
+a306 1
+		day++;
+d309 2
+a310 2
+	leap = (sec == 86400) ? 1 : 0;
+	if (leap)
+d313 4
+a316 5
+	year = day / 146097L;
+	day %= 146097L;
+	day += 678881L;
+	while (day >= 146097L) {
+		day -= 146097L;
+d326 1
+a326 1
+	if (day == 146096L) {
+d328 1
+a328 1
+		day = 36524L;
+d330 2
+a331 2
+		year += day / 36524L;
+		day %= 36524L;
+d339 1
+a339 1
+	if (day == 1460) {
+d352 1
+a352 1
+	if (month >= 10) {
+d360 1
+a360 1
+	if (year < 1)
+d363 3
+a365 1
+	res.tm_sec = (sec % 60) + leap;
+d398 4
+a401 1
+	int64_t y, m, d, sec;
+d404 13
+a416 16
+	d = tm.tm_mday - 678882L;
+	m = tm.tm_mon;
+	y = tm.tm_year + 1900;
+	if (y < 0)
+		++y;
+
+	sec = tm.tm_sec + 60 * (tm.tm_min + 60 * tm.tm_hour) - tm.tm_gmtoff;
+
+	while (sec < 0) {
+		sec += 86400;
+		d--;
+	}
+
+	while (sec > 86400) {
+		sec -= 86400;
+		d++;
+a418 3
+	d += 146097L * (y / 400);
+	y %= 400;
+
+d428 1
+a428 1
+	if (m < 0) {
+d434 1
+a434 1
+	d += 146097L * (y / 400);
+d436 1
+a436 1
+	while (y < 0) {
+d438 1
+a438 1
+		d -= 146097L;
+d442 1
+a442 1
+	y >>= 2;
+d444 1
+a444 1
+	d += 1461L * (y % 25);
+d450 1
+a450 1
+	res.sec = sec;
+@
+
+
+1.19
+log
+@much better (still hiccups a bit with Olson's mktime() as well
+as time zones, but...)
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.18 2004/11/22 03:09:37 tg Exp $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.18 2004/11/22 03:09:37 tg Exp $");
+d256 1
+d264 9
+@
+
+
+1.18
+log
+@typo
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.17 2004/11/22 03:09:16 tg Exp $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.17 2004/11/22 03:09:16 tg Exp $");
+d255 10
+a264 2
+	_real_mktime(tmp);
+	return tai2timet(mjd2tai(tm2mjd(*tmp)));
+d393 1
+a393 1
+	sec = tm.tm_sec + 60 * (tm.tm_min + 60 * tm.tm_hour);
+@
+
+
+1.17
+log
+@fix protos
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.16 2004/11/22 02:58:33 tg Exp $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.16 2004/11/22 02:58:33 tg Exp $");
+d271 1
+a271 1
+	int64_t year, month, day, se;
+@
+
+
+1.16
+log
+@externify mktime
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.15 2004/11/22 02:53:05 tg Exp $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.15 2004/11/22 02:53:05 tg Exp $");
+d239 1
+a239 1
+	if (m.sec < 0) {
+d252 1
+a252 1
+mktime(struct tm * const tmp)
+d254 1
+a254 1
+	extern time_t _real_mktime(struct tm * const);
+d271 2
+a272 2
+	int64_t year, day;
+	int month, sec, yday, wday, leap;
+d376 1
+a376 2
+	int64_t y, d;
+	int m, sec;
+@
+
+
+1.15
+log
+@fix maths and docs
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.14 2004/11/02 21:21:48 tg Exp $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.14 2004/11/02 21:21:48 tg Exp $");
+d250 1
+a250 3
+#ifdef	TAI64_OVERRIDES_MKTIME
+time_t _real_mktime(struct tm * const);
+
+d254 1
+@
+
+
+1.14
+log
+@a bunch of fixes:
+* tn3270 is too old and uses... scary Makefile techniques
+* some compile fixes
+* more acronymes
+* german acronymes
+* tai2timet and vice versa as macro
+* sync lists after partial make build
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.13 2004/11/02 05:00:29 tg Exp $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.13 2004/11/02 05:00:29 tg Exp $");
+d41 1
+a41 1
+	register int64_t t = TAI64_BIAS;
+d45 1
+a45 1
+	 * since 1970-01-01 00:00:00 TAI. (TAI64_BIAS)
+d66 1
+a66 1
+	t->secs = tp.tv_sec + TAI64_BIAS;
+d109 1
+a109 1
+	tai64_t *t, i = s + TAI64_BIAS;
+d124 1
+a124 1
+	int64_t i = s - TAI64_BIAS;
+d193 7
+a199 1
+	return (x + TAI64_BIAS);
+d208 3
+a210 1
+	return (x - TAI64_BIAS);
+d221 1
+a221 1
+	x += (m.mjd - 40587) * 86400;
+d238 5
+a242 1
+	m.mjd = (x / 86400) + 40587;
+d267 1
+d272 2
+a273 2
+	long year, month, day, sec;
+	int yday, wday, leap;
+d341 2
+d361 1
+d377 2
+a378 1
+	long y, m, d, sec;
+d384 2
+@
+
+
+1.13
+log
+@uh=oh
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.12 2004/10/31 16:53:52 tg Exp $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.12 2004/10/31 16:53:52 tg Exp $");
+a105 4
+/* private interface */
+tai64_t _leaps[TZ_MAX_LEAPS + 1] = {0};
+int _leaps_initialised = 0;
+
+d136 4
+d188 2
+d195 1
+d197 2
+d204 1
+@
+
+
+1.12
+log
+@move TRUNCATE macros from taitime.c into param.h
+fix TRUNCATE0, dubbed __BOUNDINT0, to cope with signed ints
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.11 2004/10/23 21:42:03 tg Exp $ */
+d27 1
+d32 1
+a32 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.11 2004/10/23 21:42:03 tg Exp $");
+@
+
+
+1.11
+log
+@first round of compile fixes
+still not got enough time to finish 'make build', please don't
+try to build HEAD atm, sry
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.10 2004/10/23 20:10:26 tg Exp $ */
+d31 1
+a31 7
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.10 2004/10/23 20:10:26 tg Exp $");
+
+
+#define	TRUNCATE0(maxv,v)	( ((v) > (maxv)) ? (maxv) : (v) )
+#define	TRUNCATE(minv,maxv,v)	\
+	    ( ((v) < (minv)) ? (minv) : ( ((v) > (maxv)) ? (maxv) : (v) ) )
+
+d81 1
+a81 1
+	targ64[0] = htobe64(TRUNCATE0(0x7FFFFFFFFFFFFFFF, src->secs));
+d83 2
+a84 2
+	targ32[2] = htobe32(TRUNCATE0(999999999, src->nano));
+	targ32[3] = htobe32(TRUNCATE0(999999999, src->atto));
+d100 2
+a101 2
+	dst->nano = TRUNCATE0(999999999, betoh32(s32[2]));
+	dst->atto = TRUNCATE0(999999999, betoh32(s32[3]));
+@
+
+
+1.10
+log
+@use clock_gettime(2), a POSIX call with nanosecond instead of
+only microsecond granularity, for taina_time(3)
+XXX our kernel's granularity still is microsecond, and the value
+XXX is not padded by 1/2 granularity
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/time/taitime.c,v 1.9 2004/10/09 00:45:41 tg Stab $ */
+d8 5
+a12 5
+ * tion, including unlimited rights to use, publically perform, modi-
+ * fy, merge, distribute, sell, give away or sublicence, provided the
+ * above copyright notices, these terms and the disclaimer are retai-
+ * ned in all redistributions, or reproduced in accompanying documen-
+ * tation or other materials provided with binary redistributions.
+d31 1
+a31 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.9 2004/10/09 00:45:41 tg Stab $");
+d70 1
+a70 1
+	clock_gettime(CLOCK_REALTIME, &tp)
+@
+
+
+1.9
+log
+@add my advertising clause here
+
+while it's controversary, it's more like the BSD spirit, and I
+actually worked quite hard for this code.
+
+I'm willing to revoke it as soon as the other ~150 clauses in
+MirBSD are revoked by their respective holders.
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/share/misc/licence.template,v 1.12 2004/08/08 15:38:56 tg Rel $ */
+d31 1
+a31 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.7 2004/08/06 22:58:09 tg Exp $");
+d64 1
+a64 1
+	struct timeval tp;
+d70 1
+a70 1
+	gettimeofday(&tp, NULL);
+d72 1
+a72 1
+	t->nano = tp.tv_usec * 1000 + 500;
+@
+
+
+1.8
+log
+@* Makefile:
+	add contbuild-x as an undocumented helper target
+	(I thought I had already committed this, wtf?)
+* time.h, taitime.c:
+	It's a _absolutely_ stoopid idea to name a function tai_now()
+	if it has a different calling signature than the libtai one
+	from DJB, especially if included in libc. Found while linking
+	some DJB ware statically (d'oh).
+	Rename tai[na]_now() to tai[na]_time() and add an optional
+	pointer argument to tai_time() so it behaves exactly the
+	same as time(3), just with tai64_t not time_t.
+	Fix some comments and build warnings (-Wall).
+* time.h:
+	always expose TAI functions
+	for this, pull <machine/types.h>
+	fix a bit
+* bsd.own.mk:
+	libc interface has changed, bump major
+	no need to bump libpthread
+* sys.mk / param.h:
+	bump
+* tai_make.c:
+	adjust for new time.h
+@
+text
+@d14 4
+@
+
+
+1.7
+log
+@indent
+
+added to .indent.pro:
+-Ttai64na_t
+-Tu_int16_t
+-Tu_int32_t
+-Tu_int64_t
+-Tu_int8_t
+@
+text
+@d1 3
+a3 2
+/* $MirBSD: src/lib/libc/time/taitime.c,v 1.6 2004/06/23 16:58:40 tg Exp $
+ *-
+d5 1
+a5 1
+ *	Thorsten "mirabile" Glaser <x86@@ePost.de>
+a22 1
+#define	_MIROS_TAI64
+d27 1
+a27 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.6 2004/06/23 16:58:40 tg Exp $");
+d39 1
+a39 1
+tai_now(void)
+d41 2
+a42 1
+	struct timeval tp;
+d46 1
+a46 1
+	 * since 1970-01-01 00:00:00 TAI. (TAI_BIAS)
+d48 7
+a54 2
+	gettimeofday(&tp, NULL);
+	return (tp.tv_sec + TAI64_BIAS);
+d58 1
+a58 1
+taina_now(tai64na_t *t)
+d74 1
+a74 1
+	u_int64_t i, *targ64;
+d92 1
+a92 1
+	u_int64_t i, *s64;
+d234 2
+@
+
+
+1.6
+log
+@* lalala, ABI change...
+  change the calling convention for the mjd2tm and tm2mjd functions,
+  to be
+  - similar between themselfes
+  - equal between kernel and userland
+  - not using malloc
+* add TAI stuff to the kernel, including leap seconds(!) :)
+  -> we can soon(TM) set the RTC to UTC, even when
+     having the kernel on dru^H^H^HLS^H^HTAI
+* some Makefile adjustments for
+  - new library stuff
+  - bsd.cfwrap.mk
+  - simplifications
+* start fixing the build (still static, tho I didn't intend that...)
+* add missing shlib version for libsupc++
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/lib/libc/time/taitime.c,v 1.5 2004/06/23 14:47:04 tg Exp $
+d27 1
+a27 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.5 2004/06/23 14:47:04 tg Exp $");
+d77 1
+a77 1
+	targ64[0] = htobe64(TRUNCATE0(0x7FFFFFFFFFFFFFFF,src->secs));
+d79 2
+a80 2
+	targ32[2] = htobe32(TRUNCATE0(999999999,src->nano));
+	targ32[3] = htobe32(TRUNCATE0(999999999,src->atto));
+d96 2
+a97 2
+	dst->nano = TRUNCATE0(999999999,betoh32(s32[2]));
+	dst->atto = TRUNCATE0(999999999,betoh32(s32[3]));
+d102 2
+a103 2
+tai64_t	_leaps[TZ_MAX_LEAPS + 1] = { 0 };
+int	_leaps_initialised = 0;
+d231 1
+a231 1
+	(void) _real_mktime(tmp);
+d337 9
+a345 5
+	static unsigned long times365[4] = { 0, 365, 730, 1095 };
+	static unsigned long times36524[4] =
+	    { 0, 36524UL, 73048UL, 109572UL };
+	static unsigned long montab[12] =
+	    { 0, 31, 61, 92, 122, 153, 184, 214, 245, 275, 306, 337 };
+a382 1
+
+@
+
+
+1.5
+log
+@* final fixes and implementation for TAI time, MJD
+  (modified julian dates) and calendar conversion (in part
+  courtesy of Dan Bernstein's public domain implementation
+  of libtai)
+* replace mktime(3) from libtz with calls to
+  struct tm -> tm2mjd() -> mjd2tai() -> tai2timet() -> time_t
+  (only if defined in private.h) because mktime() is not
+  64-bit-time_t clean
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/lib/libc/time/taitime.c,v 1.4 2004/06/23 12:44:14 tg Exp $
+d27 1
+a27 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.4 2004/06/23 12:44:14 tg Exp $");
+d227 14
+d243 1
+a243 1
+struct tm *
+d248 1
+a248 1
+	struct tm *tm;
+d316 1
+a316 4
+	if ((tm = malloc(sizeof(struct tm))) == NULL)
+		return NULL;
+
+	tm->tm_sec = (sec % 60) + leap;
+d318 10
+a327 10
+	tm->tm_min = (sec % 60);
+	tm->tm_hour = (sec / 60);
+	tm->tm_mday = day + 1;
+	tm->tm_mon = month;
+	tm->tm_year = year - 1900;
+	tm->tm_wday = wday;
+	tm->tm_yday = yday;
+	tm->tm_isdst = 0;
+	tm->tm_gmtoff = 0;
+	tm->tm_zone = NULL;
+d329 1
+a329 1
+	return tm;
+a331 5
+/*
+ * For more information on DJB products, such as libtai,
+ * please go to http://cr.yp.to/
+ */
+
+d335 1
+a335 1
+tm2mjd(struct tm *tm)
+d347 3
+a349 3
+	d = tm->tm_mday - 678882L;
+	m = tm->tm_mon;
+	y = tm->tm_year + 1900;
+d351 1
+a351 1
+	sec = tm->tm_sec + 60 * (tm->tm_min + 60 * tm->tm_hour);
+a401 9
+
+#ifdef	TAI64_OVERRIDES_MKTIME
+time_t
+mktime(struct tm * const tmp)
+{
+	(void) _real_mktime(tmp);
+	return tai2timet(mjd2tai(tm2mjd(tmp)));
+}
+#endif
+@
+
+
+1.4
+log
+@oops, leap secons in tz files are given in TAI not UTC
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/lib/libc/time/taitime.c,v 1.2 2004/06/09 20:06:20 tg Exp $
+d27 1
+a27 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.2 2004/06/09 20:06:20 tg Exp $");
+d194 211
+@
+
+
+1.3
+log
+@first of the new API for TAI64.
+This time DJB compatible (since I discovered recently that our
+new 64 bit time_t with the non-default epoch of 1970-01-01 00:00:00
+was equivalent to the old attempt at tai64'ing).
+
+MJD code to come. leap second code working already.
+@
+text
+@d144 1
+a144 1
+	i = utc2tai(leap);
+@
+
+
+1.2
+log
+@more paranoia when converting network I/O, or to formats
+	more limited than [-(2^63);2^63[
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/lib/libc/time/taitime.c,v 1.1 2004/06/09 19:20:16 tg Exp $
+a19 5
+ *-
+ * Implementation of a signed 64-bit TAI data type, and a TAI type
+ * with nanoseconds and attoseconds, like the djb libtai one.
+ * Note: our tai64_t is not DJB compatible, neither equals it kernel
+ * time once time_t goes 64 bit, but there are conversion routines.
+d23 1
+d25 1
+a25 1
+#include <stdint.h>
+d27 1
+a27 1
+__RCSID("$MirBSD: src/lib/libc/time/taitime.c,v 1.1 2004/06/09 19:20:16 tg Exp $");
+d34 4
+d45 1
+a45 3
+	 * since 1970-01-01 00:00:10 TAI, to be consistent
+	 * with Olson's libtz and DJB's libtai, and POSIX
+	 * (except for the latter's leap second brokenness).
+d48 1
+a48 1
+	return (tp.tv_sec + 10LL);
+d61 1
+a61 1
+	t->secs = tp.tv_sec + 10LL;
+d65 2
+a66 2
+time_t
+tai2kernel(tai64_t t)
+d68 5
+a72 2
+	return t - 10LL;
+}
+d74 2
+d77 1
+a77 5
+tai64_t
+utc2tai(time_t tv)
+{
+	time_t *leaptab = tm_getleaps();
+	tai64_t rv = tv;
+d79 2
+a80 7
+	if (leaptab != NULL)
+		while(*leaptab) {
+			if (tv <= *(leaptab++))
+				break;
+			++rv;
+		}
+	return rv;
+d83 8
+d92 2
+a93 5
+time_t
+tai2utc(tai64_t tv)
+{
+	time_t *leaptab = tm_getleaps();
+	int64_t rv = tv;
+d95 3
+a97 8
+	if (leaptab != NULL)
+		while(*leaptab) {
+			if (rv <= *(leaptab++))
+				break;
+			--rv;
+		}
+	return TRUNCATE(((sizeof(time_t) == 4) ? INT32_MIN : INT64_MIN),
+	    ((sizeof(time_t) == 4) ? INT32_MAX : INT64_MAX), rv);
+d101 6
+a106 2
+void
+tai2djb(tai64_t src, void *dst)
+d108 7
+a114 2
+	if (dst == NULL)
+		return;
+d116 1
+a116 2
+	*((u_int64_t *)dst) =
+	    TRUNCATE0( 0x7FFFFFFFFFFFFFFFULL, 0x4000000000000000ULL + src);
+d119 2
+a120 2
+tai64_t
+djb2tai(void *src)
+d122 2
+a123 2
+	if (src == NULL)
+		return 0;
+d125 5
+a129 2
+	if ( (*((u_int64_t *)src)) & 0x8000000000000000ULL)
+		return 0;
+d131 1
+a131 1
+	return (*((u_int64_t *)src)) - 0x4000000000000000ULL;
+d134 1
+d136 1
+a136 1
+exporttai(u_int8_t *dst, tai64na_t *src)
+d138 5
+a142 1
+	u_int64_t i;
+d144 9
+a152 2
+	if ((src == NULL) || (dst == NULL))
+		return;
+d154 6
+a159 2
+	tai2djb(src->secs, &i);
+	*((u_int64_t *)dst) = htobe64(i);
+d161 4
+a164 2
+	*((u_int32_t *)(dst+8)) = htobe32(TRUNCATE0(999999999,src->nano));
+	*((u_int32_t *)(dst+12)) = htobe32(TRUNCATE0(999999999,src->atto));
+d167 2
+a168 2
+void
+importtai(u_int8_t *src, tai64na_t *dst)
+d170 1
+a170 1
+	u_int64_t i;
+d172 16
+a187 2
+	if ((src == NULL) || (dst == NULL))
+		return;
+d189 4
+a192 4
+	i = betoh64(*((u_int64_t *)src));
+	dst->secs = djb2tai(&i);
+	dst->nano = TRUNCATE0(999999999,betoh32(*((u_int32_t *)(src+8))));
+	dst->atto = TRUNCATE0(999999999,betoh32(*((u_int32_t *)(src+12))));
+@
+
+
+1.1
+log
+@expose the leap second get API together with a new
+API which handles signed 64-bit TAI values (including
+conversion routines to kernel time, POSIXly broken (ie,
+UTC) kernel time (for NTP) and DJB TAI64 in both the
+common TAI64 and exported TAI64NA format).
+
+To use the API, define _MIROS_TAI64 before including <time.h>
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/share/misc/licence.template,v 1.11 2004/05/28 15:34:01 tg Rel $
+d29 1
+d31 6
+a36 1
+__RCSID("$MirBSD$");
+d102 2
+a103 1
+	return rv;
+d113 2
+a114 1
+	*((u_int64_t *)dst) = 0x4000000000000000 + src;
+d123 4
+a126 1
+	return (*((u_int64_t *)src)) - 0x4000000000000000;
+d140 2
+a141 2
+	*((u_int32_t *)(dst+8)) = htobe32(src->nano);
+	*((u_int32_t *)(dst+12)) = htobe32(src->atto);
+d154 2
+a155 2
+	dst->nano = betoh32(*((u_int32_t *)(src+8)));
+	dst->atto = betoh32(*((u_int32_t *)(src+12)));
+@
+

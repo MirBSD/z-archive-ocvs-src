@@ -1,0 +1,299 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.10.30.18.07.55;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.44.24;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.24;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@It turns out that
+* mkisofs works
+* the "old-style" image built on cdrom34.fs works
+* the "new-style" image built on cdboot and with bsd.rd doesn't
+  (cdboot seems to be not initialized correctly, will
+   look after that later)
+* mkhybrid has lived out its life (report regressions
+  against mkisofs please)
+* we should bump the patchlevel and issue a warning if
+  the user installs the cdrtools port
+  (I don't delete mkisofs from the port yet, the MirPorts
+   framework is currently following MirOS #7 stable)
+* I should get my hands on the El Torito standard, and
+  a good copy of bochs :)
+@
+text
+@/*
+**	apple_driver.c: extract Mac partition label, maps and boot driver
+**
+**	Based on Apple_Driver.pl, part of "mkisofs 1.05 PLUS" by Andy Polyakov
+**	<appro@@fy.chalmers.se> (I don't know Perl, so I rewrote it C ...)
+**	(see http://fy.chalmers.se/~appro/mkisofs_plus.html for details)
+**
+**	usage: apple_driver CDROM_device > HFS_driver_file
+**	
+**	The format of the HFS driver file:
+**
+**	HFS CD Label Block				512 bytes
+**	Driver Partition Map (for 2048 byte blocks)	512 bytes
+**	Driver Partition Map (for 512 byte blocks)	512 bytes
+**	Empty						512 bytes
+**	Driver Partition				N x 2048 bytes
+**	HFS Partition Boot Block			1024 bytes
+**
+**	By extracting a driver from an Apple CD, you become liable to obey
+**	Apple Computer, Inc. Software License Agreements.
+**
+**	James Pearson 17/5/98
+*/
+
+#include <config.h>
+#include <mkisofs.h>
+#include <mac_label.h>
+
+int
+get_732(char *p)
+{
+	return ((p[3] & 0xff)
+	     | ((p[2] & 0xff) << 8)
+	     | ((p[1] & 0xff) << 16)
+	     | ((p[0] & 0xff) << 24));
+}
+
+int
+get_722(char *p)
+{
+	return ((p[1] & 0xff)
+	     | ((p[0] & 0xff) << 8));
+}
+
+
+main(int argc, char **argv)
+{
+	FILE		*fp;
+	MacLabel	*mac_label;
+	MacPart		*mac_part;
+	unsigned char	Block0[HFS_BLOCKSZ];
+	unsigned char	block[SECTOR_SIZE];
+	unsigned char	bootb[2*HFS_BLOCKSZ];
+	unsigned char	pmBlock512[HFS_BLOCKSZ];
+	unsigned int	sbBlkSize;
+	unsigned int	pmPyPartStart;
+	unsigned int	pmPartStatus;
+	unsigned int	pmMapBlkCnt;
+	int		have_boot = 0, have_hfs = 0;
+	int		hfs_start;
+	int		i, j;
+
+
+	if (argc != 2)
+	    perr(argv[0], "Usage: %s device-path", argv[0]);
+
+	if ((fp = fopen(argv[1], "rb")) == NULL)
+	    perr(argv[0], "can't open %s", argv[1]);
+
+	if (fread(Block0, 1, HFS_BLOCKSZ, fp) != HFS_BLOCKSZ)
+	    perr(argv[0], "can't read %s", argv[1]);
+
+	mac_label = (MacLabel *)Block0;
+	mac_part = (MacPart *)block;
+	
+	sbBlkSize = get_722(mac_label->sbBlkSize);
+
+	if (! IS_MAC_LABEL(mac_label) || sbBlkSize != SECTOR_SIZE)
+	    perr(argv[0], "%s is not a bootable Mac disk", argv[1]);
+
+	i = 1;
+	do {
+	    if (fseek(fp, i * HFS_BLOCKSZ, 0) != 0)
+		perr(argv[0], "can't seek %s", argv[1]);
+
+	    if (fread(block, 1, HFS_BLOCKSZ, fp) != HFS_BLOCKSZ)
+		perr(argv[0], "can't read %s", argv[1]);
+
+	    pmMapBlkCnt = get_732(mac_part->pmMapBlkCnt);
+
+	    if (!have_boot && !strncmp(mac_part->pmPartType, pmPartType_2, 12)) {
+		hfs_start = get_732(mac_part->pmPyPartStart);
+
+		fprintf(stderr, "%s: found 512 driver partition (at block %d)\n", argv[0], hfs_start);
+		memcpy(pmBlock512, block, HFS_BLOCKSZ);
+		have_boot = 1;
+	    }
+
+	    if (!have_hfs && !strncmp(mac_part->pmPartType, pmPartType_4, 9)) {
+
+		hfs_start = get_732(mac_part->pmPyPartStart);
+
+		if (fseek(fp, hfs_start*HFS_BLOCKSZ, 0) != 0)
+		    perr(argv[0], "can't seek %s", argv[1]);
+
+		if (fread(bootb, 2, HFS_BLOCKSZ, fp) != HFS_BLOCKSZ)
+		    perr(argv[0], "can't read %s", argv[1]);
+
+		if (get_722(bootb) == 0x4c4b) {
+
+		    fprintf(stderr, "%s: found HFS partition (at blk %d)\n", argv[0], hfs_start);
+		    have_hfs = 1;
+		}
+	    }
+	} while (i++ < pmMapBlkCnt);
+
+	if (!have_hfs || !have_boot)
+	    perr(argv[0], "%s is not a bootable Mac disk", argv[1]);
+
+	i = 1;
+
+	do {
+	    if (fseek(fp, i*sbBlkSize, 0) != 0)
+		perr(argv[0], "can't seek %s", argv[1]);
+
+	    if (fread(block, 1, HFS_BLOCKSZ, fp) != HFS_BLOCKSZ)
+		perr(argv[0], "can't read %s", argv[1]);
+
+	    pmMapBlkCnt = get_732(mac_part->pmMapBlkCnt);
+
+	    if (!strncmp(mac_part->pmPartType, pmPartType_2, 12)) {
+
+		int	start, num;
+
+		fprintf(stderr, "%s: extracting %s ", argv[0], mac_part->pmPartType);
+		start = get_732(mac_part->pmPyPartStart);
+		num = get_732(mac_part->pmPartBlkCnt);
+		fwrite(Block0, 1, HFS_BLOCKSZ, stdout);
+		fwrite(block, 1, HFS_BLOCKSZ, stdout);
+		fwrite(pmBlock512, 1, HFS_BLOCKSZ, stdout);
+		memset(block, 0, HFS_BLOCKSZ);
+		fwrite(block, 1, HFS_BLOCKSZ, stdout);
+
+		if (fseek(fp, start*sbBlkSize, 0) != 0)
+		    perr(argv[0], "can't seek %s", argv[1]);
+
+		for (j=0;j<num;j++) {
+		    if (fread(block, 1, sbBlkSize, fp) != sbBlkSize)
+			perr(argv[0], "can't read %s", argv[1]);
+
+		    fwrite(block, 1, sbBlkSize, stdout);
+		    fprintf(stderr, ".");
+		}
+		fprintf(stderr, "\n");
+
+		fwrite(bootb, 2, HFS_BLOCKSZ, stdout);
+		fclose(fp);
+		exit (0);
+	    }
+
+	    if (! IS_MAC_PART(mac_part) )
+		perr(argv[0], "unable to find boot partition", 0);
+
+	} while (i++ < pmMapBlkCnt);
+
+
+}
+
+perr(char *a, char *b, char *c)
+{
+	fprintf(stderr, "%s: ", a);
+	fprintf(stderr, b, c);
+	fprintf(stderr, "\n");
+	exit (1);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

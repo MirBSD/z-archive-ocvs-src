@@ -1,0 +1,373 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.41;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.41;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.53.55;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package B::Terse;
+
+our $VERSION = '1.00';
+
+use strict;
+use B qw(peekop class walkoptree walkoptree_exec walkoptree_slow
+	 main_start main_root cstring svref_2object SVf_IVisUV);
+use B::Asmdata qw(@@specialsv_name);
+
+sub terse {
+    my ($order, $cvref) = @@_;
+    my $cv = svref_2object($cvref);
+    if ($order eq "exec") {
+	walkoptree_exec($cv->START, "terse");
+    } else {
+	walkoptree_slow($cv->ROOT, "terse");
+    }
+}
+
+sub compile {
+    my $order = @@_ ? shift : "";
+    my @@options = @@_;
+    B::clearsym();
+    if (@@options) {
+	return sub {
+	    my $objname;
+	    foreach $objname (@@options) {
+		$objname = "main::$objname" unless $objname =~ /::/;
+		eval "terse(\$order, \\&$objname)";
+		die "terse($order, \\&$objname) failed: $@@" if $@@;
+	    }
+	}
+    } else {
+	if ($order eq "exec") {
+	    return sub { walkoptree_exec(main_start, "terse") }
+	} else {
+	    return sub { walkoptree_slow(main_root, "terse") }
+	}
+    }
+}
+
+sub indent {
+    my $level = @@_ ? shift : 0;
+    return "    " x $level;
+}
+
+sub B::OP::terse {
+    my ($op, $level) = @@_;
+    my $targ = $op->targ;
+    $targ = ($targ > 0) ? " [$targ]" : "";
+    print indent($level), peekop($op), $targ, "\n";
+}
+
+sub B::SVOP::terse {
+    my ($op, $level) = @@_;
+    print indent($level), peekop($op), "  ";
+    $op->sv->terse(0);
+}
+
+sub B::PADOP::terse {
+    my ($op, $level) = @@_;
+    print indent($level), peekop($op), "  ", $op->padix, "\n";
+}
+
+sub B::PMOP::terse {
+    my ($op, $level) = @@_;
+    my $precomp = $op->precomp;
+    print indent($level), peekop($op),
+	defined($precomp) ? " /$precomp/\n" : " (regexp not compiled)\n";
+
+}
+
+sub B::PVOP::terse {
+    my ($op, $level) = @@_;
+    print indent($level), peekop($op), " ", cstring($op->pv), "\n";
+}
+
+sub B::COP::terse {
+    my ($op, $level) = @@_;
+    my $label = $op->label;
+    if ($label) {
+	$label = " label ".cstring($label);
+    }
+    print indent($level), peekop($op), $label || "", "\n";
+}
+
+sub B::PV::terse {
+    my ($sv, $level) = @@_;
+    print indent($level);
+    printf "%s (0x%lx) %s\n", class($sv), $$sv, cstring($sv->PV);
+}
+
+sub B::AV::terse {
+    my ($sv, $level) = @@_;
+    print indent($level);
+    printf "%s (0x%lx) FILL %d\n", class($sv), $$sv, $sv->FILL;
+}
+
+sub B::GV::terse {
+    my ($gv, $level) = @@_;
+    my $stash = $gv->STASH->NAME;
+    if ($stash eq "main") {
+	$stash = "";
+    } else {
+	$stash = $stash . "::";
+    }
+    print indent($level);
+    printf "%s (0x%lx) *%s%s\n", class($gv), $$gv, $stash, $gv->SAFENAME;
+}
+
+sub B::IV::terse {
+    my ($sv, $level) = @@_;
+    print indent($level);
+    my $v = $sv->FLAGS & SVf_IVisUV ? "%u" : "%d";
+    printf "%s (0x%lx) $v\n", class($sv), $$sv, $sv->int_value;
+}
+
+sub B::NV::terse {
+    my ($sv, $level) = @@_;
+    print indent($level);
+    printf "%s (0x%lx) %s\n", class($sv), $$sv, $sv->NV;
+}
+
+sub B::RV::terse {
+    my ($rv, $level) = @@_;
+    print indent($level);
+    printf "%s (0x%lx) %s\n", class($rv), $$rv, printref($rv);
+}
+
+sub printref {
+    my $rv = shift;
+    my $rcl = class($rv->RV);
+    if ($rcl eq 'PV') {
+	return "\\" . cstring($rv->RV->$rcl);
+    } elsif ($rcl eq 'NV') {
+	return "\\" . $rv->RV->$rcl;
+    } elsif ($rcl eq 'IV') {
+	return sprintf "\\%" . ($rv->RV->FLAGS & SVf_IVisUV ? "u" : "d"),
+	    $rv->RV->int_value;
+    } elsif ($rcl eq 'RV') {
+	return "\\" . printref($rv->RV);
+    }
+}
+
+sub B::NULL::terse {
+    my ($sv, $level) = @@_;
+    print indent($level);
+    printf "%s (0x%lx)\n", class($sv), $$sv;
+}
+    
+sub B::SPECIAL::terse {
+    my ($sv, $level) = @@_;
+    print indent($level);
+    printf "%s #%d %s\n", class($sv), $$sv, $specialsv_name[$$sv];
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+B::Terse - Walk Perl syntax tree, printing terse info about ops
+
+=head1 SYNOPSIS
+
+	perl -MO=Terse[,OPTIONS] foo.pl
+
+=head1 DESCRIPTION
+
+See F<ext/B/README>.
+
+=head1 AUTHOR
+
+Malcolm Beattie, C<mbeattie@@sable.ox.ac.uk>
+
+=cut
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d3 1
+a3 1
+our $VERSION = '1.02';
+d6 2
+a7 1
+use B qw(class);
+a8 2
+use B::Concise qw(concise_subref set_style_standard);
+use Carp;
+d11 2
+a12 2
+    my ($order, $subref) = @@_;
+    set_style_standard("terse");
+d14 1
+a14 1
+	concise_subref('exec', $subref);
+d16 1
+a16 1
+	concise_subref('basic', $subref);
+a17 1
+
+d21 19
+a39 5
+    my @@args = @@_;
+    my $order = @@args ? shift(@@args) : "";
+    $order = "-exec" if $order eq "exec";
+    unshift @@args, $order if $order ne "";
+    B::Concise::compile("-terse", @@args);
+a46 2
+# Don't use this, at least on OPs in subroutines: it has no way of
+# getting to the pad, and will give wrong answers or crash.
+d48 4
+a51 2
+    carp "B::OP::terse is deprecated; use B::Concise instead";
+    B::Concise::b_terse(@@_);
+d54 89
+a142 6
+sub B::SV::terse {
+    my($sv, $level) = (@@_, 0);
+    my %info;
+    B::Concise::concise_sv($sv, \%info);
+    my $s = B::Concise::fmt_line(\%info, "#svclass~(?((#svaddr))?)~#svval", 0);
+    print indent($level), $s, "\n";
+d150 1
+a150 1
+
+d171 1
+a171 14
+This version of B::Terse is really just a wrapper that calls B::Concise
+with the B<-terse> option. It is provided for compatibility with old scripts
+(and habits) but using B::Concise directly is now recommended instead.
+
+For compatiblilty with the old B::Terse, this module also adds a
+method named C<terse> to B::OP and B::SV objects. The B::SV method is
+largely compatible with the old one, though authors of new software
+might be advised to choose a more user-friendly output format. The
+B::OP C<terse> method, however, doesn't work well. Since B::Terse was
+first written, much more information in OPs has migrated to the
+scratchpad datastructure, but the C<terse> interface doesn't have any
+way of getting to the correct pad. As a kludge, the new version will
+always use the pad for the main program, but for OPs in subroutines
+this will give the wrong answer or crash.
+d175 1
+a175 3
+The original version of B::Terse was written by Malcolm Beattie,
+E<lt>mbeattie@@sable.ox.ac.ukE<gt>. This wrapper was written by Stephen
+McCamant, E<lt>smcc@@MIT.EDUE<gt>.
+@
+

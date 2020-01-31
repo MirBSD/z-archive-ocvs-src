@@ -1,0 +1,1200 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2
+	tg-mergefixes-1-branch:1.2.0.14
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.12
+	MIROS_X_BASE:1.2
+	tg-mergetmp-3:1.2
+	MIRBSD_XP_MIRPPC:1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.8
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.4
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.4
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.4
+	cvs-200309271030:1.1.1.4
+	cvs-200309261655:1.1.1.4
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.4
+	cvs-200308171200:1.1.1.4
+	ctm-3496:1.1.1.4
+	ctm-3449:1.1.1.4
+	ctm-3437:1.1.1.4
+	cvs-200307191805:1.1.1.4
+	ctm-3425:1.1.1.4
+	cvs-200307091500:1.1.1.4
+	ctm-3389:1.1.1.4
+	cvs-200306291430:1.1.1.4
+	ctm-3341:1.1.1.4
+	MIRBSD_5:1.2
+	cvs-200306082100:1.1.1.4
+	ctm-3316:1.1.1.4
+	ctm-3272:1.1.1.3
+	ctm-3264:1.1.1.3
+	cvs-200305071630:1.1.1.3
+	MIRBSD_4:1.1.1.3
+	ctm-3203:1.1.1.3
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.06.06.20.36.03;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.52.57;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.57;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.14.54.48;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.04.15.17.47.05;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.06.05.17.43.19;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@make more(1) behave like BSD more again
+@
+text
+@/*
+ * Copyright (C) 1984-2002  Mark Nudelman
+ *
+ * You may distribute under the terms of either the GNU General Public
+ * License or the Less License, as specified in the README file.
+ *
+ * For more information about less, or for information on how to 
+ * contact the author, see the README file.
+ */
+
+
+/*
+ * Prompting and other messages.
+ * There are three flavors of prompts, SHORT, MEDIUM and LONG,
+ * selected by the -m/-M options.
+ * There is also the "equals message", printed by the = command.
+ * A prompt is a message composed of various pieces, such as the 
+ * name of the file being viewed, the percentage into the file, etc.
+ */
+
+#include "less.h"
+#include "position.h"
+
+extern int pr_type;
+extern int hit_eof;
+extern int new_file;
+extern int sc_width;
+extern int so_s_width, so_e_width;
+extern int linenums;
+extern int hshift;
+extern int ismore;
+extern int sc_height;
+extern int jump_sline;
+extern IFILE curr_ifile;
+#if EDITOR
+extern char *editor;
+extern char *editproto;
+#endif
+
+/*
+ * Prototypes for the three flavors of prompts.
+ * These strings are expanded by pr_expand().
+ */
+static constant char s_proto[] =
+  "?n?f%f .?m(%T %i of %m) ..?e(END) ?x- Next\\: %x..%t";
+static constant char m_proto[] =
+  "?f%f .?m(%T %i of %m) ..?e(END) ?x- Next\\: %x.:?pB%pB\\%:byte %bB?s/%s...%t";
+static constant char M_proto[] =
+  "?f%f .?n?m(%T %i of %m) ..?ltlines %lt-%lb?L/%L. :byte %bB?s/%s. .?e(END) ?x- Next\\: %x.:?pB%pB\\%..%t";
+static constant char more_proto[] =
+  "--More--.?e(END) ?x- Next\\: %x.:(?pB%pB\\%:byte %bB?s/%s..).%t";
+static constant char e_proto[] =
+  "?f%f .?m(%T %i of %m) .?ltlines %lt-%lb?L/%L. .byte %bB?s/%s. ?e(END) :?pB%pB\\%..%t";
+static constant char h_proto[] =
+  "HELP -- ?eEND -- Press g to see it again:Press RETURN for more., or q when done";
+static constant char w_proto[] =
+  "Waiting for data";
+
+public char *prproto[3];
+public char constant *eqproto = e_proto;
+public char constant *hproto = h_proto;
+public char constant *wproto = w_proto;
+
+static char message[PROMPT_SIZE];
+static char *mp;
+
+/*
+ * Initialize the prompt prototype strings.
+ */
+	public void
+init_prompt()
+{
+	prproto[0] = save(ismore ? more_proto : s_proto);
+	prproto[1] = save(m_proto);
+	prproto[2] = save(M_proto);
+	eqproto = save(e_proto);
+	hproto = save(h_proto);
+	wproto = save(w_proto);
+}
+
+/*
+ * Append a string to the end of the message.
+ */
+	static void
+ap_str(s)
+	char *s;
+{
+	int len;
+
+	len = strlen(s);
+	if (mp + len >= message + PROMPT_SIZE)
+		len = message + PROMPT_SIZE - mp - 1;
+	strncpy(mp, s, len);
+	mp += len;
+	*mp = '\0';
+}
+
+/*
+ * Append a character to the end of the message.
+ */
+	static void
+ap_char(c)
+	char c;
+{
+	char buf[2];
+
+	buf[0] = c;
+	buf[1] = '\0';
+	ap_str(buf);
+}
+
+/*
+ * Append a POSITION (as a decimal integer) to the end of the message.
+ */
+	static void
+ap_pos(pos)
+	POSITION pos;
+{
+	char buf[INT_STRLEN_BOUND(pos) + 2];
+
+	postoa(pos, buf, sizeof(buf));
+	ap_str(buf);
+}
+
+/*
+ * Append a line number to the end of the message.
+ */
+ 	static void
+ap_linenum(linenum)
+	LINENUM linenum;
+{
+	char buf[INT_STRLEN_BOUND(linenum) + 2];
+
+	linenumtoa(linenum, buf, sizeof(buf));
+	ap_str(buf);
+}
+
+/*
+ * Append an integer to the end of the message.
+ */
+	static void
+ap_int(num)
+	int num;
+{
+	char buf[INT_STRLEN_BOUND(num) + 2];
+
+	inttoa(num, buf, sizeof(buf));
+	ap_str(buf);
+}
+
+/*
+ * Append a question mark to the end of the message.
+ */
+	static void
+ap_quest()
+{
+	ap_str("?");
+}
+
+/*
+ * Return the "current" byte offset in the file.
+ */
+	static POSITION
+curr_byte(where)
+	int where;
+{
+	POSITION pos;
+
+	pos = position(where);
+	while (pos == NULL_POSITION && where >= 0 && where < sc_height)
+		pos = position(++where);
+	if (pos == NULL_POSITION)
+		pos = ch_length();
+	return (pos);
+}
+
+/*
+ * Return the value of a prototype conditional.
+ * A prototype string may include conditionals which consist of a 
+ * question mark followed by a single letter.
+ * Here we decode that letter and return the appropriate boolean value.
+ */
+	static int
+cond(c, where)
+	char c;
+	int where;
+{
+	POSITION len;
+
+	switch (c)
+	{
+	case 'a':	/* Anything in the message yet? */
+		return (mp > message);
+	case 'b':	/* Current byte offset known? */
+		return (curr_byte(where) != NULL_POSITION);
+	case 'c':
+		return (hshift != 0);
+	case 'e':	/* At end of file? */
+		return (hit_eof);
+	case 'f':	/* Filename known? */
+		return (strcmp(get_filename(curr_ifile), "-") != 0);
+	case 'l':	/* Line number known? */
+	case 'd':	/* Same as l */
+		return (linenums);
+	case 'L':	/* Final line number known? */
+	case 'D':	/* Same as L */
+		return (linenums && ch_length() != NULL_POSITION);
+	case 'm':	/* More than one file? */
+#if TAGS
+		return (ntags() ? (ntags() > 1) : (nifile() > 1));
+#else
+		return (nifile() > 1);
+#endif
+	case 'n':	/* First prompt in a new file? */
+#if TAGS
+		return (ntags() ? 1 : new_file);
+#else
+		return (new_file);
+#endif
+	case 'p':	/* Percent into file (bytes) known? */
+		return (curr_byte(where) != NULL_POSITION && 
+				ch_length() > 0);
+	case 'P':	/* Percent into file (lines) known? */
+		return (currline(where) != 0 &&
+				(len = ch_length()) > 0 &&
+				find_linenum(len) != 0);
+	case 's':	/* Size of file known? */
+	case 'B':
+		return (ch_length() != NULL_POSITION);
+	case 'x':	/* Is there a "next" file? */
+#if TAGS
+		if (ntags())
+			return (0);
+#endif
+		return (next_ifile(curr_ifile) != NULL_IFILE);
+	}
+	return (0);
+}
+
+/*
+ * Decode a "percent" prototype character.
+ * A prototype string may include various "percent" escapes;
+ * that is, a percent sign followed by a single letter.
+ * Here we decode that letter and take the appropriate action,
+ * usually by appending something to the message being built.
+ */
+	static void
+protochar(c, where, iseditproto)
+	int c;
+	int where;
+	int iseditproto;
+{
+	POSITION pos;
+	POSITION len;
+	int n;
+	LINENUM linenum;
+	LINENUM last_linenum;
+	IFILE h;
+
+	switch (c)
+	{
+	case 'b':	/* Current byte offset */
+		pos = curr_byte(where);
+		if (pos != NULL_POSITION)
+			ap_pos(pos);
+		else
+			ap_quest();
+		break;
+	case 'c':
+		ap_int(hshift);
+		break;
+	case 'd':	/* Current page number */
+		linenum = currline(where);
+		if (linenum > 0 && sc_height > 1)
+			ap_linenum(((linenum - 1) / (sc_height - 1)) + 1);
+		else
+			ap_quest();
+		break;
+	case 'D':	/* Last page number */
+		len = ch_length();
+		if (len == NULL_POSITION || len == ch_zero() ||
+		    (linenum = find_linenum(len)) <= 0)
+			ap_quest();
+		else
+			ap_linenum(((linenum - 1) / (sc_height - 1)) + 1);
+		break;
+#if EDITOR
+	case 'E':	/* Editor name */
+		ap_str(editor);
+		break;
+#endif
+	case 'f':	/* File name */
+		ap_str(get_filename(curr_ifile));
+		break;
+	case 'i':	/* Index into list of files */
+#if TAGS
+		if (ntags())
+			ap_int(curr_tag());
+		else
+#endif
+			ap_int(get_index(curr_ifile));
+		break;
+	case 'l':	/* Current line number */
+		linenum = currline(where);
+		if (linenum != 0)
+			ap_linenum(linenum);
+		else
+			ap_quest();
+		break;
+	case 'L':	/* Final line number */
+		len = ch_length();
+		if (len == NULL_POSITION || len == ch_zero() ||
+		    (linenum = find_linenum(len)) <= 0)
+			ap_quest();
+		else
+			ap_linenum(linenum-1);
+		break;
+	case 'm':	/* Number of files */
+#if TAGS
+		n = ntags();
+		if (n)
+			ap_int(n);
+		else
+#endif
+			ap_int(nifile());
+		break;
+	case 'p':	/* Percent into file (bytes) */
+		pos = curr_byte(where);
+		len = ch_length();
+		if (pos != NULL_POSITION && len > 0)
+			ap_int(percentage(pos,len));
+		else
+			ap_quest();
+		break;
+	case 'P':	/* Percent into file (lines) */
+		linenum = currline(where);
+		if (linenum == 0 ||
+		    (len = ch_length()) == NULL_POSITION || len == ch_zero() ||
+		    (last_linenum = find_linenum(len)) <= 0)
+			ap_quest();
+		else
+			ap_int(percentage(linenum, last_linenum));
+		break;
+	case 's':	/* Size of file */
+	case 'B':
+		len = ch_length();
+		if (len != NULL_POSITION)
+			ap_pos(len);
+		else
+			ap_quest();
+		break;
+	case 't':	/* Truncate trailing spaces in the message */
+		while (mp > message && mp[-1] == ' ')
+			mp--;
+		break;
+	case 'T':	/* Type of list */
+#if TAGS
+		if (ntags())
+			ap_str("tag");
+		else
+#endif
+			ap_str("file");
+		break;
+	case 'x':	/* Name of next file */
+		h = next_ifile(curr_ifile);
+		if (h != NULL_IFILE)
+			ap_str(get_filename(h));
+		else
+			ap_quest();
+		break;
+	}
+}
+
+/*
+ * Skip a false conditional.
+ * When a false condition is found (either a false IF or the ELSE part 
+ * of a true IF), this routine scans the prototype string to decide
+ * where to resume parsing the string.
+ * We must keep track of nested IFs and skip them properly.
+ */
+	static char *
+skipcond(p)
+	register char *p;
+{
+	register int iflevel;
+
+	/*
+	 * We came in here after processing a ? or :,
+	 * so we start nested one level deep.
+	 */
+	iflevel = 1;
+
+	for (;;) switch (*++p)
+	{
+	case '?':
+		/*
+		 * Start of a nested IF.
+		 */
+		iflevel++;
+		break;
+	case ':':
+		/*
+		 * Else.
+		 * If this matches the IF we came in here with,
+		 * then we're done.
+		 */
+		if (iflevel == 1)
+			return (p);
+		break;
+	case '.':
+		/*
+		 * Endif.
+		 * If this matches the IF we came in here with,
+		 * then we're done.
+		 */
+		if (--iflevel == 0)
+			return (p);
+		break;
+	case '\\':
+		/*
+		 * Backslash escapes the next character.
+		 */
+		++p;
+		break;
+	case '\0':
+		/*
+		 * Whoops.  Hit end of string.
+		 * This is a malformed conditional, but just treat it
+		 * as if all active conditionals ends here.
+		 */
+		return (p-1);
+	}
+	/*NOTREACHED*/
+}
+
+/*
+ * Decode a char that represents a position on the screen.
+ */
+	static char *
+wherechar(p, wp)
+	char *p;
+	int *wp;
+{
+	switch (*p)
+	{
+	case 'b': case 'd': case 'l': case 'p': case 'P':
+		switch (*++p)
+		{
+		case 't':   *wp = TOP;			break;
+		case 'm':   *wp = MIDDLE;		break;
+		case 'b':   *wp = BOTTOM;		break;
+		case 'B':   *wp = BOTTOM_PLUS_ONE;	break;
+		case 'j':   *wp = adjsline(jump_sline);	break;
+		default:    *wp = TOP;  p--;		break;
+		}
+	}
+	return (p);
+}
+
+/*
+ * Construct a message based on a prototype string.
+ */
+	public char *
+pr_expand(proto, maxwidth)
+	char *proto;
+	int maxwidth;
+{
+	register char *p;
+	register int c;
+	int where;
+
+	mp = message;
+
+	if (*proto == '\0')
+		return ("");
+
+	for (p = proto;  *p != '\0';  p++)
+	{
+		switch (*p)
+		{
+		default:	/* Just put the character in the message */
+			ap_char(*p);
+			break;
+		case '\\':	/* Backslash escapes the next character */
+			p++;
+			ap_char(*p);
+			break;
+		case '?':	/* Conditional (IF) */
+			if ((c = *++p) == '\0')
+				--p;
+			else
+			{
+				where = 0;
+				p = wherechar(p, &where);
+				if (!cond(c, where))
+					p = skipcond(p);
+			}
+			break;
+		case ':':	/* ELSE */
+			p = skipcond(p);
+			break;
+		case '.':	/* ENDIF */
+			break;
+		case '%':	/* Percent escape */
+			if ((c = *++p) == '\0')
+				--p;
+			else
+			{
+				where = 0;
+				p = wherechar(p, &where);
+				protochar(c, where,
+#if EDITOR
+					(proto == editproto));
+#else
+					0);
+#endif
+
+			}
+			break;
+		}
+	}
+
+	if (mp == message)
+		return (NULL);
+	if (maxwidth > 0 && mp >= message + maxwidth)
+	{
+		/*
+		 * Message is too long.
+		 * Return just the final portion of it.
+		 */
+		return (mp - maxwidth);
+	}
+	return (message);
+}
+
+/*
+ * Return a message suitable for printing by the "=" command.
+ */
+	public char *
+eq_message()
+{
+	return (pr_expand(eqproto, 0));
+}
+
+/*
+ * Return a prompt.
+ * This depends on the prompt type (SHORT, MEDIUM, LONG), etc.
+ * If we can't come up with an appropriate prompt, return NULL
+ * and the caller will prompt with a colon.
+ */
+	public char *
+pr_string()
+{
+	char *prompt;
+
+	prompt = pr_expand(prproto[pr_type], sc_width-so_s_width-so_e_width-2);
+	new_file = 0;
+	return (prompt);
+}
+
+/*
+ * Return a message suitable for printing while waiting in the F command.
+ */
+	public char *
+wait_message()
+{
+	return (pr_expand(wproto, sc_width-so_s_width-so_e_width-2));
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@a0 2
+/*	$OpenBSD: prompt.c,v 1.5 2001/11/19 19:02:14 mpech Exp $	*/
+
+d2 1
+a2 2
+ * Copyright (c) 1984,1985,1989,1994,1995  Mark Nudelman
+ * All rights reserved.
+d4 2
+a5 8
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice in the documentation and/or other materials provided with 
+ *    the distribution.
+d7 2
+a8 11
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR 
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT 
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN 
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+d30 2
+d37 1
+d44 14
+a57 8
+static char s_proto[] =
+  "?n?f%f .?m(file %i of %m) ..?e(END) ?x- Next\\: %x..%t";
+static char m_proto[] =
+  "?f%f .?m(file %i of %m) .?e(END) ?x- Next\\: %x.:(?pB%pB\\%:byte %bB?s/%s..).%t";
+static char M_proto[] =
+  "?f%f .?n?m(file %i of %m) ..?ltline %lt?L/%L. :byte %bB?s/%s. .?e(END) ?x- Next\\: %x.:?pB%pB\\%..%t";
+static char e_proto[] =
+  "?f%f .?m(file %i of %m) .?ltline %lt?L/%L. .byte %bB?s/%s. ?e(END) :?pB%pB\\%..%t";
+d60 3
+a62 1
+public char *eqproto = e_proto;
+d64 1
+a64 1
+static char message[250];
+d73 1
+a73 1
+	prproto[0] = save(s_proto);
+d77 2
+d82 1
+a82 1
+ * Set the message pointer to the end of the message string.
+d85 2
+a86 1
+setmp()
+d88 22
+a109 2
+	while (*mp != '\0')
+		mp++;
+d119 4
+a122 2
+	sprintf(mp, "%qd", pos);
+	setmp();
+d126 1
+a126 1
+ * Append an integer to the end of the message.
+d128 3
+a130 3
+	static void
+ap_int(n)
+	int n;
+d132 4
+a135 2
+	sprintf(mp, "%d", n);
+	setmp();
+d139 1
+a139 1
+ * Append a string to the end of the message.
+d142 2
+a143 2
+ap_str(s)
+	char *s;
+d145 4
+a148 2
+	strtcpy(mp, s, (unsigned int)(&message[sizeof(message)] - mp));
+	setmp();
+d157 1
+a157 1
+	*mp++ = '?';
+d188 2
+d196 2
+d203 1
+d206 1
+d209 3
+d213 1
+d215 3
+d219 2
+a220 1
+	case 'p':	/* Percent into file known? */
+d223 4
+d231 4
+d248 1
+a248 1
+protochar(c, where)
+d251 1
+d256 2
+d269 18
+d296 6
+a301 1
+		ap_int(get_index(curr_ifile));
+d304 3
+a306 3
+		n = currline(where);
+		if (n != 0)
+			ap_int(n);
+d313 1
+a313 1
+		    (n = find_linenum(len)) <= 0)
+d316 1
+a316 1
+			ap_int(n-1);
+d319 7
+a325 1
+		ap_int(nifile());
+d327 1
+a327 1
+	case 'p':	/* Percent into file */
+d335 9
+d356 8
+d383 1
+a383 1
+	char *p;
+d385 1
+a385 1
+	int iflevel;
+d436 3
+d446 1
+a446 1
+	case 'b': case 'l': case 'p':
+d468 2
+a469 2
+	char *p;
+	int c;
+d482 1
+a482 1
+			*mp++ = *p;
+d486 1
+a486 1
+			*mp++ = *p;
+d493 1
+d509 1
+d511 7
+a517 1
+				protochar(c, where);
+a522 1
+	new_file = 0;
+a524 1
+	*mp = '\0';
+d554 14
+a567 1
+	return (pr_expand(prproto[pr_type], sc_width-so_s_width-so_e_width-2));
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: prompt.c,v 1.6 2003/04/06 23:38:07 deraadt Exp $	*/
+d103 1
+a103 1
+	snprintf(mp, message + sizeof message - mp, "%qd", pos);
+d114 1
+a114 1
+	snprintf(mp, message + sizeof message - mp, "%d", n);
+d135 1
+a135 2
+	if (mp < message + sizeof message - 1)
+		*mp++ = '?';
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD source with the "new" command line as well,
+in order to be able to provide a MirBSD release which bases
+upon a fairly current OpenBSD base source code tree deemed
+stable enough.
+@
+text
+@d1 2
+d4 2
+a5 1
+ * Copyright (C) 1984-2002  Mark Nudelman
+d7 8
+a14 2
+ * You may distribute under the terms of either the GNU General Public
+ * License or the Less License, as specified in the README file.
+d16 11
+a26 2
+ * For more information about less, or for information on how to 
+ * contact the author, see the README file.
+a47 2
+extern int hshift;
+extern int ismore;
+a52 1
+extern char *editproto;
+d59 8
+a66 14
+static constant char s_proto[] =
+  "?n?f%f .?m(%T %i of %m) ..?e(END) ?x- Next\\: %x..%t";
+static constant char m_proto[] =
+  "?f%f .?m(%T %i of %m) ..?e(END) ?x- Next\\: %x.:?pB%pB\\%:byte %bB?s/%s...%t";
+static constant char M_proto[] =
+  "?f%f .?n?m(%T %i of %m) ..?ltlines %lt-%lb?L/%L. :byte %bB?s/%s. .?e(END) ?x- Next\\: %x.:?pB%pB\\%..%t";
+static constant char more_proto[] =
+  "--More--.?e(END) ?x- Next\\: %x.:(?pB%pB\\%:byte %bB?s/%s..).%t";
+static constant char e_proto[] =
+  "?f%f .?m(%T %i of %m) .?ltlines %lt-%lb?L/%L. .byte %bB?s/%s. ?e(END) :?pB%pB\\%..%t";
+static constant char h_proto[] =
+  "HELP -- ?eEND -- Press g to see it again:Press RETURN for more., or q when done";
+static constant char w_proto[] =
+  "Waiting for data";
+d69 1
+a69 3
+public char constant *eqproto = e_proto;
+public char constant *hproto = h_proto;
+public char constant *wproto = w_proto;
+d71 1
+a71 1
+static char message[PROMPT_SIZE];
+d80 1
+a80 1
+	prproto[0] = save(ismore ? more_proto : s_proto);
+a83 2
+	hproto = save(h_proto);
+	wproto = save(w_proto);
+d87 1
+a87 1
+ * Append a string to the end of the message.
+d90 1
+a90 2
+ap_str(s)
+	char *s;
+d92 2
+a93 22
+	int len;
+
+	len = strlen(s);
+	if (mp + len >= message + PROMPT_SIZE)
+		len = message + PROMPT_SIZE - mp - 1;
+	strncpy(mp, s, len);
+	mp += len;
+	*mp = '\0';
+}
+
+/*
+ * Append a character to the end of the message.
+ */
+	static void
+ap_char(c)
+	char c;
+{
+	char buf[2];
+
+	buf[0] = c;
+	buf[1] = '\0';
+	ap_str(buf);
+d103 2
+a104 4
+	char buf[INT_STRLEN_BOUND(pos) + 2];
+
+	postoa(pos, buf, sizeof(buf));
+	ap_str(buf);
+d108 1
+a108 1
+ * Append a line number to the end of the message.
+d110 3
+a112 3
+ 	static void
+ap_linenum(linenum)
+	LINENUM linenum;
+d114 2
+a115 4
+	char buf[INT_STRLEN_BOUND(linenum) + 2];
+
+	linenumtoa(linenum, buf, sizeof(buf));
+	ap_str(buf);
+d119 1
+a119 1
+ * Append an integer to the end of the message.
+d122 2
+a123 2
+ap_int(num)
+	int num;
+d125 2
+a126 4
+	char buf[INT_STRLEN_BOUND(num) + 2];
+
+	inttoa(num, buf, sizeof(buf));
+	ap_str(buf);
+d135 2
+a136 1
+	ap_str("?");
+a166 2
+	POSITION len;
+
+a172 2
+	case 'c':
+		return (hshift != 0);
+a177 1
+	case 'd':	/* Same as l */
+a179 1
+	case 'D':	/* Same as L */
+a181 3
+#if TAGS
+		return (ntags() ? (ntags() > 1) : (nifile() > 1));
+#else
+a182 1
+#endif
+a183 3
+#if TAGS
+		return (ntags() ? 1 : new_file);
+#else
+d185 1
+a185 2
+#endif
+	case 'p':	/* Percent into file (bytes) known? */
+a187 4
+	case 'P':	/* Percent into file (lines) known? */
+		return (currline(where) != 0 &&
+				(len = ch_length()) > 0 &&
+				find_linenum(len) != 0);
+a191 4
+#if TAGS
+		if (ntags())
+			return (0);
+#endif
+d205 1
+a205 1
+protochar(c, where, iseditproto)
+a207 1
+	int iseditproto;
+a211 2
+	LINENUM linenum;
+	LINENUM last_linenum;
+a222 18
+	case 'c':
+		ap_int(hshift);
+		break;
+	case 'd':	/* Current page number */
+		linenum = currline(where);
+		if (linenum > 0 && sc_height > 1)
+			ap_linenum(((linenum - 1) / (sc_height - 1)) + 1);
+		else
+			ap_quest();
+		break;
+	case 'D':	/* Last page number */
+		len = ch_length();
+		if (len == NULL_POSITION || len == ch_zero() ||
+		    (linenum = find_linenum(len)) <= 0)
+			ap_quest();
+		else
+			ap_linenum(((linenum - 1) / (sc_height - 1)) + 1);
+		break;
+d232 1
+a232 6
+#if TAGS
+		if (ntags())
+			ap_int(curr_tag());
+		else
+#endif
+			ap_int(get_index(curr_ifile));
+d235 3
+a237 3
+		linenum = currline(where);
+		if (linenum != 0)
+			ap_linenum(linenum);
+d244 1
+a244 1
+		    (linenum = find_linenum(len)) <= 0)
+d247 1
+a247 1
+			ap_linenum(linenum-1);
+d250 1
+a250 7
+#if TAGS
+		n = ntags();
+		if (n)
+			ap_int(n);
+		else
+#endif
+			ap_int(nifile());
+d252 1
+a252 1
+	case 'p':	/* Percent into file (bytes) */
+a259 9
+	case 'P':	/* Percent into file (lines) */
+		linenum = currline(where);
+		if (linenum == 0 ||
+		    (len = ch_length()) == NULL_POSITION || len == ch_zero() ||
+		    (last_linenum = find_linenum(len)) <= 0)
+			ap_quest();
+		else
+			ap_int(percentage(linenum, last_linenum));
+		break;
+a271 8
+	case 'T':	/* Type of list */
+#if TAGS
+		if (ntags())
+			ap_str("tag");
+		else
+#endif
+			ap_str("file");
+		break;
+d291 1
+a291 1
+	register char *p;
+d293 1
+a293 1
+	register int iflevel;
+a343 3
+/*
+ * Decode a char that represents a position on the screen.
+ */
+d351 1
+a351 1
+	case 'b': case 'd': case 'l': case 'p': case 'P':
+d373 2
+a374 2
+	register char *p;
+	register int c;
+d387 1
+a387 1
+			ap_char(*p);
+d391 1
+a391 1
+			ap_char(*p);
+a397 1
+				where = 0;
+a412 1
+				where = 0;
+d414 1
+a414 7
+				protochar(c, where,
+#if EDITOR
+					(proto == editproto));
+#else
+					0);
+#endif
+
+d420 1
+d423 1
+d453 1
+a453 14
+	char *prompt;
+
+	prompt = pr_expand(prproto[pr_type], sc_width-so_s_width-so_e_width-2);
+	new_file = 0;
+	return (prompt);
+}
+
+/*
+ * Return a message suitable for printing while waiting in the F command.
+ */
+	public char *
+wait_message()
+{
+	return (pr_expand(wproto, sc_width-so_s_width-so_e_width-2));
+@
+
+
+1.1.1.4
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d31 1
+d50 2
+d73 1
+a73 1
+	prproto[0] = save(s_proto);
+@
+
+

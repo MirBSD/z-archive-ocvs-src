@@ -1,0 +1,870 @@
+head	1.6;
+access;
+symbols
+	lynx-2_8_6dev10:1.1.2.1
+	FSF:1.1.2
+	tg-mergetmp-mirosx-1:1.5
+	tg-mergefixes-1-branch:1.5.0.8
+	tg-mergefixes-1-base:1.5
+	MIROS_X:1.5.0.6
+	MIROS_X_BASE:1.5
+	MIRBSD_XP_MIRPPC:1.5.0.4
+	lynx-2_8_6dev_7b:1.1.3.3
+	lynx-2_8_6dev_6:1.1.3.3
+	MIRBSD_XP_SPARC_BASE:1.5
+	MIRBSD_XP_SPARC:1.5.0.2
+	lynx-2_8_6dev_5-iz2:1.1.3.3
+	lynx-2_8_6dev_5:1.1.3.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.3
+	cvs-200405160640:1.1.1.2
+	lynx-2_8_6dev2:1.1.3.2
+	lynx-2_8_5:1.1.3.1
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	lynx_2-8-5_dev17d:1.1.3.1
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.3.0.6
+	MIRBSD_7:1.3.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.3
+	MIRBSD_7_DEV:1.3.0.2
+	cvs-200310020700:1.1.1.2
+	lynx_2-8-5_dev16c:1.1.3.1
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	lynx_2-8-5_dev16:1.1.3.1
+	tg:1.1.3
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	VENDOR_LYNX_285dev16:1.3
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.6
+date	2005.01.03.00.45.47;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2004.07.15.18.16.34;	author tg;	state Stab;
+branches;
+next	1.4;
+
+1.4
+date	2004.04.30.16.32.26;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2003.07.07.18.58.00;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.07.07.18.49.06;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.42.10;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.10;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.07.17.29.54;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2005.01.03.00.26.26;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2003.09.17.14.19.49;	author tg;	state Exp;
+branches;
+next	1.1.3.2;
+
+1.1.3.2
+date	2004.04.30.16.15.11;	author tg;	state Exp;
+branches;
+next	1.1.3.3;
+
+1.1.3.3
+date	2004.07.15.15.46.50;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.6
+log
+@soft merge
+@
+text
+@
+/* MODULE							HTLex.c
+ *		LEXICAL ANALYSOR
+ *
+ * AUTHORS:
+ *	AL	Ari Luotonen	luotonen@@dxcern.cern.ch
+ *
+ * HISTORY:
+ *
+ *
+ * BUGS:
+ *
+ *
+ */
+
+#include <HTUtils.h>
+
+#include <HTLex.h>		/* Implemented here */
+
+#include <LYLeaks.h>
+
+/*
+ * Global variables
+ */
+char HTlex_buffer[40];		/* Read lexical string          */
+int HTlex_line = 1;		/* Line number in source file   */
+
+/*
+ * Module-wide variables
+ */
+static int lex_cnt;
+static BOOL lex_template;
+static LexItem lex_pushed_back = LEX_NONE;
+static FILE *cache = NULL;
+
+void unlex(LexItem lex_item)
+{
+    lex_pushed_back = lex_item;
+}
+
+LexItem lex(FILE *fp)
+{
+    int ch = 0;
+
+    if (fp != cache) {		/* This cache doesn't work ok because the system  */
+	cache = fp;		/* often assign same FILE structure the next open */
+	HTlex_line = 1;		/* file.  So, if there are syntax errors in setup */
+    }
+    /* files it may confuse things later on.      */
+    if (lex_pushed_back != LEX_NONE) {
+	LexItem ret = lex_pushed_back;
+
+	lex_pushed_back = LEX_NONE;
+	return ret;
+    }
+
+    lex_cnt = 0;
+    lex_template = NO;
+
+    for (;;) {
+	switch (ch = getc(fp)) {
+	case EOF:
+	case ' ':
+	case '\t':
+	case '\r':
+	case '\n':
+	case ':':
+	case ',':
+	case '(':
+	case ')':
+	case '@@':
+	    if (lex_cnt > 0) {
+		if (ch != EOF)
+		    ungetc(ch, fp);
+		if (lex_template)
+		    return LEX_TMPL_STR;
+		else
+		    return LEX_ALPH_STR;
+	    } else
+		switch (ch) {
+		case EOF:
+		    return LEX_EOF;
+		case '\n':
+		    HTlex_line++;
+		    return LEX_REC_SEP;
+		case ':':
+		    return LEX_FIELD_SEP;
+		case ',':
+		    return LEX_ITEM_SEP;
+		case '(':
+		    return LEX_OPEN_PAREN;
+		case ')':
+		    return LEX_CLOSE_PAREN;
+		case '@@':
+		    return LEX_AT_SIGN;
+		default:;	/* Leading white space ignored (SP,TAB,CR) */
+		}
+	    break;
+	default:
+	    HTlex_buffer[lex_cnt++] = (char) ch;
+	    HTlex_buffer[lex_cnt] = '\0';
+	    if ('*' == ch)
+		lex_template = YES;
+	}			/* switch ch */
+    }				/* forever */
+}
+
+const char *lex_verbose(LexItem lex_item)
+{
+    static char msg[100];	/* @@@@@@@@@@@@@@@@ */
+
+    switch (lex_item) {
+    case LEX_NONE:		/* Internally used      */
+	return "NO-LEX-ITEM";
+    case LEX_EOF:		/* End of file          */
+	return "end-of-file";
+    case LEX_REC_SEP:		/* Record separator     */
+	return "record separator (newline)";
+    case LEX_FIELD_SEP:	/* Field separator      */
+	return "field separator ':'";
+    case LEX_ITEM_SEP:		/* List item separator  */
+	return "item separator ','";
+    case LEX_OPEN_PAREN:	/* Group start tag      */
+	return "'('";
+    case LEX_CLOSE_PAREN:	/* Group end tag        */
+	return "')'";
+    case LEX_AT_SIGN:		/* Address qualifier    */
+	return "address qualifier '@@'";
+    case LEX_ALPH_STR:		/* Alphanumeric string  */
+	sprintf(msg, "alphanumeric string '%.70s'", HTlex_buffer);
+	return msg;
+    case LEX_TMPL_STR:		/* Template string      */
+	sprintf(msg, "template string '%.70s'", HTlex_buffer);
+	return msg;
+    default:
+	return "UNKNOWN-LEX-ITEM";
+    }
+}
+@
+
+
+1.5
+log
+@automatic merge of lynx-current
+@
+text
+@d108 1
+a108 1
+char *lex_verbose(LexItem lex_item)
+@
+
+
+1.4
+log
+@pretty much automatic merge of Lynx update
+now, we live in an ANSI C world...
+@
+text
+@d3 12
+a14 12
+**		LEXICAL ANALYSOR
+**
+** AUTHORS:
+**	AL	Ari Luotonen	luotonen@@dxcern.cern.ch
+**
+** HISTORY:
+**
+**
+** BUGS:
+**
+**
+*/
+d18 1
+a18 1
+#include <HTLex.h>	/* Implemented here */
+d23 4
+a26 5
+** Global variables
+*/
+char HTlex_buffer[40];	/* Read lexical string		*/
+int HTlex_line = 1;	/* Line number in source file	*/
+
+d29 2
+a30 2
+** Module-wide variables
+*/
+d36 1
+a36 2
+
+void unlex (LexItem  lex_item)
+d41 1
+a41 2
+
+LexItem lex (FILE *  fp)
+d45 5
+a49 5
+    if (fp != cache) {	/* This cache doesn't work ok because the system  */
+	cache = fp;	/* often assign same FILE structure the next open */
+	HTlex_line = 1;	/* file.  So, if there are syntax errors in setup */
+    }			/* files it may confuse things later on.	  */
+
+d52 1
+d60 1
+a60 1
+    for(;;) {
+d62 10
+a71 10
+	  case EOF:
+	  case ' ':
+	  case '\t':
+	  case '\r':
+	  case '\n':
+	  case ':':
+	  case ',':
+	  case '(':
+	  case ')':
+	  case '@@':
+d73 25
+a97 15
+		if (ch != EOF) ungetc(ch,fp);
+		if (lex_template) return LEX_TMPL_STR;
+		else		  return LEX_ALPH_STR;
+	    }
+	    else switch(ch) {
+	      case EOF:		return LEX_EOF;
+	      case '\n':
+		HTlex_line++;	return LEX_REC_SEP;
+	      case ':':		return LEX_FIELD_SEP;
+	      case ',':		return LEX_ITEM_SEP;
+	      case '(':		return LEX_OPEN_PAREN;
+	      case ')':		return LEX_CLOSE_PAREN;
+	      case '@@':		return LEX_AT_SIGN;
+	      default:	;	/* Leading white space ignored (SP,TAB,CR) */
+	    }
+d99 1
+a99 1
+	  default:
+d102 4
+a105 3
+	    if ('*' == ch) lex_template = YES;
+	} /* switch ch */
+    } /* forever */
+d108 1
+a108 2
+
+char *lex_verbose (LexItem  lex_item)
+d113 1
+a113 1
+      case LEX_NONE:		/* Internally used	*/
+d115 1
+a115 1
+      case LEX_EOF:		/* End of file		*/
+d117 1
+a117 1
+      case LEX_REC_SEP:		/* Record separator	*/
+d119 1
+a119 1
+      case LEX_FIELD_SEP:	/* Field separator	*/
+d121 1
+a121 1
+      case LEX_ITEM_SEP:	/* List item separator	*/
+d123 1
+a123 1
+      case LEX_OPEN_PAREN:	/* Group start tag	*/
+d125 1
+a125 1
+      case LEX_CLOSE_PAREN:	/* Group end tag	*/
+d127 1
+a127 1
+      case LEX_AT_SIGN:		/* Address qualifier	*/
+d129 1
+a129 1
+      case LEX_ALPH_STR:	/* Alphanumeric string	*/
+d132 1
+a132 1
+      case LEX_TMPL_STR:	/* Template string	*/
+d135 1
+a135 1
+      default:
+a138 1
+
+@
+
+
+1.3
+log
+@un-tar the file
+>>> lynx2.8.5dev.16.tar.gz
+from http://lynx.isc.org/current/
+
+the following files need -kb:
+- LYStyle.c
+- Xsystem.c
+- WWW HTMIME.c
+@
+text
+@d25 2
+a26 2
+PUBLIC char HTlex_buffer[40];	/* Read lexical string		*/
+PUBLIC int HTlex_line = 1;	/* Line number in source file	*/
+d32 4
+a35 4
+PRIVATE int lex_cnt;
+PRIVATE BOOL lex_template;
+PRIVATE LexItem lex_pushed_back = LEX_NONE;
+PRIVATE FILE *cache = NULL;
+d38 1
+a38 1
+PUBLIC void unlex ARGS1(LexItem, lex_item)
+d44 1
+a44 1
+PUBLIC LexItem lex ARGS1(FILE *, fp)
+d100 1
+a100 1
+PUBLIC char *lex_verbose ARGS1(LexItem, lex_item)
+@
+
+
+1.2
+log
+@remove lynx 2.8.4 patchlevel 1d
+@
+text
+@d46 1
+a46 1
+    int ch;
+d92 1
+a92 1
+	    HTlex_buffer[lex_cnt++] = ch;
+d122 1
+a122 1
+	sprintf(msg, "alphanumeric string '%s'", HTlex_buffer);
+d125 1
+a125 1
+	sprintf(msg, "template string '%s'", HTlex_buffer);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Lynx 2.8.6dev.10 as imported into ncvs
+@
+text
+@d3 12
+a14 12
+ *		LEXICAL ANALYSOR
+ *
+ * AUTHORS:
+ *	AL	Ari Luotonen	luotonen@@dxcern.cern.ch
+ *
+ * HISTORY:
+ *
+ *
+ * BUGS:
+ *
+ *
+ */
+d18 1
+a18 1
+#include <HTLex.h>		/* Implemented here */
+d23 5
+a27 4
+ * Global variables
+ */
+char HTlex_buffer[40];		/* Read lexical string          */
+int HTlex_line = 1;		/* Line number in source file   */
+d30 7
+a36 6
+ * Module-wide variables
+ */
+static int lex_cnt;
+static BOOL lex_template;
+static LexItem lex_pushed_back = LEX_NONE;
+static FILE *cache = NULL;
+d38 1
+a38 1
+void unlex(LexItem lex_item)
+d43 2
+a44 1
+LexItem lex(FILE *fp)
+d46 6
+a51 1
+    int ch = 0;
+a52 5
+    if (fp != cache) {		/* This cache doesn't work ok because the system  */
+	cache = fp;		/* often assign same FILE structure the next open */
+	HTlex_line = 1;		/* file.  So, if there are syntax errors in setup */
+    }
+    /* files it may confuse things later on.      */
+a54 1
+
+d62 1
+a62 1
+    for (;;) {
+d64 10
+a73 10
+	case EOF:
+	case ' ':
+	case '\t':
+	case '\r':
+	case '\n':
+	case ':':
+	case ',':
+	case '(':
+	case ')':
+	case '@@':
+d75 15
+a89 25
+		if (ch != EOF)
+		    ungetc(ch, fp);
+		if (lex_template)
+		    return LEX_TMPL_STR;
+		else
+		    return LEX_ALPH_STR;
+	    } else
+		switch (ch) {
+		case EOF:
+		    return LEX_EOF;
+		case '\n':
+		    HTlex_line++;
+		    return LEX_REC_SEP;
+		case ':':
+		    return LEX_FIELD_SEP;
+		case ',':
+		    return LEX_ITEM_SEP;
+		case '(':
+		    return LEX_OPEN_PAREN;
+		case ')':
+		    return LEX_CLOSE_PAREN;
+		case '@@':
+		    return LEX_AT_SIGN;
+		default:;	/* Leading white space ignored (SP,TAB,CR) */
+		}
+d91 2
+a92 2
+	default:
+	    HTlex_buffer[lex_cnt++] = (char) ch;
+d94 3
+a96 4
+	    if ('*' == ch)
+		lex_template = YES;
+	}			/* switch ch */
+    }				/* forever */
+d99 2
+a100 1
+const char *lex_verbose(LexItem lex_item)
+d105 1
+a105 1
+    case LEX_NONE:		/* Internally used      */
+d107 1
+a107 1
+    case LEX_EOF:		/* End of file          */
+d109 1
+a109 1
+    case LEX_REC_SEP:		/* Record separator     */
+d111 1
+a111 1
+    case LEX_FIELD_SEP:	/* Field separator      */
+d113 1
+a113 1
+    case LEX_ITEM_SEP:		/* List item separator  */
+d115 1
+a115 1
+    case LEX_OPEN_PAREN:	/* Group start tag      */
+d117 1
+a117 1
+    case LEX_CLOSE_PAREN:	/* Group end tag        */
+d119 1
+a119 1
+    case LEX_AT_SIGN:		/* Address qualifier    */
+d121 2
+a122 2
+    case LEX_ALPH_STR:		/* Alphanumeric string  */
+	sprintf(msg, "alphanumeric string '%.70s'", HTlex_buffer);
+d124 2
+a125 2
+    case LEX_TMPL_STR:		/* Template string      */
+	sprintf(msg, "template string '%.70s'", HTlex_buffer);
+d127 1
+a127 1
+    default:
+d131 1
+@
+
+
+1.1.3.1
+log
+@Import Lynx 2.8.5.dev16 again, this time via a vendor branch (tg),
+to ease tracking of the upcoming dev17 (2.8.6-prerelease) update.
+@
+text
+@d46 1
+a46 1
+    int ch = 0;
+d92 1
+a92 1
+	    HTlex_buffer[lex_cnt++] = (char) ch;
+d122 1
+a122 1
+	sprintf(msg, "alphanumeric string '%.70s'", HTlex_buffer);
+d125 1
+a125 1
+	sprintf(msg, "template string '%.70s'", HTlex_buffer);
+@
+
+
+1.1.3.2
+log
+@A three-days old development version of Lynx, the best web browser ever,
+which follows the OpenBSD paradigma to only provide high-quality, func-
+tional snapshots.
+@
+text
+@d25 2
+a26 2
+char HTlex_buffer[40];	/* Read lexical string		*/
+int HTlex_line = 1;	/* Line number in source file	*/
+d32 4
+a35 4
+static int lex_cnt;
+static BOOL lex_template;
+static LexItem lex_pushed_back = LEX_NONE;
+static FILE *cache = NULL;
+d38 1
+a38 1
+void unlex (LexItem  lex_item)
+d44 1
+a44 1
+LexItem lex (FILE *  fp)
+d100 1
+a100 1
+char *lex_verbose (LexItem  lex_item)
+@
+
+
+1.1.3.3
+log
+@Lynx 2.8.6dev.5 fresh from the ISC
+@
+text
+@d3 12
+a14 12
+ *		LEXICAL ANALYSOR
+ *
+ * AUTHORS:
+ *	AL	Ari Luotonen	luotonen@@dxcern.cern.ch
+ *
+ * HISTORY:
+ *
+ *
+ * BUGS:
+ *
+ *
+ */
+d18 1
+a18 1
+#include <HTLex.h>		/* Implemented here */
+d23 5
+a27 4
+ * Global variables
+ */
+char HTlex_buffer[40];		/* Read lexical string          */
+int HTlex_line = 1;		/* Line number in source file   */
+d30 2
+a31 2
+ * Module-wide variables
+ */
+d37 2
+a38 1
+void unlex(LexItem lex_item)
+d43 2
+a44 1
+LexItem lex(FILE *fp)
+d48 5
+a52 5
+    if (fp != cache) {		/* This cache doesn't work ok because the system  */
+	cache = fp;		/* often assign same FILE structure the next open */
+	HTlex_line = 1;		/* file.  So, if there are syntax errors in setup */
+    }
+    /* files it may confuse things later on.      */
+a54 1
+
+d62 1
+a62 1
+    for (;;) {
+d64 10
+a73 10
+	case EOF:
+	case ' ':
+	case '\t':
+	case '\r':
+	case '\n':
+	case ':':
+	case ',':
+	case '(':
+	case ')':
+	case '@@':
+d75 15
+a89 25
+		if (ch != EOF)
+		    ungetc(ch, fp);
+		if (lex_template)
+		    return LEX_TMPL_STR;
+		else
+		    return LEX_ALPH_STR;
+	    } else
+		switch (ch) {
+		case EOF:
+		    return LEX_EOF;
+		case '\n':
+		    HTlex_line++;
+		    return LEX_REC_SEP;
+		case ':':
+		    return LEX_FIELD_SEP;
+		case ',':
+		    return LEX_ITEM_SEP;
+		case '(':
+		    return LEX_OPEN_PAREN;
+		case ')':
+		    return LEX_CLOSE_PAREN;
+		case '@@':
+		    return LEX_AT_SIGN;
+		default:;	/* Leading white space ignored (SP,TAB,CR) */
+		}
+d91 1
+a91 1
+	default:
+d94 3
+a96 4
+	    if ('*' == ch)
+		lex_template = YES;
+	}			/* switch ch */
+    }				/* forever */
+d99 2
+a100 1
+char *lex_verbose(LexItem lex_item)
+d105 1
+a105 1
+    case LEX_NONE:		/* Internally used      */
+d107 1
+a107 1
+    case LEX_EOF:		/* End of file          */
+d109 1
+a109 1
+    case LEX_REC_SEP:		/* Record separator     */
+d111 1
+a111 1
+    case LEX_FIELD_SEP:	/* Field separator      */
+d113 1
+a113 1
+    case LEX_ITEM_SEP:		/* List item separator  */
+d115 1
+a115 1
+    case LEX_OPEN_PAREN:	/* Group start tag      */
+d117 1
+a117 1
+    case LEX_CLOSE_PAREN:	/* Group end tag        */
+d119 1
+a119 1
+    case LEX_AT_SIGN:		/* Address qualifier    */
+d121 1
+a121 1
+    case LEX_ALPH_STR:		/* Alphanumeric string  */
+d124 1
+a124 1
+    case LEX_TMPL_STR:		/* Template string      */
+d127 1
+a127 1
+    default:
+d131 1
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD source tree of short before 17:00 UTC today
+@
+text
+@d46 1
+a46 1
+    int ch = 0;
+d92 1
+a92 1
+	    HTlex_buffer[lex_cnt++] = (char) ch;
+d122 1
+a122 1
+	sprintf(msg, "alphanumeric string '%.70s'", HTlex_buffer);
+d125 1
+a125 1
+	sprintf(msg, "template string '%.70s'", HTlex_buffer);
+@
+

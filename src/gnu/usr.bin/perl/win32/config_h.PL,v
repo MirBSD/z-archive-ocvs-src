@@ -1,0 +1,232 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.44.06;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.06;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#
+BEGIN { warn "Running ".__FILE__."\n" };
+BEGIN 
+ {
+  require "../lib/Config.pm";
+  die "../Config.pm:$@@" if $@@;
+  Config::->import;
+ }
+use File::Compare qw(compare);
+use File::Copy qw(copy);
+my $name = $0;
+$name =~ s#^(.*)\.PL$#../$1.SH#;
+my %opt;
+while (@@ARGV && $ARGV[0] =~ /^([\w_]+)=(.*)$/)
+ {
+  $opt{$1}=$2;
+  shift(@@ARGV);
+ }
+
+$opt{CONFIG_H} ||= 'config.h';
+
+warn "Writing $opt{CONFIG_H}\n";
+
+my $patchlevel = $opt{INST_VER};
+$patchlevel =~ s|^[\\/]||;
+$patchlevel =~ s|~VERSION~|$Config{version}|g;
+$patchlevel ||= $Config{version};
+$patchlevel = qq["$patchlevel"];
+
+open(SH,"<$name") || die "Cannot open $name:$!";
+while (<SH>)
+ {
+  last if /^sed/;
+ }
+($term,$file,$pat) = /^sed\s+<<(\S+)\s+>(\S+)\s+(.*)$/;
+
+$file =~ s/^\$(\w+)$/$opt{$1}/g;
+
+my $str = "sub munge\n{\n";
+
+while ($pat =~ s/-e\s+'([^']*)'\s*//)
+ {
+  my $e = $1;
+  $e =~ s/\\([\(\)])/$1/g;
+  $e =~ s/\\(\d)/\$$1/g; 
+  $str .= "$e;\n";
+ }
+$str .= "}\n";
+
+eval $str;
+
+die "$str:$@@" if $@@;
+
+open(H,">$file.new") || die "Cannot open $file.new:$!";
+#binmode H;		# no CRs (which cause a spurious rebuild)
+while (<SH>)
+ {
+  last if /^$term$/o;
+  s/\$([\w_]+)/Config($1)/eg;
+  s/`([^\`]*)`/BackTick($1)/eg;
+  munge();
+  s/\\\$/\$/g;
+  s#/[ *\*]*\*/#/**/#;
+  if (/^\s*#define\s+(PRIVLIB|SITELIB|VENDORLIB)_EXP/)
+   {
+     $_ = "#define ". $1 . "_EXP (win32_get_". lc($1) . "($patchlevel))\t/**/\n";
+   }
+  # incpush() handles archlibs, so disable them
+  elsif (/^\s*#define\s+(ARCHLIB|SITEARCH|VENDORARCH)_EXP/)
+   {
+     $_ = "/*#define ". $1 . "_EXP \"\"\t/**/\n";
+   }
+  print H;
+ }
+close(H);
+close(SH);
+
+
+chmod(0666,"../lib/CORE/config.h");
+copy("$file.new","../lib/CORE/config.h") || die "Cannot copy:$!";
+chmod(0444,"../lib/CORE/config.h");
+
+if (compare("$file.new",$file))
+ {
+  warn "$file has changed\n";
+  chmod(0666,$file);
+  unlink($file);
+  rename("$file.new",$file);
+  #chmod(0444,$file);
+  exit(1);
+ }
+else
+ {
+  unlink ("$file.new");
+  exit(0);
+ }
+
+sub Config
+{
+ my $var = shift;
+ my $val = $Config{$var};
+ $val = 'undef' unless defined $val;
+ $val =~ s/\\/\\\\/g;
+ return $val;
+}
+
+sub BackTick
+{
+ my $cmd = shift;
+ if ($cmd =~ /^echo\s+(.*?)\s*\|\s+sed\s+'(.*)'\s*$/)
+  {
+   local ($data,$pat) = ($1,$2);
+   $data =~ s/\s+/ /g;
+   eval "\$data =~ $pat";
+   return $data;
+  }
+ else
+  {
+   die "Cannot handle \`$cmd\`";
+  }
+ return $cmd;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,584 @@
+head	1.7;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.7
+	tg-mergefixes-1-branch:1.7.0.4
+	tg-mergefixes-1-base:1.7
+	MIROS_X:1.7.0.2
+	MIROS_X_BASE:1.7
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	rcs-5_7:1.1.2.1
+	FSF:1.1.2
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.7
+date	2004.12.12.22.50.06;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2004.12.12.22.32.14;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2004.12.12.21.22.55;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.12.12.21.01.57;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.07.21.15.02.40;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.07.21.10.48.20;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.44.10;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.10;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2004.07.21.09.14.28;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.7
+log
+@further unifdef
+@
+text
+@/* $MirBSD: src/gnu/usr.bin/rcs/src/rcsclean.c,v 1.6 2004/12/12 22:32:14 tg Exp $ */
+
+/* Clean up working files.  */
+
+/* Copyright 1991, 1992, 1993, 1994, 1995 Paul Eggert
+   Distributed under license by the Free Software Foundation, Inc.
+
+This file is part of RCS.
+
+RCS is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2, or (at your option)
+any later version.
+
+RCS is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with RCS; see the file COPYING.
+If not, write to the Free Software Foundation,
+59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+Report problems and direct all questions to:
+
+	rcs-bugs@@cs.purdue.edu
+
+*/
+
+#include "rcsbase.h"
+
+#if has_dirent
+	static int get_directory(char const*,char***);
+#endif
+
+static int unlock(struct hshentry *);
+static void cleanup(void);
+
+static RILE *workptr;
+static int exitstatus;
+
+const char cmdid[] = "rcsclean";
+__IDSTRING(baseid,RCSBASE);
+__RCSID("$MirBSD: src/gnu/usr.bin/rcs/src/rcsclean.c,v 1.6 2004/12/12 22:32:14 tg Exp $");
+
+int main(int argc, char *argv[])
+{
+	static char const usage[] =
+		"\nrcsclean: usage: rcsclean -ksubst -{nqru}[rev] -T -Vn -xsuff -zzone file ...";
+
+	static struct buf revision;
+
+	char *a, **newargv;
+	char const *rev, *p;
+	int dounlock, expmode, perform, unlocked, unlockflag, waslocked;
+	int Ttimeflag;
+	struct hshentries *deltas;
+	struct hshentry *delta;
+	struct stat workstat;
+
+	setrid();
+
+	expmode = -1;
+	rev = 0;
+	suffixes = X_DEFAULT;
+	perform = true;
+	unlockflag = false;
+	Ttimeflag = false;
+
+	argc = getRCSINIT(argc, argv, &newargv);
+	argv = newargv;
+	for (;;) {
+		if (--argc < 1) {
+#			if has_dirent
+				argc = get_directory(".", &newargv);
+				argv = newargv;
+				break;
+#			else
+				faterror("no pathnames specified");
+#			endif
+		}
+		a = *++argv;
+		if (!*a  ||  *a++ != '-')
+			break;
+		switch (*a++) {
+			case 'k':
+				if (0 <= expmode)
+					redefined('k');
+				if ((expmode = str2expmode(a))  <  0)
+					goto unknown;
+				break;
+
+			case 'n':
+				perform = false;
+				goto handle_revision;
+
+			case 'q':
+				quietflag = true;
+				/* fall into */
+			case 'r':
+			handle_revision:
+				if (*a) {
+					if (rev)
+						warn("redefinition of revision number");
+					rev = a;
+				}
+				break;
+
+			case 'T':
+				if (*a)
+					goto unknown;
+				Ttimeflag = true;
+				break;
+
+			case 'u':
+				unlockflag = true;
+				goto handle_revision;
+
+			case 'V':
+				setRCSversion(*argv);
+				break;
+
+			case 'x':
+				suffixes = a;
+				break;
+
+			case 'z':
+				zone_set(a);
+				break;
+
+			default:
+			unknown:
+				error("unknown option: %s%s", *argv, usage);
+		}
+	}
+
+	dounlock = perform & unlockflag;
+
+	if (nerror)
+	  cleanup();
+	else
+	  for (;  0 < argc;  cleanup(), ++argv, --argc) {
+
+		ffree();
+
+		if (!(
+			0 < pairnames(
+				argc, argv,
+				dounlock ? rcswriteopen : rcsreadopen,
+				true, true
+			) &&
+			(workptr = Iopen(workname, FOPEN_R_WORK, &workstat))
+		))
+			continue;
+
+		if (same_file(RCSstat, workstat, 0)) {
+			rcserror("RCS file is the same as working file %s.",
+				workname
+			);
+			continue;
+		}
+
+		gettree();
+
+		p = 0;
+		if (rev) {
+			if (!fexpandsym(rev, &revision, workptr))
+				continue;
+			p = revision.string;
+		} else if (Head)
+			switch (unlockflag ? findlock(false,&delta) : 0) {
+				default:
+					continue;
+				case 0:
+					p = Dbranch ? Dbranch : "";
+					break;
+				case 1:
+					p = delta->num;
+					break;
+			}
+		delta = 0;
+		deltas = 0;  /* Keep lint happy.  */
+		if (p  &&  !(delta = genrevs(p,(char*)0,(char*)0,(char*)0,&deltas)))
+			continue;
+
+		waslocked = delta && delta->lockedby;
+		locker_expansion = unlock(delta);
+		unlocked = locker_expansion & unlockflag;
+		if (unlocked<waslocked  &&  workstat.st_mode&(S_IWUSR|S_IWGRP|S_IWOTH))
+			continue;
+
+		if (unlocked && !checkaccesslist())
+			continue;
+
+		if (dorewrite(dounlock, unlocked) != 0)
+			continue;
+
+		if (0 <= expmode)
+			Expand = expmode;
+		else if (
+			waslocked  &&
+			Expand == KEYVAL_EXPAND  &&
+			WORKMODE(RCSstat.st_mode,true) == workstat.st_mode
+		)
+			Expand = KEYVALLOCK_EXPAND;
+
+		getdesc(false);
+
+		if (
+			!delta ? workstat.st_size!=0 :
+			0 < rcsfcmp(
+				workptr, &workstat,
+				buildrevision(deltas, delta, (FILE*)0, false),
+				delta
+			)
+		)
+			continue;
+
+		if (quietflag < unlocked)
+			aprintf(stdout, "rcs -u%s %s\n", delta->num, RCSname);
+
+		if (perform & unlocked) {
+			if_advise_access(deltas->first != delta, finptr, MADV_SEQUENTIAL);
+			if (donerewrite(true,
+				Ttimeflag ? RCSstat.st_mtime : (time_t)-1
+			) != 0)
+				continue;
+		}
+
+		if (!quietflag)
+			aprintf(stdout, "rm -f %s\n", workname);
+		Izclose(&workptr);
+		if (perform  &&  un_link(workname) != 0)
+			eerror(workname);
+
+	  }
+
+	tempunlink();
+	if (!quietflag)
+		Ofclose(stdout);
+	return exitstatus;
+}
+
+	static void
+cleanup()
+{
+	if (nerror) exitstatus = EXIT_FAILURE;
+	Izclose(&finptr);
+	Izclose(&workptr);
+	Ozclose(&fcopy);
+	ORCSclose();
+	dirtempunlink();
+}
+
+	void
+exiterr()
+{
+	ORCSerror();
+	dirtempunlink();
+	tempunlink();
+	_exit(EXIT_FAILURE);
+}
+
+	static int
+unlock(delta)
+	struct hshentry *delta;
+{
+	register struct rcslock **al, *l;
+
+	if (delta && delta->lockedby && strcmp(getcaller(),delta->lockedby)==0)
+		for (al = &Locks;  (l = *al);  al = &l->nextlock)
+			if (l->delta == delta) {
+				*al = l->nextlock;
+				delta->lockedby = 0;
+				return true;
+			}
+	return false;
+}
+
+#if has_dirent
+	static int
+get_directory(dirname, aargv)
+	char const *dirname;
+	char ***aargv;
+/*
+ * Put a vector of all DIRNAME's directory entries names into *AARGV.
+ * Ignore names of RCS files.
+ * Yield the number of entries found.  Terminate the vector with 0.
+ * Allocate the storage for the vector and entry names.
+ * Do not sort the names.  Do not include '.' and '..'.
+ */
+{
+	int i, entries = 0, entries_max = 64;
+	size_t chars = 0, chars_max = 1024;
+	size_t *offset = tnalloc(size_t, entries_max);
+	char *a = tnalloc(char, chars_max), **p;
+	DIR *d;
+	struct dirent *e;
+
+	if (!(d = opendir(dirname)))
+		efaterror(dirname);
+	while ((errno = 0,  e = readdir(d))) {
+		char const *en = e->d_name;
+		size_t s = strlen(en) + 1;
+		if (en[0]=='.'   &&   (!en[1]  ||  (en[1]=='.' && !en[2])))
+			continue;
+		if (rcssuffix(en))
+			continue;
+		while (chars_max < s + chars)
+			a = trealloc(char, a, chars_max<<=1);
+		if (entries == entries_max)
+			offset = trealloc(size_t, offset, entries_max<<=1);
+		offset[entries++] = chars;
+		strlcpy(a+chars, en, chars_max);
+		chars += s;
+	}
+#	if void_closedir
+#		define close_directory(d) (closedir(d), 0)
+#	else
+#		define close_directory(d) closedir(d)
+#	endif
+	if (errno  ||  close_directory(d) != 0)
+		efaterror(dirname);
+	if (chars)
+		a = trealloc(char, a, chars);
+	else
+		tfree(a);
+	*aargv = p = tnalloc(char*, entries+1);
+	for (i=0; i<entries; i++)
+		*p++ = a + offset[i];
+	*p = 0;
+	tfree(offset);
+	return entries;
+}
+#endif
+@
+
+
+1.6
+log
+@* more unifdef
+* of course we've got sys_siglist
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/gnu/usr.bin/rcs/src/rcsclean.c,v 1.5 2004/12/12 21:22:55 tg Exp $ */
+d45 1
+a45 1
+__RCSID("$MirBSD: src/gnu/usr.bin/rcs/src/rcsclean.c,v 1.5 2004/12/12 21:22:55 tg Exp $");
+a255 3
+#if RCS_lint
+#	define exiterr rcscleanExit
+#endif
+@
+
+
+1.5
+log
+@RCS IDs, snprintf, ...
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/gnu/usr.bin/rcs/src/rcsclean.c,v 1.4 2004/12/12 21:01:57 tg Exp $ */
+d45 1
+a45 1
+__RCSID("$MirBSD$");
+d242 1
+a242 1
+	exitmain(exitstatus);
+@
+
+
+1.4
+log
+@ansi
+@
+text
+@d1 1
+a1 1
+/* $MirBSD$ */
+d43 5
+a47 1
+mainProg(rcscleanId, "rcsclean", "$MirBSD: src/gnu/usr.bin/rcs/src/rcsclean.c,v 1.2 2004/07/21 10:48:20 tg Exp $")
+@
+
+
+1.3
+log
+@* -Werror clean
+* conf.sh uses -Wno-error if that works
+* strcpy -> strlcpy (except if neither mkstemp nor mktemp are defined...)
+@
+text
+@d34 1
+a34 1
+	static int get_directory P((char const*,char***));
+d37 2
+a38 2
+static int unlock P((struct hshentry *));
+static void cleanup P((void));
+@
+
+
+1.2
+log
+@improve RCS (CVS) Id handling in RCS source; use .comment
+@
+text
+@d1 2
+d43 1
+a43 1
+mainProg(rcscleanId, "rcsclean", "$MirBSD: rcsclean.c,v 1.1.2.1 2004/07/21 09:14:28 tg Exp $")
+d314 1
+a314 1
+		VOID strcpy(a+chars, en);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d41 1
+a41 1
+mainProg(rcscleanId, "rcsclean", "$Id: rcsclean.c,v 1.1 1996/08/12 04:08:14 millert Exp $")
+@
+
+
+1.1.2.1
+log
+@pristine GNU RCS 5.7
+@
+text
+@d41 1
+a41 1
+mainProg(rcscleanId, "rcsclean", "$Id: rcsclean.c,v 5.9 1995/06/16 06:19:24 eggert Exp $")
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

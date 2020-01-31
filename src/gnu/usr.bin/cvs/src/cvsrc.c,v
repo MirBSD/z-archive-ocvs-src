@@ -1,0 +1,405 @@
+head	1.4;
+access;
+symbols
+	cvs-1_12_11:1.1.2.1
+	tg-mergetmp-mirosx-1:1.4
+	tg-mergefixes-1-branch:1.4.0.4
+	tg-mergefixes-1-base:1.4
+	MIROS_X:1.4.0.2
+	MIROS_X_BASE:1.4
+	cvs-1_12_10:1.1.2.1
+	FSF:1.1.2
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200404170130:1.1.1.1
+	cvs-1_11_12:1.1.3.2
+	cvs-1_11_1p1:1.1.3.1
+	tg:1.1.3
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2004.12.02.12.40.13;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.02.22.13.49.14;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.12.21.16.12;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.28;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.28;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2004.12.02.11.58.52;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.02.12.19.18.32;	author tg;	state Exp;
+branches;
+next	1.1.3.2;
+
+1.1.3.2
+date	2004.02.12.19.39.00;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@update to cvs 1.12.10-MirOS except automatically
+generated files
+XXX this installs as /usr/bin/ncvs yet, so no
+XXX conflicts during the test phase.
+XXX I suggest to _not_ update.
+
+XXX *** IMPORTANT *** DO NOT ACCESS CVS 1.11 REPOSITORIES
+XXX *** IMPORTANT *** WITH CVS 1.12 OR VICE VERSA!
+@
+text
+@/*
+ * Copyright (c) 1993 david d zuhn
+ * 
+ * Written by david d `zoo' zuhn while at Cygnus Support
+ * 
+ * You may distribute under the terms of the GNU General Public License as
+ * specified in the README file that comes with the CVS source distribution.
+ *
+ */
+
+
+#include "cvs.h"
+#include "getline.h"
+
+/* this file is to be found in the user's home directory */
+
+#ifndef	CVSRC_FILENAME
+#define	CVSRC_FILENAME	".cvsrc"
+#endif
+char cvsrc[] = CVSRC_FILENAME;
+
+#define	GROW	10
+
+/* Read cvsrc, processing options matching CMDNAME ("cvs" for global
+   options, and update *ARGC and *ARGV accordingly.  */
+
+void
+read_cvsrc (int *argc, char ***argv, const char *cmdname)
+{
+    char *homedir;
+    char *homeinit;
+    FILE *cvsrcfile;
+
+    char *line;
+    int line_length;
+    size_t line_chars_allocated;
+
+    char *optstart;
+
+    int command_len;
+    int found = 0;
+
+    int i;
+
+    int new_argc;
+    int max_new_argv;
+    char **new_argv;
+
+    /* old_argc and old_argv hold the values returned from the
+       previous invocation of read_cvsrc and are used to free the
+       allocated memory.  The first invocation of read_cvsrc gets argv
+       from the system, this memory must not be free'd.  */
+    static int old_argc = 0;
+    static char **old_argv = NULL;
+
+    /* don't do anything if argc is -1, since that implies "help" mode */
+    if (*argc == -1)
+	return;
+
+    /* determine filename for ~/.cvsrc */
+
+    homedir = get_homedir ();
+    /* If we can't find a home directory, ignore ~/.cvsrc.  This may
+       make tracking down problems a bit of a pain, but on the other
+       hand it might be obnoxious to complain when CVS will function
+       just fine without .cvsrc (and many users won't even know what
+       .cvsrc is).  */
+    if (!homedir)
+	return;
+
+    homeinit = strcat_filename_onto_homedir (homedir, cvsrc);
+
+    /* if it can't be read, there's no point to continuing */
+
+    if (!isreadable (homeinit))
+    {
+	free (homeinit);
+	return;
+    }
+
+    /* now scan the file until we find the line for the command in question */
+
+    line = NULL;
+    line_chars_allocated = 0;
+    command_len = strlen (cmdname);
+    cvsrcfile = open_file (homeinit, "r");
+    while ((line_length = getline (&line, &line_chars_allocated, cvsrcfile))
+	   >= 0)
+    {
+	/* skip over comment lines */
+	if (line[0] == '#')
+	    continue;
+
+	/* stop if we match the current command */
+	if (!strncmp (line, cmdname, command_len)
+	    && isspace ((unsigned char) *(line + command_len)))
+	{
+	    found = 1;
+	    break;
+	}
+    }
+
+    if (line_length < 0 && !feof (cvsrcfile))
+	error (0, errno, "cannot read %s", homeinit);
+
+    fclose (cvsrcfile);
+
+    /* setup the new options list */
+
+    new_argc = 1;
+    max_new_argv = (*argc) + GROW;
+    new_argv = (char **) xmalloc (max_new_argv * sizeof (char*));
+    new_argv[0] = xstrdup ((*argv)[0]);
+
+    if (found)
+    {
+	/* skip over command in the options line */
+	for (optstart = strtok (line + command_len, "\t \n");
+	     optstart;
+	     optstart = strtok (NULL, "\t \n"))
+	{
+	    new_argv [new_argc++] = xstrdup (optstart);
+	  
+	    if (new_argc >= max_new_argv)
+	    {
+		max_new_argv += GROW;
+		new_argv = (char **) xrealloc (new_argv, max_new_argv * sizeof (char*));
+	    }
+	}
+    }
+
+    if (line != NULL)
+	free (line);
+
+    /* now copy the remaining arguments */
+  
+    if (new_argc + *argc > max_new_argv)
+    {
+	max_new_argv = new_argc + *argc;
+	new_argv = (char **) xrealloc (new_argv, max_new_argv * sizeof (char*));
+    }
+    for (i=1; i < *argc; i++)
+    {
+	new_argv [new_argc++] = xstrdup ((*argv)[i]);
+    }
+
+    if (old_argv != NULL)
+    {
+	/* Free the memory which was allocated in the previous
+           read_cvsrc call.  */
+	free_names (&old_argc, old_argv);
+    }
+
+    old_argc = *argc = new_argc;
+    old_argv = *argv = new_argv;
+
+    free (homeinit);
+    return;
+}
+@
+
+
+1.3
+log
+@cvs-1.11.12 doesn't do the joints correctly (what were the
+FSF people smoking?), it memory faults.
+thusly revert to 1.11.1p1
+
+tested.
+agreed bsiegert@@
+@
+text
+@a23 2
+extern char *strtok ();
+
+d28 1
+a28 4
+read_cvsrc (argc, argv, cmdname)
+    int *argc;
+    char ***argv;
+    char *cmdname;
+d71 1
+a71 4
+    homeinit = (char *) xmalloc (strlen (homedir) + strlen (cvsrc) + 10);
+    strcpy (homeinit, homedir);
+    strcat (homeinit, "/");
+    strcat (homeinit, cvsrc);
+@
+
+
+1.2
+log
+@first step of merging new cvs
+XXX might not compile
+XXX might not work
+XXX might contain bugs
+XXX definitively needs autoconf 2.58 first
+@
+text
+@d76 4
+a79 1
+    homeinit = strcat_filename_onto_homedir (homedir, cvsrc);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d76 1
+a76 4
+    homeinit = (char *) xmalloc (strlen (homedir) + strlen (cvsrc) + 10);
+    strcpy (homeinit, homedir);
+    strcat (homeinit, "/");
+    strcat (homeinit, cvsrc);
+@
+
+
+1.1.2.1
+log
+@vendor-branch-ify new cvs 1.12
+@
+text
+@d24 2
+d30 4
+a33 1
+read_cvsrc (int *argc, char ***argv, const char *cmdname)
+d76 4
+a79 1
+    homeinit = strcat_filename_onto_homedir (homedir, cvsrc);
+@
+
+
+1.1.3.1
+log
+@our CVS is currently at 1.11.1p1, thus import that version into vendor branch
+@
+text
+@@
+
+
+1.1.3.2
+log
+@CVS 1.11.12 is the latest stable version of CVS,
+released 06.02.2004, with a huge lot of bug fixes.
+
+/me hopes this will pay off...
+@
+text
+@d76 4
+a79 1
+    homeinit = strcat_filename_onto_homedir (homedir, cvsrc);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,294 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.06.10.19.01.02;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.14;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.14;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@/* Low level interface to ns532 running mach 3.0.
+   Copyright (C) 1992 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "defs.h"
+#include "inferior.h"
+
+#include <stdio.h>
+
+#include <mach.h>
+#include <mach/message.h>
+#include <mach/exception.h>
+#include <mach_error.h>
+
+#define private static
+
+
+/* Find offsets to thread states at compile time.
+ * If your compiler does not grok this, calculate offsets
+ * offsets yourself and use them (or get a compatible compiler :-)
+ */
+
+#define  REG_N_OFFSET(reg) (int)(&((struct ns532_combined_state *)0)->ts.reg)
+#define  REG_F_OFFSET(reg) (int)(&((struct ns532_combined_state *)0)->fs.reg)
+
+/* at reg_offset[i] is the offset to the ns532_combined_state
+ * location where the gdb registers[i] is stored.
+ */
+
+static int reg_offset[] = 
+{
+  REG_N_OFFSET(r0),  REG_N_OFFSET(r1), REG_N_OFFSET(r2), REG_N_OFFSET(r3),
+  REG_N_OFFSET(r4),  REG_N_OFFSET(r5), REG_N_OFFSET(r6), REG_N_OFFSET(r7),
+  REG_F_OFFSET(l0a), REG_F_OFFSET(l1a),REG_F_OFFSET(l2a),REG_F_OFFSET(l3a),
+  REG_F_OFFSET(l4a), REG_F_OFFSET(l5a),REG_F_OFFSET(l6a),REG_F_OFFSET(l7a),
+  REG_N_OFFSET(sp),  REG_N_OFFSET(fp), REG_N_OFFSET(pc), REG_N_OFFSET(psr),
+  REG_F_OFFSET(fsr),
+  REG_F_OFFSET(l0a), REG_F_OFFSET(l2a),REG_F_OFFSET(l4a),REG_F_OFFSET(l6a)
+  /* @@@@@@ 532 has more double length floating point regs, not accessed currently */
+};
+
+/* Fetch COUNT contiguous registers from thread STATE starting from REGNUM
+ * Caller knows that the regs handled in one transaction are of same size.
+ */
+#define FETCH_REGS(state, regnum, count) \
+  memcpy (&registers[REGISTER_BYTE (regnum)], \
+	  (char *)state+reg_offset[ regnum ], \
+	  count*REGISTER_SIZE)
+
+/* Store COUNT contiguous registers to thread STATE starting from REGNUM */
+#define STORE_REGS(state, regnum, count) \
+  memcpy ((char *)state+reg_offset[ regnum ], \
+	  &registers[REGISTER_BYTE (regnum)], \
+	  count*REGISTER_SIZE)
+
+/*
+ * Fetch inferiors registers for gdb.
+ * REGNO specifies which (as gdb views it) register, -1 for all.
+ */
+
+void
+fetch_inferior_registers (regno)
+     int regno;
+{
+  kern_return_t ret;
+  thread_state_data_t state;
+  unsigned int stateCnt = NS532_COMBINED_STATE_COUNT;
+  int index;
+  
+  if (! MACH_PORT_VALID (current_thread))
+    error ("fetch inferior registers: Invalid thread");
+
+  if (must_suspend_thread)
+    setup_thread (current_thread, 1);
+
+  ret = thread_get_state (current_thread,
+			  NS532_COMBINED_STATE,
+			  state,
+			  &stateCnt);
+
+  if (ret != KERN_SUCCESS)
+    message ("fetch_inferior_registers: %s ",
+	     mach_error_string (ret));
+#if 0
+  /* It may be more effective to store validate all of them,
+   * since we fetched them all anyway
+   */
+  else if (regno != -1)
+    supply_register (regno, (char *)state+reg_offset[regno]);
+#endif
+  else
+    {
+      for (index = 0; index < NUM_REGS; index++) 
+	supply_register (index, (char *)state+reg_offset[index]);
+    }
+
+  if (must_suspend_thread)
+    setup_thread (current_thread, 0);
+}
+
+/* Store our register values back into the inferior.
+ * If REGNO is -1, do this for all registers.
+ * Otherwise, REGNO specifies which register
+ *
+ * On mach3 all registers are always saved in one call.
+ */
+void
+store_inferior_registers (regno)
+     int regno;
+{
+  kern_return_t ret;
+  thread_state_data_t state;
+  unsigned int stateCnt = NS532_COMBINED_STATE_COUNT;
+  register int index;
+
+  if (! MACH_PORT_VALID (current_thread))
+    error ("store inferior registers: Invalid thread");
+
+  if (must_suspend_thread)
+    setup_thread (current_thread, 1);
+
+  /* Fetch the state of the current thread */
+  ret = thread_get_state (current_thread,
+			  NS532_COMBINED_STATE,
+			  state,
+			  &stateCnt);
+
+   if (ret != KERN_SUCCESS) 
+    {
+      message ("store_inferior_registers (get): %s",
+	       mach_error_string (ret));
+      if (must_suspend_thread)
+	setup_thread (current_thread, 0);
+      return;
+    }
+
+  /* move gdb's registers to thread's state
+   *
+   * Since we save all registers anyway, save the ones
+   * that gdb thinks are valid (e.g. ignore the regno
+   * parameter)
+   */
+#if 0
+  if (regno != -1)
+    STORE_REGS (state, regno, 1);
+  else
+#endif
+    {
+      for (index = 0; index < NUM_REGS; index++) 
+	STORE_REGS (state, index, 1);
+    }
+  
+  /* Write gdb's current view of register to the thread
+   */
+  ret = thread_set_state (current_thread,
+			  NS532_COMBINED_STATE,
+			  state,
+			  NS532_COMBINED_STATE_COUNT);
+  
+  if (ret != KERN_SUCCESS)
+    message ("store_inferior_registers (set): %s",
+	     mach_error_string (ret));
+
+  if (must_suspend_thread)
+    setup_thread (current_thread, 0);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

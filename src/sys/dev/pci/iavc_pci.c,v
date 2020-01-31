@@ -1,0 +1,680 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2
+	tg-mergefixes-1-branch:1.2.0.14
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.12
+	MIROS_X_BASE:1.2
+	tg-mergetmp-3:1.2
+	MIRBSD_XP_MIRPPC:1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.8
+	MIRBSD_7quater:1.2
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.10.03.17.24.12;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.10.03.15.20.46;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@kernel-side support for ISDN BRI/PRI rate-independent interface
+makes us support, in addition to BRI (basic rate interface,
+ 2x64 kbps B channels, 1x16 kbps D channel, BASIC ACCESS), PRI cards
+(primary rate interface, 30x64 kbps B channels, 1x64 kbps D channel,
+ 1x64 kbps SYNC channel -> 2048 kbps E1 line; PRIMARY MULTIPLEX;
+ as well as its US/japanese equivalent).
+
+This is the theory. This is live code from NetBSD.
+@
+text
+@/*	$MirBSD: iavc_pci.c,v 1.1 2003/10/03 15:20:46 tg Exp $	*/
+/*	$NetBSD: iavc_pci.c,v 1.2 2003/10/03 16:38:44 pooka Exp $	*/
+
+/*
+ * Copyright (c) 2001-2003 Cubical Solutions Ltd.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ * capi/iavc/iavc_pci.c
+ *		The AVM ISDN controllers' PCI bus attachment handling.
+ *
+ * $FreeBSD: src/sys/i4b/capi/iavc/iavc_pci.c,v 1.1.2.1 2001/08/10 14:08:34 obrien Exp $
+ */
+
+#include <sys/cdefs.h>
+
+#include <sys/param.h>
+#include <sys/kernel.h>
+#include <sys/systm.h>
+#include <sys/mbuf.h>
+#include <sys/timeout.h>
+#include <sys/socket.h>
+#include <sys/device.h>
+#include <net/if.h>
+
+#include <machine/bus.h>
+
+#include <dev/pci/pcireg.h>
+#include <dev/pci/pcivar.h>
+#include <dev/pci/pcidevs.h>
+
+#include <netisdn/i4b_ioctl.h>
+#include <netisdn/i4b_l3l4.h>
+#include <netisdn/i4b_capi.h>
+
+#include <dev/ic/iavcvar.h>
+#include <dev/ic/iavcreg.h>
+
+struct iavc_pci_softc {
+	struct iavc_softc sc_iavc;
+
+	bus_addr_t mem_base;
+	bus_size_t mem_size;
+	bus_addr_t io_base;
+	bus_size_t io_size;
+
+	pci_chipset_tag_t sc_pc;
+
+	void *sc_ih;		/* interrupt handler */
+};
+#define IAVC_PCI_IOBA	0x14
+#define IAVC_PCI_MMBA	0x10
+
+/* PCI driver linkage */
+
+static const struct iavc_pci_product *find_cardname(struct pci_attach_args *);
+
+static int iavc_pci_probe(struct device *, struct cfdata *, void *);
+static void iavc_pci_attach(struct device *, struct device *, void *);
+
+int iavc_pci_intr(void *);
+
+CFATTACH_DECL(iavc_pci, sizeof(struct iavc_softc),
+    iavc_pci_probe, iavc_pci_attach, NULL, NULL);
+
+struct cfdriver iavc_cd = {
+	NULL, "iavc", DV_IFNET
+};
+
+static const struct iavc_pci_product {
+	pci_vendor_id_t npp_vendor;
+	pci_product_id_t npp_product;
+	const char *name;
+} iavc_pci_products[] = {
+	{ PCI_VENDOR_AVM, PCI_PRODUCT_AVM_B1, "AVM B1 PCI" },
+	{ PCI_VENDOR_AVM, PCI_PRODUCT_AVM_T1, "AVM T1 PCI" },
+	{ 0, 0, NULL },
+};
+
+static const struct iavc_pci_product *
+find_cardname(struct pci_attach_args * pa)
+{
+	const struct iavc_pci_product *pp = NULL;
+
+	for (pp = iavc_pci_products; pp->npp_vendor; pp++) {
+		if (PCI_VENDOR(pa->pa_id) == pp->npp_vendor &&
+		    PCI_PRODUCT(pa->pa_id) == pp->npp_product)
+			return pp;
+	}
+
+	return NULL;
+}
+
+static int
+iavc_pci_probe(struct device * parent, struct cfdata * match, void *aux)
+{
+	struct pci_attach_args *pa = aux;
+
+	if (find_cardname(pa))
+		return 1;
+
+	return 0;
+}
+
+static void
+iavc_pci_attach(struct device * parent, struct device * self, void *aux)
+{
+	struct iavc_pci_softc *psc = (void *) self;
+	struct iavc_softc *sc = (void *) self;
+	struct pci_attach_args *pa = aux;
+	pci_chipset_tag_t pc = pa->pa_pc;
+	const struct iavc_pci_product *pp;
+	pci_intr_handle_t ih;
+	const char *intrstr;
+	int ret;
+
+	pp = find_cardname(pa);
+	if (pp == NULL)
+		return;
+
+	sc->sc_t1 = 0;
+	sc->sc_dma = 0;
+	sc->dmat = pa->pa_dmat;
+
+	iavc_b1dma_reset(sc);
+
+	if (pci_mapreg_map(pa, IAVC_PCI_IOBA, PCI_MAPREG_TYPE_IO, 0,
+		&sc->sc_io_bt, &sc->sc_io_bh, &psc->io_base, &psc->io_size, 0)) {
+		printf(": unable to map i/o registers\n");
+		return;
+	}
+
+	if (pci_mapreg_map(pa, IAVC_PCI_MMBA, PCI_MAPREG_TYPE_MEM, 0,
+	     &sc->sc_mem_bt, &sc->sc_mem_bh, &psc->mem_base, &psc->mem_size, 0)) {
+		printf(": unable to map mem registers\n");
+		return;
+	}
+	printf(": %s\n", pp->name);
+
+	if (pp->npp_product == PCI_PRODUCT_AVM_T1) {
+		printf("%s: sorry, PRI not yet supported\n",
+		    sc->sc_dev.dv_xname);
+		return;
+
+#if 0
+		sc->sc_capi.card_type = CARD_TYPEC_AVM_T1_PCI;
+		sc->sc_capi.sc_nbch = NBCH_PRI;
+		ret = iavc_t1_detect(sc);
+		if (ret) {
+			if (ret < 6) {
+				printf("%s: no card detected?\n",
+				    sc->sc_dev.dv_xname);
+			} else {
+				printf("%s: black box not on\n",
+				    sc->sc_dev.dv_xname);
+			}
+			return;
+		} else {
+			sc->sc_dma = 1;
+			sc->sc_t1 = 1;
+		}
+#endif
+
+	} else if (pp->npp_product == PCI_PRODUCT_AVM_B1) {
+		sc->sc_capi.card_type = CARD_TYPEC_AVM_B1_PCI;
+		sc->sc_capi.sc_nbch = NBCH_BRI;
+		ret = iavc_b1dma_detect(sc);
+		if (ret) {
+			ret = iavc_b1_detect(sc);
+			if (ret) {
+				printf("%s: no card detected?\n",
+				    sc->sc_dev.dv_xname);
+				return;
+			}
+		} else {
+			sc->sc_dma = 1;
+		}
+	}
+	if (sc->sc_dma)
+		iavc_b1dma_reset(sc);
+
+#if 0
+	/*
+         * XXX: should really be done this way, but this freezes the card
+         */
+	if (sc->sc_t1)
+		iavc_t1_reset(sc);
+	else
+		iavc_b1_reset(sc);
+#endif
+
+	if (pci_intr_map(pa, &ih)) {
+		printf("%s: couldn't map interrupt\n",
+		    sc->sc_dev.dv_xname);
+		return;
+	}
+
+	intrstr = pci_intr_string(pc, ih);
+	psc->sc_ih = pci_intr_establish(pc, ih, IPL_NET, iavc_pci_intr, psc, sc->sc_dev.dv_xname);
+	if (psc->sc_ih == NULL) {
+		printf("%s: couldn't establish interrupt",
+		    sc->sc_dev.dv_xname);
+		if (intrstr != NULL)
+			printf(" at %s", intrstr);
+		printf("\n");
+		return;
+	}
+	psc->sc_pc = pc;
+	printf("%s: interrupting at %s\n", sc->sc_dev.dv_xname, intrstr);
+
+	memset(&sc->sc_txq, 0, sizeof(struct ifqueue));
+	sc->sc_txq.ifq_maxlen = sc->sc_capi.sc_nbch * 4;
+
+	sc->sc_intr = 0;
+	sc->sc_state = IAVC_DOWN;
+	sc->sc_blocked = 0;
+
+	/* setup capi link */
+	sc->sc_capi.load = iavc_load;
+	sc->sc_capi.reg_appl = iavc_register;
+	sc->sc_capi.rel_appl = iavc_release;
+	sc->sc_capi.send = iavc_send;
+	sc->sc_capi.ctx = (void *) sc;
+
+	/* lock & load DMA for TX */
+	if ((ret = bus_dmamem_alloc(sc->dmat, IAVC_DMA_SIZE, PAGE_SIZE, 0,
+	    &sc->txseg, 1, &sc->ntxsegs, BUS_DMA_ALLOCNOW)) != 0) {
+		printf("%s: can't allocate tx DMA memory, error = %d\n",
+		    sc->sc_dev.dv_xname, ret);
+		goto fail1;
+	}
+
+	if ((ret = bus_dmamem_map(sc->dmat, &sc->txseg, sc->ntxsegs,
+	    IAVC_DMA_SIZE, &sc->sc_sendbuf, BUS_DMA_NOWAIT)) != 0) {
+		printf("%s: can't map tx DMA memory, error = %d\n",
+		    sc->sc_dev.dv_xname, ret);
+		goto fail2;
+	}
+
+	if ((ret = bus_dmamap_create(sc->dmat, IAVC_DMA_SIZE, 1,
+	    IAVC_DMA_SIZE, 0, BUS_DMA_ALLOCNOW | BUS_DMA_NOWAIT,
+	    &sc->tx_map)) != 0) {
+		printf("%s: can't create tx DMA map, error = %d\n",
+		    sc->sc_dev.dv_xname, ret);
+		goto fail3;
+	}
+
+	if ((ret = bus_dmamap_load(sc->dmat, sc->tx_map, sc->sc_sendbuf,
+	    IAVC_DMA_SIZE, NULL, BUS_DMA_WRITE | BUS_DMA_NOWAIT)) != 0) {
+		printf("%s: can't load tx DMA map, error = %d\n",
+		    sc->sc_dev.dv_xname, ret);
+		goto fail4;
+	}
+
+	/* do the same for RX */
+	if ((ret = bus_dmamem_alloc(sc->dmat, IAVC_DMA_SIZE, PAGE_SIZE, 0,
+	    &sc->rxseg, 1, &sc->nrxsegs, BUS_DMA_ALLOCNOW)) != 0) {
+		printf("%s: can't allocate rx DMA memory, error = %d\n",
+		    sc->sc_dev.dv_xname, ret);
+		goto fail5;
+	}
+
+	if ((ret = bus_dmamem_map(sc->dmat, &sc->rxseg, sc->nrxsegs,
+	    IAVC_DMA_SIZE, &sc->sc_recvbuf, BUS_DMA_NOWAIT)) != 0) {
+		printf("%s: can't map rx DMA memory, error = %d\n",
+		    sc->sc_dev.dv_xname, ret);
+		goto fail6;
+	}
+
+	if ((ret = bus_dmamap_create(sc->dmat, IAVC_DMA_SIZE, 1, IAVC_DMA_SIZE,
+	    0, BUS_DMA_ALLOCNOW | BUS_DMA_NOWAIT, &sc->rx_map)) != 0) {
+		printf("%s: can't create rx DMA map, error = %d\n",
+		    sc->sc_dev.dv_xname, ret);
+		goto fail7;
+	}
+
+	if ((ret = bus_dmamap_load(sc->dmat, sc->rx_map, sc->sc_recvbuf,
+	    IAVC_DMA_SIZE, NULL, BUS_DMA_READ | BUS_DMA_NOWAIT)) != 0) {
+		printf("%s: can't load rx DMA map, error = %d\n",
+		    sc->sc_dev.dv_xname, ret);
+		goto fail8;
+	}
+
+	if (capi_ll_attach(&sc->sc_capi, sc->sc_dev.dv_xname, pp->name)) {
+		printf("%s: capi attach failed\n", sc->sc_dev.dv_xname);
+		goto fail9;
+	}
+	return;
+
+	/* release resources in case of failed attach */
+fail9:
+	bus_dmamap_unload(sc->dmat, sc->rx_map);
+fail8:
+	bus_dmamap_destroy(sc->dmat, sc->rx_map);
+fail7:
+	bus_dmamem_unmap(sc->dmat, sc->sc_recvbuf, IAVC_DMA_SIZE);
+fail6:
+	bus_dmamem_free(sc->dmat, &sc->rxseg, sc->nrxsegs);
+fail5:
+	bus_dmamap_unload(sc->dmat, sc->tx_map);
+fail4:
+	bus_dmamap_destroy(sc->dmat, sc->tx_map);
+fail3:
+	bus_dmamem_unmap(sc->dmat, sc->sc_sendbuf, IAVC_DMA_SIZE);
+fail2:
+	bus_dmamem_free(sc->dmat, &sc->txseg, sc->ntxsegs);
+fail1:
+	pci_intr_disestablish(psc->sc_pc, psc->sc_ih);
+
+	return;
+}
+
+int
+iavc_pci_intr(void *arg)
+{
+	struct iavc_softc *sc = arg;
+
+	return iavc_handle_intr(sc);
+}
+
+#if 0
+static int
+iavc_pci_detach(struct device * self, int flags)
+{
+	struct iavc_pci_softc *psc = (void *) self;
+
+	bus_space_unmap(psc->sc_iavc.sc_mem_bt, psc->sc_iavc.sc_mem_bh,
+	    psc->mem_size);
+	bus_space_free(psc->sc_iavc.sc_mem_bt, psc->sc_iavc.sc_mem_bh,
+	    psc->mem_size);
+	bus_space_unmap(psc->sc_iavc.sc_io_bt, psc->sc_iavc.sc_io_bh,
+	    psc->io_size);
+	bus_space_free(psc->sc_iavc.sc_io_bt, psc->sc_iavc.sc_io_bh,
+	    psc->io_size);
+
+	pci_intr_disestablish(psc->sc_pc, psc->sc_ih);
+
+	/* XXX: capi detach?!? */
+
+	return 0;
+}
+
+static int
+iavc_pci_activate(struct device * self, enum devact act)
+{
+	struct iavc_softc *psc = (struct iavc_softc *) self;
+	int error, s;
+
+	error = 0;
+
+	s = splnet();
+	switch (act) {
+	case DVACT_ACTIVATE:
+		error = EOPNOTSUPP;
+		break;
+	case DVACT_DEACTIVATE:
+		/* XXX */
+		break;
+	}
+
+	splx(s);
+
+	return error;
+}
+#endif
+@
+
+
+1.1
+log
+@Sync with NetBSD
+
+|| Among others, this gives us:
+
+Module Name:    src
+Committed By:   pooka
+Date:           Thu Sep 25 15:34:38 UTC 2003
+
+Added Files:
+        src/sys/netisdn: i4b_capi.h i4b_capi_l4if.c i4b_capi_llif.c
+            i4b_capi_msgs.c i4b_capi_msgs.h
+
+Log Message:
+Add a support layer for the ISDN CAPI (http://www.capi.org/), which should
+make it pretty simple to write drivers for cards which conform to CAPI.
+
+This code was originally written by Juha-Matti Liukkonen <jml@@cubical.fi>
+of Cubical Solutions Ltd. for FreeBSD, and was now adapted to NetBSD
+by myself for the same company.
+
+|| and
+
+Module Name:    src
+Committed By:   pooka
+Date:           Thu Sep 25 15:53:26 UTC 2003
+
+Added Files:
+        src/sys/dev/ic: iavc.c iavcreg.h iavcvar.h
+        src/sys/dev/pci: iavc_pci.c
+
+Log Message:
+Add a driver for the CAPI-compliant AVM B1/T1 cards.
+
+The driver backend is capable of supporting also ISA cards (no DMA)
+and primary rate (PRI) cards in addition to the basic rate ones,
+but I don't any to test on right now, so we don't support those
+currently.
+
+This code was originally written by Juha-Matti Liukkonen <jml@@cubical.fi>
+of Cubical Solutions Ltd. for FreeBSD, and was ported to NetBSD by
+myself for the same company.
+
+==================================================================
+
+The full list of ISDN files is now:
+
+src/etc/MAKEDEV.mi
+src/etc/Makefile
+src/etc/etc.i386/MAKEDEV
+src/etc/etc.i386/MAKEDEV.md
+src/etc/isdnd.rc.sample
+src/etc/isdnd.sppp.sample
+src/etc/mtree/4.4BSD.dist
+src/etc/ppp/ppp.conf.sample
+src/etc/rc
+src/etc/rc.conf
+src/include/Makefile
+src/share/man/man4/Makefile
+src/share/man/man4/daic.4
+src/share/man/man4/iavc.4
+src/share/man/man4/ifpci.4
+src/share/man/man4/ippp.4
+src/share/man/man4/irip.4
+src/share/man/man4/isdn.4
+src/share/man/man4/isdnbchan.4
+src/share/man/man4/isdncapi.4
+src/share/man/man4/isdnctl.4
+src/share/man/man4/isdntel.4
+src/share/man/man4/isdntrc.4
+src/share/man/man4/isic.4
+src/share/man/man4/iwic.4
+src/sys/arch/i386/conf/GENERIC
+src/sys/arch/i386/i386/conf.c
+src/sys/conf/files
+src/sys/dev/ic/daic.c
+src/sys/dev/ic/daicreg.h
+src/sys/dev/ic/daicvar.h
+src/sys/dev/ic/hscx.c
+src/sys/dev/ic/hscx.h
+src/sys/dev/ic/iavc.c
+src/sys/dev/ic/iavcreg.h
+src/sys/dev/ic/iavcvar.h
+src/sys/dev/ic/ipac.h
+src/sys/dev/ic/isac.c
+src/sys/dev/ic/isac.h
+src/sys/dev/ic/isacsx.c
+src/sys/dev/ic/isacsx.h
+src/sys/dev/ic/isic.c
+src/sys/dev/ic/isic_bchan.c
+src/sys/dev/ic/isic_l1.c
+src/sys/dev/ic/isic_l1.h
+src/sys/dev/ic/isic_l1fsm.c
+src/sys/dev/isa/daic_isa.c
+src/sys/dev/isa/files.isa
+src/sys/dev/isa/files.isapnp
+src/sys/dev/isa/isic_isa.c
+src/sys/dev/isa/isic_isa_avm_a1.c
+src/sys/dev/isa/isic_isa_itk_ix1.c
+src/sys/dev/isa/isic_isa_tel_s016.c
+src/sys/dev/isa/isic_isa_tel_s0163.c
+src/sys/dev/isa/isic_isa_tel_s08.c
+src/sys/dev/isa/isic_isa_usr_sti.c
+src/sys/dev/isa/isic_isapnp.c
+src/sys/dev/isa/isic_isapnp_ctx_s0P.c
+src/sys/dev/isa/isic_isapnp_drn_ngo.c
+src/sys/dev/isa/isic_isapnp_dynalink.c
+src/sys/dev/isa/isic_isapnp_elsa_qs1i.c
+src/sys/dev/isa/isic_isapnp_itkix.c
+src/sys/dev/isa/isic_isapnp_siemens_isurf.c
+src/sys/dev/isa/isic_isapnp_sws.c
+src/sys/dev/isa/isic_isapnp_tel_s0P.c
+src/sys/dev/microcode/daic/Makefile
+src/sys/dev/microcode/daic/dnload.h
+src/sys/dev/microcode/daic/dnload.h-dist
+src/sys/dev/microcode/daic/gendnloadh
+src/sys/dev/pci/files.pci
+src/sys/dev/pci/fwlynx_pci.c
+src/sys/dev/pci/iavc_pci.c
+src/sys/dev/pci/ifpci.c
+src/sys/dev/pci/ifpci2.c
+src/sys/dev/pci/isic_pci.c
+src/sys/dev/pci/isic_pci.h
+src/sys/dev/pci/isic_pci_elsa_qs1p.c
+src/sys/dev/pci/iwic_bchan.c
+src/sys/dev/pci/iwic_dchan.c
+src/sys/dev/pci/iwic_fsm.c
+src/sys/dev/pci/iwic_pci.c
+src/sys/dev/pci/iwicreg.h
+src/sys/dev/pci/iwicvar.h
+src/sys/dev/pci/pcidevs
+src/sys/dev/pci/pcidevs.h
+src/sys/dev/pci/pcidevs_data.h
+src/sys/dev/pci/pcireg.h
+src/sys/dev/pcmcia/files.pcmcia
+src/sys/dev/pcmcia/isic_pcmcia.c
+src/sys/dev/pcmcia/isic_pcmcia.h
+src/sys/dev/pcmcia/isic_pcmcia_avm_fritz.c
+src/sys/dev/pcmcia/isic_pcmcia_elsa_isdnmc.c
+src/sys/dev/pcmcia/isic_pcmcia_elsa_mcall.c
+src/sys/dev/pcmcia/isic_pcmcia_sbspeedstar2.c
+src/sys/net/if_sppp.h
+src/sys/netisdn/i4b_capi.h
+src/sys/netisdn/i4b_capi_l4if.c
+src/sys/netisdn/i4b_capi_llif.c
+src/sys/netisdn/i4b_capi_msgs.c
+src/sys/netisdn/i4b_capi_msgs.h
+src/sys/netisdn/i4b_cause.h
+src/sys/netisdn/i4b_ctl.c
+src/sys/netisdn/i4b_debug.h
+src/sys/netisdn/i4b_global.h
+src/sys/netisdn/i4b_i4bdrv.c
+src/sys/netisdn/i4b_iframe.c
+src/sys/netisdn/i4b_ioctl.h
+src/sys/netisdn/i4b_ipr.c
+src/sys/netisdn/i4b_isdnq931.h
+src/sys/netisdn/i4b_isppp.c
+src/sys/netisdn/i4b_isppp.h
+src/sys/netisdn/i4b_l1l2.h
+src/sys/netisdn/i4b_l2.c
+src/sys/netisdn/i4b_l2.h
+src/sys/netisdn/i4b_l2fsm.c
+src/sys/netisdn/i4b_l2fsm.h
+src/sys/netisdn/i4b_l2if.c
+src/sys/netisdn/i4b_l2timer.c
+src/sys/netisdn/i4b_l3.h
+src/sys/netisdn/i4b_l3fsm.c
+src/sys/netisdn/i4b_l3fsm.h
+src/sys/netisdn/i4b_l3l4.h
+src/sys/netisdn/i4b_l3timer.c
+src/sys/netisdn/i4b_l4.c
+src/sys/netisdn/i4b_l4.h
+src/sys/netisdn/i4b_l4if.c
+src/sys/netisdn/i4b_l4mgmt.c
+src/sys/netisdn/i4b_l4timer.c
+src/sys/netisdn/i4b_lme.c
+src/sys/netisdn/i4b_mbuf.c
+src/sys/netisdn/i4b_mbuf.h
+src/sys/netisdn/i4b_q931.c
+src/sys/netisdn/i4b_q931.h
+src/sys/netisdn/i4b_q932fac.c
+src/sys/netisdn/i4b_q932fac.h
+src/sys/netisdn/i4b_rbch.c
+src/sys/netisdn/i4b_rbch_ioctl.h
+src/sys/netisdn/i4b_sframe.c
+src/sys/netisdn/i4b_tei.c
+src/sys/netisdn/i4b_tel.c
+src/sys/netisdn/i4b_tel_ioctl.h
+src/sys/netisdn/i4b_trace.c
+src/sys/netisdn/i4b_trace.h
+src/sys/netisdn/i4b_uframe.c
+src/sys/netisdn/i4b_util.c
+src/sys/sys/cdefs.h
+src/sys/sys/device.h
+src/sys/sys/select.h
+src/usr.sbin/Makefile
+src/usr.sbin/isdnd/Makefile
+src/usr.sbin/isdnd/alias.c
+src/usr.sbin/isdnd/alias.h
+src/usr.sbin/isdnd/config.h
+src/usr.sbin/isdnd/controller.c
+src/usr.sbin/isdnd/curses.c
+src/usr.sbin/isdnd/dial.c
+src/usr.sbin/isdnd/exec.c
+src/usr.sbin/isdnd/fsm.c
+src/usr.sbin/isdnd/holiday.c
+src/usr.sbin/isdnd/isdnd.8
+src/usr.sbin/isdnd/isdnd.acct.5
+src/usr.sbin/isdnd/isdnd.h
+src/usr.sbin/isdnd/isdnd.rates.5
+src/usr.sbin/isdnd/isdnd.rc.5
+src/usr.sbin/isdnd/log.c
+src/usr.sbin/isdnd/main.c
+src/usr.sbin/isdnd/monitor.c
+src/usr.sbin/isdnd/monitor.h
+src/usr.sbin/isdnd/msghdl.c
+src/usr.sbin/isdnd/pathnames.h
+src/usr.sbin/isdnd/pcause.c
+src/usr.sbin/isdnd/process.c
+src/usr.sbin/isdnd/rates.c
+src/usr.sbin/isdnd/rc_config.c
+src/usr.sbin/isdnd/rc_parse.y
+src/usr.sbin/isdnd/rc_scan.l
+src/usr.sbin/isdnd/support.c
+src/usr.sbin/isdnd/timer.c
+src/usr.sbin/ppp/ppp/Makefile
+src/usr.sbin/ppp/ppp/i4b.c
+
+Please correct me if anything should be missing.
+@
+text
+@d1 2
+a2 2
+/*	$MirBSD$	*/
+/*	$NetBSD: iavc_pci.c,v 1.1 2003/09/25 15:53:26 pooka Exp $	*/
+d167 1
+a167 1
+		sc->sc_capi.sc_nbch = 30;
+d186 1
+a186 1
+		sc->sc_capi.sc_nbch = 2;
+@
+

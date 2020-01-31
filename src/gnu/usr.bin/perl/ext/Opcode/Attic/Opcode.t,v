@@ -1,0 +1,220 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.12.03.21.56.53;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.43.02;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.02;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@merge cvs import, etc.
+@
+text
+@#!./perl -w
+
+$|=1;
+
+BEGIN {
+    chdir 't' if -d 't';
+    @@INC = '../lib';
+    require Config; import Config;
+    if ($Config{'extensions'} !~ /\bOpcode\b/ && $Config{'osname'} ne 'VMS') {
+        print "1..0\n";
+        exit 0;
+    }
+}
+
+use Opcode qw(
+	opcodes opdesc opmask verify_opset
+	opset opset_to_ops opset_to_hex invert_opset
+	opmask_add full_opset empty_opset define_optag
+);
+
+use strict;
+
+my $t = 1;
+my $last_test; # initalised at end
+print "1..$last_test\n";
+
+my($s1, $s2, $s3);
+my(@@o1, @@o2, @@o3);
+
+# --- opset_to_ops and opset
+
+my @@empty_l = opset_to_ops(empty_opset);
+print @@empty_l == 0 ?   "ok $t\n" : "not ok $t\n"; $t++;
+
+my @@full_l1  = opset_to_ops(full_opset);
+print @@full_l1 == opcodes() ? "ok $t\n" : "not ok $t\n"; $t++;
+my @@full_l2 = @@full_l1;	# = opcodes();	# XXX to be fixed
+print "@@full_l1" eq "@@full_l2" ? "ok $t\n" : "not ok $t\n"; $t++;
+
+@@empty_l = opset_to_ops(opset(':none'));
+print @@empty_l == 0 ?   "ok $t\n" : "not ok $t\n"; $t++;
+
+my @@full_l3 = opset_to_ops(opset(':all'));
+print  @@full_l1  ==  @@full_l3  ? "ok $t\n" : "not ok $t\n"; $t++;
+print "@@full_l1" eq "@@full_l3" ? "ok $t\n" : "not ok $t\n"; $t++;
+
+die $t unless $t == 7;
+$s1 = opset(      'padsv');
+$s2 = opset($s1,  'padav');
+$s3 = opset($s2, '!padav');
+print $s1 eq $s2 ? "not ok $t\n" : "ok $t\n"; ++$t;
+print $s1 eq $s3 ? "ok $t\n" : "not ok $t\n"; ++$t;
+
+# --- define_optag
+
+print eval { opset(':_tst_') } ? "not ok $t\n" : "ok $t\n"; ++$t;
+define_optag(":_tst_", opset(qw(padsv padav padhv)));
+print eval { opset(':_tst_') } ? "ok $t\n" : "not ok $t\n"; ++$t;
+
+# --- opdesc and opcodes
+
+die $t unless $t == 11;
+print opdesc("gv") eq "glob value" ? "ok $t\n" : "not ok $t\n"; $t++;
+my @@desc = opdesc(':_tst_','stub');
+print "@@desc" eq "private variable private array private hash stub"
+				    ? "ok $t\n" : "not ok $t\n#@@desc\n"; $t++;
+print opcodes() ? "ok $t\n" : "not ok $t\n"; $t++;
+print "ok $t\n"; ++$t;
+
+# --- invert_opset
+
+$s1 = opset(qw(fileno padsv padav));
+@@o2 = opset_to_ops(invert_opset($s1));
+print @@o2 == opcodes-3 ? "ok $t\n" : "not ok $t\n"; $t++;
+
+# --- opmask
+
+die $t unless $t == 16;
+print opmask() eq empty_opset() ? "ok $t\n" : "not ok $t\n"; $t++;	# work
+print length opmask() == int((opcodes()+7)/8) ? "ok $t\n" : "not ok $t\n"; $t++;
+
+# --- verify_opset
+
+print verify_opset($s1) && !verify_opset(42) ? "ok $t\n":"not ok $t\n"; $t++;
+
+# --- opmask_add
+
+opmask_add(opset(qw(fileno)));	# add to global op_mask
+print eval 'fileno STDOUT' ? "not ok $t\n" : "ok $t\n";	$t++; # fail
+print $@@ =~ /fileno trapped/ ? "ok $t\n" : "not ok $t\n# $@@\n"; $t++;
+
+# --- check use of bit vector ops on opsets
+
+$s1 = opset('padsv');
+$s2 = opset('padav');
+$s3 = opset('padsv', 'padav', 'padhv');
+
+# Non-negated
+print (($s1 | $s2) eq opset($s1,$s2) ? "ok $t\n":"not ok $t\n"); $t++;
+print (($s2 & $s3) eq opset($s2)     ? "ok $t\n":"not ok $t\n"); $t++;
+print (($s2 ^ $s3) eq opset('padsv','padhv') ? "ok $t\n":"not ok $t\n"); $t++;
+
+# Negated, e.g., with possible extra bits in last byte beyond last op bit.
+# The extra bits mean we can't just say ~mask eq invert_opset(mask).
+
+@@o1 = opset_to_ops(           ~ $s3);
+@@o2 = opset_to_ops(invert_opset $s3);
+print "@@o1" eq "@@o2" ? "ok $t\n":"not ok $t\n"; $t++;
+
+# --- finally, check some opname assertions
+
+foreach(@@full_l1) { die "bad opname: $_" if /\W/ or /^\d/ }
+
+print "ok $last_test\n";
+BEGIN { $last_test = 25 }
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

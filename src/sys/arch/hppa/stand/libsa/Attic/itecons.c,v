@@ -1,0 +1,424 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.2
+	ctm-3229:1.1.1.2
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.28.30;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.34;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.34;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.24.09.05.23;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.08.41.31;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: itecons.c,v 1.6 1999/04/20 20:01:02 mickey Exp $	*/
+
+/*
+ * Copyright (c) 1998 Michael Shalayeff
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Michael Shalayeff.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/*
+ * Copyright 1996 1995 by Open Software Foundation, Inc.   
+ *              All Rights Reserved 
+ *  
+ * Permission to use, copy, modify, and distribute this software and 
+ * its documentation for any purpose and without fee is hereby granted, 
+ * provided that the above copyright notice appears in all copies and 
+ * that both the copyright notice and this permission notice appear in 
+ * supporting documentation. 
+ *  
+ * OSF DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE 
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS 
+ * FOR A PARTICULAR PURPOSE. 
+ *  
+ * IN NO EVENT SHALL OSF BE LIABLE FOR ANY SPECIAL, INDIRECT, OR 
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM 
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN ACTION OF CONTRACT, 
+ * NEGLIGENCE, OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION 
+ * WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. 
+ * 
+ */
+
+#include "libsa.h"
+
+#include <sys/param.h>
+#include <sys/disklabel.h>
+#include <machine/pdc.h>
+#include <machine/iomod.h>
+#include <dev/cons.h>
+
+#include "dev_hppa.h"
+
+iodcio_t cniodc;	/* console IODC entry point */
+iodcio_t kyiodc;	/* keyboard IODC entry point */
+pz_device_t *cons_pzdev, *kbd_pzdev;
+
+/*
+ * Console.
+ */
+
+char cnbuf[IODC_MINIOSIZ] __attribute__ ((aligned (IODC_MINIOSIZ)));
+int kycode[IODC_MAXSIZE/sizeof(int)];
+
+int
+cnspeed(dev, sp)
+	dev_t	dev;
+	int	sp;
+{
+	return 9600;
+}
+
+void
+ite_probe(cn)
+	struct consdev *cn;
+{
+	cniodc = (iodcio_t)PAGE0->mem_free;
+	cons_pzdev = &PAGE0->mem_cons;
+	kbd_pzdev = &PAGE0->mem_kbd;
+
+	if ((*pdc)   (PDC_IODC, PDC_IODC_READ, pdcbuf, cons_pzdev->pz_hpa,
+		      IODC_INIT, cniodc, IODC_MAXSIZE) < 0 ||
+	    (*cniodc)(cons_pzdev->pz_hpa,
+		      (cons_pzdev->pz_hpa==PAGE0->mem_boot.pz_hpa)?
+			IODC_INIT_DEV: IODC_INIT_ALL, cons_pzdev->pz_spa,
+			cons_pzdev->pz_layers, pdcbuf, 0,0,0,0) < 0 ||
+	    (*pdc)   (PDC_IODC, PDC_IODC_READ, pdcbuf, cons_pzdev->pz_hpa,
+		      IODC_IO, cniodc, IODC_MAXSIZE) < 0) {
+		/* morse code with the LED's?!! */
+		cons_pzdev->pz_iodc_io = kbd_pzdev->pz_iodc_io = NULL;
+	} else {
+        	cn->cn_pri = CN_INTERNAL;
+		cn->cn_dev = makedev(0, 0);
+	}
+}
+
+void
+ite_init(cn)
+	struct consdev *cn;
+{
+	/*
+	 * If the keyboard is separate from the console output device,
+	 * we load the keyboard code at `kycode'.
+	 *
+	 * N.B. In this case, since the keyboard code is part of the
+	 * boot code, it will be overwritten when we load a kernel.
+	 */
+	if (cons_pzdev->pz_class != PCL_DUPLEX ||
+	    kbd_pzdev->pz_class == PCL_KEYBD) {
+
+		kyiodc = (iodcio_t)kycode;
+
+		if ((*pdc)   (PDC_IODC, PDC_IODC_READ, pdcbuf, kbd_pzdev->pz_hpa,
+			      IODC_INIT, kyiodc, IODC_MAXSIZE) < 0 ||
+		    (*kyiodc)(kbd_pzdev->pz_hpa,
+			      (kbd_pzdev->pz_hpa == PAGE0->mem_boot.pz_hpa ||
+			       kbd_pzdev->pz_hpa == cons_pzdev->pz_hpa)?
+			      IODC_INIT_DEV: IODC_INIT_ALL, kbd_pzdev->pz_spa,
+			      kbd_pzdev->pz_layers, pdcbuf, 0, 0, 0, 0) < 0 ||
+		    (*pdc)   (PDC_IODC, PDC_IODC_READ, pdcbuf, kbd_pzdev->pz_hpa,
+			      IODC_IO, kyiodc, IODC_MAXSIZE))
+			kyiodc = NULL;
+	} else {
+		kyiodc = cniodc;
+
+		bcopy((char *)&PAGE0->mem_cons, (char *)&PAGE0->mem_kbd,
+		      sizeof(struct pz_device));
+	}
+
+	cons_pzdev->pz_iodc_io = cniodc;
+	kbd_pzdev->pz_iodc_io = kyiodc;
+#ifdef DEBUG
+	if (!kyiodc)
+		printf("ite_init: no kbd\n");
+#endif
+}
+
+void
+ite_putc(dev, c)
+	dev_t dev;
+	int c;
+{
+	if (cniodc == NULL)
+		return;
+
+	*cnbuf = c;
+
+	(*cniodc)(cons_pzdev->pz_hpa, IODC_IO_CONSOUT, cons_pzdev->pz_spa,
+		  cons_pzdev->pz_layers, pdcbuf, 0, cnbuf, 1, 0);
+}
+
+/*
+ * since i don't know how to 'just check the char available'
+ * i store the key into the stash removing on read op later;
+ */
+int
+ite_getc(dev)
+	dev_t dev;
+{
+	static int stash = 0;
+	register int err, c, l, i;
+
+	if (kyiodc == NULL)
+		return(0x100);
+
+	if (stash) {
+		c = stash;
+		if (!(dev & 0x80))
+			stash = 0;
+		return c;
+	}
+
+	i = 16;
+	do {
+		err = (*kyiodc)(kbd_pzdev->pz_hpa, IODC_IO_CONSIN,
+				kbd_pzdev->pz_spa, kbd_pzdev->pz_layers,
+				pdcbuf, 0, cnbuf, 1, 0);
+		l = pdcbuf[0];
+		c = cnbuf[0];
+#ifdef DEBUG
+		if (debug && err < 0)
+			printf("KBD input error: %d", err);
+#endif
+
+		/* if we are doing ischar() report immidiatelly */
+		if (!i-- && (dev & 0x80) && l == 0) {
+#ifdef DEBUG
+			if (debug > 2)
+				printf("ite_getc(0x%x): no char %d(%x)\n",
+				       dev, l, c);
+#endif
+			return (0);
+		}
+	} while(!l);
+
+#if DEBUG
+	if (debug && l > 1)
+		printf("KBD input got too much (%d)\n", l);
+
+	if (debug > 3)
+		printf("kbd: \'%c\' (0x%x)\n", c, c);
+#endif
+	if (dev & 0x80)
+		stash = c;
+
+	return (c);
+}
+
+void
+ite_pollc(dev, on)
+	dev_t dev;
+	int on;
+{
+
+}
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import some parts of OpenBSD-current (after their ELF switch) to ease future merging and reduce diffs against their codebase
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: itecons.c,v 1.7 2003/04/16 07:20:50 mickey Exp $	*/
+d33 19
+a51 19
+ * Copyright 1996 1995 by Open Software Foundation, Inc.
+ *              All Rights Reserved
+ *
+ * Permission to use, copy, modify, and distribute this software and
+ * its documentation for any purpose and without fee is hereby granted,
+ * provided that the above copyright notice appears in all copies and
+ * that both the copyright notice and this permission notice appear in
+ * supporting documentation.
+ *
+ * OSF DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ * FOR A PARTICULAR PURPOSE.
+ *
+ * IN NO EVENT SHALL OSF BE LIABLE FOR ANY SPECIAL, INDIRECT, OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN ACTION OF CONTRACT,
+ * NEGLIGENCE, OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION
+ * WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *
+d102 1
+a102 1
+		cn->cn_pri = CN_INTERNAL;
+d171 1
+a171 1
+	int err, c, l, i;
+d226 1
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: itecons.c,v 1.8 2004/04/07 18:24:20 mickey Exp $	*/
+d4 1
+a4 1
+ * Copyright (c) 1998-2004 Michael Shalayeff
+d15 5
+d24 7
+a30 8
+ * IN NO EVENT SHALL THE AUTHOR OR HIS RELATIVES BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF MIND, USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+ * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+@
+
+

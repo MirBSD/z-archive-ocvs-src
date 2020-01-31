@@ -1,0 +1,1851 @@
+head	1.3;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.3
+	tg-mergefixes-1-branch:1.3.0.8
+	tg-mergefixes-1-base:1.3
+	MIROS_X:1.3.0.6
+	MIROS_X_BASE:1.3
+	tg-mergetmp-3:1.3
+	cvs-200411261545:1.1.1.2
+	cvs-200411231505:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.25.18.37.22;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.06.11.20.03.40;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.26.18.28.38;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2004.01.26.18.28.38;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.05.16.08.22.58;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@fix a crude example of time_t misuse
+@
+text
+@/**	$MirBSD: src/sbin/dhclient/parse.c,v 1.2 2004/06/11 20:03:40 tg Exp $ */
+/*	$OpenBSD: parse.c,v 1.11 2004/05/05 23:07:47 deraadt Exp $	*/
+
+/* Common parser code for dhcpd and dhclient. */
+
+/*
+ * Copyright (c) 1995, 1996, 1997, 1998 The Internet Software Consortium.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of The Internet Software Consortium nor the names
+ *    of its contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE INTERNET SOFTWARE CONSORTIUM AND
+ * CONTRIBUTORS ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE INTERNET SOFTWARE CONSORTIUM OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ * This software has been written for the Internet Software Consortium
+ * by Ted Lemon <mellon@@fugue.com> in cooperation with Vixie
+ * Enterprises.  To learn more about the Internet Software Consortium,
+ * see ``http://www.vix.com/isc''.  To learn more about Vixie
+ * Enterprises, see ``http://www.vix.com''.
+ */
+
+#include "dhcpd.h"
+#include "dhctoken.h"
+
+__RCSID("$MirBSD$");
+
+/* Skip to the semicolon ending the current statement.   If we encounter
+ * braces, the matching closing brace terminates the statement.   If we
+ * encounter a right brace but haven't encountered a left brace, return
+ * leaving the brace in the token buffer for the caller.   If we see a
+ * semicolon and haven't seen a left brace, return.   This lets us skip
+ * over:
+ *
+ *	statement;
+ *	statement foo bar { }
+ *	statement foo bar { statement { } }
+ *	statement}
+ *
+ *	...et cetera.
+ */
+void
+skip_to_semi(FILE *cfile)
+{
+	int brace_count = 0, token;
+	char *val;
+
+	do {
+		token = peek_token(&val, cfile);
+		if (token == RBRACE) {
+			if (brace_count) {
+				token = next_token(&val, cfile);
+				if (!--brace_count)
+					return;
+			} else
+				return;
+		} else if (token == LBRACE) {
+			brace_count++;
+		} else if (token == SEMI && !brace_count) {
+			token = next_token(&val, cfile);
+			return;
+		} else if (token == '\n') {
+			/*
+			 * EOL only happens when parsing
+			 * /etc/resolv.conf, and we treat it like a
+			 * semicolon because the resolv.conf file is
+			 * line-oriented.
+			 */
+			token = next_token(&val, cfile);
+			return;
+		}
+		token = next_token(&val, cfile);
+	} while (token != EOF);
+}
+
+int
+parse_semi(FILE *cfile)
+{
+	int token;
+	char *val;
+
+	token = next_token(&val, cfile);
+	if (token != SEMI) {
+		parse_warn("semicolon expected.");
+		skip_to_semi(cfile);
+		return (0);
+	}
+	return (1);
+}
+
+/*
+ * string-parameter :== STRING SEMI
+ */
+char *
+parse_string(FILE *cfile)
+{
+	char *val, *s;
+	int token;
+
+	token = next_token(&val, cfile);
+	if (token != STRING) {
+		parse_warn("filename must be a string");
+		skip_to_semi(cfile);
+		return (NULL);
+	}
+	s = malloc(strlen(val) + 1);
+	if (!s)
+		error("no memory for string %s.", val);
+	strlcpy(s, val, strlen(val) + 1);
+
+	if (!parse_semi(cfile))
+		return (NULL);
+	return (s);
+}
+
+int
+parse_ip_addr(FILE *cfile, struct iaddr *addr)
+{
+	addr->len = 4;
+	if (parse_numeric_aggregate(cfile, addr->iabuf,
+	    &addr->len, DOT, 10, 8))
+		return (1);
+	return (0);
+}
+
+/*
+ * hardware-parameter :== HARDWARE ETHERNET csns SEMI
+ * csns :== NUMBER | csns COLON NUMBER
+ */
+void
+parse_hardware_param(FILE *cfile, struct hardware *hardware)
+{
+	unsigned char *t;
+	int token, hlen;
+	char *val;
+
+	token = next_token(&val, cfile);
+	switch (token) {
+	case ETHERNET:
+		hardware->htype = HTYPE_ETHER;
+		break;
+	case TOKEN_RING:
+		hardware->htype = HTYPE_IEEE802;
+		break;
+	case FDDI:
+		hardware->htype = HTYPE_FDDI;
+		break;
+	default:
+		parse_warn("expecting a network hardware type");
+		skip_to_semi(cfile);
+		return;
+	}
+
+	/*
+	 * Parse the hardware address information.   Technically, it
+	 * would make a lot of sense to restrict the length of the data
+	 * we'll accept here to the length of a particular hardware
+	 * address type.   Unfortunately, there are some broken clients
+	 * out there that put bogus data in the chaddr buffer, and we
+	 * accept that data in the lease file rather than simply failing
+	 * on such clients.   Yuck.
+	 */
+	hlen = 0;
+	t = parse_numeric_aggregate(cfile, NULL, &hlen, COLON, 16, 8);
+	if (!t)
+		return;
+	if (hlen > sizeof(hardware->haddr)) {
+		free(t);
+		parse_warn("hardware address too long");
+	} else {
+		hardware->hlen = hlen;
+		memcpy((unsigned char *)&hardware->haddr[0], t,
+		    hardware->hlen);
+		if (hlen < sizeof(hardware->haddr))
+			memset(&hardware->haddr[hlen], 0,
+			    sizeof(hardware->haddr) - hlen);
+		free(t);
+	}
+
+	token = next_token(&val, cfile);
+	if (token != SEMI) {
+		parse_warn("expecting semicolon.");
+		skip_to_semi(cfile);
+	}
+}
+
+/*
+ * lease-time :== NUMBER SEMI
+ */
+void
+parse_lease_time(FILE *cfile, time_t *timep)
+{
+	char *val;
+	int token;
+	uint32_t tmp;
+
+	token = next_token(&val, cfile);
+	if (token != NUMBER) {
+		parse_warn("Expecting numeric lease time");
+		skip_to_semi(cfile);
+		return;
+	}
+	convert_num((unsigned char *)&tmp, val, 10, 32);
+	/* Unswap the number - convert_num returns stuff in NBO. */
+	*timep = ntohl(tmp);
+
+	parse_semi(cfile);
+}
+
+/*
+ * No BNF for numeric aggregates - that's defined by the caller.  What
+ * this function does is to parse a sequence of numbers separated by the
+ * token specified in separator.  If max is zero, any number of numbers
+ * will be parsed; otherwise, exactly max numbers are expected.  Base
+ * and size tell us how to internalize the numbers once they've been
+ * tokenized.
+ */
+unsigned char *
+parse_numeric_aggregate(FILE *cfile, unsigned char *buf, int *max,
+    int separator, int base, int size)
+{
+	unsigned char *bufp = buf, *s = NULL;
+	int token, count = 0;
+	char *val, *t;
+	pair c = NULL;
+
+	if (!bufp && *max) {
+		bufp = malloc(*max * size / 8);
+		if (!bufp)
+			error("can't allocate space for numeric aggregate");
+	} else
+		s = bufp;
+
+	do {
+		if (count) {
+			token = peek_token(&val, cfile);
+			if (token != separator) {
+				if (!*max)
+					break;
+				if (token != RBRACE && token != LBRACE)
+					token = next_token(&val, cfile);
+				parse_warn("too few numbers.");
+				if (token != SEMI)
+					skip_to_semi(cfile);
+				return (NULL);
+			}
+			token = next_token(&val, cfile);
+		}
+		token = next_token(&val, cfile);
+
+		if (token == EOF) {
+			parse_warn("unexpected end of file");
+			break;
+		}
+
+		/* Allow NUMBER_OR_NAME if base is 16. */
+		if (token != NUMBER &&
+		    (base != 16 || token != NUMBER_OR_NAME)) {
+			parse_warn("expecting numeric value.");
+			skip_to_semi(cfile);
+			return (NULL);
+		}
+		/*
+		 * If we can, convert the number now; otherwise, build a
+		 * linked list of all the numbers.
+		 */
+		if (s) {
+			convert_num(s, val, base, size);
+			s += size / 8;
+		} else {
+			t = malloc(strlen(val) + 1);
+			if (!t)
+				error("no temp space for number.");
+			strlcpy(t, val, strlen(val) + 1);
+			c = cons(t, c);
+		}
+	} while (++count != *max);
+
+	/* If we had to cons up a list, convert it now. */
+	if (c) {
+		bufp = malloc(count * size / 8);
+		if (!bufp)
+			error("can't allocate space for numeric aggregate.");
+		s = bufp + count - size / 8;
+		*max = count;
+	}
+	while (c) {
+		pair cdr = c->cdr;
+		convert_num(s, (char *)c->car, base, size);
+		s -= size / 8;
+		/* Free up temp space. */
+		free(c->car);
+		free(c);
+		c = cdr;
+	}
+	return (bufp);
+}
+
+void
+convert_num(unsigned char *buf, char *str, int base, int size)
+{
+	int negative = 0, tval, max;
+	u_int32_t val = 0;
+	char *ptr = str;
+
+	if (*ptr == '-') {
+		negative = 1;
+		ptr++;
+	}
+
+	/* If base wasn't specified, figure it out from the data. */
+	if (!base) {
+		if (ptr[0] == '0') {
+			if (ptr[1] == 'x') {
+				base = 16;
+				ptr += 2;
+			} else if (isascii(ptr[1]) && isdigit(ptr[1])) {
+				base = 8;
+				ptr += 1;
+			} else
+				base = 10;
+		} else
+			base = 10;
+	}
+
+	do {
+		tval = *ptr++;
+		/* XXX assumes ASCII... */
+		if (tval >= 'a')
+			tval = tval - 'a' + 10;
+		else if (tval >= 'A')
+			tval = tval - 'A' + 10;
+		else if (tval >= '0')
+			tval -= '0';
+		else {
+			warning("Bogus number: %s.", str);
+			break;
+		}
+		if (tval >= base) {
+			warning("Bogus number: %s: digit %d not in base %d",
+			    str, tval, base);
+			break;
+		}
+		val = val * base + tval;
+	} while (*ptr);
+
+	if (negative)
+		max = (1 << (size - 1));
+	else
+		max = (1 << (size - 1)) + ((1 << (size - 1)) - 1);
+	if (val > max) {
+		switch (base) {
+		case 8:
+			warning("value %s%o exceeds max (%d) for precision.",
+			    negative ? "-" : "", val, max);
+			break;
+		case 16:
+			warning("value %s%x exceeds max (%d) for precision.",
+			    negative ? "-" : "", val, max);
+			break;
+		default:
+			warning("value %s%u exceeds max (%d) for precision.",
+			    negative ? "-" : "", val, max);
+			break;
+		}
+	}
+
+	if (negative)
+		switch (size) {
+		case 8:
+			*buf = -(unsigned long)val;
+			break;
+		case 16:
+			putShort(buf, -(unsigned long)val);
+			break;
+		case 32:
+			putLong(buf, -(unsigned long)val);
+			break;
+		default:
+			warning("Unexpected integer size: %d", size);
+			break;
+		}
+	else
+		switch (size) {
+		case 8:
+			*buf = (u_int8_t)val;
+			break;
+		case 16:
+			putUShort(buf, (u_int16_t)val);
+			break;
+		case 32:
+			putULong(buf, val);
+			break;
+		default:
+			warning("Unexpected integer size: %d", size);
+			break;
+		}
+}
+
+/*
+ * date :== NUMBER NUMBER SLASH NUMBER SLASH NUMBER
+ *		NUMBER COLON NUMBER COLON NUMBER SEMI
+ *
+ * Dates are always in GMT; first number is day of week; next is
+ * year/month/day; next is hours:minutes:seconds on a 24-hour
+ * clock.
+ */
+time_t
+parse_date(FILE *cfile)
+{
+	static int months[11] = { 31, 59, 90, 120, 151, 181,
+	    212, 243, 273, 304, 334 };
+	int guess, token;
+	struct tm tm;
+	char *val;
+
+	/* Day of week... */
+	token = next_token(&val, cfile);
+	if (token != NUMBER) {
+		parse_warn("numeric day of week expected.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+	tm.tm_wday = atoi(val);
+
+	/* Year... */
+	token = next_token(&val, cfile);
+	if (token != NUMBER) {
+		parse_warn("numeric year expected.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+	tm.tm_year = atoi(val);
+	if (tm.tm_year > 1900)
+		tm.tm_year -= 1900;
+
+	/* Slash separating year from month... */
+	token = next_token(&val, cfile);
+	if (token != SLASH) {
+		parse_warn("expected slash separating year from month.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+
+	/* Month... */
+	token = next_token(&val, cfile);
+	if (token != NUMBER) {
+		parse_warn("numeric month expected.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+	tm.tm_mon = atoi(val) - 1;
+
+	/* Slash separating month from day... */
+	token = next_token(&val, cfile);
+	if (token != SLASH) {
+		parse_warn("expected slash separating month from day.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+
+	/* Month... */
+	token = next_token(&val, cfile);
+	if (token != NUMBER) {
+		parse_warn("numeric day of month expected.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+	tm.tm_mday = atoi(val);
+
+	/* Hour... */
+	token = next_token(&val, cfile);
+	if (token != NUMBER) {
+		parse_warn("numeric hour expected.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+	tm.tm_hour = atoi(val);
+
+	/* Colon separating hour from minute... */
+	token = next_token(&val, cfile);
+	if (token != COLON) {
+		parse_warn("expected colon separating hour from minute.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+
+	/* Minute... */
+	token = next_token(&val, cfile);
+	if (token != NUMBER) {
+		parse_warn("numeric minute expected.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+	tm.tm_min = atoi(val);
+
+	/* Colon separating minute from second... */
+	token = next_token(&val, cfile);
+	if (token != COLON) {
+		parse_warn("expected colon separating hour from minute.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+
+	/* Minute... */
+	token = next_token(&val, cfile);
+	if (token != NUMBER) {
+		parse_warn("numeric minute expected.");
+		if (token != SEMI)
+			skip_to_semi(cfile);
+		return 0;
+	}
+	tm.tm_sec = atoi(val);
+	tm.tm_isdst = 0;
+
+	/* XXX: We assume that mktime does not use tm_yday. */
+	tm.tm_yday = 0;
+
+	/* Make sure the date ends in a semicolon... */
+	token = next_token(&val, cfile);
+	if (token != SEMI) {
+		parse_warn("semicolon expected.");
+		skip_to_semi(cfile);
+		return 0;
+	}
+
+	/* Guess the time value... */
+	guess = ((((((365 * (tm.tm_year - 70) +	/* Days in years since '70 */
+		    (tm.tm_year - 69) / 4 +	/* Leap days since '70 */
+		    (tm.tm_mon			/* Days in months this year */
+		    ? months[tm.tm_mon - 1]
+		    : 0) +
+		    (tm.tm_mon > 1 &&		/* Leap day this year */
+		    !((tm.tm_year - 72) & 3)) +
+		    tm.tm_mday - 1) * 24) +	/* Day of month */
+		    tm.tm_hour) * 60) +
+		    tm.tm_min) * 60) + tm.tm_sec;
+
+	/*
+	 * This guess could be wrong because of leap seconds or other
+	 * weirdness we don't know about that the system does.   For
+	 * now, we're just going to accept the guess, but at some point
+	 * it might be nice to do a successive approximation here to get
+	 * an exact value.   Even if the error is small, if the server
+	 * is restarted frequently (and thus the lease database is
+	 * reread), the error could accumulate into something
+	 * significant.
+	 */
+	return (guess);
+}
+@
+
+
+1.2
+log
+@NULL != 0
+@
+text
+@d1 2
+a2 2
+/* $MirBSD$ */
+/* $OpenBSD: parse.c,v 1.11 2004/05/05 23:07:47 deraadt Exp $	*/
+d47 2
+d216 1
+d224 1
+a224 1
+	convert_num((unsigned char *)timep, val, 10, 32);
+d226 1
+a226 1
+	*timep = ntohl(*timep); /* XXX */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 1
+/* parse.c
+d4 1
+a4 1
+   Common parser code for dhcpd and dhclient. */
+d48 15
+a62 15
+   braces, the matching closing brace terminates the statement.   If we
+   encounter a right brace but haven't encountered a left brace, return
+   leaving the brace in the token buffer for the caller.   If we see a
+   semicolon and haven't seen a left brace, return.   This lets us skip
+   over:
+
+   	statement;
+	statement foo bar { }
+	statement foo bar { statement { } }
+	statement}
+ 
+	...et cetera. */
+
+void skip_to_semi (cfile)
+	FILE *cfile;
+d64 1
+a64 1
+	int token;
+a65 1
+	int brace_count = 0;
+d68 1
+a68 1
+		token = peek_token (&val, cfile);
+d71 1
+a71 1
+				token = next_token (&val, cfile);
+d79 1
+a79 1
+			token = next_token (&val, cfile);
+d81 8
+a88 5
+		} else if (token == EOL) {
+			/* EOL only happens when parsing /etc/resolv.conf,
+			   and we treat it like a semicolon because the
+			   resolv.conf file is line-oriented. */
+			token = next_token (&val, cfile);
+d91 1
+a91 1
+		token = next_token (&val, cfile);
+d95 2
+a96 2
+int parse_semi (cfile)
+	FILE *cfile;
+d101 1
+a101 1
+	token = next_token (&val, cfile);
+d103 3
+a105 3
+		parse_warn ("semicolon expected.");
+		skip_to_semi (cfile);
+		return 0;
+d107 1
+a107 1
+	return 1;
+d110 5
+a114 4
+/* string-parameter :== STRING SEMI */
+
+char *parse_string (cfile)
+	FILE *cfile;
+d116 1
+a116 1
+	char *val;
+a117 1
+	char *s;
+d119 1
+a119 1
+	token = next_token (&val, cfile);
+d121 3
+a123 3
+		parse_warn ("filename must be a string");
+		skip_to_semi (cfile);
+		return (char *)0;
+d125 1
+a125 1
+	s = (char *)malloc (strlen (val) + 1);
+d127 2
+a128 2
+		error ("no memory for string %s.", val);
+	strlcpy (s, val, strlen(val) + 1);
+d130 3
+a132 3
+	if (!parse_semi (cfile))
+		return (char *)0;
+	return s;
+d135 2
+a136 4
+/* hostname :== identifier | hostname DOT identifier */
+
+char *parse_host_name (cfile)
+	FILE *cfile;
+d138 5
+a142 47
+	char *val;
+	int token;
+	int len = 0;
+	char *s;
+	char *t;
+	pair c = (pair)0;
+	
+	/* Read a dotted hostname... */
+	do {
+		/* Read a token, which should be an identifier. */
+		token = next_token (&val, cfile);
+		if (!is_identifier (token) && token != NUMBER) {
+			parse_warn ("expecting an identifier in hostname");
+			skip_to_semi (cfile);
+			return (char *)0;
+		}
+		/* Store this identifier... */
+		if (!(s = (char *)malloc (strlen (val) + 1)))
+			error ("can't allocate temp space for hostname.");
+		strlcpy (s, val, strlen(val) + 1);
+		c = cons ((caddr_t)s, c);
+		len += strlen (s) + 1;
+		/* Look for a dot; if it's there, keep going, otherwise
+		   we're done. */
+		token = peek_token (&val, cfile);
+		if (token == DOT)
+			token = next_token (&val, cfile);
+	} while (token == DOT);
+
+	/* Assemble the hostname together into a string. */
+	if (!(s = (char *)malloc (len)))
+		error ("can't allocate space for hostname.");
+	t = s + len;
+	*--t = 0;
+	while (c) {
+		pair cdr = c -> cdr;
+		int l = strlen ((char *)(c -> car));
+		t -= l;
+		memcpy (t, (char *)(c -> car), l);
+		/* Free up temp space. */
+		free (c -> car);
+		free (c);
+		c = cdr;
+		if (t != s)
+			*--t = '.';
+	}
+	return s;
+d145 6
+a150 17
+int parse_ip_addr (cfile, addr)
+	FILE *cfile;
+	struct iaddr *addr;
+{
+	addr -> len = 4;
+	if (parse_numeric_aggregate (cfile, addr -> iabuf,
+				     &addr -> len, DOT, 10, 8))
+		return 1;
+	return 0;
+}	
+
+/* hardware-parameter :== HARDWARE ETHERNET csns SEMI
+   csns :== NUMBER | csns COLON NUMBER */
+
+void parse_hardware_param (cfile, hardware)
+	FILE *cfile;
+	struct hardware *hardware;
+d152 2
+a154 3
+	int token;
+	int hlen;
+	unsigned char *t;
+d156 1
+a156 1
+	token = next_token (&val, cfile);
+d158 2
+a159 2
+	      case ETHERNET:
+		hardware -> htype = HTYPE_ETHER;
+d161 2
+a162 2
+	      case TOKEN_RING:
+		hardware -> htype = HTYPE_IEEE802;
+d164 2
+a165 2
+	      case FDDI:
+		hardware -> htype = HTYPE_FDDI;
+d167 3
+a169 3
+	      default:
+		parse_warn ("expecting a network hardware type");
+		skip_to_semi (cfile);
+d173 9
+a181 7
+	/* Parse the hardware address information.   Technically,
+	   it would make a lot of sense to restrict the length of the
+	   data we'll accept here to the length of a particular hardware
+	   address type.   Unfortunately, there are some broken clients
+	   out there that put bogus data in the chaddr buffer, and we accept
+	   that data in the lease file rather than simply failing on such
+	   clients.   Yuck. */
+d183 1
+a183 2
+	t = parse_numeric_aggregate (cfile, (unsigned char *)0, &hlen,
+				     COLON, 16, 8);
+d186 3
+a188 3
+	if (hlen > sizeof hardware -> haddr) {
+		free (t);
+		parse_warn ("hardware address too long");
+d190 7
+a196 7
+		hardware -> hlen = hlen;
+		memcpy ((unsigned char *)&hardware -> haddr [0],
+			t, hardware -> hlen);
+		if (hlen < sizeof hardware -> haddr)
+			memset (&hardware -> haddr [hlen], 0,
+				(sizeof hardware -> haddr) - hlen);
+		free (t);
+d198 2
+a199 2
+	
+	token = next_token (&val, cfile);
+d201 2
+a202 2
+		parse_warn ("expecting semicolon.");
+		skip_to_semi (cfile);
+d206 5
+a210 5
+/* lease-time :== NUMBER SEMI */
+
+void parse_lease_time (cfile, timep)
+	FILE *cfile;
+	TIME *timep;
+d215 1
+a215 1
+	token = next_token (&val, cfile);
+d217 2
+a218 2
+		parse_warn ("Expecting numeric lease time");
+		skip_to_semi (cfile);
+d221 1
+a221 1
+	convert_num ((unsigned char *)timep, val, 10, 32);
+d223 1
+a223 1
+	*timep = ntohl (*timep); /* XXX */
+d225 1
+a225 1
+	parse_semi (cfile);
+d228 11
+a238 15
+/* No BNF for numeric aggregates - that's defined by the caller.  What
+   this function does is to parse a sequence of numbers separated by
+   the token specified in separator.  If max is zero, any number of
+   numbers will be parsed; otherwise, exactly max numbers are
+   expected.  Base and size tell us how to internalize the numbers
+   once they've been tokenized. */
+
+unsigned char *parse_numeric_aggregate (cfile, buf,
+					max, separator, base, size)
+	FILE *cfile;
+	unsigned char *buf;
+	int *max;
+	int separator;
+	int base;
+	int size;
+a239 2
+	char *val;
+	int token;
+d241 3
+a243 3
+	char *t;
+	int count = 0;
+	pair c = (pair)0;
+d246 1
+a246 1
+		bufp = (unsigned char *)malloc (*max * size / 8);
+d248 1
+a248 1
+			error ("can't allocate space for numeric aggregate");
+d254 1
+a254 1
+			token = peek_token (&val, cfile);
+d259 2
+a260 2
+					token = next_token (&val, cfile);
+				parse_warn ("too few numbers.");
+d262 2
+a263 2
+					skip_to_semi (cfile);
+				return (unsigned char *)0;
+d265 1
+a265 1
+			token = next_token (&val, cfile);
+d267 1
+a267 1
+		token = next_token (&val, cfile);
+d270 1
+a270 1
+			parse_warn ("unexpected end of file");
+d277 8
+a284 6
+			parse_warn ("expecting numeric value.");
+			skip_to_semi (cfile);
+			return (unsigned char *)0;
+		}
+		/* If we can, convert the number now; otherwise, build
+		   a linked list of all the numbers. */
+d286 1
+a286 1
+			convert_num (s, val, base, size);
+d289 1
+a289 1
+			t = (char *)malloc (strlen (val) + 1);
+d291 3
+a293 3
+				error ("no temp space for number.");
+			strlcpy (t, val, strlen(val)+1);
+			c = cons (t, c);
+d299 1
+a299 1
+		bufp = (unsigned char *)malloc (count * size / 8);
+d301 1
+a301 1
+			error ("can't allocate space for numeric aggregate.");
+d306 2
+a307 2
+		pair cdr = c -> cdr;
+		convert_num (s, (char *)(c -> car), base, size);
+d310 2
+a311 2
+		free (c -> car);
+		free (c);
+d314 1
+a314 1
+	return bufp;
+d317 2
+a318 5
+void convert_num (buf, str, base, size)
+	unsigned char *buf;
+	char *str;
+	int base;
+	int size;
+d320 2
+a322 4
+	int negative = 0;
+	u_int32_t val = 0;
+	int tval;
+	int max;
+d326 1
+a326 1
+		++ptr;
+d331 2
+a332 2
+		if (ptr [0] == '0') {
+			if (ptr [1] == 'x') {
+d335 1
+a335 1
+			} else if (isascii (ptr [1]) && isdigit (ptr [1])) {
+d338 1
+a338 1
+			} else {
+d340 1
+a340 2
+			}
+		} else {
+a341 1
+		}
+d354 1
+a354 1
+			warn ("Bogus number: %s.", str);
+d358 2
+a359 2
+			warn ("Bogus number: %s: digit %d not in base %d",
+			      str, tval, base);
+d371 11
+a381 11
+		      case 8:
+			warn ("value %s%o exceeds max (%d) for precision.",
+			      negative ? "-" : "", val, max);
+			break;
+		      case 16:
+			warn ("value %s%x exceeds max (%d) for precision.",
+			      negative ? "-" : "", val, max);
+			break;
+		      default:
+			warn ("value %s%u exceeds max (%d) for precision.",
+			      negative ? "-" : "", val, max);
+d386 1
+a386 1
+	if (negative) {
+d388 1
+a388 1
+		      case 8:
+d391 2
+a392 2
+		      case 16:
+			putShort (buf, -(unsigned long)val);
+d394 2
+a395 2
+		      case 32:
+			putLong (buf, -(unsigned long)val);
+d397 2
+a398 2
+		      default:
+			warn ("Unexpected integer size: %d", size);
+d401 1
+a401 1
+	} else {
+d403 1
+a403 1
+		      case 8:
+d406 2
+a407 2
+		      case 16:
+			putUShort (buf, (u_int16_t)val);
+d409 2
+a410 2
+		      case 32:
+			putULong (buf, val);
+d412 2
+a413 2
+		      default:
+			warn ("Unexpected integer size: %d", size);
+a415 1
+	}
+d418 10
+a427 9
+/* date :== NUMBER NUMBER SLASH NUMBER SLASH NUMBER 
+   		NUMBER COLON NUMBER COLON NUMBER SEMI
+
+   Dates are always in GMT; first number is day of week; next is
+   year/month/day; next is hours:minutes:seconds on a 24-hour
+   clock. */
+
+TIME parse_date (cfile)
+	FILE *cfile;
+d429 3
+a432 1
+	int guess;
+a433 3
+	int token;
+	static int months [11] = { 31, 59, 90, 120, 151, 181,
+					  212, 243, 273, 304, 334 };
+d436 1
+a436 1
+	token = next_token (&val, cfile);
+d438 1
+a438 1
+		parse_warn ("numeric day of week expected.");
+d440 2
+a441 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d443 1
+a443 1
+	tm.tm_wday = atoi (val);
+d446 1
+a446 1
+	token = next_token (&val, cfile);
+d448 1
+a448 1
+		parse_warn ("numeric year expected.");
+d450 2
+a451 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d453 1
+a453 1
+	tm.tm_year = atoi (val);
+d458 1
+a458 1
+	token = next_token (&val, cfile);
+d460 1
+a460 1
+		parse_warn ("expected slash separating year from month.");
+d462 2
+a463 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d467 1
+a467 1
+	token = next_token (&val, cfile);
+d469 1
+a469 1
+		parse_warn ("numeric month expected.");
+d471 2
+a472 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d474 1
+a474 1
+	tm.tm_mon = atoi (val) - 1;
+d477 1
+a477 1
+	token = next_token (&val, cfile);
+d479 1
+a479 1
+		parse_warn ("expected slash separating month from day.");
+d481 2
+a482 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d486 1
+a486 1
+	token = next_token (&val, cfile);
+d488 1
+a488 1
+		parse_warn ("numeric day of month expected.");
+d490 2
+a491 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d493 1
+a493 1
+	tm.tm_mday = atoi (val);
+d496 1
+a496 1
+	token = next_token (&val, cfile);
+d498 1
+a498 1
+		parse_warn ("numeric hour expected.");
+d500 2
+a501 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d503 1
+a503 1
+	tm.tm_hour = atoi (val);
+d506 1
+a506 1
+	token = next_token (&val, cfile);
+d508 1
+a508 1
+		parse_warn ("expected colon separating hour from minute.");
+d510 2
+a511 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d515 1
+a515 1
+	token = next_token (&val, cfile);
+d517 1
+a517 1
+		parse_warn ("numeric minute expected.");
+d519 2
+a520 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d522 1
+a522 1
+	tm.tm_min = atoi (val);
+d525 1
+a525 1
+	token = next_token (&val, cfile);
+d527 1
+a527 1
+		parse_warn ("expected colon separating hour from minute.");
+d529 2
+a530 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d534 1
+a534 1
+	token = next_token (&val, cfile);
+d536 1
+a536 1
+		parse_warn ("numeric minute expected.");
+d538 2
+a539 2
+			skip_to_semi (cfile);
+		return (TIME)0;
+d541 1
+a541 1
+	tm.tm_sec = atoi (val);
+d544 1
+a544 1
+	/* XXX */ /* We assume that mktime does not use tm_yday. */
+d548 1
+a548 1
+	token = next_token (&val, cfile);
+d550 2
+a551 2
+		parse_warn ("semicolon expected.");
+		skip_to_semi (cfile);
+d557 7
+a563 7
+		      (tm.tm_year - 69) / 4 +	/* Leap days since '70 */
+		      (tm.tm_mon		/* Days in months this year */
+		       ? months [tm.tm_mon - 1]
+		       : 0) +
+		      (tm.tm_mon > 1 &&		/* Leap day this year */
+		       !((tm.tm_year - 72) & 3)) +
+		      tm.tm_mday - 1) * 24) +	/* Day of month */
+d565 1
+a565 10
+		  tm.tm_min) * 60) + tm.tm_sec;
+
+	/* This guess could be wrong because of leap seconds or other
+	   weirdness we don't know about that the system does.   For
+	   now, we're just going to accept the guess, but at some point
+	   it might be nice to do a successive approximation here to
+	   get an exact value.   Even if the error is small, if the
+	   server is restarted frequently (and thus the lease database
+	   is reread), the error could accumulate into something
+	   significant. */
+d567 11
+a577 1
+	return guess;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@@
+
+
+1.1.1.2
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: parse.c,v 1.11 2004/05/05 23:07:47 deraadt Exp $	*/
+d3 1
+a3 1
+/* Common parser code for dhcpd and dhclient. */
+d47 15
+a61 15
+ * braces, the matching closing brace terminates the statement.   If we
+ * encounter a right brace but haven't encountered a left brace, return
+ * leaving the brace in the token buffer for the caller.   If we see a
+ * semicolon and haven't seen a left brace, return.   This lets us skip
+ * over:
+ *
+ *	statement;
+ *	statement foo bar { }
+ *	statement foo bar { statement { } }
+ *	statement}
+ *
+ *	...et cetera.
+ */
+void
+skip_to_semi(FILE *cfile)
+d63 1
+a63 1
+	int brace_count = 0, token;
+d65 1
+d68 1
+a68 1
+		token = peek_token(&val, cfile);
+d71 1
+a71 1
+				token = next_token(&val, cfile);
+d79 1
+a79 1
+			token = next_token(&val, cfile);
+d81 5
+a85 8
+		} else if (token == '\n') {
+			/*
+			 * EOL only happens when parsing
+			 * /etc/resolv.conf, and we treat it like a
+			 * semicolon because the resolv.conf file is
+			 * line-oriented.
+			 */
+			token = next_token(&val, cfile);
+d88 1
+a88 1
+		token = next_token(&val, cfile);
+d92 2
+a93 2
+int
+parse_semi(FILE *cfile)
+d98 1
+a98 1
+	token = next_token(&val, cfile);
+d100 3
+a102 3
+		parse_warn("semicolon expected.");
+		skip_to_semi(cfile);
+		return (0);
+d104 1
+a104 1
+	return (1);
+d107 4
+a110 5
+/*
+ * string-parameter :== STRING SEMI
+ */
+char *
+parse_string(FILE *cfile)
+d112 1
+a112 1
+	char *val, *s;
+d114 1
+d116 1
+a116 1
+	token = next_token(&val, cfile);
+d118 3
+a120 3
+		parse_warn("filename must be a string");
+		skip_to_semi(cfile);
+		return (NULL);
+d122 1
+a122 1
+	s = malloc(strlen(val) + 1);
+d124 2
+a125 2
+		error("no memory for string %s.", val);
+	strlcpy(s, val, strlen(val) + 1);
+d127 3
+a129 3
+	if (!parse_semi(cfile))
+		return (NULL);
+	return (s);
+d132 4
+a135 2
+int
+parse_ip_addr(FILE *cfile, struct iaddr *addr)
+d137 47
+a183 5
+	addr->len = 4;
+	if (parse_numeric_aggregate(cfile, addr->iabuf,
+	    &addr->len, DOT, 10, 8))
+		return (1);
+	return (0);
+d186 17
+a202 6
+/*
+ * hardware-parameter :== HARDWARE ETHERNET csns SEMI
+ * csns :== NUMBER | csns COLON NUMBER
+ */
+void
+parse_hardware_param(FILE *cfile, struct hardware *hardware)
+d204 3
+a207 2
+	int token, hlen;
+	char *val;
+d209 1
+a209 1
+	token = next_token(&val, cfile);
+d211 2
+a212 2
+	case ETHERNET:
+		hardware->htype = HTYPE_ETHER;
+d214 2
+a215 2
+	case TOKEN_RING:
+		hardware->htype = HTYPE_IEEE802;
+d217 2
+a218 2
+	case FDDI:
+		hardware->htype = HTYPE_FDDI;
+d220 3
+a222 3
+	default:
+		parse_warn("expecting a network hardware type");
+		skip_to_semi(cfile);
+d226 7
+a232 9
+	/*
+	 * Parse the hardware address information.   Technically, it
+	 * would make a lot of sense to restrict the length of the data
+	 * we'll accept here to the length of a particular hardware
+	 * address type.   Unfortunately, there are some broken clients
+	 * out there that put bogus data in the chaddr buffer, and we
+	 * accept that data in the lease file rather than simply failing
+	 * on such clients.   Yuck.
+	 */
+d234 2
+a235 1
+	t = parse_numeric_aggregate(cfile, NULL, &hlen, COLON, 16, 8);
+d238 3
+a240 3
+	if (hlen > sizeof(hardware->haddr)) {
+		free(t);
+		parse_warn("hardware address too long");
+d242 7
+a248 7
+		hardware->hlen = hlen;
+		memcpy((unsigned char *)&hardware->haddr[0], t,
+		    hardware->hlen);
+		if (hlen < sizeof(hardware->haddr))
+			memset(&hardware->haddr[hlen], 0,
+			    sizeof(hardware->haddr) - hlen);
+		free(t);
+d250 2
+a251 2
+
+	token = next_token(&val, cfile);
+d253 2
+a254 2
+		parse_warn("expecting semicolon.");
+		skip_to_semi(cfile);
+d258 5
+a262 5
+/*
+ * lease-time :== NUMBER SEMI
+ */
+void
+parse_lease_time(FILE *cfile, time_t *timep)
+d267 1
+a267 1
+	token = next_token(&val, cfile);
+d269 2
+a270 2
+		parse_warn("Expecting numeric lease time");
+		skip_to_semi(cfile);
+d273 1
+a273 1
+	convert_num((unsigned char *)timep, val, 10, 32);
+d275 1
+a275 1
+	*timep = ntohl(*timep); /* XXX */
+d277 1
+a277 1
+	parse_semi(cfile);
+d280 15
+a294 11
+/*
+ * No BNF for numeric aggregates - that's defined by the caller.  What
+ * this function does is to parse a sequence of numbers separated by the
+ * token specified in separator.  If max is zero, any number of numbers
+ * will be parsed; otherwise, exactly max numbers are expected.  Base
+ * and size tell us how to internalize the numbers once they've been
+ * tokenized.
+ */
+unsigned char *
+parse_numeric_aggregate(FILE *cfile, unsigned char *buf, int *max,
+    int separator, int base, int size)
+d296 2
+d299 3
+a301 3
+	int token, count = 0;
+	char *val, *t;
+	pair c = NULL;
+d304 1
+a304 1
+		bufp = malloc(*max * size / 8);
+d306 1
+a306 1
+			error("can't allocate space for numeric aggregate");
+d312 1
+a312 1
+			token = peek_token(&val, cfile);
+d317 2
+a318 2
+					token = next_token(&val, cfile);
+				parse_warn("too few numbers.");
+d320 2
+a321 2
+					skip_to_semi(cfile);
+				return (NULL);
+d323 1
+a323 1
+			token = next_token(&val, cfile);
+d325 1
+a325 1
+		token = next_token(&val, cfile);
+d328 1
+a328 1
+			parse_warn("unexpected end of file");
+d335 6
+a340 8
+			parse_warn("expecting numeric value.");
+			skip_to_semi(cfile);
+			return (NULL);
+		}
+		/*
+		 * If we can, convert the number now; otherwise, build a
+		 * linked list of all the numbers.
+		 */
+d342 1
+a342 1
+			convert_num(s, val, base, size);
+d345 1
+a345 1
+			t = malloc(strlen(val) + 1);
+d347 3
+a349 3
+				error("no temp space for number.");
+			strlcpy(t, val, strlen(val) + 1);
+			c = cons(t, c);
+d355 1
+a355 1
+		bufp = malloc(count * size / 8);
+d357 1
+a357 1
+			error("can't allocate space for numeric aggregate.");
+d362 2
+a363 2
+		pair cdr = c->cdr;
+		convert_num(s, (char *)c->car, base, size);
+d366 2
+a367 2
+		free(c->car);
+		free(c);
+d370 1
+a370 1
+	return (bufp);
+d373 5
+a377 2
+void
+convert_num(unsigned char *buf, char *str, int base, int size)
+d379 2
+a380 1
+	int negative = 0, tval, max;
+d382 2
+a383 1
+	char *ptr = str;
+d387 1
+a387 1
+		ptr++;
+d392 2
+a393 2
+		if (ptr[0] == '0') {
+			if (ptr[1] == 'x') {
+d396 1
+a396 1
+			} else if (isascii(ptr[1]) && isdigit(ptr[1])) {
+d399 1
+a399 1
+			} else
+d401 2
+a402 1
+		} else
+d404 1
+d417 1
+a417 1
+			warning("Bogus number: %s.", str);
+d421 2
+a422 2
+			warning("Bogus number: %s: digit %d not in base %d",
+			    str, tval, base);
+d434 11
+a444 11
+		case 8:
+			warning("value %s%o exceeds max (%d) for precision.",
+			    negative ? "-" : "", val, max);
+			break;
+		case 16:
+			warning("value %s%x exceeds max (%d) for precision.",
+			    negative ? "-" : "", val, max);
+			break;
+		default:
+			warning("value %s%u exceeds max (%d) for precision.",
+			    negative ? "-" : "", val, max);
+d449 1
+a449 1
+	if (negative)
+d451 1
+a451 1
+		case 8:
+d454 2
+a455 2
+		case 16:
+			putShort(buf, -(unsigned long)val);
+d457 2
+a458 2
+		case 32:
+			putLong(buf, -(unsigned long)val);
+d460 2
+a461 2
+		default:
+			warning("Unexpected integer size: %d", size);
+d464 1
+a464 1
+	else
+d466 1
+a466 1
+		case 8:
+d469 2
+a470 2
+		case 16:
+			putUShort(buf, (u_int16_t)val);
+d472 2
+a473 2
+		case 32:
+			putULong(buf, val);
+d475 2
+a476 2
+		default:
+			warning("Unexpected integer size: %d", size);
+d479 1
+d482 9
+a490 10
+/*
+ * date :== NUMBER NUMBER SLASH NUMBER SLASH NUMBER
+ *		NUMBER COLON NUMBER COLON NUMBER SEMI
+ *
+ * Dates are always in GMT; first number is day of week; next is
+ * year/month/day; next is hours:minutes:seconds on a 24-hour
+ * clock.
+ */
+time_t
+parse_date(FILE *cfile)
+a491 3
+	static int months[11] = { 31, 59, 90, 120, 151, 181,
+	    212, 243, 273, 304, 334 };
+	int guess, token;
+d493 1
+d495 3
+d500 1
+a500 1
+	token = next_token(&val, cfile);
+d502 1
+a502 1
+		parse_warn("numeric day of week expected.");
+d504 2
+a505 2
+			skip_to_semi(cfile);
+		return (NULL);
+d507 1
+a507 1
+	tm.tm_wday = atoi(val);
+d510 1
+a510 1
+	token = next_token(&val, cfile);
+d512 1
+a512 1
+		parse_warn("numeric year expected.");
+d514 2
+a515 2
+			skip_to_semi(cfile);
+		return (NULL);
+d517 1
+a517 1
+	tm.tm_year = atoi(val);
+d522 1
+a522 1
+	token = next_token(&val, cfile);
+d524 1
+a524 1
+		parse_warn("expected slash separating year from month.");
+d526 2
+a527 2
+			skip_to_semi(cfile);
+		return (NULL);
+d531 1
+a531 1
+	token = next_token(&val, cfile);
+d533 1
+a533 1
+		parse_warn("numeric month expected.");
+d535 2
+a536 2
+			skip_to_semi(cfile);
+		return (NULL);
+d538 1
+a538 1
+	tm.tm_mon = atoi(val) - 1;
+d541 1
+a541 1
+	token = next_token(&val, cfile);
+d543 1
+a543 1
+		parse_warn("expected slash separating month from day.");
+d545 2
+a546 2
+			skip_to_semi(cfile);
+		return (NULL);
+d550 1
+a550 1
+	token = next_token(&val, cfile);
+d552 1
+a552 1
+		parse_warn("numeric day of month expected.");
+d554 2
+a555 2
+			skip_to_semi(cfile);
+		return (NULL);
+d557 1
+a557 1
+	tm.tm_mday = atoi(val);
+d560 1
+a560 1
+	token = next_token(&val, cfile);
+d562 1
+a562 1
+		parse_warn("numeric hour expected.");
+d564 2
+a565 2
+			skip_to_semi(cfile);
+		return (NULL);
+d567 1
+a567 1
+	tm.tm_hour = atoi(val);
+d570 1
+a570 1
+	token = next_token(&val, cfile);
+d572 1
+a572 1
+		parse_warn("expected colon separating hour from minute.");
+d574 2
+a575 2
+			skip_to_semi(cfile);
+		return (NULL);
+d579 1
+a579 1
+	token = next_token(&val, cfile);
+d581 1
+a581 1
+		parse_warn("numeric minute expected.");
+d583 2
+a584 2
+			skip_to_semi(cfile);
+		return (NULL);
+d586 1
+a586 1
+	tm.tm_min = atoi(val);
+d589 1
+a589 1
+	token = next_token(&val, cfile);
+d591 1
+a591 1
+		parse_warn("expected colon separating hour from minute.");
+d593 2
+a594 2
+			skip_to_semi(cfile);
+		return (NULL);
+d598 1
+a598 1
+	token = next_token(&val, cfile);
+d600 1
+a600 1
+		parse_warn("numeric minute expected.");
+d602 2
+a603 2
+			skip_to_semi(cfile);
+		return (NULL);
+d605 1
+a605 1
+	tm.tm_sec = atoi(val);
+d608 1
+a608 1
+	/* XXX: We assume that mktime does not use tm_yday. */
+d612 1
+a612 1
+	token = next_token(&val, cfile);
+d614 3
+a616 3
+		parse_warn("semicolon expected.");
+		skip_to_semi(cfile);
+		return (NULL);
+d621 7
+a627 7
+		    (tm.tm_year - 69) / 4 +	/* Leap days since '70 */
+		    (tm.tm_mon			/* Days in months this year */
+		    ? months[tm.tm_mon - 1]
+		    : 0) +
+		    (tm.tm_mon > 1 &&		/* Leap day this year */
+		    !((tm.tm_year - 72) & 3)) +
+		    tm.tm_mday - 1) * 24) +	/* Day of month */
+d629 10
+a638 1
+		    tm.tm_min) * 60) + tm.tm_sec;
+d640 1
+a640 11
+	/*
+	 * This guess could be wrong because of leap seconds or other
+	 * weirdness we don't know about that the system does.   For
+	 * now, we're just going to accept the guess, but at some point
+	 * it might be nice to do a successive approximation here to get
+	 * an exact value.   Even if the error is small, if the server
+	 * is restarted frequently (and thus the lease database is
+	 * reread), the error could accumulate into something
+	 * significant.
+	 */
+	return (guess);
+@
+

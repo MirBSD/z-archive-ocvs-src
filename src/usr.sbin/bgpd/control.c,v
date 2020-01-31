@@ -1,0 +1,484 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.8
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.6
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.2
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2004.01.02.18.12.25;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2004.01.02.18.12.25;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.01.26.19.05.48;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.07.19.21;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: control.c,v 1.3 2004/01/02 09:02:50 henning Exp $ */
+
+/*
+ * Copyright (c) 2003 Henning Brauer <henning@@openbsd.org>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "bgpd.h"
+#include "session.h"
+
+#define	CONTROL_BACKLOG	5
+
+struct {
+	int	fd;
+} control_state;
+
+struct ctl_conn	*control_connbyfd(int);
+
+int
+control_init(void)
+{
+	struct sockaddr_un	 sun;
+	int			 fd;
+	mode_t			 old_umask;
+
+	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+		log_err("control_init: socket");
+		return (-1);
+	}
+
+	old_umask = umask(S_IWGRP|S_IWOTH|S_IROTH|S_IXOTH);
+	bzero(&sun, sizeof(sun));
+	sun.sun_family = AF_UNIX;
+	strlcpy(sun.sun_path, SOCKET_NAME, sizeof(sun.sun_path));
+
+	if (unlink(SOCKET_NAME) == -1)
+		if (errno != ENOENT) {
+			log_err("unlink %s", SOCKET_NAME);
+			return (-1);
+		}
+
+	if (bind(fd, (struct sockaddr *)&sun, sizeof(sun)) == -1) {
+		log_err("control_init: bind: %s", SOCKET_NAME);
+		return (-1);
+	}
+
+	if (chmod(SOCKET_NAME, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP) == -1) {
+		log_err("control_init chmod");
+		return (-1);
+	}
+
+	umask(old_umask);
+
+	control_state.fd = fd;
+
+	return (fd);
+}
+
+int
+control_listen(void)
+{
+	if (listen(control_state.fd, CONTROL_BACKLOG) == -1) {
+		log_err("control_listen: listen");
+		return (-1);
+	}
+
+	return (control_state.fd);
+}
+
+void
+control_shutdown(void)
+{
+	close(control_state.fd);
+}
+
+void
+control_cleanup(void)
+{
+	unlink(SOCKET_NAME);
+}
+
+void
+control_accept(int listenfd)
+{
+	int			 connfd;
+	socklen_t		 len;
+	struct sockaddr_un	 sun;
+	uid_t			 uid;
+	gid_t			 gid;
+	struct ctl_conn		*ctl_conn;
+
+	len = sizeof(sun);
+	if ((connfd = accept(listenfd,
+	    (struct sockaddr *)&sun, &len)) == -1) {
+		if (errno == EWOULDBLOCK || errno == EINTR)
+			return;
+		else
+			log_err("session_control_accept");
+	}
+
+	if (getpeereid(connfd, &uid, &gid) == -1) {
+		log_err("session_control_accept");
+		return;
+	}
+
+	if (uid) {
+		log_err("Connection to control socket with uid %ld", uid);
+		return;
+	}
+
+	if ((ctl_conn = malloc(sizeof(struct ctl_conn))) == NULL) {
+		log_err("session_control_accept");
+		return;
+	}
+
+	imsg_init(&ctl_conn->ibuf, connfd);
+
+	TAILQ_INSERT_TAIL(&ctl_conns, ctl_conn, entries);
+}
+
+struct ctl_conn *
+control_connbyfd(int fd)
+{
+	struct ctl_conn	*c;
+
+	for (c = TAILQ_FIRST(&ctl_conns); c != NULL && c->ibuf.sock != fd;
+	    c = TAILQ_NEXT(c, entries))
+		;	/* nothing */
+
+	return (c);
+}
+
+void
+control_close(int fd)
+{
+	struct ctl_conn	*c;
+
+	if ((c = control_connbyfd(fd)) == NULL) {
+		log_err("control_close: fd %d: not found", fd);
+		return;
+	}
+
+	TAILQ_REMOVE(&ctl_conns, c, entries);
+
+	close(c->ibuf.sock);
+	free(c);
+}
+
+int
+control_dispatch_msg(struct pollfd *pfd, int i)
+{
+	struct imsg		 imsg;
+	struct ctl_conn		*c;
+	int			 n;
+	struct peer		*p;
+
+	if ((c = control_connbyfd(pfd->fd)) == NULL) {
+		log_err("control_dispatch_msg: fd %d: not found", pfd->fd);
+		return (0);
+	}
+
+	if (imsg_read(&c->ibuf) == -1) {
+		control_close(pfd->fd);
+		return (1);
+	}
+
+	for (;;) {
+		if ((n = imsg_get(&c->ibuf, &imsg)) == -1) {
+			control_close(pfd->fd);
+			return (1);
+		}
+
+		if (n == 0)
+			break;
+
+		switch (imsg.hdr.type) {
+		case IMSG_CTL_SHOW_NEIGHBOR:
+			for (p = conf->peers; p != NULL; p = p->next)
+				imsg_compose(&c->ibuf, IMSG_CTL_SHOW_NEIGHBOR,
+				    0, p, sizeof(struct peer));
+			break;
+		default:
+			break;
+		}
+		imsg_free(&imsg);
+	}
+
+	return (0);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD again, for various reasons.
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: control.c,v 1.20 2004/01/22 20:34:55 henning Exp $ */
+d4 1
+a4 1
+ * Copyright (c) 2003, 2004 Henning Brauer <henning@@openbsd.org>
+a37 1
+struct ctl_conn	*control_connbypid(pid_t);
+d47 1
+a47 1
+		log_warn("control_init: socket");
+d51 1
+a51 1
+	old_umask = umask(S_IXUSR|S_IXGRP|S_IWOTH|S_IROTH|S_IXOTH);
+d58 1
+a58 1
+			log_warn("unlink %s", SOCKET_NAME);
+d63 1
+a63 1
+		log_warn("control_init: bind: %s", SOCKET_NAME);
+d68 1
+a68 1
+		log_warn("control_init chmod");
+d83 1
+a83 1
+		log_warn("control_listen: listen");
+d118 1
+a118 1
+			log_warn("session_control_accept");
+d122 1
+a122 1
+		log_warn("session_control_accept");
+d127 1
+a127 1
+		log_info("Control connection attempt from uid %ld", uid);
+d132 1
+a132 1
+		log_warn("session_control_accept");
+a152 12
+struct ctl_conn *
+control_connbypid(pid_t pid)
+{
+	struct ctl_conn	*c;
+
+	for (c = TAILQ_FIRST(&ctl_conns); c != NULL && c->ibuf.pid != pid;
+	    c = TAILQ_NEXT(c, entries))
+		;	/* nothing */
+
+	return (c);
+}
+
+d159 1
+a159 1
+		log_warn("control_close: fd %d: not found", fd);
+a175 1
+	struct bgpd_addr	*addr;
+d178 1
+a178 1
+		log_warn("control_dispatch_msg: fd %d: not found", pfd->fd);
+d182 1
+a182 10
+	if (pfd->revents & POLLOUT)
+		if (msgbuf_write(&c->ibuf.w) < 0) {
+			control_close(pfd->fd);
+			return (1);
+		}
+
+	if (!(pfd->revents & POLLIN))
+		return (0);
+
+	if (imsg_read(&c->ibuf) <= 0) {
+d198 3
+a200 55
+			if (imsg.hdr.len == IMSG_HEADER_SIZE +
+			    sizeof(struct bgpd_addr)) {
+				addr = imsg.data;
+				p = getpeerbyip(addr->v4.s_addr);
+				if (p != NULL)
+					imsg_compose(&c->ibuf,
+					    IMSG_CTL_SHOW_NEIGHBOR,
+					    0, p, sizeof(struct peer));
+			} else
+				for (p = peers; p != NULL; p = p->next)
+					imsg_compose(&c->ibuf,
+					    IMSG_CTL_SHOW_NEIGHBOR,
+					    0, p, sizeof(struct peer));
+			imsg_compose(&c->ibuf, IMSG_CTL_END, 0, NULL, 0);
+			break;
+		case IMSG_CTL_RELOAD:
+		case IMSG_CTL_FIB_COUPLE:
+		case IMSG_CTL_FIB_DECOUPLE:
+			imsg_compose_parent(imsg.hdr.type, 0, NULL, 0);
+			break;
+		case IMSG_CTL_NEIGHBOR_UP:
+			if (imsg.hdr.len == IMSG_HEADER_SIZE +
+			    sizeof(struct bgpd_addr)) {
+				addr = imsg.data;
+				p = getpeerbyip(addr->v4.s_addr);
+				if (p != NULL)
+					bgp_fsm(p, EVNT_START);
+				else
+					log_warnx("IMSG_CTL_NEIGHBOR_UP "
+					    "with unknown neighbor");
+			} else
+				log_warnx("got IMSG_CTL_NEIGHBOR_UP with "
+				    "wrong length");
+			break;
+		case IMSG_CTL_NEIGHBOR_DOWN:
+			if (imsg.hdr.len == IMSG_HEADER_SIZE +
+			    sizeof(struct bgpd_addr)) {
+				addr = imsg.data;
+				p = getpeerbyip(addr->v4.s_addr);
+				if (p != NULL)
+					bgp_fsm(p, EVNT_STOP);
+				else
+					log_warnx("IMSG_CTL_NEIGHBOR_DOWN"
+					    " with unknown neighbor");
+			} else
+				log_warnx("got IMSG_CTL_NEIGHBOR_DOWN "
+				    "with wrong length");
+			break;
+		case IMSG_CTL_KROUTE:
+		case IMSG_CTL_KROUTE_ADDR:
+		case IMSG_CTL_SHOW_NEXTHOP:
+		case IMSG_CTL_SHOW_INTERFACE:
+			c->ibuf.pid = imsg.hdr.pid;
+			imsg_compose_parent(imsg.hdr.type, imsg.hdr.pid,
+			    imsg.data, imsg.hdr.len - IMSG_HEADER_SIZE);
+a208 12
+}
+
+int
+control_imsg_relay(struct imsg *imsg)
+{
+	struct ctl_conn	*c;
+
+	if ((c = control_connbypid(imsg->hdr.pid)) == NULL)
+		return (0);
+
+	return (imsg_compose_pid(&c->ibuf, imsg->hdr.type, imsg->hdr.pid,
+	    imsg->data, imsg->hdr.len - IMSG_HEADER_SIZE));
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: control.c,v 1.30 2004/05/08 11:22:43 henning Exp $ */
+a59 1
+			close(fd);
+a64 1
+		close(fd);
+a69 1
+		close(fd);
+a74 1
+	session_socket_blockmode(fd, BM_NONBLOCK);
+d109 2
+d116 3
+a118 1
+		if (errno != EWOULDBLOCK && errno != EINTR)
+d120 4
+d127 4
+a130 1
+	session_socket_blockmode(connfd, BM_NONBLOCK);
+d147 1
+a147 1
+	for (c = TAILQ_FIRST(&ctl_conns); c != NULL && c->ibuf.fd != fd;
+a175 1
+	msgbuf_clear(&c->ibuf.w);
+d178 1
+a178 1
+	close(c->ibuf.fd);
+d183 1
+a183 1
+control_dispatch_msg(struct pollfd *pfd)
+d224 1
+a224 1
+				p = getpeerbyaddr(addr);
+d245 1
+a245 1
+				p = getpeerbyaddr(addr);
+d259 1
+a259 1
+				p = getpeerbyaddr(addr);
+a274 7
+			    imsg.data, imsg.hdr.len - IMSG_HEADER_SIZE);
+			break;
+		case IMSG_CTL_SHOW_RIB:
+		case IMSG_CTL_SHOW_RIB_AS:
+		case IMSG_CTL_SHOW_RIB_PREFIX:
+			c->ibuf.pid = imsg.hdr.pid;
+			imsg_compose_rde(imsg.hdr.type, imsg.hdr.pid,
+@
+
+

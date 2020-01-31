@@ -1,0 +1,380 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309252100:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306301405:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	cvs-200305131745:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.51.21;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.51.21;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: if_en_pci.c,v 1.10 2002/06/19 18:46:41 fgsch Exp $	*/
+
+/*
+ *
+ * Copyright (c) 1996 Charles D. Cranor and Washington University.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed by Charles D. Cranor and
+ *	Washington University.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ *
+ * i f _ e n _ p c i . c  
+ *
+ * author: Chuck Cranor <chuck@@ccrc.wustl.edu>
+ * started: spring, 1996.
+ *
+ * PCI glue for the eni155p card.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/device.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+
+#include <net/if.h>
+
+#include <dev/pci/pcivar.h>
+#include <dev/pci/pcireg.h>
+#include <dev/pci/pcidevs.h>
+
+#include <dev/ic/midwayreg.h>
+#include <dev/ic/midwayvar.h>
+
+
+/*
+ * local structures
+ */
+
+struct en_pci_softc {
+  /* bus independent stuff */
+  struct en_softc esc;		/* includes "device" structure */
+
+  /* PCI bus glue */
+  void *sc_ih;			/* interrupt handle */
+  pci_chipset_tag_t en_pc;	/* for PCI calls */
+
+};
+
+/*
+ * local defines (PCI specific stuff)
+ */
+
+/* 
+ * address of config base memory address register in PCI config space
+ * (this is card specific)
+ */
+        
+#define PCI_CBMA        0x10
+
+/*
+ * tonga (pci bridge).   ENI cards only!
+ */
+
+#define EN_TONGA        0x60            /* PCI config addr of tonga reg */
+
+#define TONGA_SWAP_DMA  0x80            /* endian swap control */
+#define TONGA_SWAP_BYTE 0x40
+#define TONGA_SWAP_WORD 0x20
+
+/*
+ * adaptec pci bridge.   ADP cards only!
+ */
+
+#define ADP_PCIREG	0x050040	/* PCI control register */
+
+#define ADP_PCIREG_RESET	0x1	/* reset card */
+#define ADP_PCIREG_IENABLE	0x2	/* interrupt enable */
+#define ADP_PCIREG_SWAP_WORD	0x4	/* swap byte on slave access */
+#define ADP_PCIREG_SWAP_DMA	0x8	/* swap bytes on DMA */
+
+/*
+ * prototypes
+ */
+
+static	int en_pci_match(struct device *, void *, void *);
+static	void en_pci_attach(struct device *, struct device *, void *);
+
+/*
+ * PCI autoconfig attachments
+ */
+
+struct cfattach en_pci_ca = {
+    sizeof(struct en_pci_softc), en_pci_match, en_pci_attach,
+};
+
+#if !defined(MIDWAY_ENIONLY)
+
+static void adp_busreset(void *);
+
+/*
+ * bus specific reset function [ADP only!]
+ */
+
+static void adp_busreset(v)
+
+void *v;
+
+{
+  struct en_softc *sc = (struct en_softc *) v;
+  u_int32_t dummy;
+
+  bus_space_write_4(sc->en_memt, sc->en_base, ADP_PCIREG, ADP_PCIREG_RESET);
+  DELAY(1000);  /* let it reset */
+  dummy = bus_space_read_4(sc->en_memt, sc->en_base, ADP_PCIREG);
+  bus_space_write_4(sc->en_memt, sc->en_base, ADP_PCIREG, 
+                (ADP_PCIREG_SWAP_WORD|ADP_PCIREG_SWAP_DMA|ADP_PCIREG_IENABLE));
+  dummy = bus_space_read_4(sc->en_memt, sc->en_base, ADP_PCIREG);
+  if ((dummy & (ADP_PCIREG_SWAP_WORD|ADP_PCIREG_SWAP_DMA)) !=
+                (ADP_PCIREG_SWAP_WORD|ADP_PCIREG_SWAP_DMA))
+    printf("adp_busreset: Adaptec ATM did NOT reset!\n");
+
+}
+#endif
+
+/***********************************************************************/
+
+/*
+ * autoconfig stuff
+ */
+
+static int en_pci_match(parent, match, aux)
+
+struct device *parent;
+void *match;
+void *aux;
+
+{
+  struct pci_attach_args *pa = (struct pci_attach_args *) aux;
+
+#if !defined(MIDWAY_ADPONLY)
+  if (PCI_VENDOR(pa->pa_id) == PCI_VENDOR_EFFICIENTNETS && 
+      (PCI_PRODUCT(pa->pa_id) == PCI_PRODUCT_EFFICIENTNETS_ENI155PF ||
+       PCI_PRODUCT(pa->pa_id) == PCI_PRODUCT_EFFICIENTNETS_ENI155PA))
+    return 1;
+#endif
+
+#if !defined(MIDWAY_ENIONLY)
+  if (PCI_VENDOR(pa->pa_id) == PCI_VENDOR_ADP && 
+      (PCI_PRODUCT(pa->pa_id) == PCI_PRODUCT_ADP_AIC5900 ||
+       PCI_PRODUCT(pa->pa_id) == PCI_PRODUCT_ADP_AIC5905))
+    return 1;
+#endif
+
+  return 0;
+}
+
+
+static void en_pci_attach(parent, self, aux)
+
+struct device *parent, *self;
+void *aux;
+
+{
+  struct en_softc *sc = (void *)self;
+  struct en_pci_softc *scp = (void *)self;
+  struct pci_attach_args *pa = aux;
+  bus_addr_t membase;
+  pci_intr_handle_t ih;
+  const char *intrstr;
+  int retval;
+
+  sc->en_memt = pa->pa_memt;
+  sc->is_adaptec = (PCI_VENDOR(pa->pa_id) == PCI_VENDOR_ADP) ? 1 : 0;
+  scp->en_pc = pa->pa_pc;
+
+  /*
+   * interrupt map
+   */
+
+  if (pci_intr_map(pa, &ih)) {
+    printf(": couldn't map interrupt\n");
+    return;
+  }
+  intrstr = pci_intr_string(scp->en_pc, ih);
+  scp->sc_ih = pci_intr_establish(scp->en_pc, ih, IPL_NET, en_intr, sc,
+      sc->sc_dev.dv_xname);
+  if (scp->sc_ih == NULL) {
+    printf(": couldn't establish interrupt");
+    if (intrstr != NULL)
+      printf(" at %s", intrstr);
+    printf("\n");
+    return;
+  }
+  sc->ipl = 1; /* XXX */
+
+  /*
+   * memory map
+   */
+
+  retval = pci_mem_find(scp->en_pc, pa->pa_tag, PCI_CBMA,
+				&membase, &sc->en_obmemsz, NULL);
+  if (retval == 0)
+    retval = bus_space_map(sc->en_memt, membase, sc->en_obmemsz, 0,
+      &sc->en_base);
+ 
+  if (retval) {
+    printf(": couldn't map memory\n");
+    return;
+  }
+
+  printf(": %s\n", intrstr);
+
+  /*
+   * set up pci bridge
+   */
+
+#if !defined(MIDWAY_ENIONLY)
+  if (sc->is_adaptec) {
+    sc->en_busreset = adp_busreset;
+    adp_busreset(sc);
+  }
+#endif
+
+#if !defined(MIDWAY_ADPONLY)
+  if (!sc->is_adaptec) {
+    sc->en_busreset = NULL;
+    pci_conf_write(scp->en_pc, pa->pa_tag, EN_TONGA, 
+		  (TONGA_SWAP_DMA|TONGA_SWAP_WORD));
+  }
+#endif
+
+  /*
+   * done PCI specific stuff
+   */
+
+  en_attach(sc);
+
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

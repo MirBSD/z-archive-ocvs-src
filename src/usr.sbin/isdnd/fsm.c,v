@@ -1,0 +1,662 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2
+	tg-mergefixes-1-branch:1.2.0.14
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.12
+	MIROS_X_BASE:1.2
+	MIRBSD_XP_MIRPPC:1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.8
+	MIRBSD_7quater:1.2
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	MIRBSD_5:1.2
+	MIRBSD_4:1.2;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.14.13.27;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.25.21.53.20;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@pull in the remaining ISDN man pages and the daemon from NetBSD,
+replacing the postcard-ware ones
+
+I still think it's okay to send Hellmuth a postcard, though.
+@
+text
+@/*
+ * Copyright (c) 1997, 1999 Hellmuth Michaelis. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *---------------------------------------------------------------------------
+ *
+ *	FSM for isdnd
+ *	-------------
+ *
+ *	_Id: fsm.c,v 1.5 2003/01/06 12:46:14 wiz Exp $ 
+ *
+ * $FreeBSD$
+ *
+ *      last edit-date: [Mon Dec 13 21:46:07 1999]
+ *
+ *---------------------------------------------------------------------------*/
+
+#include "isdnd.h"
+
+/* table of state descriptions */
+
+static char *state_text[N_STATES] = {
+	"idle",
+	"dialing",
+	"waitdialretry",
+	"dialretry",
+	
+	"pcb-dialing",
+	"pcb-dialfail",
+	"pcb-waitcall",
+
+	"acb-waitdisc",
+	"acb-waitdial",
+	"acb-dialing",
+	"acb-dialfail",
+
+	"accepted",
+	"connected",
+	"waitdisconnect",	
+	"down",
+	"alert",
+
+	"Illegal State"	
+};
+
+/* table of event descriptions */
+
+static char *event_text[N_EVENTS] = {
+
+	/* incoming messages */
+	
+	"msg-con-ind",
+	"msg-con-act-ind",
+	"msg-disc-ind",
+	"msg-dialout",
+
+	/* local events */
+	
+	"timeout",
+	"disconnect-req",
+	"callback-req",
+	"alert-req",
+	
+	/* illegal */
+	
+	"Illegal Event"
+};
+
+/*---------------------------------------------------------------------------*
+ *	illegal state default action
+ *---------------------------------------------------------------------------*/	
+static void
+F_ill(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_ill: Illegal State reached !!!")));
+}
+
+/*---------------------------------------------------------------------------*
+ *	No change, No action
+ *---------------------------------------------------------------------------*/	
+static void
+F_NcNa(struct cfg_entry *cep)
+{
+}
+
+/*---------------------------------------------------------------------------*
+ *	incoming CONNECT, accepting call
+ *---------------------------------------------------------------------------*/	
+static void
+F_MCI(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_MCI: tx SETUP_RESP_ACCEPT")));
+	sendm_connect_resp(cep, cep->cdid, SETUP_RESP_ACCEPT, 0);
+	start_timer(cep, TIMEOUT_CONNECT_ACTIVE);
+}
+
+/*---------------------------------------------------------------------------*
+ *	incoming connect active, call is now active
+ *---------------------------------------------------------------------------*/	
+static void
+F_MCAI(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_MCAI: Connection active!")));
+
+	stop_timer(cep);
+
+	if((cep->dialin_reaction == REACT_ANSWER) &&
+	   (cep->b1protocol == BPROT_NONE))
+	{
+		exec_answer(cep);
+	}
+}
+
+/*---------------------------------------------------------------------------*
+ *	timeout
+ *---------------------------------------------------------------------------*/	
+static void
+F_TIMO(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_TIMO: Timout occurred!")));
+	sendm_disconnect_req(cep, (CAUSET_I4B << 8) | CAUSE_I4B_NORMAL);
+	cep->cdid = CDID_UNUSED;	
+}
+
+/*---------------------------------------------------------------------------*
+ *	incoming disconnect indication
+ *---------------------------------------------------------------------------*/	
+static void
+F_IDIS(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_IDIS: disconnect indication")));
+	cep->cdid = CDID_UNUSED;
+}
+
+/*---------------------------------------------------------------------------*
+ *	local disconnect request
+ *---------------------------------------------------------------------------*/	
+static void
+F_DRQ(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_DRQ: local disconnect request")));
+	sendm_disconnect_req(cep, (CAUSET_I4B << 8) | CAUSE_I4B_NORMAL);
+}
+
+/*---------------------------------------------------------------------------*
+ *	disconnect indication after local disconnect req
+ *---------------------------------------------------------------------------*/	
+static void
+F_MDI(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_MDI: disconnect indication, local disconnected")));
+	cep->cdid = CDID_UNUSED;
+}
+
+/*---------------------------------------------------------------------------*
+ *	local requested outgoing dial
+ *---------------------------------------------------------------------------*/	
+static void
+F_DIAL(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_DIAL: local dial out request")));
+
+        if(cep->dialrandincr)
+                cep->randomtime = (random() & RANDOM_MASK) + cep->recoverytime;
+
+	cep->dial_count = 0;
+		
+	select_first_dialno(cep);
+
+	sendm_connect_req(cep);
+}
+
+/*---------------------------------------------------------------------------*
+ *	outgoing dial successful
+ *---------------------------------------------------------------------------*/	
+static void
+F_DOK(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_DOK: dial out ok")));
+	select_this_dialno(cep);
+}
+
+/*---------------------------------------------------------------------------*
+ *	outgoing dial fail (ST_SUSE !!!)
+ *---------------------------------------------------------------------------*/	
+static void
+F_DFL(struct cfg_entry *cep)
+{
+	cep->last_release_time = time(NULL);
+	
+	if(cep->dialouttype == DIALOUT_NORMAL)
+	{
+		cep->dial_count++;
+	
+		if(cep->dial_count < cep->dialretries || cep->dialretries == -1) /* Added by FST <mailto:fsteevie@@dds.nl> for unlimited dialing (sorry, but I needed it) */
+		{
+			/* inside normal retry cycle */
+		
+			DBGL(DL_STATE, (logit(LL_DBG, "F_DFL: dial fail, dial retry")));
+			select_next_dialno(cep);
+			cep->cdid = CDID_RESERVED;
+			cep->state = ST_DIALRTMRCHD;
+			return;
+		}
+	
+		/* retries exhausted */
+		
+		if(!cep->usedown)
+		{
+			DBGL(DL_STATE, (logit(LL_DBG, "F_DFL: dial retry fail, dial retries exhausted")));
+			dialresponse(cep, DSTAT_TFAIL);
+			cep->cdid = CDID_UNUSED;
+			cep->dial_count = 0;
+			cep->state = ST_IDLE;
+			return;
+		}
+	
+		/* interface up/down active */
+	
+		cep->down_retry_count++;
+	
+		if(cep->down_retry_count > cep->downtries)
+		{
+			/* set interface down */
+			DBGL(DL_STATE, (logit(LL_DBG, "F_DFL: dial retry cycle fail, setting interface down!")));
+			dialresponse(cep, DSTAT_PFAIL);
+			if_down(cep);					
+			cep->state = ST_DOWN;
+		}
+		else
+		{
+			/* enter new dial retry cycle */
+			DBGL(DL_STATE, (logit(LL_DBG, "F_DFL: dial retry cycle fail, enter new retry cycle!")));
+			select_next_dialno(cep);
+			cep->state = ST_DIALRTMRCHD;
+		}
+	
+		cep->dial_count = 0;
+		cep->cdid = CDID_RESERVED;
+	}
+	else	/* cdp->dialouttype == DIALOUT_CALLEDBACK */
+	{
+		DBGL(DL_STATE, (logit(LL_DBG, "F_DFL: calledback dial done, wait for incoming call")));
+		cep->cdid = CDID_RESERVED;
+		cep->state = ST_PCB_WAITCALL;
+	}
+}
+
+/*---------------------------------------------------------------------------*
+ *	local requested outgoing dial
+ *---------------------------------------------------------------------------*/	
+static void
+F_ACBW(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_ACBW: local callback, wait callback recovery time")));
+
+        if(cep->dialrandincr)
+                cep->randomtime = (random() & RANDOM_MASK) + cep->recoverytime;
+
+	cep->dial_count = 0;
+
+	cep->cdid = CDID_RESERVED;
+}
+
+/*---------------------------------------------------------------------------*
+ *	active callback dialout retry (ST_SUSE !!!)
+ *---------------------------------------------------------------------------*/	
+static void
+F_ACBR(struct cfg_entry *cep)
+{	
+	cep->dial_count++;
+
+	if(cep->dial_count < cep->dialretries || cep->dialretries == -1) /* Added by FST <mailto:fsteevie@@dds.nl> for unlimited dialing (sorry, but I needed it) */
+	{
+		/* inside normal retry cycle */
+	
+		DBGL(DL_STATE, (logit(LL_DBG, "F_ACBR: dial fail, dial retry")));
+		select_next_dialno(cep);
+		cep->cdid = CDID_RESERVED;
+		cep->state = ST_ACB_DIALFAIL;
+		return;
+	}
+
+	/* retries exhausted */
+	
+	if(!cep->usedown)
+	{
+		DBGL(DL_STATE, (logit(LL_DBG, "F_ACBR: dial retry fail, dial retries exhausted")));
+		dialresponse(cep, DSTAT_TFAIL);
+		cep->cdid = CDID_UNUSED;
+		cep->dial_count = 0;
+		cep->state = ST_IDLE;
+		return;
+	}
+
+	/* interface up/down active */
+
+	cep->down_retry_count++;
+
+	if(cep->down_retry_count > cep->downtries)
+	{
+		/* set interface down */
+		DBGL(DL_STATE, (logit(LL_DBG, "F_ACBR: dial retry cycle fail, setting interface down!")));
+		dialresponse(cep, DSTAT_PFAIL);
+		if_down(cep);
+		cep->state = ST_DOWN;
+	}
+	else
+	{
+		/* enter new dial retry cycle */
+		DBGL(DL_STATE, (logit(LL_DBG, "F_ACBR: dial retry cycle fail, enter new retry cycle!")));
+		select_next_dialno(cep);
+		cep->state = ST_ACB_DIALFAIL;
+	}
+
+	cep->dial_count = 0;
+	cep->cdid = CDID_RESERVED;	
+}
+
+/*---------------------------------------------------------------------------*
+ *	local requested to send ALERT message
+ *---------------------------------------------------------------------------*/	
+static void
+F_ALRT(struct cfg_entry *cep)
+{
+	DBGL(DL_STATE, (logit(LL_DBG, "F_ALRT: local send alert request")));
+
+	cep->alert_time = cep->alert;
+	
+	sendm_alert_req(cep);
+}
+
+/*---------------------------------------------------------------------------*
+ *	isdn daemon state transition table
+ *---------------------------------------------------------------------------*/	
+struct state_tab {
+	void(*func)(struct cfg_entry *cep);		/* function to execute */
+	int newstate;				/* next state */
+} state_tab[N_EVENTS][N_STATES] = {
+
+/* STATE:	ST_IDLE			ST_DIAL			ST_DIALRTMRCHD		ST_DIALRETRY		ST_PCB_DIAL		ST_PCB_DIALFAIL		ST_PCB_WAITCALL		ST_ACB_WAITDISC		ST_ACB_WAITDIAL 	ST_ACB_DIAL		ST_ACB_DIALFAIL		ST_ACCEPTED		ST_CONNECTED		ST_WAITDISCI		ST_DOWN			ST_ALERT		ST_ILLEGAL		*/
+/* -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+/* messages */
+/* EV_MCI   */{{F_MCI, ST_ACCEPTED},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_MCI, ST_ACCEPTED},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_MCI, ST_ACCEPTED},   {F_ill, ST_ILL}},
+/* EV_MCAI  */{{F_ill, ST_ILL},		{F_DOK, ST_CONNECTED},	{F_ill, ST_ILL},	{F_DOK, ST_CONNECTED},	{F_DOK, ST_CONNECTED},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_DOK, ST_CONNECTED},	{F_ill, ST_ILL},	{F_MCAI,ST_CONNECTED},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},        {F_ill, ST_ILL}},
+/* EV_MDI   */{{F_ill, ST_ILL},		{F_DFL, ST_SUSE},	{F_ill, ST_ILL},	{F_DFL, ST_SUSE},	{F_DFL, ST_SUSE},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ACBW,ST_ACB_WAITDIAL},{F_ill, ST_ILL},	{F_ACBR, ST_SUSE},	{F_ACBR,ST_SUSE},	{F_IDIS,ST_IDLE},	{F_IDIS,ST_IDLE},	{F_MDI, ST_IDLE},	{F_ill, ST_ILL},	{F_MDI, ST_IDLE},       {F_ill, ST_ILL}},
+/* EV_MDO   */{{F_DIAL,ST_DIAL},	{F_NcNa,ST_DIAL},	{F_NcNa,ST_DIALRTMRCHD},{F_NcNa,ST_DIALRETRY},	{F_NcNa,ST_PCB_DIAL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},        {F_ill, ST_ILL}},
+
+/* local requests */
+/* EV_TIMO  */{{F_ill, ST_ILL},		{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_TIMO,ST_IDLE},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},        {F_ill, ST_ILL}},
+/* EV_DRQ   */{{F_ill, ST_ILL},		{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_DRQ, ST_WAITDISCI},	{F_NcNa,ST_WAITDISCI},	{F_ill, ST_ILL},	{F_ill, ST_ILL},        {F_ill, ST_ILL}},
+/* EV_CBRQ  */{{F_NcNa,ST_ACB_WAITDIAL},{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},       {F_NcNa,ST_ACB_WAITDIAL},{F_NcNa, ST_ACB_DIAL}, {F_NcNa,ST_ACB_DIALFAIL},{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},        {F_ill, ST_ILL}},
+/* EV_ALRT  */{{F_ALRT,ST_ALERT},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},        {F_ill, ST_ILL}},
+
+/* illegal  */
+
+/* EV_ILL   */{{F_ill, ST_ILL},		{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},	{F_ill, ST_ILL},        {F_ill, ST_ILL}}
+};
+
+/*---------------------------------------------------------------------------*
+ *	event handler
+ *---------------------------------------------------------------------------*/	
+void
+next_state(struct cfg_entry *cep, int event)
+{
+	int currstate, newstate;
+
+	if(event > N_EVENTS)
+	{
+		logit(LL_ERR, "next_state: event > N_EVENTS");
+		error_exit(1, "next_state: event > N_EVENTS");
+	}
+
+	currstate = cep->state;
+
+	if(currstate > N_STATES)
+	{
+		logit(LL_ERR, "next_state: currstate > N_STATES");
+		error_exit(1, "next_state: currstate > N_STATES");
+	}
+
+	newstate = state_tab[event][currstate].newstate;
+
+	if(newstate > N_STATES)
+	{
+		logit(LL_ERR, "next_state: newstate > N_STATES");
+		error_exit(1, "next_state: newstate > N_STATES");
+	}
+
+	if(newstate != ST_SUSE)
+	{
+		DBGL(DL_STATE, (logit(LL_DBG, "FSM event [%s]: [%s => %s]", event_text[event],
+				state_text[currstate],
+				state_text[newstate])));
+	}
+
+        (*state_tab[event][currstate].func)(cep);
+
+	if(newstate == ST_ILL)
+	{
+		logit(LL_ERR, "FSM ILLEGAL STATE, event=%s: oldstate=%s => newstate=%s]",
+				event_text[event],
+                                state_text[currstate],
+                                state_text[newstate]);
+	}
+
+	if(newstate == ST_SUSE)
+	{
+		DBGL(DL_STATE, (logit(LL_DBG, "FSM (SUSE) event [%s]: [%s => %s]", event_text[event],
+				state_text[currstate],
+				state_text[cep->state])));
+	}
+	else
+	{
+		cep->state = newstate;
+	}
+}
+
+/*---------------------------------------------------------------------------*
+ *	return pointer to current state description
+ *---------------------------------------------------------------------------*/	
+char *
+printstate(struct cfg_entry *cep)
+{
+	return((char *) state_text[cep->state]);
+}
+
+/* EOF */
+@
+
+
+1.1
+log
+@Import ISDN (i4b) into MirBSD
+Done:
+ - kernel support
+ - (commented out) entries in GENERIC
+ - MAKEDEV file with licence issues
+ - isdnd
+
+Not done:
+ - testing
+ - configuration files
+
+Not planned:
+ - more stuff from i4b (voicemail, fax, etc)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD$
+d30 1
+a30 1
+ *	_Id: fsm.c,v 1.17 1999/10/11 09:22:14 hm Exp $ 
+d32 3
+a34 1
+ *      last edit-date: [Mon Oct 11 11:01:44 1999]
+d93 1
+a93 1
+F_ill(cfg_entry_t *cep)
+d95 1
+a95 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_ill: Illegal State reached !!!")));
+d102 1
+a102 1
+F_NcNa(cfg_entry_t *cep)
+d110 1
+a110 1
+F_MCI(cfg_entry_t *cep)
+d112 1
+a112 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_MCI: tx SETUP_RESP_ACCEPT")));
+d121 1
+a121 1
+F_MCAI(cfg_entry_t *cep)
+d123 1
+a123 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_MCAI: Connection active!")));
+d138 1
+a138 1
+F_TIMO(cfg_entry_t *cep)
+d140 1
+a140 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_TIMO: Timout occured!")));
+d149 1
+a149 1
+F_IDIS(cfg_entry_t *cep)
+d151 1
+a151 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_IDIS: disconnect indication")));
+d159 1
+a159 1
+F_DRQ(cfg_entry_t *cep)
+d161 1
+a161 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_DRQ: local disconnect request")));
+d169 1
+a169 1
+F_MDI(cfg_entry_t *cep)
+d171 1
+a171 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_MDI: disconnect indication, local disconnected")));
+d179 1
+a179 1
+F_DIAL(cfg_entry_t *cep)
+d181 1
+a181 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_DIAL: local dial out request")));
+d194 1
+a194 1
+ *	outgoing dial successfull
+d197 1
+a197 1
+F_DOK(cfg_entry_t *cep)
+d199 1
+a199 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_DOK: dial out ok")));
+d207 1
+a207 1
+F_DFL(cfg_entry_t *cep)
+d215 1
+a215 1
+		if(cep->dial_count < cep->dialretries)
+d219 1
+a219 1
+			DBGL(DL_STATE, (log(LL_DBG, "F_DFL: dial fail, dial retry")));
+d230 1
+a230 1
+			DBGL(DL_STATE, (log(LL_DBG, "F_DFL: dial retry fail, dial retries exhausted")));
+d245 1
+a245 1
+			DBGL(DL_STATE, (log(LL_DBG, "F_DFL: dial retry cycle fail, setting interface down!")));
+d253 1
+a253 1
+			DBGL(DL_STATE, (log(LL_DBG, "F_DFL: dial retry cycle fail, enter new retry cycle!")));
+d263 1
+a263 1
+		DBGL(DL_STATE, (log(LL_DBG, "F_DFL: calledback dial done, wait for incoming call")));
+d273 1
+a273 1
+F_ACBW(cfg_entry_t *cep)
+d275 1
+a275 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_ACBW: local callback, wait callback recovery time")));
+d289 1
+a289 1
+F_ACBR(cfg_entry_t *cep)
+d293 1
+a293 1
+	if(cep->dial_count < cep->dialretries)
+d297 1
+a297 1
+		DBGL(DL_STATE, (log(LL_DBG, "F_ACBR: dial fail, dial retry")));
+d308 1
+a308 1
+		DBGL(DL_STATE, (log(LL_DBG, "F_ACBR: dial retry fail, dial retries exhausted")));
+d323 1
+a323 1
+		DBGL(DL_STATE, (log(LL_DBG, "F_ACBR: dial retry cycle fail, setting interface down!")));
+d331 1
+a331 1
+		DBGL(DL_STATE, (log(LL_DBG, "F_ACBR: dial retry cycle fail, enter new retry cycle!")));
+d344 1
+a344 1
+F_ALRT(cfg_entry_t *cep)
+d346 1
+a346 1
+	DBGL(DL_STATE, (log(LL_DBG, "F_ALRT: local send alert request")));
+d357 1
+a357 1
+	void(*func)(cfg_entry_t *cep);		/* function to execute */
+d384 1
+a384 1
+next_state(cfg_entry_t *cep, int event)
+d390 1
+a390 1
+		log(LL_ERR, "next_state: event > N_EVENTS");
+d398 1
+a398 1
+		log(LL_ERR, "next_state: currstate > N_STATES");
+d406 1
+a406 1
+		log(LL_ERR, "next_state: newstate > N_STATES");
+d412 1
+a412 1
+		DBGL(DL_STATE, (log(LL_DBG, "FSM event [%s]: [%s => %s]", event_text[event],
+d421 1
+a421 1
+		log(LL_ERR, "FSM ILLEGAL STATE, event=%s: oldstate=%s => newstate=%s]",
+d429 1
+a429 1
+		DBGL(DL_STATE, (log(LL_DBG, "FSM (SUSE) event [%s]: [%s => %s]", event_text[event],
+d443 1
+a443 1
+printstate(cfg_entry_t *cep)
+@
+

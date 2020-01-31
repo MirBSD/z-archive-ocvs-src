@@ -1,0 +1,304 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306091240:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.05.21.20.08.04;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.54.59;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.54.59;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.07.09.16.53.28;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@* merge OpenBSD 3.5-current
+* re-sort entries in Makefile
+  => not a bunch of adds any more; all alphabetic
+  => remove obsolete SUBDIRS_ONLY_BSD for now
+     (MirLinux won't come that soon due to a certain lawsuit,
+      licence issues with unwillingly GNU fanatics, and my
+      chronic unwillingness to do masochistic work)
+* spacing, RCS IDs, etc.
+* pkg gets folded into pkg_install, so we only have one dir
+  to worry about
+* pkg_add leaves the tree - nobody cared about this kind
+  of package tools anyways, and they're not part of MirBSD
+  (although still supported by MirPorts)
+* mopd leaves - we don't have VAX support anyways
+@
+text
+@/*
+ * report() - calls syslog
+ */
+
+#ifdef	__STDC__
+#include <stdarg.h>
+#else
+#include <varargs.h>
+#endif
+
+#include <stdio.h>
+#include <syslog.h>
+
+#include "report.h"
+
+#ifndef LOG_NDELAY
+#define LOG_NDELAY	0
+#endif
+#ifndef LOG_DAEMON
+#define LOG_DAEMON	0
+#endif
+#ifndef	LOG_BOOTP
+#define LOG_BOOTP	LOG_DAEMON
+#endif
+
+extern int debug;
+extern char *progname;
+
+/*
+ * This is initialized so you get stderr until you call
+ *	report_init()
+ */
+static int stderr_only = 1;
+
+void
+report_init(nolog)
+	int nolog;
+{
+	stderr_only = nolog;
+#ifdef SYSLOG
+	if (!stderr_only) {
+		openlog(progname, LOG_PID | LOG_NDELAY, LOG_BOOTP);
+	}
+#endif
+}
+
+/*
+ * This routine reports errors and such via stderr and syslog() if
+ * appopriate.  It just helps avoid a lot of "#ifdef SYSLOG" constructs
+ * from being scattered throughout the code.
+ *
+ * The syntax is identical to syslog(3), but %m is not considered special
+ * for output to stderr (i.e. you'll see "%m" in the output. . .).  Also,
+ * control strings should normally end with \n since newlines aren't
+ * automatically generated for stderr output (whereas syslog strips out all
+ * newlines and adds its own at the end).
+ */
+
+static char *levelnames[] = {
+#ifdef LOG_SALERT
+	"level(0): ",
+	"alert(1): ",
+	"alert(2): ",
+	"emerg(3): ",
+	"error(4): ",
+	"crit(5):  ",
+	"warn(6):  ",
+	"note(7):  ",
+	"info(8):  ",
+	"debug(9): ",
+	"level(?): "
+#else
+	"emerg(0): ",
+	"alert(1): ",
+	"crit(2):  ",
+	"error(3): ",
+	"warn(4):  ",
+	"note(5):  ",
+	"info(6):  ",
+	"debug(7): ",
+	"level(?): "
+#endif
+};
+static int numlevels = sizeof(levelnames) / sizeof(levelnames[0]);
+
+
+/*
+ * Print a log message using syslog(3) and/or stderr.
+ * The message passed in should not include a newline.
+ */
+#ifdef	__STDC__
+void
+report(int priority, char *fmt,...)
+#else
+/*VARARGS2*/
+void
+report(priority, fmt, va_alist)
+	int priority;
+	char *fmt;
+	va_dcl
+#endif
+{
+	va_list ap;
+	static char buf[256];
+
+	if ((priority < 0) || (priority >= numlevels)) {
+		priority = numlevels - 1;
+	}
+#ifdef	__STDC__
+	va_start(ap, fmt);
+#else
+	va_start(ap);
+#endif
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	/*
+	 * Print the message
+	 */
+	if (stderr_only || (debug > 2)) {
+		fprintf(stderr, "%s: %s %s\n",
+				progname, levelnames[priority], buf);
+	}
+#ifdef SYSLOG
+	if (!stderr_only)
+		syslog((priority | LOG_BOOTP), "%s", buf);
+#endif
+}
+
+
+
+/*
+ * Return pointer to static string which gives full filesystem error message.
+ */
+char *
+get_errmsg()
+{
+	extern int errno;
+	extern char *strerror();
+
+	return strerror(errno);
+}
+
+/*
+ * Local Variables:
+ * tab-width: 4
+ * c-indent-level: 4
+ * c-argdecl-indent: 4
+ * c-continued-statement-offset: 4
+ * c-continued-brace-offset: -4
+ * c-label-offset: -4
+ * c-brace-offset: 0
+ * End:
+ */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Bring the entire base system and ports tree in sync with OpenBSD
+@
+text
+@a11 1
+#include <string.h>
+d36 2
+a37 1
+report_init(int nolog)
+d91 1
+d94 8
+d109 1
+d111 3
+d136 1
+a136 1
+get_errmsg(void)
+d139 1
+@
+

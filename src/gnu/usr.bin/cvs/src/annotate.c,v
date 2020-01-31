@@ -1,0 +1,792 @@
+head	1.4;
+access;
+symbols
+	cvs-1_12_11:1.1.2.1
+	tg-mergetmp-mirosx-1:1.4
+	tg-mergefixes-1-branch:1.4.0.4
+	tg-mergefixes-1-base:1.4
+	MIROS_X:1.4.0.2
+	MIROS_X_BASE:1.4
+	cvs-1_12_10:1.1.2.1
+	FSF:1.1.2
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200404170130:1.1.1.1
+	cvs-1_11_12:1.1.3.2
+	cvs-1_11_1p1:1.1.3.1
+	tg:1.1.3
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2004.12.02.12.40.10;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.02.22.13.49.13;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.12.21.16.08;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.28;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.28;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2004.12.02.11.58.48;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.02.12.19.18.08;	author tg;	state Exp;
+branches;
+next	1.1.3.2;
+
+1.1.3.2
+date	2004.02.12.19.38.32;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@update to cvs 1.12.10-MirOS except automatically
+generated files
+XXX this installs as /usr/bin/ncvs yet, so no
+XXX conflicts during the test phase.
+XXX I suggest to _not_ update.
+
+XXX *** IMPORTANT *** DO NOT ACCESS CVS 1.11 REPOSITORIES
+XXX *** IMPORTANT *** WITH CVS 1.12 OR VICE VERSA!
+@
+text
+@/*
+ * Copyright (c) 1992, Brian Berliner and Jeff Polk
+ * Copyright (c) 1989-1992, Brian Berliner
+ * 
+ * You may distribute under the terms of the GNU General Public License as
+ * specified in the README file that comes with the CVS source distribution.
+ * 
+ * Show last revision where each line modified
+ * 
+ * Prints the specified files with each line annotated with the revision
+ * number where it was last modified.  With no argument, annotates all
+ * all the files in the directory (recursive by default).
+ */
+
+#include "cvs.h"
+
+/* Options from the command line.  */
+
+static int force_tag_match = 1;
+static int force_binary = 0;
+static char *tag = NULL;
+static int tag_validated;
+static char *date = NULL;
+
+static int is_rannotate;
+
+static int annotate_fileproc (void *callerdat, struct file_info *);
+static int rannotate_proc (int argc, char **argv, char *xwhere,
+				 char *mwhere, char *mfile, int shorten,
+				 int local, char *mname, char *msg);
+
+static const char *const annotate_usage[] =
+{
+    "Usage: %s %s [-lRfF] [-r rev] [-D date] [files...]\n",
+    "\t-l\tLocal directory only, no recursion.\n",
+    "\t-R\tProcess directories recursively.\n",
+    "\t-f\tUse head revision if tag/date not found.\n",
+    "\t-F\tAnnotate binary files.\n",
+    "\t-r rev\tAnnotate file as of specified revision/tag.\n",
+    "\t-D date\tAnnotate file as of specified date.\n",
+    "(Specify the --help global option for a list of other help options)\n",
+    NULL
+};
+
+/* Command to show the revision, date, and author where each line of a
+   file was modified.  */
+
+int
+annotate (int argc, char **argv)
+{
+    int local = 0;
+    int err = 0;
+    int c;
+
+    is_rannotate = (strcmp(cvs_cmd_name, "rannotate") == 0);
+
+    if (argc == -1)
+	usage (annotate_usage);
+
+    optind = 0;
+    while ((c = getopt (argc, argv, "+lr:D:fFR")) != -1)
+    {
+	switch (c)
+	{
+	    case 'l':
+		local = 1;
+		break;
+	    case 'R':
+		local = 0;
+		break;
+	    case 'r':
+	        tag = optarg;
+		break;
+	    case 'D':
+	        date = Make_Date (optarg);
+		break;
+	    case 'f':
+	        force_tag_match = 0;
+		break;
+	    case 'F':
+	        force_binary = 1;
+		break;
+	    case '?':
+	    default:
+		usage (annotate_usage);
+		break;
+	}
+    }
+    argc -= optind;
+    argv += optind;
+
+#ifdef CLIENT_SUPPORT
+    if (current_parsed_root->isremote)
+    {
+	start_server ();
+
+	if (is_rannotate && !supported_request ("rannotate"))
+	    error (1, 0, "server does not support rannotate");
+
+	ign_setup ();
+
+	if (local)
+	    send_arg ("-l");
+	if (!force_tag_match)
+	    send_arg ("-f");
+	if (force_binary)
+	    send_arg ("-F");
+	option_with_arg ("-r", tag);
+	if (date)
+	    client_senddate (date);
+	send_arg ("--");
+	if (is_rannotate)
+	{
+	    int i;
+	    for (i = 0; i < argc; i++)
+		send_arg (argv[i]);
+	    send_to_server ("rannotate\012", 0);
+	}
+	else
+	{
+	    send_files (argc, argv, local, 0, SEND_NO_CONTENTS);
+	    send_file_names (argc, argv, SEND_EXPAND_WILD);
+	    send_to_server ("annotate\012", 0);
+	}
+	return get_responses_and_close ();
+    }
+#endif /* CLIENT_SUPPORT */
+
+    if (is_rannotate)
+    {
+	DBM *db;
+	int i;
+	db = open_module ();
+	for (i = 0; i < argc; i++)
+	{
+	    err += do_module (db, argv[i], MISC, "Annotating", rannotate_proc,
+			     (char *) NULL, 0, local, 0, 0, (char *) NULL);
+	}
+	close_module (db);
+    }
+    else
+    {
+	err = rannotate_proc (argc + 1, argv - 1, (char *) NULL,
+			 (char *) NULL, (char *) NULL, 0, local, (char *) NULL,
+			 (char *) NULL);
+    }
+
+    return err;
+}
+    
+
+static int
+rannotate_proc (int argc, char **argv, char *xwhere, char *mwhere, char *mfile, int shorten, int local, char *mname, char *msg)
+{
+    /* Begin section which is identical to patch_proc--should this
+       be abstracted out somehow?  */
+    char *myargv[2];
+    int err = 0;
+    int which;
+    char *repository;
+    char *where;
+
+    if (is_rannotate)
+    {
+	repository = xmalloc (strlen (current_parsed_root->directory) + strlen (argv[0])
+			      + (mfile == NULL ? 0 : strlen (mfile) + 1) + 2);
+	(void) sprintf (repository, "%s/%s", current_parsed_root->directory, argv[0]);
+	where = xmalloc (strlen (argv[0]) + (mfile == NULL ? 0 : strlen (mfile) + 1)
+			 + 1);
+	(void) strcpy (where, argv[0]);
+
+	/* if mfile isn't null, we need to set up to do only part of the module */
+	if (mfile != NULL)
+	{
+	    char *cp;
+	    char *path;
+
+	    /* if the portion of the module is a path, put the dir part on repos */
+	    if ((cp = strrchr (mfile, '/')) != NULL)
+	    {
+		*cp = '\0';
+		(void) strcat (repository, "/");
+		(void) strcat (repository, mfile);
+		(void) strcat (where, "/");
+		(void) strcat (where, mfile);
+		mfile = cp + 1;
+	    }
+
+	    /* take care of the rest */
+	    path = xmalloc (strlen (repository) + strlen (mfile) + 5);
+	    (void) sprintf (path, "%s/%s", repository, mfile);
+	    if (isdir (path))
+	    {
+		/* directory means repository gets the dir tacked on */
+		(void) strcpy (repository, path);
+		(void) strcat (where, "/");
+		(void) strcat (where, mfile);
+	    }
+	    else
+	    {
+		myargv[0] = argv[0];
+		myargv[1] = mfile;
+		argc = 2;
+		argv = myargv;
+	    }
+	    free (path);
+	}
+
+	/* cd to the starting repository */
+	if ( CVS_CHDIR (repository) < 0)
+	{
+	    error (0, errno, "cannot chdir to %s", repository);
+	    free (repository);
+	    return (1);
+	}
+	/* End section which is identical to patch_proc.  */
+
+	if (force_tag_match && tag != NULL)
+	    which = W_REPOS | W_ATTIC;
+	else
+	    which = W_REPOS;
+    }
+    else
+    {
+        where = NULL;
+        which = W_LOCAL;
+        repository = "";
+    }
+
+    if (tag != NULL && !tag_validated)
+    {
+	tag_check_valid (tag, argc - 1, argv + 1, local, 0, repository, false);
+	tag_validated = 1;
+    }
+
+    err = start_recursion ( annotate_fileproc, (FILESDONEPROC) NULL,
+			    (DIRENTPROC) NULL, (DIRLEAVEPROC) NULL, NULL,
+			    argc - 1, argv + 1, local, which, 0, CVS_LOCK_READ,
+			    where, 1, repository );
+    if ( which & W_REPOS )
+	free ( repository );
+    if ( where != NULL )
+	free (where);
+    return err;
+}
+
+
+static int
+annotate_fileproc (void *callerdat, struct file_info *finfo)
+{
+    char *expand, *version;
+
+    if (finfo->rcs == NULL)
+        return (1);
+
+    if (finfo->rcs->flags & PARTIAL)
+        RCS_reparsercsfile (finfo->rcs, (FILE **) NULL, (struct rcsbuffer *) NULL);
+
+    expand = RCS_getexpand (finfo->rcs);
+    version = RCS_getversion (finfo->rcs, tag, date, force_tag_match,
+			      (int *) NULL);
+
+    if (version == NULL)
+        return 0;
+
+    /* Distinguish output for various files if we are processing
+       several files.  */
+    cvs_outerr ("\nAnnotations for ", 0);
+    cvs_outerr (finfo->fullname, 0);
+    cvs_outerr ("\n***************\n", 0);
+
+    if (!force_binary && expand && expand[0] == 'b')
+    {
+        cvs_outerr ("Skipping binary file -- -F not specified.\n", 0);
+    }
+    else
+    {
+	RCS_deltas (finfo->rcs, (FILE *) NULL, (struct rcsbuffer *) NULL,
+		    version, RCS_ANNOTATE, NULL, NULL, NULL, NULL);
+    }
+    free (version);
+    return 0;
+}
+@
+
+
+1.3
+log
+@cvs-1.11.12 doesn't do the joints correctly (what were the
+FSF people smoking?), it memory faults.
+thusly revert to 1.11.1p1
+
+tested.
+agreed bsiegert@@
+@
+text
+@d20 1
+d27 2
+a28 2
+static int annotate_fileproc PROTO ((void *callerdat, struct file_info *));
+static int rannotate_proc PROTO((int argc, char **argv, char *xwhere,
+d30 1
+a30 1
+				 int local, char *mname, char *msg));
+d34 1
+a34 1
+    "Usage: %s %s [-lRf] [-r rev] [-D date] [files...]\n",
+d38 1
+d49 1
+a49 3
+annotate (argc, argv)
+    int argc;
+    char **argv;
+d55 1
+a55 1
+    is_rannotate = (strcmp(command_name, "rannotate") == 0);
+d61 1
+a61 1
+    while ((c = getopt (argc, argv, "+lr:D:fR")) != -1)
+d80 3
+d106 2
+d111 1
+d137 1
+a137 1
+			     (char *) NULL, 0, 0, 0, 0, (char *) NULL);
+d144 1
+a144 1
+			 (char *) NULL, (char *) NULL, 0, 0, (char *) NULL,
+d153 1
+a153 10
+rannotate_proc (argc, argv, xwhere, mwhere, mfile, shorten, local, mname, msg)
+    int argc;
+    char **argv;
+    char *xwhere;
+    char *mwhere;
+    char *mfile;
+    int shorten;
+    int local;
+    char *mname;
+    char *msg;
+a215 1
+	free (repository);
+a221 1
+	repository = NULL;
+d232 1
+a232 1
+	tag_check_valid (tag, argc - 1, argv + 1, local, 0, repository);
+d236 8
+a243 4
+    err = start_recursion (annotate_fileproc, (FILESDONEPROC) NULL,
+			   (DIRENTPROC) NULL, (DIRLEAVEPROC) NULL, NULL,
+			   argc - 1, argv + 1, local, which, 0, 1,
+			   where, 1);
+d249 1
+a249 3
+annotate_fileproc (callerdat, finfo)
+    void *callerdat;
+    struct file_info *finfo;
+d251 1
+a251 1
+    char *version;
+d259 1
+d262 1
+d268 1
+a268 1
+    cvs_outerr ("Annotations for ", 0);
+d272 9
+a280 2
+    RCS_deltas (finfo->rcs, (FILE *) NULL, (struct rcsbuffer *) NULL,
+		version, RCS_ANNOTATE, NULL, NULL, NULL, NULL);
+@
+
+
+1.2
+log
+@first step of merging new cvs
+XXX might not compile
+XXX might not work
+XXX might contain bugs
+XXX definitively needs autoconf 2.58 first
+@
+text
+@a19 1
+static int force_binary = 0;
+d33 1
+a33 1
+    "Usage: %s %s [-lRfF] [-r rev] [-D date] [files...]\n",
+a36 1
+    "\t-F\tAnnotate binary files.\n",
+d61 1
+a61 1
+    while ((c = getopt (argc, argv, "+lr:D:fFR")) != -1)
+a79 3
+	    case 'F':
+	        force_binary = 1;
+		break;
+a102 2
+	if (force_binary)
+	    send_arg ("-F");
+a105 1
+	send_arg ("--");
+d131 1
+a131 1
+			     (char *) NULL, 0, local, 0, 0, (char *) NULL);
+d138 1
+a138 1
+			 (char *) NULL, (char *) NULL, 0, local, (char *) NULL,
+d219 1
+d226 1
+d243 2
+a244 3
+			   argc - 1, argv + 1, local, which, 0, CVS_LOCK_READ,
+			   where, 1, repository);
+    if ( which & W_REPOS ) free ( repository );
+d254 1
+a254 1
+    char *expand, *version;
+a261 1
+    expand = RCS_getexpand (finfo->rcs);
+a263 1
+
+d269 1
+a269 1
+    cvs_outerr ("\nAnnotations for ", 0);
+d273 2
+a274 9
+    if (!force_binary && expand && expand[0] == 'b')
+    {
+        cvs_outerr ("Skipping binary file -- -F not specified.\n", 0);
+    }
+    else
+    {
+	RCS_deltas (finfo->rcs, (FILE *) NULL, (struct rcsbuffer *) NULL,
+		    version, RCS_ANNOTATE, NULL, NULL, NULL, NULL);
+    }
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d20 1
+d34 1
+a34 1
+    "Usage: %s %s [-lRf] [-r rev] [-D date] [files...]\n",
+d38 1
+d63 1
+a63 1
+    while ((c = getopt (argc, argv, "+lr:D:fR")) != -1)
+d82 3
+d108 2
+d113 1
+d139 1
+a139 1
+			     (char *) NULL, 0, 0, 0, 0, (char *) NULL);
+d146 1
+a146 1
+			 (char *) NULL, (char *) NULL, 0, 0, (char *) NULL,
+a226 1
+	free (repository);
+a232 1
+	repository = NULL;
+d249 3
+a251 2
+			   argc - 1, argv + 1, local, which, 0, 1,
+			   where, 1);
+d261 1
+a261 1
+    char *version;
+d269 1
+d272 1
+d278 1
+a278 1
+    cvs_outerr ("Annotations for ", 0);
+d282 9
+a290 2
+    RCS_deltas (finfo->rcs, (FILE *) NULL, (struct rcsbuffer *) NULL,
+		version, RCS_ANNOTATE, NULL, NULL, NULL, NULL);
+@
+
+
+1.1.2.1
+log
+@vendor-branch-ify new cvs 1.12
+@
+text
+@a19 1
+static int force_binary = 0;
+d26 2
+a27 2
+static int annotate_fileproc (void *callerdat, struct file_info *);
+static int rannotate_proc (int argc, char **argv, char *xwhere,
+d29 1
+a29 1
+				 int local, char *mname, char *msg);
+d33 1
+a33 1
+    "Usage: %s %s [-lRfF] [-r rev] [-D date] [files...]\n",
+a36 1
+    "\t-F\tAnnotate binary files.\n",
+d47 3
+a49 1
+annotate (int argc, char **argv)
+d55 1
+a55 1
+    is_rannotate = (strcmp(cvs_cmd_name, "rannotate") == 0);
+d61 1
+a61 1
+    while ((c = getopt (argc, argv, "+lr:D:fFR")) != -1)
+a79 3
+	    case 'F':
+	        force_binary = 1;
+		break;
+a102 2
+	if (force_binary)
+	    send_arg ("-F");
+a105 1
+	send_arg ("--");
+d131 1
+a131 1
+			     (char *) NULL, 0, local, 0, 0, (char *) NULL);
+d138 1
+a138 1
+			 (char *) NULL, (char *) NULL, 0, local, (char *) NULL,
+d147 10
+a156 1
+rannotate_proc (int argc, char **argv, char *xwhere, char *mwhere, char *mfile, int shorten, int local, char *mname, char *msg)
+d219 1
+d226 1
+d237 1
+a237 1
+	tag_check_valid (tag, argc - 1, argv + 1, local, 0, repository, false);
+d241 4
+a244 8
+    err = start_recursion ( annotate_fileproc, (FILESDONEPROC) NULL,
+			    (DIRENTPROC) NULL, (DIRLEAVEPROC) NULL, NULL,
+			    argc - 1, argv + 1, local, which, 0, CVS_LOCK_READ,
+			    where, 1, repository );
+    if ( which & W_REPOS )
+	free ( repository );
+    if ( where != NULL )
+	free (where);
+d250 3
+a252 1
+annotate_fileproc (void *callerdat, struct file_info *finfo)
+d254 1
+a254 1
+    char *expand, *version;
+a261 1
+    expand = RCS_getexpand (finfo->rcs);
+a263 1
+
+d269 1
+a269 1
+    cvs_outerr ("\nAnnotations for ", 0);
+d273 2
+a274 9
+    if (!force_binary && expand && expand[0] == 'b')
+    {
+        cvs_outerr ("Skipping binary file -- -F not specified.\n", 0);
+    }
+    else
+    {
+	RCS_deltas (finfo->rcs, (FILE *) NULL, (struct rcsbuffer *) NULL,
+		    version, RCS_ANNOTATE, NULL, NULL, NULL, NULL);
+    }
+@
+
+
+1.1.3.1
+log
+@our CVS is currently at 1.11.1p1, thus import that version into vendor branch
+@
+text
+@@
+
+
+1.1.3.2
+log
+@CVS 1.11.12 is the latest stable version of CVS,
+released 06.02.2004, with a huge lot of bug fixes.
+
+/me hopes this will pay off...
+@
+text
+@a19 1
+static int force_binary = 0;
+d33 1
+a33 1
+    "Usage: %s %s [-lRfF] [-r rev] [-D date] [files...]\n",
+a36 1
+    "\t-F\tAnnotate binary files.\n",
+d61 1
+a61 1
+    while ((c = getopt (argc, argv, "+lr:D:fFR")) != -1)
+a79 3
+	    case 'F':
+	        force_binary = 1;
+		break;
+a102 2
+	if (force_binary)
+	    send_arg ("-F");
+a105 1
+	send_arg ("--");
+d131 1
+a131 1
+			     (char *) NULL, 0, local, 0, 0, (char *) NULL);
+d138 1
+a138 1
+			 (char *) NULL, (char *) NULL, 0, local, (char *) NULL,
+d219 1
+d226 1
+d243 2
+a244 3
+			   argc - 1, argv + 1, local, which, 0, CVS_LOCK_READ,
+			   where, 1, repository);
+    if ( which & W_REPOS ) free ( repository );
+d254 1
+a254 1
+    char *expand, *version;
+a261 1
+    expand = RCS_getexpand (finfo->rcs);
+a263 1
+
+d269 1
+a269 1
+    cvs_outerr ("\nAnnotations for ", 0);
+d273 2
+a274 9
+    if (!force_binary && expand && expand[0] == 'b')
+    {
+        cvs_outerr ("Skipping binary file -- -F not specified.\n", 0);
+    }
+    else
+    {
+	RCS_deltas (finfo->rcs, (FILE *) NULL, (struct rcsbuffer *) NULL,
+		    version, RCS_ANNOTATE, NULL, NULL, NULL, NULL);
+    }
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

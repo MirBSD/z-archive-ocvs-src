@@ -1,0 +1,355 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	cvs-200412031430:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406230735:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.47.02;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.02;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: uthread_cancel.c,v 1.13 2002/05/07 05:13:17 pvalchev Exp $	*/
+/*
+ * David Leonard <d@@openbsd.org>, 1999. Public domain.
+ */
+#include <sys/errno.h>
+#include <pthread.h>
+#include "pthread_private.h"
+
+static void	finish_cancellation(void *arg);
+
+int
+pthread_cancel(pthread_t pthread)
+{
+	int ret;
+
+	if ((ret = _find_thread(pthread)) != 0) {
+		/* NOTHING */
+	} else if (pthread->state == PS_DEAD || pthread->state == PS_DEADLOCK
+	    || (pthread->flags & PTHREAD_EXITING) != 0) {
+		ret = 0;
+	} else {
+		/* Protect the scheduling queues: */
+		_thread_kern_sig_defer();
+
+		if (((pthread->cancelflags & PTHREAD_CANCEL_DISABLE) != 0) ||
+		    (((pthread->cancelflags & PTHREAD_CANCEL_ASYNCHRONOUS) == 0) &&
+		    ((pthread->cancelflags & PTHREAD_AT_CANCEL_POINT) == 0)))
+			/* Just mark it for cancellation: */
+			pthread->cancelflags |= PTHREAD_CANCELLING;
+		else {
+			/*
+			 * Check if we need to kick it back into the
+			 * run queue:
+			 */
+			switch (pthread->state) {
+			case PS_RUNNING:
+				/* No need to resume: */
+				pthread->cancelflags |= PTHREAD_CANCELLING;
+				break;
+
+			case PS_SPINBLOCK:
+			case PS_FDR_WAIT:
+			case PS_FDW_WAIT:
+			case PS_POLL_WAIT:
+			case PS_SELECT_WAIT:
+				/* Remove these threads from the work queue: */
+				if ((pthread->flags & PTHREAD_FLAGS_IN_WORKQ)
+				    != 0)
+					PTHREAD_WORKQ_REMOVE(pthread);
+				/* Fall through: */
+			case PS_SIGTHREAD:
+			case PS_SLEEP_WAIT:
+			case PS_WAIT_WAIT:
+			case PS_SIGSUSPEND:
+			case PS_SIGWAIT:
+				/* Interrupt and resume: */
+				pthread->interrupted = 1;
+				pthread->cancelflags |= PTHREAD_CANCELLING;
+				PTHREAD_NEW_STATE(pthread,PS_RUNNING);
+				break;
+
+			case PS_JOIN:
+				/*
+				 * Disconnect the thread from the joinee:
+				 */
+				if (pthread->join_status.thread != NULL) {
+					pthread->join_status.thread->joiner
+					    = NULL;
+					pthread->join_status.thread = NULL;
+				}
+				pthread->cancelflags |= PTHREAD_CANCELLING;
+				PTHREAD_NEW_STATE(pthread, PS_RUNNING);
+				break;
+
+			case PS_SUSPENDED:
+				if (pthread->suspended == SUSP_NO ||
+				    pthread->suspended == SUSP_YES ||
+				    pthread->suspended == SUSP_JOIN ||
+				    pthread->suspended == SUSP_NOWAIT) {
+					/*
+					 * This thread isn't in any scheduling
+					 * queues; just change it's state:
+					 */
+					pthread->cancelflags |=
+					    PTHREAD_CANCELLING;
+					PTHREAD_SET_STATE(pthread, PS_RUNNING);
+					break;
+				}
+				/* FALLTHROUGH */
+			case PS_MUTEX_WAIT:
+			case PS_COND_WAIT:
+			case PS_FDLR_WAIT:
+			case PS_FDLW_WAIT:
+			case PS_FILE_WAIT:
+				/*
+				 * Threads in these states may be in queues.
+				 * In order to preserve queue integrity, the
+				 * cancelled thread must remove itself from the
+				 * queue.  Mark the thread as interrupted and
+				 * needing cancellation, and set the state to
+				 * running.  When the thread resumes, it will
+				 * remove itself from the queue and call the
+				 * cancellation completion routine.
+				 */
+				pthread->interrupted = 1;
+				pthread->cancelflags |= PTHREAD_CANCEL_NEEDED;
+				PTHREAD_NEW_STATE(pthread,PS_RUNNING);
+				pthread->continuation = finish_cancellation;
+				break;
+
+			case PS_DEAD:
+			case PS_DEADLOCK:
+			case PS_STATE_MAX:
+				/* Ignore - only here to silence -Wall: */
+				break;
+			}
+		}
+
+		/* Unprotect the scheduling queues: */
+		_thread_kern_sig_undefer();
+
+		ret = 0;
+	}
+	return (ret);
+}
+
+int
+pthread_setcancelstate(int state, int *oldstate)
+{
+	struct pthread	*curthread = _get_curthread();
+	int ostate;
+	int ret;
+
+	ostate = curthread->cancelflags & PTHREAD_CANCEL_DISABLE;
+
+	switch (state) {
+	case PTHREAD_CANCEL_ENABLE:
+		if (oldstate != NULL)
+			*oldstate = ostate;
+		curthread->cancelflags &= ~PTHREAD_CANCEL_DISABLE;
+		if ((curthread->cancelflags & PTHREAD_CANCEL_ASYNCHRONOUS) != 0)
+			pthread_testcancel();
+		ret = 0;
+		break;
+	case PTHREAD_CANCEL_DISABLE:
+		if (oldstate != NULL)
+			*oldstate = ostate;
+		curthread->cancelflags |= PTHREAD_CANCEL_DISABLE;
+		ret = 0;
+		break;
+	default:
+		ret = EINVAL;
+	}
+
+	return (ret);
+}
+
+
+int
+pthread_setcanceltype(int type, int *oldtype)
+{
+	struct pthread	*curthread = _get_curthread();
+	int otype;
+	int ret;
+
+	otype = curthread->cancelflags & PTHREAD_CANCEL_ASYNCHRONOUS;
+	switch (type) {
+	case PTHREAD_CANCEL_ASYNCHRONOUS:
+		if (oldtype != NULL)
+			*oldtype = otype;
+		curthread->cancelflags |= PTHREAD_CANCEL_ASYNCHRONOUS;
+		pthread_testcancel();
+		ret = 0;
+		break;
+	case PTHREAD_CANCEL_DEFERRED:
+		if (oldtype != NULL)
+			*oldtype = otype;
+		curthread->cancelflags &= ~PTHREAD_CANCEL_ASYNCHRONOUS;
+		ret = 0;
+		break;
+	default:
+		ret = EINVAL;
+	}
+
+	return (ret);
+}
+
+void
+pthread_testcancel(void)
+{
+	struct pthread	*curthread = _get_curthread();
+
+	if (((curthread->cancelflags & PTHREAD_CANCEL_DISABLE) == 0) &&
+	    ((curthread->cancelflags & PTHREAD_CANCELLING) != 0) &&
+	    ((curthread->flags & PTHREAD_EXITING) == 0)) {
+		/*
+		 * It is possible for this thread to be swapped out
+		 * while performing cancellation; do not allow it
+		 * to be cancelled again.
+		 */
+		curthread->cancelflags &= ~PTHREAD_CANCELLING;
+#ifdef notyet
+		_thread_exit_cleanup();
+#endif
+		pthread_exit(PTHREAD_CANCELED);
+		PANIC("cancel");
+	}
+}
+
+void
+_thread_enter_cancellation_point(void)
+{
+	struct pthread	*curthread = _get_curthread();
+
+	/* Look for a cancellation before we block: */
+	pthread_testcancel();
+	curthread->cancelflags |= PTHREAD_AT_CANCEL_POINT;
+}
+
+void
+_thread_leave_cancellation_point(void)
+{
+	struct pthread	*curthread = _get_curthread();
+
+	curthread->cancelflags &= ~PTHREAD_AT_CANCEL_POINT;
+	/* Look for a cancellation after we unblock: */
+	pthread_testcancel();
+}
+
+static void
+finish_cancellation(void *arg)
+{
+	struct pthread	*curthread = _get_curthread();
+
+	curthread->continuation = NULL;
+	curthread->interrupted = 0;
+
+	if ((curthread->cancelflags & PTHREAD_CANCEL_NEEDED) != 0) {
+		curthread->cancelflags &= ~PTHREAD_CANCEL_NEEDED;
+#ifdef notyet
+		_thread_exit_cleanup();
+#endif
+		pthread_exit(PTHREAD_CANCELED);
+	}
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

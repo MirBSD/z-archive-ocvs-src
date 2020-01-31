@@ -1,0 +1,265 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308221505:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.12.09.16.59.49;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.48.54;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.48.54;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.21.11.46;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.08.34.32;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke stuff nobody uses or maintains; don't install <bsd.lkm.mk>
+@
+text
+@#!/bin/sh
+#	$OpenBSD: rc.vpn,v 1.19 2003/03/09 06:08:28 david Exp $
+#
+# Richard Reiner, Ph.D., FSC Internet Corp.
+# rreiner@@fscinternet.com
+# v0.81 / 26Jul98
+#
+# Modifications and cleanup by H. Olsson <ho@@openbsd.org>, 28Aug99
+# and Markus Friedl <markus@@openbsd.org>
+#
+# rc.vpn -- configure IPsec in tunnel mode for a mesh of N local and
+#           M remote networks. (N x M mesh)
+#
+# For this to work, you will need to have these enabled (in /etc/sysctl.conf):
+#   'sysctl -w net.inet.ip.forwarding=1'   (IP packet routing)
+#   'sysctl -w net.inet.esp.enable=1'      (IPsec ESP protocol)
+
+# XXX The configuration parameters should be moved to another file.
+
+# Uncomment to debug (and not execute) commands
+DEBUG=echo
+
+# Gateway adresses
+GW_LOCAL=192.168.254.254
+GW_REMOTE=192.168.1.2
+
+# Local and remote networks
+LOCAL_NETWORKS="192.168.254.0/24 192.168.253.0/24"
+REMOTE_NETWORKS="192.168.1.0/24 192.168.2.0/24"
+
+# Optional, use for manual keying only
+# Crypto options and keys, note that key/iv lengths need to correspond
+# to the selected encryption and authentication algorithms.
+ENC=3des
+AUTH=sha1
+SPI_OUT=1000
+SPI_IN=1001
+KEYFILE=/etc/esp-enc-key
+AUTHKEYFILE=/etc/esp-auth-key
+
+#############################################################################
+############# -- NO CHANGES SHOULD BE NEEDED BELOW THIS LINE -- #############
+#############################################################################
+
+ipsecadm=/sbin/ipsecadm
+
+#
+# Sanity, be verbose about errors.
+# XXX In a 1 x M mesh, ip.forwarding may not be strictly necessary.
+#
+
+abort=0
+if [ `/usr/sbin/sysctl -n net.inet.esp.enable` == 0 ]; then
+	echo "$0: variable 'net.inet.esp.enable=0' (IPsec ESP protocol)"
+	abort=1
+fi
+if [ `/usr/sbin/sysctl -n net.inet.ip.forwarding` == 0 ]; then
+	echo "$0: variable 'net.inet.ip.forwarding=0' (IP forwarding/routing)"
+	abort=1
+fi
+if [ ${abort} = 1 ]; then
+	echo "$0: must be enabled in /etc/sysctl.conf. Aborting VPN setup."
+	[ ! -n "${DEBUG}" ] && exit 0
+fi
+
+$DEBUG $ipsecadm flush
+
+#
+# Setup the manual SAs
+#
+
+if [ "$ENC" ]; then
+	$DEBUG $ipsecadm new esp -src $GW_LOCAL -dst $GW_REMOTE \
+		-forcetunnel -spi $SPI_OUT -enc $ENC -auth $AUTH \
+		-keyfile $KEYFILE -authkeyfile $AUTHKEYFILE
+
+	$DEBUG $ipsecadm new esp -src $GW_REMOTE -dst $GW_LOCAL \
+		-forcetunnel -spi $SPI_IN -enc $ENC -auth $AUTH \
+		-keyfile $KEYFILE -authkeyfile $AUTHKEYFILE
+fi
+
+#
+# Setup the Flows, aka SPD
+#
+
+# add the gateways
+LOCAL_NETWORKS="${GW_LOCAL}/32 ${LOCAL_NETWORKS}"
+REMOTE_NETWORKS="${GW_REMOTE}/32 ${REMOTE_NETWORKS}"
+# but allow ESP in the clear
+BYPASS="$DEBUG ${ipsecadm} flow -transport esp -src ${GW_LOCAL} -dst ${GW_REMOTE} -bypass"
+$BYPASS -out -addr ${GW_LOCAL}/32  ${GW_REMOTE}/32
+$BYPASS -in  -addr ${GW_REMOTE}/32 ${GW_LOCAL}/32
+
+FLOW="$DEBUG ${ipsecadm} flow -proto esp -src ${GW_LOCAL} -dst ${GW_REMOTE} -require"
+
+# each local net to each remote net
+for local_net in ${LOCAL_NETWORKS}; do
+	for remote_net in ${REMOTE_NETWORKS}; do
+		$FLOW -out -addr $local_net  $remote_net
+		$FLOW -in  -addr $remote_net $local_net
+	done
+done
+
+exit 0
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d2 1
+a2 1
+#	$OpenBSD: rc.vpn,v 1.20 2003/11/07 10:16:45 jmc Exp $
+d23 1
+a23 1
+# Gateway addresses
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d2 1
+a2 1
+#	$OpenBSD: rc.vpn,v 1.21 2004/02/25 08:42:38 jmc Exp $
+d15 2
+a16 2
+#   'sysctl net.inet.ip.forwarding=1'   (IP packet routing)
+#   'sysctl net.inet.esp.enable=1'      (IPsec ESP protocol)
+@
+
+

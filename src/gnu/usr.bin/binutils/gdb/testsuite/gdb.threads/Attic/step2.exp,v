@@ -1,0 +1,314 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.05.16.17.43.11;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.29.41;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@# step2.exp -- Expect script to test gdb step.c
+# Copyright (C) 1992 Free Software Foundation, Inc.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+# Please email any bugs, comments, and/or additions to this file to:
+# bug-gdb@@prep.ai.mit.edu
+
+# This file was written by Jeff Law. (law@@cygnus.com)
+#
+
+
+if $tracelevel then {
+	strace $tracelevel
+}
+
+set program_exited 0
+
+# A simple and crude test to see that we can step two threads independently
+proc test_multi_threaded_stepping {} {
+    global prompt
+    global hex
+    global srcfile
+    global decimal
+
+    # Set breakpoints in code that we know is executed in only
+    # thread of control.
+    gdb_test "break thread1" \
+	     "Break.* at $hex: file .*$srcfile, line $decimal\\."
+    gdb_test "break thread2" \
+	     "Break.* at $hex: file .*$srcfile, line $decimal\\."
+
+    # the order in which things happen is indeterminate.  So we basically
+    # look for a set of events and note that each one happens and that
+    # all of the required events have happened when we're done.
+    #
+    # Right now we only verify that both threads start and that they
+    # both call pthread_cond_wait twice.
+    set thread1started 0
+    set thread1condwait 0
+    set thread2started 0
+    set thread2condwait 0
+    
+    send "run\n"
+    expect {
+	-re "The program .* has been started already.*y or n. $" {
+	    send "y\n"
+	    exp_continue
+	}
+	-re ".*Breakpoint \[0-9\]+,.*thread1.* at .*$srcfile:.*\[\t \].*$prompt $" {
+	    if { $thread1started != 0 } then {
+		fail "thread1 started"
+		return
+	    } else {
+		set thread1started 1
+		pass "thread1 started"
+	    }
+	    send "step\n"
+	    exp_continue
+	}
+	-re ".*Breakpoint \[0-9\]+,.*thread2.* at .*$srcfile:.*\[\t \].*$prompt $" {
+	    if { $thread2started != 0 } then {
+		fail "thread2 started"
+		return
+	    } else {
+		set thread2started 1
+		pass "thread2 started"
+	    }
+	    send "step\n"
+	    exp_continue
+	}
+	-re ".*pthread_cond_wait.*cv_a.*$prompt" {
+	    if { $thread1started == 0 } then {
+		fail "thread1 condwait"
+		return
+	    }
+	    if { $thread1condwait < 2 } then {
+		pass "thread1 condwait"
+		incr thread1condwait
+	    }
+	    if { $thread2condwait == 2 } then {
+		pass "multi threaded stepping"
+		return
+	    }
+	    send "step\n"
+	    exp_continue
+	}
+		    
+	-re ".*pthread_cond_wait.*cv_b.*$prompt" {
+	    if { $thread2started == 0 } then {
+		fail "thread2 condwait"
+		return
+	    }
+	    if { $thread2condwait < 2 } then {
+		pass "thread2 condwait"
+		incr thread2condwait
+	    }
+	    if { $thread1condwait == 2 } then {
+		pass "multi threaded stepping"
+		return
+	    }
+	    send "step\n"
+	    exp_continue
+	}
+		    
+	-re "$prompt" {
+	    send "step\n"
+	    exp_continue
+	}
+	default { fail "multi threaded stepping" }
+    }
+}
+
+# Check to see if we have an executable to test.  If not, then either we
+# haven't tried to compile one, or the compilation failed for some reason.
+# In either case, just notify the user and skip the tests in this file.
+
+set binfile "step"
+set srcfile "step.c"
+
+if ![file exists $objdir/$subdir/$binfile] then {
+    if $all_flag then {
+	warning "$binfile does not exist; tests suppressed."
+    }
+    return
+}
+
+set prms_id 0
+set bug_id 0
+
+# Start with a fresh gdb.
+
+gdb_exit
+gdb_start
+gdb_reinitialize_dir $srcdir/$subdir
+gdb_load $objdir/$subdir/$binfile
+
+test_multi_threaded_stepping
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+# Copyright (C) 1992, 1997 Free Software Foundation, Inc.
+d16 1
+a16 1
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  
+d33 1
+a33 1
+    global gdb_prompt
+d56 2
+a57 2
+    send_gdb "run\n"
+    gdb_expect {
+d59 1
+a59 1
+	    send_gdb "y\n"
+d62 1
+a62 1
+	-re ".*Breakpoint \[0-9\]+,.*thread1.* at .*$srcfile:.*\[\t \].*$gdb_prompt $" {
+d70 1
+a70 1
+	    send_gdb "step\n"
+d73 1
+a73 1
+	-re ".*Breakpoint \[0-9\]+,.*thread2.* at .*$srcfile:.*\[\t \].*$gdb_prompt $" {
+d81 1
+a81 1
+	    send_gdb "step\n"
+d84 1
+a84 1
+	-re ".*pthread_cond_wait.*cv_a.*$gdb_prompt" {
+d97 1
+a97 1
+	    send_gdb "step\n"
+d101 1
+a101 1
+	-re ".*pthread_cond_wait.*cv_b.*$gdb_prompt" {
+d114 1
+a114 1
+	    send_gdb "step\n"
+d118 2
+a119 2
+	-re "$gdb_prompt" {
+	    send_gdb "step\n"
+@
+

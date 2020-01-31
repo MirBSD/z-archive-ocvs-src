@@ -1,0 +1,689 @@
+head	1.9;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.9
+	tg-mergefixes-1-branch:1.9.0.4
+	tg-mergefixes-1-base:1.9
+	MIROS_X:1.9.0.2
+	MIROS_X_BASE:1.9
+	tg-mergetmp-3:1.9
+	MIRBSD_XP_MIRPPC:1.8.0.4
+	MIRBSD_XP_SPARC_BASE:1.8
+	MIRBSD_XP_SPARC:1.8.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.9
+date	2004.12.05.13.25.36;	author tg;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2003.12.11.22.07.58;	author tg;	state Stab;
+branches;
+next	1.7;
+
+1.7
+date	2003.11.17.12.49.20;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2003.11.14.21.12.12;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2003.11.09.12.54.28;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2003.11.04.15.57.23;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2003.10.31.22.59.52;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.10.31.22.38.06;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.10.31.21.20.19;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.9
+log
+@* replace all occurences of old eMail addresses of mine
+  with their more recent counterparts
+* no $Log keyword!
+* update licence template to most recent version in files touched
+* in some places, don't add our own licence boilerplate, just
+  add my name to the others
+* make dev/rndvar.h suitable for inclusion in asm code
+* include dev/rndvar.h by in_cksum.s instead of
+  hardcoding pool size
+* ENTRY(a); ENTRY(b) -> NENTRY(a); ENTRY(b)
+* RCS IDs belong into .comment not .text
+@
+text
+@/**	$MirBSD$ */
+/*	$OpenBSD: biosdev.c,v 1.68 2004/03/09 19:12:12 tom Exp $	*/
+
+/*
+ * Copyright (c) 1996 Michael Shalayeff
+ * Copyright (c) 2003 Tobias Weingartner
+ * Copyright (c) 2002, 2003, 2004
+ *	Thorsten "mirabile" Glaser <tg@@66h.42h.de>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR "AS IS" AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/reboot.h>
+#include <sys/disklabel.h>
+#include <machine/tss.h>
+#include <machine/biosvar.h>
+#include <lib/libsa/saerrno.h>
+#include "disk.h"
+#include "debug.h"
+#include "libsa.h"
+#include "biosdev.h"
+#include "tori.h"
+
+static __inline int CD_rw(u_int64_t, void *);
+
+extern int biosdreset(int);
+extern const char *biosdisk_err(u_int);
+extern int biosdisk_errno(u_int);
+
+extern int debug;
+
+u_int8_t tori_iobuf[2048];
+
+struct EDD_CB {
+	u_int8_t  edd_len;   /* size of packet */
+	u_int8_t  edd_res1;  /* reserved */
+	u_int8_t  edd_nblk;  /* # of blocks to transfer */
+	u_int8_t  edd_res2;  /* reserved */
+	u_int16_t edd_off;   /* address of buffer (offset) */
+	u_int16_t edd_seg;   /* address of buffer (segment) */
+	u_int64_t edd_daddr; /* starting block */
+};
+
+static __inline int
+CD_rw(u_int64_t daddr, void *buf)
+{
+	int rv;
+	int dev = T_DRV;
+	volatile static struct EDD_CB cb;
+
+	/* Zero out reserved stuff */
+	cb.edd_res1 = 0;
+	cb.edd_res2 = 0;
+
+	/* Fill in parameters */
+	cb.edd_len = sizeof(cb);
+	cb.edd_nblk = 1;
+	cb.edd_seg = ((u_int32_t)buf >> 4) & 0xffff;
+	cb.edd_off = (u_int32_t)buf & 0xf;
+	cb.edd_daddr = daddr;
+
+	/* if offset/segment are zero, punt */
+	if (!cb.edd_seg && !cb.edd_off)
+		return (1);
+
+	/* Call extended read/write (with disk packet) */
+	BIOS_regs.biosr_ds = (u_int32_t)&cb >> 4;
+	__asm __volatile (DOINT(0x13) "; setc %b0" : "=a" (rv)
+			  : "0" (0x4200),
+			    "d" (dev), "S" ((int) (&cb) & 0xf) : "%ecx", "cc");
+	return (rv & 0xff)? rv >> 8 : 0;
+}
+
+/*
+ * Read given sector, handling retry/errors/etc.
+ */
+int
+tori_io(daddr_t off, void *buf)
+{
+	int j, error;
+	void *bb = tori_iobuf;
+
+	if (!(off & 3))
+		bb = buf;
+
+	/* Try to do operation up to 5 times */
+	for (error = 1, j = 5; j-- && error;) {
+		error = CD_rw(off >> 2, bb);
+		switch (error) {
+		case 0x00:	/* No errors */
+		case 0x11:	/* ECC corrected */
+			error = 0;
+			break;
+
+		default:	/* All other errors */
+#ifdef BIOS_DEBUG
+			if (debug) {
+				printf("\nBIOS error 0x%X (%s)\n",
+					error, biosdisk_err(error));
+				getchar();
+			}
+#endif
+			biosdreset(T_DRV);
+			break;
+		}
+	}
+
+	if (off & 3) {
+		bb += (512*(off & 3));
+		memmove(buf, bb, 2048-(512*(off & 3)));
+	}
+
+#ifdef BIOS_DEBUG
+	if (debug) {
+		if (error != 0)
+			printf("=0x%X(%s)", error, biosdisk_err(error));
+		putchar('\n');
+	}
+#endif
+
+	return (error);
+}
+
+int
+toriopen(struct open_file *f, ...)
+{
+	va_list ap;
+	register char	*cp, **file;
+	dev_t	maj, unit, part;
+
+	va_start(ap, f);
+	cp = *(file = va_arg(ap, char **));
+	va_end(ap);
+
+#ifdef BIOS_DEBUG
+	if (debug)
+		printf("%s\n", cp);
+#endif
+
+	f->f_devdata = NULL;
+	/* search for device specification */
+	cp += 2;
+	if (cp[2] != ':') {
+		if (cp[3] != ':')
+			return ENOENT;
+		else
+			cp++;
+	}
+
+	for (maj = 0; maj < nbdevs &&
+	     strncmp(*file, bdevs[maj], cp - *file); maj++);
+	if (maj >= nbdevs) {
+		printf("Unknown device: ");
+		for (cp = *file; *cp != ':'; cp++)
+			putchar(*cp);
+		putchar('\n');
+		return EADAPT;
+	}
+
+	/* get unit */
+	if ('0' <= *cp && *cp <= '9')
+		unit = *cp++ - '0';
+	else {
+		printf("Bad unit number\n");
+		return EUNIT;
+	}
+	/* get partition */
+	if ('a' <= *cp && *cp <= 'p')
+		part = *cp++ - 'a';
+	else {
+		printf("Bad partition id\n");
+		return EPART;
+	}
+
+	switch (maj) {
+	case 6:  /* cd */
+		break;
+	default:
+		return ENXIO;
+	}
+
+	cp++;	/* skip ':' */
+	if (*cp != 0)
+		*file = cp;
+	else
+		f->f_flags |= F_RAW;
+
+	return 0;
+}
+
+int
+toristrategy(void *devdata, int rw, daddr_t blk, size_t size, void *buf,
+    size_t *rsize)
+{
+	u_int8_t error = 0;
+	size_t rsizeres = 0;
+	daddr_t off = blk;
+
+	/* first: always reads at least 1 sector if off isn't aligned */
+	if (off & 3) {
+		error = tori_io(off, buf);
+		rsizeres = ((4-(off & 3)) * 512);
+		size -= rsizeres;
+		buf += rsizeres;
+		off += (4-(off & 3));
+	}
+
+	/* then: read the remaining stuff if any is left */
+	while ((size > 0) && (!error)) {
+		error = tori_io(off, buf);
+		rsizeres += 2048;
+		size -= 2048;
+		buf += 2048;
+		off += 4;
+	}
+
+#ifdef BIOS_DEBUG
+	if (debug) {
+		if (error != 0)
+			printf("=0x%X(%s)", error, biosdisk_err(error));
+		putchar('\n');
+	}
+#endif
+
+	if (rsize != NULL)
+		*rsize = rsizeres;
+
+	return biosdisk_errno(error);
+}
+
+int
+toriclose(struct open_file *f)
+{
+	f->f_devdata = NULL;
+	return 0;
+}
+
+int
+toriioctl(struct open_file *f, u_long cmd, void *data)
+{
+	return 0;
+}
+@
+
+
+1.8
+log
+@bump version; make tori routines use a 2048 instead of a 4096
+byte buffer for their I/O transactions and revamp the load code
+@
+text
+@d1 2
+a2 2
+/* $MirBSD: toridev.c,v 1.7 2003/11/17 12:49:20 tg Exp $ */
+/* $OpenBSD: biosdev.c,v 1.66 2003/09/20 05:23:42 fgsch Exp $ */
+a5 1
+ * Copyright (c) 2002, 2003 Thorsten Glaser <x86@@ePost.de>
+d7 2
+@
+
+
+1.7
+log
+@let's just remove bzero, bcmp, bcopy and look what happens.
+	bcmp	-> memcmp
+	bcopy	-> memmove
+	bzero	-> memset
+	memcpy	-> memmove *)
+
+*) it happens that old memcpy was implemented
+   as per semantics of memmove, thats why I changed
+@
+text
+@d1 2
+a2 2
+/*	$MirBSD: toridev.c,v 1.6 2003/11/14 21:12:12 tg Exp $	*/
+/*	$OpenBSD: biosdev.c,v 1.66 2003/09/20 05:23:42 fgsch Exp $	*/
+d44 1
+a44 1
+static __inline int CD_rw(u_int64_t, u_int32_t, void *);
+d52 1
+a52 1
+u_int8_t tori_iobuf[4096];
+d65 1
+a65 1
+CD_rw(u_int64_t daddr, u_int32_t nblk, void *buf)
+d77 1
+a77 1
+	cb.edd_nblk = nblk;
+d103 3
+d108 1
+a108 1
+		error = CD_rw(off >> 2, ((off & 3) ? 2 : 1), bb);
+d130 1
+a131 1
+	memmove(buf, bb, 2048);
+d216 11
+a226 1
+	size_t nsect, i;
+d228 7
+a234 5
+	nsect = (size + 2048-1) / 2048;
+	for (i = 0; (i < nsect) && (!error); ++i) {
+		error = tori_io(blk, buf);
+		blk += 4;	/* it's in 512 byte blocks :( */
+		buf += 2048;	/* size of one CD sector */
+d246 1
+a246 1
+		*rsize = nsect * 2048;
+@
+
+
+1.6
+log
+@remove silly debugging everywhere; cdboot even loads a
+kernel from CD-ROM fine now (which segfaults later...)
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD: toridev.c,v 1.5 2003/11/09 12:54:28 tg Exp $	*/
+d128 1
+a128 1
+	bcopy (bb, buf, 2048);
+@
+
+
+1.5
+log
+@Mostly... not fully...
+
+One weekend's worth of work.
+
+- catch up website log with changes really done till today
+- add catch-up entries for wbx@@ and bsiegert@@, too
+- move GNU documentation to src/gnu/doc and simplify it
+- re-run autoconf on the gnu part of the tree again, to
+  catch up with the GFDL-documentation removal
+- provide non-GFDL-licenced as(1) and ld(1) manual pages
+  XXX these are more than outdated!
+- bump MirOS patchlevel
+- build the system through, fixing showstoppers where
+  they are encountered
+- index.cgi and index.php come before index.htm,
+  default.htm and index.html in httpd.conf
+- speed up PHP processing
+- prepare for "new" OpenBSD pkgtools (unsupported by MirBSD,
+  but some MirPorts people want to play with them)
+- move old weblog to CMS; update my info again
+- update hRef""s in old weblogs
+- move release announcements to /historic/
+- copy feature list from last release announcement
+  XXX need a "readible short list", or even
+  XXX	a separation for the target environment
+  XXX	(e.g. suits / techies / clients)
+- add some recent news, so the page ain't empty
+  missing:
+	- about
+	  + MirOS
+	  + MirPorts
+	- get MirOS!	(http d/l, http install, install docs)
+	- relations	(to other BSD)
+	  + ??? events ??? (here?)
+	- history
+	- older releases	(historic)
+	- help pages
+	  + FAQ
+	  + Docs/Tuts	(hi wbx@@ here comes your place)
+	    + install docs
+	  + mailing lists
+	- developers
+	  + wbx
+	  + bsiegert
+	  + cnuke
+	- CVSweb	(XXX need BSDadvocacy.org fix before)
+	- AnonCVS	(howto; link to)
+	- Links
+  alternatively, change the layout? suggestions?
+  why am I the only one who cares about www?
+- merge development plan
+- put a "project" into the miros page head
+- fix cdboot Makefile
+- fix gas wanting us a.out again (wut?)
+  (turned out to be a must-fix in configure.in)
+- stand/cdboot/NOTES merged into stand/README
+- sync distrib set lists
+- have TORI device (i386 libsa) always use bounce buffers
+  (which, in fact, makes it succeed in loading the kernel)
+  XXX kernel says it has less than 4 meg ram (degraded mode)
+  XXX may be a bochs issue?
+- fix random.S again
+- move determining of file name / raw file flag in both
+  bios/toridev.c to the end of bios/toriopen()
+  => enables us to have two drivers at once
+- fix disk probing for CD devices wrt BIOS driver
+
+(eww. The tree isn't fully broken, but neither boot
+ nor cdboot.bin are usable at all at the moment.
+ I'll fix that ASAP.)
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD: toridev.c,v 1.4 2003/11/04 15:57:23 tg Exp $	*/
+d52 2
+d98 1
+a98 1
+tori_io(daddr_t off, int nsect, void *buf)
+d101 1
+a101 12
+	void *bb;
+
+	/* compensate for off given in 512-byte sectors */
+	if (off & 3)
+		++nsect;
+
+	/*
+	 * use a bounce buffer to not cross 64k DMA boundary,
+	 * or the end of addressable memory
+	 * XXX we believe this only loads one or so sector at a time
+	 */
+	bb = alloca(nsect * 2048);
+d105 1
+a105 1
+		error = CD_rw(off >> 2, nsect, bb);
+a125 1
+		--nsect;
+d128 1
+a128 1
+	bcopy (bb, buf, nsect * 2048);
+d213 1
+a213 1
+	size_t nsect;
+d216 5
+a220 3
+
+	/* Read all, sub-functions handle track boundaries */
+	error = tori_io(blk, nsect, buf);
+@
+
+
+1.4
+log
+@commit how far I've come in debugging this, because
+I'm pausing at the moment, so maybe someone else may
+look after it.
+also, move the >>2 logic for 512./.2048 byte sectors
+out and include a real compensation/buffer logic
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD: toridev.c,v 1.3 2003/10/31 22:59:52 tg Exp $	*/
+a100 2
+printf("deb: read %x at %x\n", nsect, off*512);
+
+d105 6
+a110 11
+	/* use a bounce buffer to not cross 64k DMA boundary */
+	if (((((u_int32_t)buf) & ~0xffff) !=
+	    (((u_int32_t)buf + nsect * 2048) & ~0xffff))
+	    || (off & 3)) {
+		/*
+		 * XXX we believe that all the io is buffered
+		 * by fs routines, so no big reads anyway
+		 */
+		bb = alloca(nsect * 2048);
+	} else
+		bb = buf;
+d135 4
+a138 3
+		bcopy (bb+(512*(nsect & 3)), buf, --nsect * 2048);
+	} else if (bb != buf)
+		bcopy (bb, buf, nsect * 2048);
+a201 6
+	cp++;	/* skip ':' */
+	if (*cp != 0)
+		*file = cp;
+	else
+		f->f_flags |= F_RAW;
+
+d208 6
+@
+
+
+1.3
+log
+@with these (preliminary) changes I can go until:
+
+===== cutting here may damage your screen surface =====
+MirOS CDBOOT srt0 initializing
+CD Drive E0 on 4012:0000, 0070 sectors starting at 00000E87 LBA
+probing: pc0 pci mem[639K 31M a20=on]
+disk: fd0 cd0 hd0+*
+>> MirBSD boot [2.30] for the ISO9660 filesystem
+>> booting from device E0h
+boot> booting cd0a:/bsd: open cd0a:/bsd: No such file or directory
+ failed(2). will try /obsd
+boot> b /bsd.rd
+booting cd0a:/bsd.rd: 7218900-
+===== cutting here may damage your screen surface =====
+
+But then, it dumps me off with:
+
+===== cutting here may damage your screen surface =====
+Next at t=0
+(0) [0x000ffff0] f000:fff0 (unk. ctxt): jmp f000:e05b             ; ea5be000f0
+<bochs:1> c
+========================================================================
+Event type: PANIC
+Device: [CPU  ]
+Message: prefetch: RIP > CS.limit
+
+A PANIC has occurred.  Do you want to:
+  cont       - continue execution
+  alwayscont - continue execution, and don't ask again.
+               This affects only PANIC events from device [CPU  ]
+  die        - stop execution now
+  abort      - dump core
+  debug      - continue and return to bochs debugger
+Choose one of the actions above: [die]
+========================================================================
+Bochs is exiting with the following message:
+[CPU  ] prefetch: RIP > CS.limit
+========================================================================
+tg@@odem:/home/tg $ _
+===== cutting here may damage your screen surface =====
+
+This is a good starting point, however. It can actually
+* recognise the CD drive
+* recognise and parse the iso9660 filesystem on the image
+* see that no cd0a:/etc/boot.conf exists
+
+I'll test regression now (i.e. booting from ffs using cdboot)
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD: toridev.c,v 1.2 2003/10/31 22:38:06 tg Exp $	*/
+d78 1
+a78 4
+	cb.edd_daddr = daddr >> 2;
+
+	if (daddr & 3)
+		printf("debug: error: offset not zero\n");
+d101 6
+d108 3
+a110 2
+	if ((((u_int32_t)buf) & ~0xffff) !=
+	    (((u_int32_t)buf + nsect * 2048) & ~0xffff)) {
+d121 1
+a121 1
+		error = CD_rw(off, nsect, bb);
+d141 3
+a143 1
+	if (bb != buf)
+@
+
+
+1.2
+log
+@another piece of data which must go into .text instead of .bss
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD: toridev.c,v 1.1 2003/10/31 21:20:19 tg Exp $	*/
+d78 4
+a81 1
+	cb.edd_daddr = daddr;
+@
+
+
+1.1
+log
+@well, without the 'tori files, nothing would work anyways
+and #ifdef CDBOOT in libsa isn't a good idea in general either
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD: biosdev.c,v 1.25 2003/09/25 21:00:06 tg Exp $	*/
+a50 2
+
+struct tori_pbk tori_pblk;
+@
+

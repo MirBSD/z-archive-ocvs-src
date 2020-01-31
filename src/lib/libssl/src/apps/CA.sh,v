@@ -1,0 +1,266 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.10
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.8
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.3.1.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.3.1
+	MIRBSD_XP_SPARC:1.1.3.1.0.2
+	cvs-200408220000:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	openssl-0_9_7d:1.1.3.1
+	cvs-200405160640:1.1.1.1
+	cvs-200403222025:1.1.1.1
+	cvs-200403181737:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	openssl-0_9_7c:1.1.3.1
+	openssl-0_9_7b:1.1.3.1
+	tg:1.1.3
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.47.10;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.10;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2003.10.29.15.48.43;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/bin/sh
+#
+# CA - wrapper around ca to make it easier to use ... basically ca requires
+#      some setup stuff to be done before you can use it and this makes
+#      things easier between now and when Eric is convinced to fix it :-)
+#
+# CA -newca ... will setup the right stuff
+# CA -newreq ... will generate a certificate request 
+# CA -sign ... will sign the generated request and output 
+#
+# At the end of that grab newreq.pem and newcert.pem (one has the key 
+# and the other the certificate) and cat them together and that is what
+# you want/need ... I'll make even this a little cleaner later.
+#
+#
+# 12-Jan-96 tjh    Added more things ... including CA -signcert which
+#                  converts a certificate to a request and then signs it.
+# 10-Jan-96 eay    Fixed a few more bugs and added the SSLEAY_CONFIG
+#		   environment variable so this can be driven from
+#		   a script.
+# 25-Jul-96 eay    Cleaned up filenames some more.
+# 11-Jun-96 eay    Fixed a few filename missmatches.
+# 03-May-96 eay    Modified to use 'ssleay cmd' instead of 'cmd'.
+# 18-Apr-96 tjh    Original hacking
+#
+# Tim Hudson
+# tjh@@cryptsoft.com
+#
+
+# default openssl.cnf file has setup as per the following
+# demoCA ... where everything is stored
+
+DAYS="-days 365"
+REQ="openssl req $SSLEAY_CONFIG"
+CA="openssl ca $SSLEAY_CONFIG"
+VERIFY="openssl verify"
+X509="openssl x509"
+
+CATOP=./demoCA
+CAKEY=./cakey.pem
+CACERT=./cacert.pem
+
+for i
+do
+case $i in
+-\?|-h|-help)
+    echo "usage: CA -newcert|-newreq|-newca|-sign|-verify" >&2
+    exit 0
+    ;;
+-newcert) 
+    # create a certificate
+    $REQ -new -x509 -keyout newreq.pem -out newreq.pem $DAYS
+    RET=$?
+    echo "Certificate (and private key) is in newreq.pem"
+    ;;
+-newreq) 
+    # create a certificate request
+    $REQ -new -keyout newreq.pem -out newreq.pem $DAYS
+    RET=$?
+    echo "Request (and private key) is in newreq.pem"
+    ;;
+-newca)     
+    # if explicitly asked for or it doesn't exist then setup the directory
+    # structure that Eric likes to manage things 
+    NEW="1"
+    if [ "$NEW" -o ! -f ${CATOP}/serial ]; then
+	# create the directory hierarchy
+	mkdir ${CATOP} 
+	mkdir ${CATOP}/certs 
+	mkdir ${CATOP}/crl 
+	mkdir ${CATOP}/newcerts
+	mkdir ${CATOP}/private
+	echo "01" > ${CATOP}/serial
+	touch ${CATOP}/index.txt
+    fi
+    if [ ! -f ${CATOP}/private/$CAKEY ]; then
+	echo "CA certificate filename (or enter to create)"
+	read FILE
+
+	# ask user for existing CA certificate
+	if [ "$FILE" ]; then
+	    cp $FILE ${CATOP}/private/$CAKEY
+	    RET=$?
+	else
+	    echo "Making CA certificate ..."
+	    $REQ -new -x509 -keyout ${CATOP}/private/$CAKEY \
+			   -out ${CATOP}/$CACERT $DAYS
+	    RET=$?
+	fi
+    fi
+    ;;
+-xsign)
+    $CA -policy policy_anything -infiles newreq.pem 
+    RET=$?
+    ;;
+-sign|-signreq) 
+    $CA -policy policy_anything -out newcert.pem -infiles newreq.pem
+    RET=$?
+    cat newcert.pem
+    echo "Signed certificate is in newcert.pem"
+    ;;
+-signcert) 
+    echo "Cert passphrase will be requested twice - bug?"
+    $X509 -x509toreq -in newreq.pem -signkey newreq.pem -out tmp.pem
+    $CA -policy policy_anything -out newcert.pem -infiles tmp.pem
+    cat newcert.pem
+    echo "Signed certificate is in newcert.pem"
+    ;;
+-verify) 
+    shift
+    if [ -z "$1" ]; then
+	    $VERIFY -CAfile $CATOP/$CACERT newcert.pem
+	    RET=$?
+    else
+	for j
+	do
+	    $VERIFY -CAfile $CATOP/$CACERT $j
+	    if [ $? != 0 ]; then
+		    RET=$?
+	    fi
+	done
+    fi
+    exit 0
+    ;;
+*)
+    echo "Unknown arg $i";
+    exit 1
+    ;;
+esac
+done
+exit $RET
+
+@
+
+
+1.1.3.1
+log
+@for the damned sixth time: try to import (stock) OpenSSL 0.9.7b (on which
+the OpenBSD-openssl and our libcrypto and libssl are based) into a vendor
+branch in order to schedule an update to OpenSSL.
+
+CVS hates me today.
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

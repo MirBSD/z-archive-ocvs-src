@@ -1,0 +1,155 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.8
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.6
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.4
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.2
+	cvs-200406091940:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.12.03.17.55.01;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.12.03.17.55.01;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+
+BEGIN {
+    unless(grep /blib/, @@INC) {
+	chdir 't' if -d 't';
+	@@INC = '../lib';
+    }
+}
+
+use Config;
+
+BEGIN {
+    if(-d "lib" && -f "TEST") {
+	my $reason;
+
+	if ($Config{'extensions'} !~ /\bSocket\b/) {
+	  $reason = 'Socket was not built';
+	}
+	elsif ($Config{'extensions'} !~ /\bIO\b/) {
+	  $reason = 'IO was not built';
+	}
+	elsif ($^O eq 'apollo') {
+	  $reason = "unknown *FIXME*";
+	}
+	undef $reason if $^O eq 'VMS' and $Config{d_socket};
+	if ($reason) {
+	    print "1..0 # Skip: $reason\n";
+	    exit 0;
+	}
+    }
+}
+
+sub compare_addr {
+    no utf8;
+    my $a = shift;
+    my $b = shift;
+    if (length($a) != length $b) {
+	my $min = (length($a) < length $b) ? length($a) : length $b;
+	if ($min and substr($a, 0, $min) eq substr($b, 0, $min)) {
+	    printf "# Apparently: %d bytes junk at the end of %s\n# %s\n",
+		abs(length($a) - length ($b)),
+		$_[length($a) < length ($b) ? 1 : 0],
+		"consider decreasing bufsize of recfrom.";
+	    substr($a, $min) = "";
+	    substr($b, $min) = "";
+	}
+	return 0;
+    }
+    my @@a = unpack_sockaddr_in($a);
+    my @@b = unpack_sockaddr_in($b);
+    "$a[0]$a[1]" eq "$b[0]$b[1]";
+}
+
+$| = 1;
+print "1..7\n";
+
+use Socket;
+use IO::Socket qw(AF_INET SOCK_DGRAM INADDR_ANY);
+
+$udpa = IO::Socket::INET->new(Proto => 'udp', LocalAddr => 'localhost')
+     || IO::Socket::INET->new(Proto => 'udp', LocalAddr => '127.0.0.1')
+    or die "$! (maybe your system does not have a localhost at all, 'localhost' or 127.0.0.1)";
+
+print "ok 1\n";
+
+$udpb = IO::Socket::INET->new(Proto => 'udp', LocalAddr => 'localhost')
+     || IO::Socket::INET->new(Proto => 'udp', LocalAddr => '127.0.0.1')
+    or die "$! (maybe your system does not have a localhost at all, 'localhost' or 127.0.0.1)";
+
+print "ok 2\n";
+
+$udpa->send("ok 4\n",0,$udpb->sockname);
+
+print "not "
+  unless compare_addr($udpa->peername,$udpb->sockname, 'peername', 'sockname');
+print "ok 3\n";
+
+my $where = $udpb->recv($buf="",5);
+print $buf;
+
+my @@xtra = ();
+
+unless(compare_addr($where,$udpa->sockname, 'recv name', 'sockname')) {
+    print "not ";
+    @@xtra = (0,$udpa->sockname);
+}
+print "ok 5\n";
+
+$udpb->send("ok 6\n",@@xtra);
+$udpa->recv($buf="",5);
+print $buf;
+
+print "not " if $udpa->connected;
+print "ok 7\n";
+@
+
+
+1.1.1.1
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@@

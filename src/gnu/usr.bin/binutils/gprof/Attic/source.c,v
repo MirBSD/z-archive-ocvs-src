@@ -1,0 +1,526 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.21.17.55;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.05.12;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.30.11;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.43.36;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.09.24;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* source.c - Keep track of source files.
+
+   Copyright 2000, 2001, 2002 Free Software Foundation, Inc.
+
+   This file is part of GNU Binutils.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+   02111-1307, USA.  */
+
+#include "gprof.h"
+#include "libiberty.h"
+#include "filenames.h"
+#include "search_list.h"
+#include "source.h"
+
+#define EXT_ANNO "-ann"		/* Postfix of annotated files.  */
+
+/* Default option values.  */
+bfd_boolean create_annotation_files = FALSE;
+
+Search_List src_search_list = {0, 0};
+Source_File *first_src_file = 0;
+
+
+Source_File *
+source_file_lookup_path (path)
+     const char *path;
+{
+  Source_File *sf;
+
+  for (sf = first_src_file; sf; sf = sf->next)
+    {
+      if (FILENAME_CMP (path, sf->name) == 0)
+	break;
+    }
+
+  if (!sf)
+    {
+      /* Create a new source file descriptor.  */
+      sf = (Source_File *) xmalloc (sizeof (*sf));
+
+      memset (sf, 0, sizeof (*sf));
+
+      sf->name = xstrdup (path);
+      sf->next = first_src_file;
+      first_src_file = sf;
+    }
+
+  return sf;
+}
+
+
+Source_File *
+source_file_lookup_name (filename)
+     const char *filename;
+{
+  const char *fname;
+  Source_File *sf;
+
+  /* The user cannot know exactly how a filename will be stored in
+     the debugging info (e.g., ../include/foo.h
+     vs. /usr/include/foo.h).  So we simply compare the filename
+     component of a path only.  */
+  for (sf = first_src_file; sf; sf = sf->next)
+    {
+      fname = strrchr (sf->name, '/');
+
+      if (fname)
+	++fname;
+      else
+	fname = sf->name;
+
+      if (FILENAME_CMP (filename, fname) == 0)
+	break;
+    }
+
+  return sf;
+}
+
+
+FILE *
+annotate_source (sf, max_width, annote, arg)
+     Source_File *sf;
+     unsigned int max_width;
+     void (*annote) PARAMS ((char *, unsigned int, int, void *));
+     void *arg;
+{
+  static bfd_boolean first_file = TRUE;
+  int i, line_num, nread;
+  bfd_boolean new_line;
+  char buf[8192];
+  char fname[PATH_MAX];
+  char *annotation, *name_only;
+  FILE *ifp, *ofp;
+  Search_List_Elem *sle = src_search_list.head;
+
+  /* Open input file.  If open fails, walk along search-list until
+     open succeeds or reaching end of list.  */
+  strcpy (fname, sf->name);
+
+  if (IS_ABSOLUTE_PATH (sf->name))
+    sle = 0;			/* Don't use search list for absolute paths.  */
+
+  name_only = 0;
+  while (TRUE)
+    {
+      DBG (SRCDEBUG, printf ("[annotate_source]: looking for %s, trying %s\n",
+			     sf->name, fname));
+
+      ifp = fopen (fname, FOPEN_RB);
+      if (ifp)
+	break;
+
+      if (!sle && !name_only)
+	{
+	  name_only = strrchr (sf->name, '/');
+#ifdef HAVE_DOS_BASED_FILE_SYSTEM
+	  {
+	    char *bslash = strrchr (sf->name, '\\');
+	    if (name_only == NULL || (bslash != NULL && bslash > name_only))
+	      name_only = bslash;
+	    if (name_only == NULL && sf->name[0] != '\0' && sf->name[1] == ':')
+	      name_only = (char *)sf->name + 1;
+	  }
+#endif
+	  if (name_only)
+	    {
+	      /* Try search-list again, but this time with name only.  */
+	      ++name_only;
+	      sle = src_search_list.head;
+	    }
+	}
+
+      if (sle)
+	{
+	  strcpy (fname, sle->path);
+#ifdef HAVE_DOS_BASED_FILE_SYSTEM
+	  /* d:foo is not the same thing as d:/foo!  */
+	  if (fname[strlen (fname) - 1] == ':')
+	    strcat (fname, ".");
+#endif
+	  strcat (fname, "/");
+
+	  if (name_only)
+	    strcat (fname, name_only);
+	  else
+	    strcat (fname, sf->name);
+
+	  sle = sle->next;
+	}
+      else
+	{
+	  if (errno == ENOENT)
+	    fprintf (stderr, _("%s: could not locate `%s'\n"),
+		     whoami, sf->name);
+	  else
+	    perror (sf->name);
+
+	  return 0;
+	}
+    }
+
+  ofp = stdout;
+
+  if (create_annotation_files)
+    {
+      /* Try to create annotated source file.  */
+      const char *filename;
+
+      /* Create annotation files in the current working directory.  */
+      filename = strrchr (sf->name, '/');
+#ifdef HAVE_DOS_BASED_FILE_SYSTEM
+	{
+	  char *bslash = strrchr (sf->name, '\\');
+	  if (filename == NULL || (bslash != NULL && bslash > filename))
+	    filename = bslash;
+	  if (filename == NULL && sf->name[0] != '\0' && sf->name[1] == ':')
+	    filename = sf->name + 1;
+	}
+#endif
+      if (filename)
+	++filename;
+      else
+	filename = sf->name;
+
+      strcpy (fname, filename);
+      strcat (fname, EXT_ANNO);
+#ifdef __MSDOS__
+      {
+	/* foo.cpp-ann can overwrite foo.cpp due to silent truncation of
+	   file names on 8+3 filesystems.  Their `stat' better be good...  */
+	struct stat buf1, buf2;
+
+	if (stat (filename, &buf1) == 0
+	    && stat (fname, &buf2) == 0
+	    && buf1.st_ino == buf2.st_ino)
+	  {
+	    char *dot = strrchr (fname, '.');
+
+	    if (dot)
+	      *dot = '\0';
+	    strcat (fname, ".ann");
+	  }
+      }
+#endif
+      ofp = fopen (fname, "w");
+
+      if (!ofp)
+	{
+	  perror (fname);
+	  return 0;
+	}
+    }
+
+  /* Print file names if output goes to stdout
+     and there are more than one source file.  */
+  if (ofp == stdout)
+    {
+      if (first_file)
+	first_file = FALSE;
+      else
+	fputc ('\n', ofp);
+
+      if (first_output)
+	first_output = FALSE;
+      else
+	fprintf (ofp, "\f\n");
+
+      fprintf (ofp, _("*** File %s:\n"), sf->name);
+    }
+
+  annotation = xmalloc (max_width + 1);
+  line_num = 1;
+  new_line = TRUE;
+
+  while ((nread = fread (buf, 1, sizeof (buf), ifp)) > 0)
+    {
+      for (i = 0; i < nread; ++i)
+	{
+	  if (new_line)
+	    {
+	      (*annote) (annotation, max_width, line_num, arg);
+	      fputs (annotation, ofp);
+	      ++line_num;
+	      new_line = FALSE;
+	    }
+
+	  new_line = (buf[i] == '\n');
+	  fputc (buf[i], ofp);
+	}
+    }
+
+  free (annotation);
+  return ofp;
+}
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweißer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d3 1
+a3 1
+   Copyright 2000, 2001 Free Software Foundation, Inc.
+d31 1
+a31 1
+bool create_annotation_files = FALSE;
+d38 2
+a39 1
+DEFUN (source_file_lookup_path, (path), const char *path)
+d66 2
+a67 1
+DEFUN (source_file_lookup_name, (filename), const char *filename)
+d94 5
+a98 4
+DEFUN (annotate_source, (sf, max_width, annote, arg),
+       Source_File * sf AND int max_width
+       AND void (*annote) PARAMS ((char *buf, int w, int l, void *arg))
+       AND void *arg)
+d100 1
+a100 1
+  static bool first_file = TRUE;
+d102 1
+a102 1
+  bool new_line;
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d3 1
+a3 1
+   Copyright 2000, 2001, 2002 Free Software Foundation, Inc.
+d31 1
+a31 1
+bfd_boolean create_annotation_files = FALSE;
+d38 1
+a38 2
+source_file_lookup_path (path)
+     const char *path;
+d65 1
+a65 2
+source_file_lookup_name (filename)
+     const char *filename;
+d92 4
+a95 5
+annotate_source (sf, max_width, annote, arg)
+     Source_File *sf;
+     unsigned int max_width;
+     void (*annote) PARAMS ((char *, unsigned int, int, void *));
+     void *arg;
+d97 1
+a97 1
+  static bfd_boolean first_file = TRUE;
+d99 1
+a99 1
+  bfd_boolean new_line;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d3 1
+a3 1
+   Copyright 2000, 2001, 2002 Free Software Foundation, Inc.
+d31 1
+a31 1
+bfd_boolean create_annotation_files = FALSE;
+d38 1
+a38 2
+source_file_lookup_path (path)
+     const char *path;
+d65 1
+a65 2
+source_file_lookup_name (filename)
+     const char *filename;
+d92 4
+a95 5
+annotate_source (sf, max_width, annote, arg)
+     Source_File *sf;
+     unsigned int max_width;
+     void (*annote) PARAMS ((char *, unsigned int, int, void *));
+     void *arg;
+d97 1
+a97 1
+  static bfd_boolean first_file = TRUE;
+d99 1
+a99 1
+  bfd_boolean new_line;
+@
+

@@ -1,0 +1,442 @@
+head	1.4;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.4
+	tg-mergefixes-1-branch:1.4.0.4
+	tg-mergefixes-1-base:1.4
+	MIROS_X:1.4.0.2
+	MIROS_X_BASE:1.4
+	tg-mergetmp-3:1.4
+	cvs-200412031430:1.1.1.4
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	cvs-200410222040:1.1.1.4
+	tg-mergetmp-1:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	cvs-200310232020:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310081755:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261610:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2004.10.22.21.53.44;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.01.27.17.42.42;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.01.21.22.01.37;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.09.25.16.40.42;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.09.25.16.40.42;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.46.02;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.01.26.18.57.15;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.10.22.20.49.20;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@merge; fix; whitespace; bump libc level
+XXX untested
+@
+text
+@/**	$MirBSD: src/usr.bin/dc/dc.c,v 1.3 2004/01/27 17:42:42 tg Stab $ */
+/*	$OpenBSD: dc.c,v 1.6 2004/10/18 07:49:00 otto Exp $	*/
+
+/*
+ * Copyright (c) 2003, Otto Moerbeek <otto@@drijf.net>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include <sys/cdefs.h>
+#include <err.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
+
+#include "extern.h"
+
+__RCSID("$MirBSD$");
+
+static __dead void	usage(void);
+
+extern char		*__progname;
+
+static __dead void
+usage(void)
+{
+	fprintf(stderr, "usage: %s [-x] [-e expr] [file]\n", __progname);
+	exit(1);
+}
+
+int
+main(int argc, char *argv[])
+{
+	int		ch;
+	bool		extended_regs = false;
+	FILE		*file;
+	struct source	src;
+	char		*buf, *p;
+
+	if ((buf = strdup("")) == NULL)
+		err(1, NULL);
+	/* accept and ignore a single dash to be 4.4BSD dc(1) compatible */
+	while ((ch = getopt(argc, argv, "e:x-")) != -1) {
+		switch (ch) {
+		case 'e':
+			p = buf;
+			if (asprintf(&buf, "%s %s", buf, optarg) == -1)
+				err(1, NULL);
+			free(p);
+			break;
+		case 'x':
+			extended_regs = true;
+			break;
+		case '-':
+			break;
+		default:
+			usage();
+		}
+	}
+	argc -= optind;
+	argv += optind;
+
+	init_bmachine(extended_regs);
+	setlinebuf(stdout);
+	setlinebuf(stderr);
+
+	if (argc > 1)
+		usage();
+	if (buf[0] != '\0') {
+		src_setstring(&src, buf);
+		reset_bmachine(&src);
+		eval();
+		free(buf);
+		if (argc == 0)
+			return (0);
+	}
+	if (argc == 1) {
+		file = fopen(argv[0], "r");
+		if (file == NULL)
+			err(1, "cannot open file %s", argv[0]);
+		src_setstream(&src, file);
+		reset_bmachine(&src);
+		eval();
+		fclose(file);
+		/*
+		 * BSD and Solaris dc(1) continue with stdin after processing
+		 * the file given as the argument. We follow GNU dc(1).
+		 */
+		 return (0);
+	}
+	src_setstream(&src, stdin);
+	reset_bmachine(&src);
+	eval();
+
+	return (0);
+}
+@
+
+
+1.3
+log
+@first part of mergeing OpenBSD and fixing whitespace and RCS IDs
+@
+text
+@d1 2
+a2 2
+/*	$MirBSD: dc.c,v 1.2 2004/01/21 22:01:37 tg Exp $	*/
+/*	$OpenBSD: dc.c,v 1.5 2004/01/13 08:17:41 otto Exp $	*/
+d20 1
+a20 4
+#ifndef lint
+static const char rcsid[] = "$OpenBSD: dc.c,v 1.5 2004/01/13 08:17:41 otto Exp $";
+#endif /* not lint */
+
+d23 1
+d29 2
+d38 1
+a38 1
+	fprintf(stderr, "usage: %s [-x] [file]\n", __progname);
+d49 1
+d51 2
+d54 1
+a54 1
+	while ((ch = getopt(argc, argv, "x-")) != -1) {
+d56 6
+d80 9
+a88 1
+	else if (argc == 1) {
+d96 5
+a101 4
+	/*
+	 * BSD dc and Solaris dc continue with stdin after processing
+	 * the file given as the argument.
+	 */
+d106 1
+a106 1
+	return 0;
+@
+
+
+1.2
+log
+@* remove all GNU Automake files, we don't need them
+* disable stupid "if Makefile.am isn't there, I can't build
+  Makefile.in so I can't build Makefile so... huh?" stuff
+* basically synch lists (base, not x11) with what is gained;
+  more review needed
+  XXX adjust notes
+* various improvements I don't remember
+* add configs from the FSF
+  (with MirBSD and ekkoBSD support added by myself)
+* update some FSF material
+* plug some strcpy, strcat, sprintf, mktemp holes
+* fix and unify the way where and how the gcc version subdirs are included
+
+XXX someone string-"fix" roff and the gnu part (isdnd will be taken care of later)
+@
+text
+@d1 2
+a2 2
+/*	$MirBSD$	*/
+/*	$OpenBSD: dc.c,v 1.4 2003/12/01 09:13:24 otto Exp $	*/
+d21 1
+a21 1
+static const char rcsid[] = "$OpenBSD: dc.c,v 1.4 2003/12/01 09:13:24 otto Exp $";
+d25 1
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 1
+/*	$OpenBSD: dc.c,v 1.3 2003/09/19 19:06:29 deraadt Exp $	*/
+d21 1
+a21 1
+static const char rcsid[] = "$OpenBSD: dc.c,v 1.3 2003/09/19 19:06:29 deraadt Exp $";
+d25 1
+a26 1
+#include <string.h>
+d37 1
+a37 1
+	fprintf(stderr, "usage: %s [file]\n", __progname);
+d44 2
+d49 14
+a62 2
+	if (argc > 2)
+		usage();
+d64 1
+a64 1
+	init_bmachine();
+d67 5
+a71 2
+	if (argc == 2 && strcmp(argv[1], "-") != 0) {
+		file = fopen(argv[1], "r");
+d73 1
+a73 1
+			err(1, "cannot open file %s", argv[1]);
+@
+
+
+1.1.1.1
+log
+@Release Time. Synchronize with OpenBSD 3.4-current (base system).
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: dc.c,v 1.4 2003/12/01 09:13:24 otto Exp $	*/
+d20 1
+a20 1
+static const char rcsid[] = "$OpenBSD: dc.c,v 1.4 2003/12/01 09:13:24 otto Exp $";
+d24 2
+a25 1
+#include <unistd.h>
+d36 1
+a36 1
+	fprintf(stderr, "usage: %s [-x] [file]\n", __progname);
+a42 2
+	int		ch;
+	bool		extended_regs = false;
+d46 2
+a47 14
+	/* accept and ignore a single dash to be 4.4BSD dc(1) compatible */
+	while ((ch = getopt(argc, argv, "x-")) != -1) {
+		switch (ch) {
+		case 'x':
+			extended_regs = true;
+			break;
+		case '-':
+			break;
+		default:
+			usage();
+		}
+	}
+	argc -= optind;
+	argv += optind;
+d49 1
+a49 1
+	init_bmachine(extended_regs);
+d52 2
+a53 5
+
+	if (argc > 1)
+		usage();
+	else if (argc == 1) {
+		file = fopen(argv[0], "r");
+d55 1
+a55 1
+			err(1, "cannot open file %s", argv[0]);
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: dc.c,v 1.5 2004/01/13 08:17:41 otto Exp $	*/
+d20 1
+a20 1
+static const char rcsid[] = "$OpenBSD: dc.c,v 1.5 2004/01/13 08:17:41 otto Exp $";
+a23 1
+#include <stdlib.h>
+@
+
+
+1.1.1.4
+log
+@import some updates/fixes from openbsd
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: dc.c,v 1.6 2004/10/18 07:49:00 otto Exp $	*/
+d20 1
+a20 1
+static const char rcsid[] = "$OpenBSD: dc.c,v 1.6 2004/10/18 07:49:00 otto Exp $";
+a24 1
+#include <string.h>
+d36 1
+a36 1
+	fprintf(stderr, "usage: %s [-x] [-e expr] [file]\n", __progname);
+a46 1
+	char		*buf, *p;
+a47 2
+	if ((buf = strdup("")) == NULL)
+		err(1, NULL);
+d49 1
+a49 1
+	while ((ch = getopt(argc, argv, "e:x-")) != -1) {
+a50 6
+		case 'e':
+			p = buf;
+			if (asprintf(&buf, "%s %s", buf, optarg) == -1)
+				err(1, NULL);
+			free(p);
+			break;
+d69 1
+a69 9
+	if (buf[0] != '\0') {
+		src_setstring(&src, buf);
+		reset_bmachine(&src);
+		eval();
+		free(buf);
+		if (argc == 0)
+			return (0);
+	}
+	if (argc == 1) {
+a76 5
+		/*
+		 * BSD and Solaris dc(1) continue with stdin after processing
+		 * the file given as the argument. We follow GNU dc(1).
+		 */
+		 return (0);
+d78 4
+d86 1
+a86 1
+	return (0);
+@
+
+

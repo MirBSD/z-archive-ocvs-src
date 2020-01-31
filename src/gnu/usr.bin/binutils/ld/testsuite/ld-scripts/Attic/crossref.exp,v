@@ -1,0 +1,243 @@
+head	1.2;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.05.16.17.43.24;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.08;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.08;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.43.30;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.09.12;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@# Test NOCROSSREFS in a linker script.
+# By Ian Lance Taylor, Cygnus Support.
+#   Copyright 2001
+#   Free Software Foundation, Inc.
+#
+# This file is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+set test1 "NOCROSSREFS 1"
+set test2 "NOCROSSREFS 2"
+
+if { [which $CC] == 0 } {
+    untested $test1
+    untested $test2
+    return
+}
+
+if { ![ld_compile $CC "$srcdir/$subdir/cross1.c" tmpdir/cross1.o] \
+     || ![ld_compile $CC "$srcdir/$subdir/cross2.c" tmpdir/cross2.o] } {
+    unresolved $test1
+    unresolved $test2
+    return
+}
+
+set flags [big_or_little_endian]
+
+# The a29k compiled code calls V_SPILL and V_FILL.  Since we don't
+# need to run this code, but we don't have definitions for those
+# functions, we just define them out.
+if [istarget a29k*-*-*] {
+    set flags "$flags --defsym V_SPILL=0 --defsym V_FILL=0"
+}
+
+verbose -log "$ld $flags -o tmpdir/cross1 -T $srcdir/$subdir/cross1.t tmpdir/cross1.o tmpdir/cross2.o"
+
+catch "exec $ld $flags -o tmpdir/cross1 -T $srcdir/$subdir/cross1.t tmpdir/cross1.o tmpdir/cross2.o" exec_output
+
+set exec_output [prune_warnings $exec_output]
+
+regsub -all "(^|\n)($ld: warning: cannot find entry symbol\[^\n\]*\n?)" $exec_output "\\1" exec_output
+
+if [string match "" $exec_output] then {
+    fail $test1
+} else {
+    verbose -log "$exec_output"
+    if [regexp "prohibited cross reference from .* to `foo' in" $exec_output] {
+	pass $test1
+    } else {
+	fail $test1
+    }
+}
+
+# Check cross references within a single object.
+
+if { ![ld_compile $CC "$srcdir/$subdir/cross3.c" tmpdir/cross3.o] } {
+    unresolved $test2
+    return
+}
+
+verbose -log "$ld $flags -o tmpdir/cross2 -T $srcdir/$subdir/cross2.t tmpdir/cross3.o"
+
+catch "exec $ld $flags -o tmpdir/cross2 -T $srcdir/$subdir/cross2.t tmpdir/cross3.o" exec_output
+
+set exec_output [prune_warnings $exec_output]
+
+regsub -all "(^|\n)($ld: warning: cannot find entry symbol\[^\n\]*\n?)" $exec_output "\\1" exec_output
+
+if [string match "" $exec_output] then {
+    fail $test2
+} else {
+    verbose -log "$exec_output"
+    if [regexp "prohibited cross reference from .* to `.*' in" $exec_output] {
+	pass $test2
+    } else {
+	fail $test2
+    }
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@a28 7
+# Xtensa targets currently default to putting literal values in a separate
+# section and that requires linker script support, so put literals in text.
+global CFLAGS
+if [istarget xtensa*-*-*] {
+    set CFLAGS "$CFLAGS -mtext-section-literals"
+}
+
+a44 5
+if [istarget sh64*-*-elf] {
+    # This is what gcc passes to ld by default.
+    set flags "-mshelf32"
+}
+
+d57 1
+a57 1
+    if [regexp "prohibited cross reference from .* to `.*foo' in" $exec_output] {
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

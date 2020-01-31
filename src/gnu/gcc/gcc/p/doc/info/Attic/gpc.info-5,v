@@ -1,0 +1,1556 @@
+head	1.2;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.01.11.18.17.13;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.01.01;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.01.01;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke some unused, redundant or generated files
+@
+text
+@This is ../p/doc/info/gpc.info, produced by makeinfo version 4.1 from
+gpc.texi.
+
+INFO-DIR-SECTION GNU programming tools
+START-INFO-DIR-ENTRY
+* GPC: (gpc).                   The GNU Pascal Compiler.
+END-INFO-DIR-ENTRY
+INFO-DIR-SECTION Individual utilities
+START-INFO-DIR-ENTRY
+* GPC: (gpc)Invoking GPC.       The GNU Pascal Compiler.
+END-INFO-DIR-ENTRY
+
+   This file documents the GNU Pascal Compiler.
+
+   Permission is granted to make and distribute verbatim copies of this
+manual provided the copyright notice and this permission notice are
+preserved on all copies.
+
+   Copyright (C) 1988-2003 Free Software Foundation, Inc.
+
+   Permission is granted to copy and distribute modified versions of
+this manual under the conditions for verbatim copying, provided also
+that the sections entitled "GNU General Public License", "The GNU
+Project", "The GNU Manifesto" and "Funding for free Software" are
+included exactly as in the original, and provided that the entire
+resulting derived work is distributed under the terms of a permission
+notice identical to this one.
+
+   Permission is granted to copy and distribute translations of this
+manual into another language, under the above conditions for modified
+versions, except that the sections entitled "GNU General Public
+License", "The GNU Project", "The GNU Manifesto" and "Funding for Free
+Software" and this permission notice, may be included in translations
+approved by the Free Software Foundation instead of in the original
+English.
+
+
+File: gpc.info,  Node: Type Initializers,  Next: Restricted Types,  Prev: Object Types,  Up: Type Definition Possibilities
+
+Initial values to type denoters
+...............................
+
+   A type may be initialized to a value of expression when it is
+declared, like a variable, as in:
+
+     program TypeVarInitDemo;
+     type
+       Int10   = Integer value 10;
+       FooType = Real;
+       MyType  = Char value Pred ('A');
+       EType   = (a, b, c, d, e, f, g) value d;
+     
+     const
+       Answer = 42;
+     
+     var
+       ii : Int10;                    { Value of ii set to 10 }
+       ch : MyType  value Pred ('z');
+       aa : Integer value Answer + 10;
+       foo: FooType value Sqr (Answer);
+       e1 : EType;                    { value set to d }
+       e2 : EType value g;            { value set to g }
+     begin
+     end.
+
+   Extended Pascal requires the type initializers to be constant
+expressions. GPC allows any valid expression.
+
+   Note, however, that the expressions that affect the size of storage
+allocated for objects (e.g. the length of arrays) may contain variables
+only inside functions or procedures.
+
+   GPC evaluates the initial values used for the type when an
+identifier is declared for that type. If a variable is declared with a
+type-denoter that uses a type-name which already has an initial value
+the latter initialization has precedence.
+
+   @@@@ GPC does not know how to calculate constant values for math
+functions in the runtime library at compile time, e.g. `Exp (Sin
+(2.4567))', so you should not use these kind of expressions in object
+size expressions. (Extended Pascal allows this.)
+
+
+File: gpc.info,  Node: Restricted Types,  Prev: Type Initializers,  Up: Type Definition Possibilities
+
+Restricted Types
+................
+
+   GPC supports `restricted' types, defined in Extended Pascal. A value
+of a restricted type may be passed as a value parameter to a formal
+parameter possessing its underlying type, or returned as the result of
+a function. A variable of a restricted type may be passed as a variable
+parameter to a formal parameter possessing the same type or its
+underlying type. No other operations, such as accessing a component of
+a restricted type value or performing arithmetic, are possible.
+
+     program RestrictedDemo;
+     
+     type
+       UnrestrictedRecord = record
+         a: Integer;
+       end;
+       RestrictedRecord = restricted UnrestrictedRecord;
+     
+     var
+       r1: UnrestrictedRecord;
+       r2: RestrictedRecord;
+       i: restricted Integer;
+       k: Integer;
+     
+     function AccessRestricted (p: UnrestrictedRecord): RestrictedRecord;
+     var URes: UnrestrictedRecord;
+     begin
+       { The parameter is treated as unrestricted, even though the actual
+         parameter may be restricted }
+       URes.a := p.a;
+       { It is allowed to assign a function result }
+       AccessRestricted := URes;
+     end;
+     
+     begin
+       r1.a := 354;
+     
+       { Assigning a restricted function result to a restricted variable }
+       { @@@@ Verify if this should really be allowed????? }
+       r2 := AccessRestricted (r1);
+     
+       { Passing a restricted value to unrestricted formal parameter is ok }
+       r2 := AccessRestricted (r2);
+     
+       {$ifdef BUG}
+       { *** The following statements are not allowed *** }
+       k := r2.a;      { field access (reading) }
+       r2.a := 100;    { field access (writing) }
+       r1 := r2;       { assignment source is restricted }
+       r2 := r1;       { assignment target is restricted }
+       r1 := AccessRestricted (r2); { assigning a restricted function
+                                      result to an unrestricted object }
+       i  := 16#ffff;  { assignment target is restricted }
+       k  := i + 2;    { arithmetic with restricted value }
+       {$endif}
+     end.
+
+
+File: gpc.info,  Node: Machine-dependencies in Types,  Prev: Type Definition Possibilities,  Up: Data Types
+
+Machine-dependencies in Types
+-----------------------------
+
+* Menu:
+
+* Endianness::  How Integer Types are Stored on Different Machines
+* Alignment::   How Variables are Placed in Memory
+
+
+File: gpc.info,  Node: Endianness,  Next: Alignment,  Up: Machine-dependencies in Types
+
+Endianness
+..........
+
+   Endianness means the order in which the bytes of a value larger than
+one byte are stored in memory. This affects, e.g., integer values and
+pointers while, e.g., arrays of single-byte characters are not
+affected. The GPC `String' schema, however, contains `Capacity' and
+`Length' fields before the character array.  These fields are integer
+values larger than one byte, so the `String' schema _is_ affected by
+endianness.
+
+   Endianness depends on the hardware, especially the CPU. The most
+common forms are:
+
+   * "Little-endian"
+
+     Little-endian machines store the least significant byte on the
+     lowest memory address (the word is stored "little-end-first").
+
+     E.g., if the 32 bit value `$deadbeef' is stored on memory address
+     `$1234' on a little-endian machine, the following bytes will
+     occupy the memory positions:
+
+     Address       Value
+     $1234         $ef
+     $1235         $be
+     $1236         $ad
+     $1237         $de
+
+     Examples for little-endian machines are IA32 and compatible
+     microprocessors and Alpha processors.
+
+   * "Big-endian"
+
+     Big-endian machines store the most significant byte on the lowest
+     memory address (the word is stored "big-end-first").
+
+     E.g., if the 32 bit value `$deadbeef' is stored on memory address
+     `$1234' on a big-endian machine, the following bytes will occupy
+     the memory positions:
+
+     Address       Value
+     $1234         $de
+     $1235         $ad
+     $1236         $be
+     $1237         $ef
+
+     Examples for big-endian machines are the Sparc and Motorola m68k
+     CPU families and most RISC processors. Big-endian byte order is
+     also used in the Internet protocols.
+
+
+   _Note:_ There are processors which can run in both little-endian and
+big-endian mode, e.g. the MIPS processors. A single program, however,
+(unless it uses special machine code instructions) will always run in
+one endianness.
+
+   Under normal circumstances, programs do not need to worry about
+endianness, the CPU handles it by itself. Endianness becomes important
+when exchanging data between different machines, e.g.  via binary files
+or over a network. To avoid problems, one has to choose the endianness
+to use for the data exchange. E.g., the Internet uses big-endian data,
+and most known data formats have a specified endianness (usually that
+of the CPU on which the format was originally created). If you define
+your own binary data format, you're free to choose the endianness to
+use.
+
+   To deal with endianness, GPC predefines the symbol
+`__BYTES_LITTLE_ENDIAN__' on little-endian machines and
+`__BYTES_BIG_ENDIAN__' on big-endian machines. Besides, the Run Time
+System defines the constant `BytesBigEndian' as False on little-endian
+machines and True on big-endian machines.
+
+   There are also the symbols `__BITS_LITTLE_ENDIAN__',
+`__BITS_BIG_ENDIAN__', `__WORDS_LITTLE_ENDIAN__',
+`__WORDS_BIG_ENDIAN__' and the constants `BitsBigEndian' and
+`WordsBigEndian' which concern the order of bits within a byte (e.g.,
+in packed records) or of words within multiword-numbers, but these are
+usually less important.
+
+   The Run Time System also contains a number of routines to convert
+endianness and to read or write data from/to binary files in a given
+endianness, independent of the CPU's endianness. These routines are
+described in the RTS reference (*note Run Time System::), under
+`endianness'. The demo program `endiandemo.pas' contains an example on
+how to use these routines.
+
+
+File: gpc.info,  Node: Alignment,  Prev: Endianness,  Up: Machine-dependencies in Types
+
+Alignment
+.........
+
+   (Under construction.)  @@@@ ????
+
+
+File: gpc.info,  Node: Operators,  Next: Parameters,  Prev: Data Types,  Up: Programming
+
+Operators
+=========
+
+   GNU Pascal supports all operators of ISO Pascal and Borland Pascal.
+In addition, you can define your own operators according to the
+Pascal-SC (PXSC) syntax.
+
+* Menu:
+
+* Built-in Operators::
+* User-defined Operators::
+
+
+File: gpc.info,  Node: Built-in Operators,  Next: User-defined Operators,  Up: Operators
+
+Built-in Operators
+------------------
+
+   The following table lists all built-in GNU Pascal operators, ordered
+by precedence: `<' etc. have the lowest precedence, `not' etc. the
+highest. As usual, the precedence of operators can be superseded with
+parentheses.
+
+   In an assignment statement, `:=' has lower precedence than all
+operators. (This is rather obvious from the syntax of assignment
+statements, and is merely noted for programmers familiar with C where
+`=' is an operator.)
+
+     <    =    >    in   <>   >=   <=
+     +    -    or   +<   -<   +>   ->
+     *    /    div  mod  and  shl  shr  xor  *<   /<   *>   />
+     pow  **   ><
+     not  &    @@
+
+   The Pascal-SC (PXSC) operators `+<', `-<', `+>', `->', `*<', `/<',
+`*>', and `/>' are not yet implemented into GNU Pascal but may be
+defined by the user (see below).
+
+
+File: gpc.info,  Node: User-defined Operators,  Prev: Built-in Operators,  Up: Operators
+
+User-defined Operators
+----------------------
+
+   GNU Pascal allows the (re-)definition of binary operators according
+to the Pascal-SC (PXSC) syntax. The following vector addition example
+illustrates how to do this:
+
+     program OperatorDemo;
+     
+     type
+       Vector3 = record
+         x, y, z: Real;
+       end;
+     
+     var
+       a, b, c: Vector3 = (1, 2, 3);
+     
+     operator + (u, v: Vector3) w: Vector3;
+     begin
+       w.x := u.x + v.x;
+       w.y := u.y + v.y;
+       w.z := u.z + v.z;
+     end;
+     
+     begin
+       c := a + b
+     end.
+
+   Between the closing parenthesis of the argument list and the result
+variable (`w' in the above example), GPC allows an optional equal sign.
+This is not allowed in PXSC, but it is consistent with Extended
+Pascal's function result variable definitions, where the equal sign is
+obligatory (but also optional in GPC).
+
+   The argument types needn't be equal, and the name of the operator
+may be an identifier instead of a known symbol. You cannot define _new_
+symbols in GPC.
+
+   The PXSC operators `+>', `+<', etc. for exact numerical calculations
+currently are not implemented in GPC, but you can define them. Also,
+the other real-type operators do _not_ meet the requirements of PXSC; a
+module which fixes that would be a welcome contribution.
+
+
+File: gpc.info,  Node: Parameters,  Next: Pointer Arithmetics,  Prev: Operators,  Up: Programming
+
+Procedure And Function Parameters
+=================================
+
+* Menu:
+
+* Protected Parameters::  Parameters declared `protected' or `const'
+* Conformant Arrays::     The Standard way to pass arrays of variable size
+* Open Arrays::           BP's alternative to Conformant Arrays
+
+
+File: gpc.info,  Node: Protected Parameters,  Next: Conformant Arrays,  Up: Parameters
+
+Parameters declared as `protected' or `const'
+---------------------------------------------
+
+   All the following works in GPC:
+
+     procedure Foo (protected a, b, c: Integer);    { 3 arguments }
+     procedure Foo (a, b, c, protected: Integer);   { 4 arguments }
+     procedure Foo (a, b, protected, c: Integer);   { 4 arguments }
+     procedure Foo (protected: Integer);            { 1 argument  }
+     procedure Foo (var protected: Integer);        { 1 argument  }
+     procedure Foo (protected protected: Integer);  { 1 argument  }
+
+   Furthermore, GPC supports `const', according to BP, which is
+equivalent to either `protected' or `protected var', up to the
+compiler's discretion.
+
+
+File: gpc.info,  Node: Conformant Arrays,  Next: Open Arrays,  Prev: Protected Parameters,  Up: Parameters
+
+The Standard way to pass arrays of variable size
+------------------------------------------------
+
+   @@@@ (Under construction.)
+
+   A feature of Standard Pascal level 1.
+
+
+File: gpc.info,  Node: Open Arrays,  Prev: Conformant Arrays,  Up: Parameters
+
+BP's alternative to Conformant Arrays
+-------------------------------------
+
+   Borland Pascal "open array" formal parameters are implemented into
+GPC. Within the function body, they have integer type index with lower
+bound 0.
+
+   In constrast to conformant arrays (which are not supported by BP),
+open arrays allow any ordinal type as the index of the actual parameter
+(which is useful, e.g., if you want to be able to pass values of any
+enumeration type). However, they lose information about the lower bound
+(which is a problem, e.g., if you want to return information to the
+caller that relates to the actual array index, like the function
+`IOSelect' in the Run Time System does).
+
+
+File: gpc.info,  Node: String Slice Access,  Next: Type Casts,  Prev: Pointer Arithmetics,  Up: Programming
+
+Accessing parts of strings (and other arrays)
+=============================================
+
+   GPC allows the access of parts ("slices") of strings as defined in
+Extended Pascal. For example:
+
+     program StringSliceDemo;
+     
+     const
+       HelloWorld = 'Hello, world!';
+     
+     begin
+       WriteLn (HelloWorld[8 .. 12])  { yields `world' }
+     end.
+
+   As an extension, it also allows write access to a string slice:
+
+     program SliceWriteDemo;
+     
+     var
+       s: String (42) = 'Hello, world!';
+     
+     begin
+       s[8 .. 12] := 'folks';
+       WriteLn (s)  { yields `Hello, folks!' }
+     end.
+
+   As a further extension, GPC allows slice access also to non-string
+arrays. However, the usefulness of this feature is rather limited
+because of Pascal's strict type checking rules: If you have, e.g., an
+`array [1 .. 10] of Integer' and take a slice `[1 .. 5]' of it, it will
+not be compatible to another `array [1 .. 5] of Integer' because
+distinct array types are not compatible in Pascal, even if they look
+the same.
+
+   However, array slice access can be used in connection with
+conformant or open array parameters. See the program
+`arrayslicedemo.pas' (in the `demos' directory) for an example.
+
+
+File: gpc.info,  Node: Pointer Arithmetics,  Next: String Slice Access,  Prev: Parameters,  Up: Programming
+
+Pointer Arithmetics
+===================
+
+   GPC allows to increment, decrement, compare, and subtract pointers
+or to use them in `for' loops just like the C language.
+
+   GPC implements the address operator `@@' (a Borland Pascal extension).
+
+     program PointerArithmeticDemo;
+     var
+       a: array [1 .. 7] of Char;
+       p, q: ^Char;
+       i: Integer;
+     
+     {$X+}  { We need extended syntax for pointer arithmetic }
+     
+     begin
+       for p := @@a[1] to @@a[7] do
+         p^ := 'x';
+     
+       p := @@a[7];
+       q := @@a[3];
+       while p > q do
+         begin
+           p^ := 'y';
+           Dec (p)
+         end;
+     
+       p := @@a[7];
+       q := @@a[3];
+       i := q - p;    { yields 4 }
+     end.
+
+   Incrementing a pointer by one means to increment the address it
+contains by the size of the variable it is pointing to. For typeless
+pointers (`Pointer'), the address is incremented by one instead.
+
+   Similar things hold when decrementing a pointer.
+
+   Subtracting two pointers yields the number of variables pointed to
+between both pointers, i.e. the difference of the addresses divided by
+the size of the variables pointed to. The pointers must be of the same
+type.
+
+
+File: gpc.info,  Node: Type Casts,  Next: OOP,  Prev: String Slice Access,  Up: Programming
+
+Type Casts
+==========
+
+   In some cases, especially in low-level situations, Pascal's strong
+typing can be an obstacle. To temporarily circumvent this, GPC defines
+explicit "type casts" in a Borland Pascal compatible way.
+
+   There are two kinds of type casts, value type casts and variable type
+casts.
+
+   Value type casts
+
+   To convert a value of one data type into another type, you can use
+the target type like the name of a function that is called. The value
+to be converted can be a variable or an expression. Both the value's
+type and the destination type must be ordinal or pointer types. The
+ordinal value (extended to pointers to mean the address) is preserved
+in the cast.
+
+   An example:
+
+     program TypeCastDemo;
+     
+     var
+       Ch: Char;
+       i: Integer;
+     
+     begin
+       i := Integer (Ch)
+     end.
+
+   Another, more complicated, example:
+
+     program TypeCst2Demo;
+     
+     type
+       CharPtr = ^Char;
+       CharArray = array [0 .. 99] of Char;
+       CharArrayPtr = ^CharArray;
+     
+     var
+       Foo1, Foo2: CharPtr;
+       Bar: CharArrayPtr;
+     
+     {$X+} { We need extended syntax in order to use ``Succ'' on a pointer }
+     
+     begin
+       Foo1 := CharPtr (Bar);
+       Foo2 := CharPtr (Succ (Bar))
+     end.
+
+   However, because of risks involved with type casts, explained below,
+and because type-casts are non-standard, you should try to avoid type
+casts whenever possible - and it should be possible in most cases. For
+instance, the first example above could use the built-in function "Ord"
+instead of the type cast:
+
+     i := Ord (Ch);
+
+   The assignments in the second example could be written in the
+following way without any type casts:
+
+     Foo1 := @@Bar^[0];
+     Foo2 := @@Bar^[1];
+
+   Note: In the case of pointers, a warning is issued if the
+dereferenced target type requires a bigger alignment than the
+dereferenced source type (see *Note Alignment::).
+
+   Variable type casts
+
+   It is also possible to temporarily change the type of a variable
+(more generally, any "lvalue", i.e. something whose address can be
+taken), without converting its contents in any way. This is called
+variable type casting.
+
+   The syntax is the same as for value type casting. The type-casted
+variable is still the same variable (memory location) as the original
+one, just with a different type. Outside of the type cast, the variable
+keeps its original type.
+
+   There are some important differences between value and variable type
+casting:
+
+   * Variable type casting only works on lvalues, not on expressions.
+
+   * The result of a variable type casting is still an lvalue, so it can
+     be used, e.g., on the left side of an assignment, or as the operand
+     of an address operator, or passed by reference to a procedure.
+
+   * No values are converted in variable type-casting. The contents of
+     the variable, seen as a raw bit pattern, are just interpreted
+     according to the new type.
+
+   * Because bit patterns are just interpreted differently, the source
+     and target type must have the same size. If this is not the case,
+     GPC will give a warning.
+
+   * Beware: Variable type casts might have unexpected effects on
+     different platforms since you cannot rely on a specific way the
+     data is stored (e.g. see *Note Endianness::).
+
+
+   There are cases where a type-cast could be either a value or a
+variable cast. This is when both types are ordinal or pointer, and of
+the same size, and the value is an lvalue. Fortunately, in those cases,
+the results of both forms are the same, since the same ordinal values
+(or pointer addresses) are represented by the same bit patterns (when
+of the same size). Therefore, it doesn't matter which form of
+type-casting is actually used in these cases.
+
+   When dealing with objects (see *Note OOP::), it is sometimes
+necessary to cast a polymorphic pointer to an object into a pointer to
+a more specialized (derived) object (after checking the actual type).
+However, the `as' operator is a safer approach, so type-casts should be
+used there only for backward-compatibility (e.g., to BP).
+
+   See also: *Note absolute::, *Note Alignment::, *Note Endianness::,
+*Note OOP::, *Note Ord::, *Note Chr::, *Note Round::, *Note Trunc::.
+
+
+File: gpc.info,  Node: OOP,  Next: Compiler Directives,  Prev: Type Casts,  Up: Programming
+
+Object-Oriented Programming
+===========================
+
+   GNU Pascal follows the object model of Borland Pascal 7.0. The BP
+object extensions are almost fully implemented into GPC. This includes
+inheritance, virtual and non-virtual methods, constructors,
+destructors, pointer compatibility, extended `New' syntax (with
+constructor call and/or as a Boolean function), extended `Dispose'
+syntax (with destructor call).
+
+   The Borland object model is different from the ISO draft, but it
+will not be too difficult now to implement that too (plus the Borland
+Delphi Object Extensions which are quite similar to the ISO draft).
+
+   The syntax for an object type declaration is as follows:
+
+     program ObjectDemo;
+     
+     type
+       Str100 = String (100);
+     
+       FooParentPtr = ^FooParent;
+       FooPtr = ^Foo;
+     
+       FooParent = object
+         constructor Init;
+         destructor Done; virtual;
+         procedure Bar (c: Real); virtual;
+         function Baz (b, a, z: Char): Str100;  { not virtual }
+       end;
+     
+       Foo = object (FooParent)
+         x, y: Integer;
+         constructor Init (a, b: Integer);
+         destructor Done; virtual;
+         procedure Bar (c: Real); virtual;  { overrides `FooParent.Bar' }
+         z: Real;  { GPC extension: data fields after methods }
+         function Baz: Boolean;  { new function }
+       end;
+     
+     constructor FooParent.Init;
+     begin
+       WriteLn ('FooParent.Init')
+     end;
+     
+     destructor FooParent.Done;
+     begin
+       WriteLn ('I''m also done.')
+     end;
+     
+     procedure FooParent.Bar (c: Real);
+     begin
+       WriteLn ('FooParent.Bar (', c, ')')
+     end;
+     
+     function FooParent.Baz (b, a, z: Char) = s: Str100;
+     begin
+       WriteStr (s, 'FooParent.Baz (', b, ', ', a, ', ', z, ')')
+     end;
+     
+     constructor Foo.Init (a, b: Integer);
+     begin
+       inherited Init;
+       x := a;
+       y := b;
+       z := 3.4;
+       FooParent.Bar (1.7)
+     end;
+     
+     destructor Foo.Done;
+     begin
+       WriteLn ('I''m done.');
+       inherited Done
+     end;
+     
+     procedure Foo.Bar (c: Real);
+     begin
+       WriteLn ('Foo.Bar (', c, ')')
+     end;
+     
+     function Foo.Baz: Boolean;
+     begin
+       Baz := True
+     end;
+     
+     var
+       Ptr: FooParentPtr;
+     
+     begin
+       Ptr := New (FooPtr, Init (2, 3));
+       Ptr^.Bar (3);
+       Dispose (Ptr, Done);
+       New (Ptr, Init);
+       with Ptr^ do
+         WriteLn (Baz ('b', 'a', 'z'))
+     end.
+
+   Remarks:
+
+   * Data fields and methods can be mixed.
+
+   * GPC currently does not support `private' declarations and such.
+     These directives are syntactically accepted but ignored.
+
+   * Constructors and destructors are ordinary functions, internally.
+     When a constructor is called, GPC creates some inline code to
+     initialize the object; destructors do nothing special.
+
+   * Currently, the compiler does not check whether all declared methods
+     are really implemented. Unimplemented methods will produce linking
+     errors when they are called or if they are virtual.
+
+
+   A pointer to `FooParent' may be assigned the address of a `Foo'
+object. A `FooParent' formal `var' parameter may get a `Foo' object as
+the actual parameter. In such cases, a call to a `virtual' method calls
+the child's method, whereas a call to a non-`virtual' method selects
+the parent's one:
+
+     var
+       MyFooParent: FooParentPtr;
+       SomeFoo: Foo;
+     
+     [...]
+     
+       SomeFoo.Init (4, 2);
+       MyFooParent := @@SomeFoo;
+       MyFooParent^.bar (3.14);  { calls `foo.bar' }
+       MyFooParent^.baz ('b', 'a', 'z');  { calls `fooParent.baz' }
+       if SomeFoo.baz then  { calls `foo.baz' }
+         WriteLn ('Baz!');
+
+   In a method, an overwritten method of a parent object can be called
+either prefixing it with the parent type name, or using the keyword
+`inherited':
+
+     procedure Foo.Bar (c: Real);
+     begin
+       z := c;
+       inherited bar (z)  { or: FooParent.Bar (z) }
+     end;
+
+   Use `FooParent.bar (z)' if you want to be sure that _this_ method is
+called, even if somebody decides not to derive `foo' directly from
+`fooParent' but to have some intermediate object.  If you want to call
+the method `bar' of the immediate parent - whether it be `fooParent' or
+whatever - use `inherited bar (z)'.
+
+   To allocate an object on the heap, use `New' in one of the following
+manners:
+
+     var
+       MyFoo: FooPtr;
+     
+       [...]
+     
+       New (MyFoo, Init (4, 2));
+     
+       MyFooParent := New (FooPtr, Init (4, 2))
+
+   The second possibility has the advantage that `MyFoo' needn't be a
+`FooPtr' but can also be a `FooParentPtr', i.e. a pointer to an
+ancestor of `foo'.
+
+   Destructors can and should be called within Dispose:
+
+     Dispose (MyFooParent, Fini)
+
+
+File: gpc.info,  Node: Compiler Directives,  Next: Library Routines,  Prev: OOP,  Up: Programming
+
+Compiler Directives And The Preprocessor
+========================================
+
+   GPC, like UCSD Pascal and BP, treats comments beginning with a `$'
+immediately following the opening `{' or `(*' as a compiler directive.
+As in Borland Pascal, `{$...}' and `(*$...*)' are equivalent. When a
+single character plus a `+' or `-' follows, this is also called a
+compiler switch.  All of these directives are case-insensitive (but
+some of them have case-sensitive arguments). Directives are local and
+can be changed during one compilation (except include files etc. where
+this makes no sense).
+
+   In general, compiler directives are compiler-dependent. (E.g., only
+the include directive `{$I FileName}' is common to UCSD and BP.)
+Because of BP's popularity, GPC supports all of BP's compiler
+directives (and ignores those that are unnecessary on its platforms -
+these are those not listed below), but it knows a lot more directives.
+
+   Some BP directives are - of course not by chance - just an
+alternative notation for C preprocessor directives. But there are
+differences: BP's "conditional" definitions (`{$define Foo}') go into
+another name space than the program's definitions. Therefore you can
+define conditionals and check them via `{$ifdef Foo}', but the program
+will not see them as an identifier `Foo', so macros do not exist in
+Borland Pascal.
+
+   GPC does support macros, but disables this feature when the
+`--no-macros' option or the dialect option `--borland-pascal' or
+`--delphi' is given, to mimic BP's behaviour. Therefore, the following
+program will react differently when compiled with GPC either without
+special options or with, e.g., the `--borland-pascal' option (and in
+the latter case, it behaves the same as when compiled with BP).
+
+     program MacroDemo;
+     
+     const Foo = 'Borland Pascal';
+     
+     {$define Foo 'Default'}
+     
+     begin
+       WriteLn (Foo)
+     end.
+
+   Of course, you should not rely on such constructs in your programs.
+To test if the program is compiled with GPC, you can test the `__GPC__'
+conditional, and to test the dialect used in GPC, you can test the
+dialect, e.g., with `{$ifopt borland-pascal}'.
+
+   In general, almost every GPC specific command line option (*note GPC
+Command Line Options::) can be turned into a compiler directive
+(exceptions are those options that contain directory names, such as
+`--unit-path', because they refer to the installation on a particular
+system, and therefore should be set system-wide, rather than in a
+source file):
+
+     --foo       {$foo}
+     --no-foo    {$no-foo}
+     -Wbar       {$W bar}     { note the space after the `W' }
+     -Wno-bar    {$W no-bar}
+
+   The following table lists some such examples as well as all those
+directives that do not correspond to command-line options or have
+syntactical alternatives (for convenience and/or BP compatibility).
+
+     --[no-]short-circuit   $B+ $B- like in Borland Pascal:
+                                    $B- means short-circuit Boolean
+                                    operators; $B+ complete evaluation
+     
+     --[no-]io-checking     $I+ $I- like in Borland Pascal:
+                                    enable/disable I/O checking
+     
+     --[no-]range-checking  $R+ $R- like in Borland Pascal:
+                                    enable/disable range checking
+     
+     --[no-]stack-checking  $S+ $S- like in Borland Pascal:
+                                    enable/disable stack checking
+     
+     --[no-]typed-address   $T+ $T- like in Borland Pascal:
+                                    make the result of the address
+                                    operator and the Addr function a
+                                    typed or untyped pointer
+     
+     -W[no-]warnings        $W+ $W- enable/disable warnings. Note: in
+                                    `--borland-pascal' mode, the
+                                    short version is disabled because
+                                    $W+/$W- has a different meaning in
+                                    Borland Pascal (which can safely be
+                                    ignored in GPC), but the long version
+                                    is still available.
+     
+     --[no-]extended-syntax $X+ $X- mostly like in Borland Pascal:
+                                    enable/disable extended syntax
+                                    (ignore function resuls, operator
+                                    definitions, `PChar', pointer
+                                    arithmetic, ...)
+     
+     --borland-pascal               disable or warn about GPC features
+     --extended-pascal              not supported by the standard or
+     --pascal-sc                    dialect given, do not warn about its
+     etc.                           ``dangerous'' features (especially BP).
+                                    The dialect can be changed during one
+                                    compilation via directives like,
+                                    e.g., `{$borland-pascal}'.
+     
+     {$M Hello!}                    write message `Hello!' to
+                                    standard error during compilation. In
+                                    `--borland-pascal' mode, it is
+                                    ignored it if only numbers follow
+                                    (for compatibility to Borland
+                                    Pascal's memory directive)
+     
+     {$define FOO}                  like in Borland Pascal:
+     or                             define FOO (for conditional compilation)
+     {$CIDefine FOO}                (case-insensitively)
+     
+     --cidefine=FOO                 the same on the command line
+     
+     {$CSDefine FOO}                define FOO case-sensitively
+     
+     -D FOO                         the same on the command line
+     or                             Note: `--define' on the command
+     --csdefine=FOO                 line is case-sensitive like in GCC,
+     or                             but `{$define}' in the source code
+     --define=FOO                   is case-insensitive like in BP
+     
+     {$define loop while True do}   define `loop' to be `while True do'
+     or                             as a macro like in C. The name of the
+     {$CIDefine loop ...}           macro is case-insensitive. Note:
+                                    Macros are disabled in
+                                    `--borland-pascal' mode because BP
+                                    doesn't support macros.
+     
+     --cidefine="loop=..."          the same on the command line
+     
+     {$CSDefine loop ...}           define a case-sensitive macro
+     
+     --csdefine="loop=..."          the same on the command line
+     or
+     --define="loop=..."
+     
+     {$I FileName}                  like in Borland Pascal:
+                                    include `filename.pas'
+                                    (the name is converted to lower case)
+     
+     {$undef FOO}                   like in Borland Pascal: undefine FOO
+     
+     {$ifdef FOO}                   conditional compilation
+       ...                          (like in Borland Pascal).
+     {$else}                        Note: GPC predefines the symbol
+       ...                          `__GPC__' (with two leading
+     {$endif}                       and trailing underscores).
+     
+     {$include "filename.pas"}      include (case-sensitive)
+     
+     {$include <filename.pas>}      the same, but don't search in the
+                                    current directory
+   ...and all the other C preprocessor directives.
+
+   You also can use the preprocessor directives in C style, e.g.
+`#include', but this is deprecated because of possible confusion with
+Borland Pascal style `#42' character constants.  Besides, in the Pascal
+style, e.g. `{$include "foo.bar"}', there may be more than one
+directive in the same line.
+
+
+File: gpc.info,  Node: Library Routines,  Next: Other Languages,  Prev: Compiler Directives,  Up: Programming
+
+Routines Built-in or in the Run Time System
+===========================================
+
+   In this section we describe the routines and other declarations that
+are built into the compiler or part of the Run Time System, sorted by
+topics.
+
+* Menu:
+
+* File Routines::
+* String Operations::
+* Accessing Command Line Arguments::
+* Memory Management Routines::
+* Operations for Integer and Ordinal Types::
+* Complex Number Operations::
+* Set Operations::
+* Date And Time Routines::
+
+
+File: gpc.info,  Node: File Routines,  Next: String Operations,  Up: Library Routines
+
+File Routines
+-------------
+
+   Extended Pascal treats files quite differently from Borland Pascal.
+GPC supports both forms, even in mixed ways, and provides many
+extensions.
+
+   @@@@ A lot missing here
+
+   * An example of getting the size of a file (though a `FileSize'
+     function is already built-in).
+
+          function FileSize (FileName : String) : LongInt;
+          var
+            f: bindable file [0 .. MaxInt] of Char;
+            b: BindingType;
+          begin
+            Unbind (f);
+            b := Binding (f);
+            b.Name := FileName;
+            Bind(f, b);
+            b := Binding(f);
+            SeekRead (f, 0);
+            if Empty (f) then
+              FileSize := 0
+            else
+              FileSize := LastPosition (f) + 1;
+            Unbind(f);
+          end;
+
+     Prospero's Extended Pascal has a bug in this case. Replace the
+     MaxInt in the type definition of f by a sufficiently large
+     integer. GNU Pascal works correct in this case.
+
+   * GPC implements "lazy" text file I/O, i.e. does a `Put' as soon as
+     possible and a `Get' as late as possible. This should avoid most
+     of the problems sometimes considered to be the most stupid feature
+     of Pascal. When passing a file buffer as parameter the buffer is
+     validated when the parameter is passed.
+
+   * GPC supports direct access files. E.g., declaring a type for a
+     file that contains 100 integers.
+
+          program DirectAccessFileDemo;
+          type
+            DFile = file [1 .. 100] of Integer;
+          var
+            F: DFile;
+            P, N: 1 .. 100;
+          begin
+            Rewrite (F);
+            P := 42;
+            N := 17;
+            SeekWrite (F, P);
+            Write (F, N)
+          end.
+
+     The following direct access routines may be applied to a direct
+     access file:
+
+    `SeekRead   (F, N);      { Open file in inspection mode, seek to record N }'
+
+    `SeekWrite  (F, N);      { Open file in generation mode, seek to record N }'
+
+    `SeekUpdate (F, N);      { Open file in update mode, seek to record N }'
+
+    `Update (F);             { Writes F^, position not changed. F^ kept. }'
+
+    `p := Position (F);      { Yield the current record number }'
+
+    `p := LastPosition (F);  { Yield the last record number in file }'
+     If the file is open for inspection or update, `Get' may be applied.
+     If the file is open for generation or update, `Put' may be applied.
+
+   * In BP, you can associate file variables with files using the
+     `Assign' procedure which GPC supports.
+
+          program AssignTextDemo;
+          var
+            t: Text;
+            Line: String (4096);
+          begin
+            Assign (t, 'mytext.txt');
+            Reset (t);
+            while not EOF (t) do
+              begin
+                ReadLn (t, Line);
+                WriteLn (Line)
+              end
+          end.
+
+   * In Extended Pascal, files are considered entities external to your
+     program. External entities, which don't need to be files, need to
+     be bound to a variable your program. Any variable to which external
+     entities can be bound needs to be declared `bindable'. Extended
+     Pascal has the `Bind' function that binds a variable to an
+     external entity as well as `Unbind' to undo a binding and the
+     function `Binding' to get the current binding of a variable.
+
+     GPC supports these routines when applied to files. The compiler
+     will reject binding of other object types.
+
+     Only the fields `Bound' and `Name' of the predefined record type
+     `BindingType' are required by Extended Pascal.  Additionally, GPC
+     implements some extensions. For the full definition of
+     `BindingType', see *Note BindingType::.
+
+     The following is an example of binding:
+
+          program BindingDemo (Input, Output, f);
+          
+          var
+            f: bindable Text;
+            b: BindingType;
+          
+          procedure BindFile (var f: Text);
+          var
+            b: BindingType;
+          begin
+            Unbind (f);
+            b := Binding (f);
+            repeat
+              Write ('Enter a file name: ');
+              ReadLn (b.Name);
+              Bind (f, b);
+              b := Binding (f);
+              if not b.Bound then
+                WriteLn ('File not bound -- try again.')
+            until b.Bound
+          end;
+          
+          begin
+            BindFile (f);
+            { Now the file f is bound to an external file. We can use the
+              implementation defined fields of BindingType to check if the
+              file exists and is readable, writable or executable. }
+            b := Binding (f);
+            Write ('The file ');
+            if b.Existing then
+              WriteLn ('exists.')
+            else
+              WriteLn ('does not exist.');
+            Write ('It is ');
+            if not b.Readable then Write ('not ');
+            Write ('readable, ');
+            if not b.Writable then Write ('not ');
+            Write ('writable and ');
+            if not b.Executable then Write ('not ');
+            WriteLn ('executable.')
+          end.
+
+
+   Note that Prospero's Pascal defaults to creating the file if it does
+not exists! You need to use Prospero's local addition of setting
+`b.Existing' to `True' to work-around this. GPC does not behave like
+this.
+
+
+File: gpc.info,  Node: String Operations,  Next: Accessing Command Line Arguments,  Prev: File Routines,  Up: Library Routines
+
+String Operations
+-----------------
+
+   In the following description, `s1' and `s2' may be arbitrary string
+expressions, `s' is a variable of string type.
+
+`WriteStr (s, write-parameter-list)'
+
+`ReadStr (s1, read-parameter-list)'
+     Write to a string and read from a string.  The parameter lists are
+     identical to `Write'/`Read' from `Text' files. The semantics is
+     closely modeled after file I/O.
+
+`Index (s1, s2)'
+     If `s2' is empty, return 1 else if `s1' is empty return 0 else
+     returns the position of `s2' in `s1' (an integer).
+
+`Length (s1)'
+     Return the length of `s1' (an integer from `0 .. s1.Capacity').
+
+`Trim (s1)'
+     Returns a new string with spaces stripped of the end of `s'.
+
+`SubStr (s1, i)'
+
+`SubStr (s1, i, j)'
+     Return a new substring of `s1' that contains `j' characters
+     starting from `i'. If `j' is missing, return all the characters
+     starting from `i'.
+
+`EQ (s1, s2)'
+
+`NE (s1, s2)'
+
+`LT (s1, s2)'
+
+`LE (s1, s2)'
+
+`GT (s1, s2)'
+
+`GE (s1, s2)'
+     Lexicographic comparisons of `s1' and `s2'. Returns a boolean
+     result. Strings are not padded with spaces.
+
+`s1 =  s2'
+
+`s1 <> s2'
+
+`s1 <  s2'
+
+`s1 <= s2'
+
+`s1 >  s2'
+
+`s1 >= s2'
+     Lexicographic comparisons of `s1' and `s2'. Returns a boolean
+     result. The shorter string is blank padded to length of the longer
+     one, but only in `--extended-pascal' mode.
+
+   GPC supports string catenation with the `+' operator or the `Concat'
+function. All string-types are compatible, so you may catenate any
+chars, fixed length strings and variable length strings.
+
+     program ConcatDemo (Input, Output);
+     
+     var
+       Ch  : Char;
+       Str : String (100);
+       Str2: String (50);
+       FStr: packed array [1 .. 20] of Char;
+     
+     begin
+        Ch := '$';
+        FStr := 'demo';  { padded with blanks }
+        Write ('Give me some chars to play with: ');
+        ReadLn (Str);
+        Str := '^' + 'prefix:' + Str + ':suffix:' + FStr + Ch;
+        WriteLn (Concat ('Le', 'ng', 'th'), ' = ', Length (Str));
+        WriteLn (Str)
+     end.
+
+   Note: The length of strings in GPC is limited only by the range of
+`Integer' (at least 32 bits, i.e., 2 GB), or the available memory,
+whichever is smaller. :-)
+
+   When trying to write programs portable to other EP compilers, it is
+however safe to assume a limit of about 32 KB. At least Prospero's
+Extended Pascal compiler limits strings to 32760 bytes. DEC Pascal
+limits strings to 65535 bytes.
+
+
+File: gpc.info,  Node: Accessing Command Line Arguments,  Next: Memory Management Routines,  Prev: String Operations,  Up: Library Routines
+
+Accessing Command Line Arguments
+--------------------------------
+
+   GPC supports access to the command line arguments with the BP
+compatible `ParamStr' and `ParamCount' functions.
+
+   * `ParamStr[0]' is the program name,
+
+   * `ParamStr[1] .. ParamStr[ParamCount]' are the arguments.
+
+   The program below accesses the command line arguments.
+
+     program CommandLineArgumentsDemo (Output);
+     
+     var
+       Counter: Integer;
+     
+     begin
+       WriteLn ('This program displays command line arguments one per line.');
+       for Counter := 0 to ParamCount do
+         WriteLn ('Command line argument #', Counter, ' is `',
+                  ParamStr (Counter), '''')
+     end.
+
+
+File: gpc.info,  Node: Memory Management Routines,  Next: Operations for Integer and Ordinal Types,  Prev: Accessing Command Line Arguments,  Up: Library Routines
+
+Memory Management Routines
+--------------------------
+
+   Besides the standard `New' and `Dispose' routines, GPC also allows
+BP style dynamic memory management with `GetMem' and `FreeMem':
+
+     GetMem (MyPtr, 1024);
+     FreeMem (MyPtr, 1024);
+
+   One somehow strange feature of Borland is *not* supported: You
+cannot free parts of a variable with `FreeMem', while the rest is still
+used and can be freed later by another `FreeMem' call:
+
+     program PartialFreeMemDemo;
+     
+     type
+       Vector = array [0 .. 1023] of Integer;
+       VecPtr = ^Vector;
+     
+     var
+       p, q: VecPtr;
+     
+     begin
+       GetMem (p, 1024 * SizeOf (Integer));
+       q := VecPtr (@@p^[512]);
+     
+       { ... }
+     
+       FreeMem (p, 512 * SizeOf (Integer));
+     
+       { ... }
+     
+       FreeMem (q, 512 * SizeOf (Integer));
+     end.
+
+
+File: gpc.info,  Node: Operations for Integer and Ordinal Types,  Next: Complex Number Operations,  Prev: Memory Management Routines,  Up: Library Routines
+
+Operations for Integer and Ordinal Types
+----------------------------------------
+
+   * Bit manipulations: The BP style bit shift operators `shl' and
+     `shr' exist in GPC as well as bitwise `and', `or', `xor' and `not'
+     for integer values.
+
+          2#100101 and (1 shl 5) = 2#100000
+
+     GPC also supports `and', `or', `xor' and `not' as procedures:
+
+          program BitOperatorProcedureDemo;
+          var x: Integer;
+          begin
+            x := 7;
+            and (x, 14);  { sets x to 6 }
+            xor (x, 3);   { sets x to 5 }
+          end.
+
+   * Succ, Pred: The standard functions `Succ' and `Pred' exist in GPC
+     and accept a second parameter.
+
+   * Increment, decrement: The BP built-in Procedures `Inc' and `Dec'
+     exist in GPC.
+
+          program IncDecDemo;
+          var
+            i: Integer;
+            c: Char;
+          begin
+            Inc (i);     { i := i + 1; }
+            Dec (i, 7);  { i := i - 7; }
+            Inc (c, 3);  { c := Succ (c, 3); }
+          end.
+
+   * `Min', `Max': These are a GNU Pascal extension and work for reals
+     as well as for ordinal types. Mixing reals and integers is okay,
+     the result is real then.
+
+
+
+File: gpc.info,  Node: Complex Number Operations,  Next: Set Operations,  Prev: Operations for Integer and Ordinal Types,  Up: Library Routines
+
+Complex Number Operations
+-------------------------
+
+   @@@@ A lot of details missing here
+
+   * binary operators `+', `-', `*', `/' and unary `-', `+'
+
+   * exponentiation operators (`pow' and `**')
+
+   * functions (`Sqr', `SqRt', `Exp', `Ln', `Sin', `Cos', `ArcSin',
+     `ArcCos', `ArcTan')
+
+   * number info with `Re', `Im' and `Arg' functions
+
+   * numbers constructed by `Cmplx' or `Polar'
+
+   The following sample programs illustrates most of the `Complex' type
+operations.
+
+     program ComplexOperationsDemo (Output);
+     
+     var
+       z1, z2: Complex;
+       Len, Angle: Real;
+     
+     begin
+       z1 := Cmplx (2, 1);
+       WriteLn;
+       WriteLn ('Complex number z1 is: (', Re (z1) : 1, ',', Im (z1) : 1, ')');
+       WriteLn;
+       z2 := Conjugate(z1); { GPC extension }
+       WriteLn ('Conjugate of z1 is: (', Re (z2) : 1, ',', Im (z2) : 1, ')');
+       WriteLn;
+       Len   := Abs (z1);
+       Angle := Arg (z1);
+       WriteLn ('The polar representation of z1 is: Length=', Len : 1,
+                ', Angle=', Angle : 1);
+       WriteLn;
+       z2 := Polar (Len, Angle);
+       WriteLn ('Converting (Length, Angle) back to (x, y) gives: (',
+                Re (z2) : 1, ',', Im (z2) : 1, ')');
+       WriteLn;
+       WriteLn ('The following operations operate on the complex number z1');
+       WriteLn;
+       z2 := ArcTan (z1);
+       WriteLn ('ArcTan (z1) = (', Re (z2), ', ', Im (z2), ')');
+       WriteLn;
+       z2 := z1 ** 3.141;
+       WriteLn ('z1 ** 3.141 =', Re (z2), ', ', Im (z2), ')');
+       WriteLn;
+       z2 := Sin (z1);
+       WriteLn ('Sin (z1) = (', Re (z2), ', ', Im (z2), ')');
+       WriteLn ('(Cos, Ln, Exp, SqRt and Sqr exist also.)');
+       WriteLn;
+       z2 := z1 pow 8;
+       WriteLn ('z1 pow 8 = (', Re (z2), ', ', Im (z2), ')');
+       WriteLn;
+       z2 := z1 pow (-8);
+       WriteLn ('z1 pow (-8) = (', Re (z2), ', ', Im (z2), ')');
+     end.
+
+
+File: gpc.info,  Node: Set Operations,  Next: Date And Time Routines,  Prev: Complex Number Operations,  Up: Library Routines
+
+Set Operations
+--------------
+
+   GPC supports Standard Pascal set operations. In addition it supports
+the Extended Pascal set operation symmetric difference (`set1 >< set2')
+operation whose result consists of those elements which are in exactly
+one of the operannds.
+
+   It also has a function that counts the elements in the set: `a :=
+Card (set1)'.
+
+   In the following description, S1 and S2 are variables of set type, s
+is of the base type of the set.
+
+`S1 := S2'
+     Assign a set to a set variable.
+
+`S1 + S2'
+     Union of sets.
+
+`S1 - S2'
+     Difference between two sets.
+
+`S1 * S2'
+     Intersection of two sets.
+
+`S1 >< S2'
+     Symmetric difference
+
+`S1 = S2'
+     Comparison between two sets. Returns boolean result. `True' if
+     `S1' has the same elements as `S2'.
+
+`S1 <> S2'
+     Comparison between two sets. Returns boolean result. `True' if
+     `S1' does not have the same elements as `S2'.
+
+`S1 < S2'
+
+`S2 > S1'
+     Comparison between two sets. Returns boolean result. `True' if
+     `S1' is a strict subset of `S2'.
+
+`S1 <= S2'
+
+`S2 >= S1'
+     Comparison between two sets. Returns boolean result. `True' if
+     `S1' is a subset of (or equal to) `S2'.
+
+`s in S1'
+     Set membership test between an element `s' and a set. Returns
+     boolean result. `True' if `s' is an element of `S1'.
+
+   The following example demonstrates some `set' operations. The results
+of the operations are given in the comments.
+
+     program SetOpDemo;
+     
+     type
+       TCharSet = set of Char;
+     
+     var
+       S1, S2, S3: TCharSet;
+       Result: Boolean;
+     
+     begin
+       S1 := ['a', 'b', 'c'];
+       S2 := ['c', 'd', 'e'];
+       S3 := S1 + S2;       { S3 = ['a', 'b', 'c', 'd', 'e'] }
+       S3 := S1 * S2;       { S3 = ['c'] }
+       S3 := S1 - S2;       { S3 = ['a', 'b'] }
+       S3 := S1 >< S2;      { S3 = ['a', 'b', 'd', 'e'] }
+     
+       S1 := ['c', 'd', 'e'];
+       Result := S1 = S2;   { False }
+       Result := S1 < S2;   { False }
+       Result := S1 <= S2;  { True }
+     
+       S1 := ['c', 'd'];
+       Result := S1 <> S2;  { True }
+       Result := S2 > S1;   { True }
+       Result := S2 >= S1   { True }
+     end.
+
+
+File: gpc.info,  Node: Date And Time Routines,  Prev: Set Operations,  Up: Library Routines
+
+Date And Time Routines
+----------------------
+
+`procedure GetTimeStamp (var t: TimeStamp);'
+
+`function Date (t: TimeStamp): packed array [1 .. DateLength] of Char;'
+
+`function Time (t: TimeStamp): packed array [1 .. TimeLength] of Char;'
+   `DateLength' and `TimeLength' are implementation dependent constants.
+
+   `GetTimeStamp (t)' fills the record `t' with values. If they are
+valid, the Boolean flags are set to True.
+
+   `TimeStamp' is a predefined type in the Extended Pascal standard. It
+may be extended in an implementation, and is indeed extended in GPC.
+For the full definition of `TimeStamp', see *Note TimeStamp::.
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

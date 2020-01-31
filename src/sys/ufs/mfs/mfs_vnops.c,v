@@ -1,0 +1,523 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.14
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.12
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.10
+	cvs-200410261930:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.8
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309261655:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.52.26;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.26;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.42.00;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.09.25.16.40.21;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: mfs_vnops.c,v 1.22 2002/05/13 14:16:42 art Exp $	*/
+/*	$NetBSD: mfs_vnops.c,v 1.8 1996/03/17 02:16:32 christos Exp $	*/
+
+/*
+ * Copyright (c) 1989, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@@(#)mfs_vnops.c	8.5 (Berkeley) 7/28/94
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/time.h>
+#include <sys/kernel.h>
+#include <sys/proc.h>
+#include <sys/buf.h>
+#include <sys/vnode.h>
+#include <sys/malloc.h>
+
+#include <miscfs/specfs/specdev.h>
+
+#include <machine/vmparam.h>
+
+#include <ufs/mfs/mfsnode.h>
+#include <ufs/mfs/mfs_extern.h>
+
+/*
+ * mfs vnode operations.
+ */
+int (**mfs_vnodeop_p)(void *);
+struct vnodeopv_entry_desc mfs_vnodeop_entries[] = {
+	{ &vop_default_desc, vn_default_error },
+	{ &vop_lookup_desc, mfs_lookup },		/* lookup */
+	{ &vop_create_desc, mfs_create },		/* create */
+	{ &vop_mknod_desc, mfs_mknod },			/* mknod */
+	{ &vop_open_desc, mfs_open },			/* open */
+	{ &vop_close_desc, mfs_close },			/* close */
+	{ &vop_access_desc, mfs_access },		/* access */
+	{ &vop_getattr_desc, mfs_getattr },		/* getattr */
+	{ &vop_setattr_desc, mfs_setattr },		/* setattr */
+	{ &vop_read_desc, mfs_read },			/* read */
+	{ &vop_write_desc, mfs_write },			/* write */
+	{ &vop_ioctl_desc, mfs_ioctl },			/* ioctl */
+	{ &vop_select_desc, mfs_select },		/* select */
+	{ &vop_revoke_desc, mfs_revoke },               /* revoke */
+	{ &vop_fsync_desc, spec_fsync },		/* fsync */
+	{ &vop_remove_desc, mfs_remove },		/* remove */
+	{ &vop_link_desc, mfs_link },			/* link */
+	{ &vop_rename_desc, mfs_rename },		/* rename */
+	{ &vop_mkdir_desc, mfs_mkdir },			/* mkdir */
+	{ &vop_rmdir_desc, mfs_rmdir },			/* rmdir */
+	{ &vop_symlink_desc, mfs_symlink },		/* symlink */
+	{ &vop_readdir_desc, mfs_readdir },		/* readdir */
+	{ &vop_readlink_desc, mfs_readlink },		/* readlink */
+	{ &vop_abortop_desc, mfs_abortop },		/* abortop */
+	{ &vop_inactive_desc, mfs_inactive },		/* inactive */
+	{ &vop_reclaim_desc, mfs_reclaim },		/* reclaim */
+	{ &vop_lock_desc, mfs_lock },			/* lock */
+	{ &vop_unlock_desc, mfs_unlock },		/* unlock */
+	{ &vop_bmap_desc, mfs_bmap },			/* bmap */
+	{ &vop_strategy_desc, mfs_strategy },		/* strategy */
+	{ &vop_print_desc, mfs_print },			/* print */
+	{ &vop_islocked_desc, mfs_islocked },		/* islocked */
+	{ &vop_pathconf_desc, mfs_pathconf },		/* pathconf */
+	{ &vop_advlock_desc, mfs_advlock },		/* advlock */
+	{ &vop_bwrite_desc, mfs_bwrite },		/* bwrite */
+	{ (struct vnodeop_desc*)NULL, (int(*)(void *))NULL }
+};
+struct vnodeopv_desc mfs_vnodeop_opv_desc =
+	{ &mfs_vnodeop_p, mfs_vnodeop_entries };
+
+/*
+ * Vnode Operations.
+ *
+ * Open called to allow memory filesystem to initialize and
+ * validate before actual IO. Record our process identifier
+ * so we can tell when we are doing I/O to ourself.
+ */
+/* ARGSUSED */
+int
+mfs_open(v)
+	void *v;
+{
+#ifdef DIAGNOSTIC
+	struct vop_open_args /* {
+		struct vnode *a_vp;
+		int  a_mode;
+		struct ucred *a_cred;
+		struct proc *a_p;
+	} */ *ap = v;
+
+	if (ap->a_vp->v_type != VBLK) {
+		panic("mfs_open not VBLK");
+		/* NOTREACHED */
+	}
+#endif
+	return (0);
+}
+
+/*
+ * Ioctl operation.
+ */
+/* ARGSUSED */
+int
+mfs_ioctl(v)
+	void *v;
+{
+#if 0
+	struct vop_ioctl_args /* {
+		struct vnode *a_vp;
+		u_long a_command;
+		caddr_t  a_data;
+		int  a_fflag;
+		struct ucred *a_cred;
+		struct proc *a_p;
+	} */ *ap = v;
+#endif
+
+	return (ENOTTY);
+}
+
+/*
+ * Pass I/O requests to the memory filesystem process.
+ */
+int
+mfs_strategy(v)
+	void *v;
+{
+	struct vop_strategy_args /* {
+		struct buf *a_bp;
+	} */ *ap = v;
+	struct buf *bp = ap->a_bp;
+	struct mfsnode *mfsp;
+	struct vnode *vp;
+	struct proc *p = curproc;		/* XXX */
+	int s;
+
+	if (!vfinddev(bp->b_dev, VBLK, &vp) || vp->v_usecount == 0)
+		panic("mfs_strategy: bad dev");
+
+	mfsp = VTOMFS(vp);
+	/* check for mini-root access */
+	if (mfsp->mfs_pid == 0) {
+		caddr_t base;
+
+		base = mfsp->mfs_baseoff + (bp->b_blkno << DEV_BSHIFT);
+		if (bp->b_flags & B_READ)
+			bcopy(base, bp->b_data, bp->b_bcount);
+		else
+			bcopy(bp->b_data, base, bp->b_bcount);
+		s = splbio();
+		biodone(bp);
+		splx(s);
+	} else if (p !=  NULL && mfsp->mfs_pid == p->p_pid) {
+		mfs_doio(bp, mfsp->mfs_baseoff);
+	} else {
+		bp->b_actf = mfsp->mfs_buflist;
+		mfsp->mfs_buflist = bp;
+		wakeup((caddr_t)vp);
+	}
+	return (0);
+}
+
+/*
+ * Memory file system I/O.
+ *
+ * Trivial on the HP since buffer has already been mapping into KVA space.
+ */
+void
+mfs_doio(bp, base)
+	struct buf *bp;
+	caddr_t base;
+{
+	int s;
+
+	base += (bp->b_blkno << DEV_BSHIFT);
+	if (bp->b_flags & B_READ)
+		bp->b_error = copyin(base, bp->b_data, bp->b_bcount);
+	else
+		bp->b_error = copyout(bp->b_data, base, bp->b_bcount);
+	if (bp->b_error)
+		bp->b_flags |= B_ERROR;
+	else
+		bp->b_resid = 0;
+	s = splbio();
+	biodone(bp);
+	splx(s);
+}
+
+/*
+ * This is a noop, simply returning what one has been given.
+ */
+int
+mfs_bmap(v)
+	void *v;
+{
+	struct vop_bmap_args /* {
+		struct vnode *a_vp;
+		daddr_t  a_bn;
+		struct vnode **a_vpp;
+		daddr_t *a_bnp;
+		int *a_runp;
+	} */ *ap = v;
+
+	if (ap->a_vpp != NULL)
+		*ap->a_vpp = ap->a_vp;
+	if (ap->a_bnp != NULL)
+		*ap->a_bnp = ap->a_bn;
+	if (ap->a_runp != NULL)
+		*ap->a_runp = 0;
+
+	return (0);
+}
+
+/*
+ * Memory filesystem close routine
+ */
+/* ARGSUSED */
+int
+mfs_close(v)
+	void *v;
+{
+	struct vop_close_args /* {
+		struct vnode *a_vp;
+		int  a_fflag;
+		struct ucred *a_cred;
+		struct proc *a_p;
+	} */ *ap = v;
+	register struct vnode *vp = ap->a_vp;
+	register struct mfsnode *mfsp = VTOMFS(vp);
+	register struct buf *bp;
+	int error;
+
+	/*
+	 * Finish any pending I/O requests.
+	 */
+	while ((bp = mfsp->mfs_buflist) != NULL) {
+		mfsp->mfs_buflist = bp->b_actf;
+		mfs_doio(bp, mfsp->mfs_baseoff);
+		wakeup((caddr_t)bp);
+	}
+	/*
+	 * On last close of a memory filesystem
+	 * we must invalidate any in core blocks, so that
+	 * we can, free up its vnode.
+	 */
+	if ((error = vinvalbuf(vp, 1, ap->a_cred, ap->a_p, 0, 0)) != 0)
+		return (error);
+#ifdef DIAGNOSTIC
+	/*
+	 * There should be no way to have any more uses of this
+	 * vnode, so if we find any other uses, it is a panic.
+	 */
+	if (vp->v_usecount > 1)
+		printf("mfs_close: ref count %d > 1\n", vp->v_usecount);
+	if (mfsp->mfs_buflist)
+		printf("mfs_close: dirty buffers\n");
+	if (vp->v_usecount > 1 || mfsp->mfs_buflist)
+		panic("mfs_close");
+#endif
+	/*
+	 * Send a request to the filesystem server to exit.
+	 */
+	mfsp->mfs_buflist = (struct buf *)(-1);
+	wakeup((caddr_t)vp);
+	return (0);
+}
+
+/*
+ * Memory filesystem inactive routine
+ */
+/* ARGSUSED */
+int
+mfs_inactive(v)
+	void *v;
+{
+	struct vop_inactive_args /* {
+		struct vnode *a_vp;
+		struct proc *a_p;
+	} */ *ap = v;
+#ifdef DIAGNOSTIC
+	register struct mfsnode *mfsp = VTOMFS(ap->a_vp);
+
+	if (mfsp->mfs_buflist && mfsp->mfs_buflist != (struct buf *)(-1))
+		panic("mfs_inactive: not inactive (mfs_buflist %p)",
+			mfsp->mfs_buflist);
+#endif
+	VOP_UNLOCK(ap->a_vp, 0, ap->a_p);
+	return (0);
+}
+
+/*
+ * Reclaim a memory filesystem devvp so that it can be reused.
+ */
+int
+mfs_reclaim(v)
+	void *v;
+{
+	struct vop_reclaim_args /* {
+		struct vnode *a_vp;
+	} */ *ap = v;
+	struct vnode *vp = ap->a_vp;
+
+	free(vp->v_data, M_MFSNODE);
+	vp->v_data = NULL;
+	return (0);
+}
+
+/*
+ * Print out the contents of an mfsnode.
+ */
+int
+mfs_print(v)
+	void *v;
+{
+	struct vop_print_args /* {
+		struct vnode *a_vp;
+	} */ *ap = v;
+	register struct mfsnode *mfsp = VTOMFS(ap->a_vp);
+
+	printf("tag VT_MFS, pid %d, base %p, size %ld\n", mfsp->mfs_pid,
+	    mfsp->mfs_baseoff, mfsp->mfs_size);
+	return (0);
+}
+
+/*
+ * Block device bad operation
+ */
+int
+mfs_badop(v)
+	void *v;
+{
+
+	panic("mfs_badop called");
+	/* NOTREACHED */
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: mfs_vnops.c,v 1.23 2003/06/02 23:28:23 millert Exp $	*/
+d16 5
+a20 1
+ * 3. Neither the name of the University nor the names of its contributors
+@
+
+
+1.1.1.3
+log
+@Release Time. Synchronize with OpenBSD 3.4-current (base system).
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: mfs_vnops.c,v 1.24 2003/09/23 16:51:13 millert Exp $	*/
+d68 1
+a68 1
+	{ &vop_poll_desc, mfs_poll },			/* poll */
+@
+
+

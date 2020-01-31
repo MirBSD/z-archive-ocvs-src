@@ -1,0 +1,395 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.28.54;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.50;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.50;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: bus_space.c,v 1.16 2002/03/14 01:26:35 millert Exp $	*/
+/*	$NetBSD: bus_space.c,v 1.5 1999/03/26 23:41:30 mycroft Exp $	*/
+
+/*-
+ * Copyright (c) 1996, 1997 The NetBSD Foundation, Inc.
+ * All rights reserved.
+ *
+ * This code is derived from software contributed to The NetBSD Foundation
+ * by Jason R. Thorpe of the Numerical Aerospace Simulation Facility,
+ * NASA Ames Research Center.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the NetBSD
+ *	Foundation, Inc. and its contributors.
+ * 4. Neither the name of The NetBSD Foundation nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * Implementation of bus_space mapping for mac68k.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/extent.h>
+
+#include <machine/bus.h>
+
+#include <uvm/uvm_extern.h>
+
+int	bus_mem_add_mapping(bus_addr_t, bus_size_t,
+	    int, bus_space_handle_t *);
+
+extern struct extent *iomem_ex;
+extern int iomem_malloc_safe;
+label_t *nofault;
+
+int
+bus_space_map(t, bpa, size, flags, bshp)
+	bus_space_tag_t t;
+	bus_addr_t bpa;
+	bus_size_t size;
+	int flags;
+	bus_space_handle_t *bshp;
+{
+	paddr_t pa, endpa;
+	int error;
+
+	/*
+	 * Before we go any further, let's make sure that this
+	 * region is available.
+	 */
+	error = extent_alloc_region(iomem_ex, bpa, size,
+	    EX_NOWAIT | (iomem_malloc_safe ? EX_MALLOCOK : 0));
+	if (error)
+		return (error);
+
+	pa = m68k_trunc_page(bpa + t);
+	endpa = m68k_round_page((bpa + t + size) - 1);
+
+#ifdef DIAGNOSTIC
+	if (endpa <= pa)
+		panic("bus_space_map: overflow");
+#endif
+
+	error = bus_mem_add_mapping(bpa, size, flags, bshp);
+	if (error) {
+		if (extent_free(iomem_ex, bpa, size, EX_NOWAIT |
+		    (iomem_malloc_safe ? EX_MALLOCOK : 0))) {
+			printf("bus_space_map: pa 0x%lx, size 0x%lx\n",
+			    bpa, size);
+			printf("bus_space_map: can't free region\n");
+		}
+	}
+
+	return (error);
+}
+
+int
+bus_space_alloc(t, rstart, rend, size, alignment, boundary, flags, bpap, bshp)
+	bus_space_tag_t t;
+	bus_addr_t rstart, rend;
+	bus_size_t size, alignment, boundary;
+	int flags;
+	bus_addr_t *bpap;
+	bus_space_handle_t *bshp;
+{
+	u_long bpa;
+	int error;
+
+	/*
+	 * Sanity check the allocation against the extent's boundaries.
+	 */
+	if (rstart < iomem_ex->ex_start || rend > iomem_ex->ex_end)
+		panic("bus_space_alloc: bad region start/end");
+
+	/*
+	 * Do the requested allocation.
+	 */
+	error = extent_alloc_subregion(iomem_ex, rstart, rend, size, alignment,
+	    0, boundary,
+	    EX_FAST | EX_NOWAIT | (iomem_malloc_safe ?  EX_MALLOCOK : 0),
+	    &bpa);
+
+	if (error)
+		return (error);
+
+	/*
+	 * For memory space, map the bus physical address to
+	 * a kernel virtual address.
+	 */
+	error = bus_mem_add_mapping(bpa, size, flags, bshp);
+	if (error) {
+		if (extent_free(iomem_ex, bpa, size, EX_NOWAIT |
+		    (iomem_malloc_safe ? EX_MALLOCOK : 0))) {
+			printf("bus_space_alloc: pa 0x%lx, size 0x%lx\n",
+			    bpa, size);
+			printf("bus_space_alloc: can't free region\n");
+		}
+	}
+
+	*bpap = bpa;
+
+	return (error);
+}
+
+int
+bus_mem_add_mapping(bpa, size, flags, bshp)
+	bus_addr_t bpa;
+	bus_size_t size;
+	int flags;
+	bus_space_handle_t *bshp;
+{
+	u_long pa, endpa;
+	vaddr_t va;
+	pt_entry_t *pte;
+
+	pa = m68k_trunc_page(bpa);
+	endpa = m68k_round_page((bpa + size) - 1);
+
+#ifdef DIAGNOSTIC
+	if (endpa <= pa)
+		panic("bus_mem_add_mapping: overflow");
+#endif
+
+	va = uvm_km_valloc(kernel_map, endpa - pa);
+	if (va == 0)
+		return (ENOMEM);
+
+	*bshp = (bus_space_handle_t)(va + (bpa & PGOFSET));
+
+	for (; pa < endpa; pa += NBPG, va += NBPG) {
+		pmap_enter(pmap_kernel(), va, pa,
+		    VM_PROT_READ | VM_PROT_WRITE, PMAP_WIRED);
+		pte = kvtopte(va);
+		if ((flags & BUS_SPACE_MAP_CACHEABLE))
+			*pte &= ~PG_CI;
+		else
+			*pte |= PG_CI;
+		TBIA();
+	}
+	pmap_update(pmap_kernel());
+ 
+	return 0;
+}
+
+void
+bus_space_unmap(t, bsh, size)
+	bus_space_tag_t t;
+	bus_space_handle_t bsh;
+	bus_size_t size;
+{
+	vaddr_t va, endva;
+	bus_addr_t bpa;
+
+	va = m68k_trunc_page(bsh);
+	endva = m68k_round_page((bsh + size) - 1);
+
+#ifdef DIAGNOSTIC
+	if (endva <= va)
+		panic("bus_space_unmap: overflow");
+#endif
+
+	pmap_extract(pmap_kernel(), va, &bpa);
+	bpa += (bsh & PGOFSET);
+
+	/*
+	 * Free the kernel virtual mapping.
+	 */
+	uvm_km_free(kernel_map, va, endva - va);
+
+	if (extent_free(iomem_ex, bpa, size,
+	    EX_NOWAIT | (iomem_malloc_safe ? EX_MALLOCOK : 0))) {
+		printf("bus_space_unmap: pa 0x%lx, size 0x%lx\n",
+		    bpa, size);
+		printf("bus_space_unmap: can't free region\n");
+	}
+}
+
+void    
+bus_space_free(t, bsh, size)
+	bus_space_tag_t t;
+	bus_space_handle_t bsh;
+	bus_size_t size;
+{
+	/* bus_space_unmap() does all that we need to do. */
+	bus_space_unmap(t, bsh, size);
+}
+
+int
+bus_space_subregion(t, bsh, offset, size, nbshp)
+	bus_space_tag_t t;
+	bus_space_handle_t bsh;
+	bus_size_t offset, size;
+	bus_space_handle_t *nbshp;
+{
+
+	*nbshp = bsh + offset;
+	return (0);
+}
+
+int
+mac68k_bus_space_probe(t, bsh, offset, sz)
+	bus_space_tag_t t;
+	bus_space_handle_t bsh;
+	bus_size_t offset;
+	int sz;
+{
+	int i;
+	label_t faultbuf;
+
+	nofault = &faultbuf;
+	if (setjmp(nofault)) {
+		nofault = (label_t *)0;
+		return (0);
+	}
+
+	switch (sz) {
+	case 1:
+		i = bus_space_read_1(t, bsh, offset);
+		break;
+	case 2:
+		i = bus_space_read_2(t, bsh, offset);
+		break;
+	case 4:
+		i = bus_space_read_4(t, bsh, offset);
+		break;
+	case 8:
+	default:
+		panic("bus_space_probe: unsupported data size %d", sz);
+		/* NOTREACHED */
+	}
+
+	nofault = (label_t *)0;
+	return (1);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

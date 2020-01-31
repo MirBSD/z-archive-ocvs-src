@@ -1,0 +1,856 @@
+head	1.3;
+access;
+symbols
+	MIRBSD_XP_MIRPPC:1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.2
+	MIRBSD_7quater:1.1
+	MIRBSD_7_ALPHA:1.1.0.6
+	MIRBSD_7:1.1.0.4
+	MIRBSD_7ter:1.1
+	MIRBSD_7_DEV:1.1.0.2
+	MIRBSD_5:1.1
+	MIRBSD_4:1.1;
+locks; strict;
+comment	@# @;
+
+
+1.3
+date	2004.11.13.00.37.00;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2004.01.28.19.04.25;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.23.22.43.07;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@reduce the amount of un-free software in base again.
+I haven't found a sufficiently free alternative.
+@
+text
+@#!/usr/bin/perl
+#
+# dict -- Perl DICT system client
+#
+# Created: Thu Apr 17 19:49:15 1997 by bamartin@@miranda.org
+# Revised: Thu Mar 12 02:00:44 1998 by bamartin@@miranda.org
+# Revised: $Date: 2004/01/28 19:04:25 $ by x86@@ePost.de
+# Copyright 1997-1998 Bret A. Martin (bamartin@@miranda.org)
+# This program comes with ABSOLUTELY NO WARRANTY.
+#
+#   The contents of this file are subject to the Netscape Public License
+#   Version 1.0 (the "NPL"); you may not use this file except in compliance
+#   with the NPL. You may obtain a copy of the NPL at the end of this file.
+#
+#   Software distributed under the NPL is distributed on an "AS IS" basis,
+#   WITHOUT WARRANTY OF ANY KIND, either express or implied. See the NPL.
+#
+#   The Initial Developer of this code under the NPL is Bret Martin.
+#
+# _Id: dict,v 1.5 1998/03/08 23:41:42 bamartin Exp $
+
+require 5.002;
+use File::Basename;
+use FileHandle;
+use Socket;
+
+$me = basename $0;
+chop($hostname = `hostname`);
+
+# Did not work for some time. Search for NOCLUE
+# $server = "dict.org";
+# This is dict.org:
+$server = "66.111.36.30";
+$port   = 2628;
+
+sub usage {
+    print STDERR <<EOM;
+usage: $me [options] [word]
+  valid options: -d database            use database <database>
+                 -m strategy            use matching strategy <strategy>
+                 -i database            get information on <database>
+                 -D                     list available databases
+                 -M                     list matching methods
+                 -I                     show server information
+                 -s server[:port]       specify server (and optional port)
+                                        default is $server:$port
+                 -v                     verbose (for debugging)
+  get more help with "perldoc -F $me"
+EOM
+    exit(1);
+}
+
+if ($#ARGV < 0) { &usage; }
+
+push(@@cmdlist, "CLIENT perl-dict\@@$hostname");
+
+while ($arg = shift @@ARGV) {
+    if    ($arg eq "-d") { $opt_d = shift @@ARGV; }
+    elsif ($arg eq "-m") {
+        $opt_m = shift @@ARGV;
+        push(@@cmdlist, "SHOW DATABASES");  # need DB list for header
+    }
+    elsif ($arg eq "-D") { push(@@cmdlist, "SHOW DATABASES");   $opt_D = 1; }
+    elsif ($arg eq "-M") { push(@@cmdlist, "SHOW STRATEGIES");  $opt_M = 1; }
+    elsif ($arg eq "-I") { push(@@cmdlist, "SHOW SERVER");      $opt_I = 1; }
+    elsif ($arg eq "-h") { $opt_h = shift @@ARGV; }
+    elsif ($arg eq "-v") { $opt_v = 1; }
+    elsif ($arg eq "-i") {
+	$opt_i = shift @@ARGV;
+	push(@@cmdlist, "SHOW DATABASES");  # need DB list for header
+	push(@@cmdlist, "SHOW INFO $opt_i");
+    } else {
+	if ($opt_m ne "") {
+	    push(@@cmdlist, "MATCH " .
+		 ($opt_d eq "" ? '*' : $opt_d) .
+		 " $opt_m  \"$arg\"");
+	} else {
+	    push(@@cmdlist, "DEFINE " .
+		 ($opt_d eq "" ? '*' : $opt_d) .
+		 " \"$arg\"");
+	}
+    }
+}
+
+if ($opt_h ne "") {                        # handle -h command line option
+    if ($opt_h =~ /:/) { ($server,$port) = split(/:/, $opt_h); }
+    else { $server = $opt_h; }
+}
+
+push(@@cmdlist, "QUIT");
+
+# NOCLUE here, too... seems to be related to Socket6
+$iaddr  = inet_aton($server)               || die "server not found";
+$paddr  = sockaddr_in($port, $iaddr);
+#($name, $aliases, $type, $len, $iaddr) = gethostbyname($server);
+#($opt_v) && printf "Server %s => %s\n", $server, $name;
+#$sockaddr = 'S n a4 x8';
+#$paddr = pack( $sockaddr, AF_INET, $port, $iaddr );
+# End switch-commenting of NOCLUE
+
+$proto  = getprotobyname('tcp');
+
+socket(SOCK, PF_INET, SOCK_STREAM, $proto) || die "socket: $!";
+connect(SOCK, $paddr)                      || die "connect: $!";
+
+select(SOCK); $| = 1; select(STDOUT); $| = 1;
+
+foreach $i (@@cmdlist) {
+    print SOCK "$i\r\n";
+    $opt_v && print "client sends: $i\n";
+}
+
+$n = $#cmdlist; $data = $buf = "";
+
+while ($buf !~ /221 /) {                   # while connection is open
+    recv(SOCK, $buf, 4096, 0);             # receive data from socket
+    $data = $data . $buf;                  # and append it to stored data
+}
+
+$data =~ s/\r\n\r\n/\r\n \r\n/g;
+@@data = split(/\r\n/,$data);
+@@data = reverse @@data;
+
+while ($line = pop @@data) {
+    if ($line =~ /^(\d{3}) (.+)$/) {
+	$tail = $2;
+	for ($1) {
+	    /110/ and do {          # database list
+		while (($line = pop @@data) !~ /^\.$/) {
+		    $line =~ /^(\S+) \"(.+)\"/;
+		    $db = $1; $name = $2;
+		    $dbs{$db} = $name;
+		}
+
+		if ($opt_D) {
+		    $- = 0;
+		    STDOUT->format_name("DB");
+		    STDOUT->format_top_name("DB_TOP");
+		    foreach $db (keys %dbs) {
+			write;
+		    }
+		}
+
+		last;
+	    };
+
+	    /111/ and do {          # strategy list
+		while (($line = pop @@data) !~ /^\.$/) {
+		    $line =~ /^(\S+) \"(.+)\"/;
+		    $strat = $1; $name = $2;
+		    $strats{$strat} = $name;
+		}
+
+		if ($opt_M) {
+		    $- = 0;
+		    STDOUT->format_name("STRAT");
+		    STDOUT->format_top_name("STRAT_TOP");
+		    foreach $strat (keys %strats) {
+			write;
+		    }
+		}
+
+		last;
+	    };
+
+	    /112/ and do {          # database info
+		print "*** Database information on \"$dbs{$opt_i}\" ***\n";
+		last;
+	    };
+
+	    /113/ and do {          # help text
+		print "*** Server/protocol help text ***\n";
+		last;
+	    };
+
+            /114/ and do {          # server info
+		print "*** Server information for $server:$port ***\n";
+		last;
+	    };
+
+	    /130|210|220|221|230|250|330/ and do {
+		# 130 challenge follows
+		# 210 open connection
+		# 220 text msg-id
+		# 221 closing connection
+		# 230 authentication successful
+		# 250 command complete
+		# 330 challenge response
+
+		($opt_v) &&
+		  print STDERR "server sends: $line\n";
+		last;
+	    };
+
+	    /150/ and do {          # definitions found
+		($num,$trash) = split(/ /,$tail);
+		print "$num definition" .
+		    (($num==1) ? "" : "s") . " found\n\n";
+		last;
+	    };
+
+	    /151/ and do {          # definition follows
+		$tail =~ /"(.+)" (.+) "(.+)"/;
+		$db = $2;
+		print "*** Source: $3 ***\n";
+		last;
+	    };
+
+	    /152/ and do {          # matches found
+	        ($num,$trash) = split(/ /,$tail);
+		print "$num match" .
+		    (($num==1) ? "" : "es"). " found\n";
+		$matching = 1;
+		last;
+	    };
+
+	    /420|421/ and do {      # server transitional errors
+		# 420 Server temporarily unavailable
+		# 421 Server shutting down
+
+		print STDERR "DICT server: $line\n";
+		last;
+	    };
+
+	    /500|501|502|503|530|531|532|550|551|552|554|555/ and do {
+		# 500 bad command, 501 bad parameters,
+		# 502 command not implemented, 503 parameter not implemented,
+		# 530/531/532 authentication failed,
+		# 550 invalid database, 551 invalid strategy,
+		# 552 no matches found
+		# 554 no databases present, 555 no strategies available
+
+		print STDERR "DICT error: $line\n";
+		last;
+	    };
+	}
+
+    } elsif ($line =~ /^\.$/) {
+	print "\n";
+    } elsif ($matching == 1) {
+	$line =~ /^(\S+) \"(.+)\"$/;
+	if ($1 ne $curdb) {
+	    $curdb = $1;
+	    print "\n*** Source: $dbs{$curdb} ***\n";
+	}
+	$cow = $query = $2;
+	print "\t$cow\n";
+    } else {
+	print "$line\n";
+    }
+}
+
+close(SOCK)                                || die "close: $!";
+exit(0);
+
+
+format DB_TOP =
+short name      description
+----------      -----------
+.
+
+format DB =
+@@<<<<<<<<<<<<<< @@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+$db, $dbs{$db}
+.
+
+format STRAT_TOP =
+method name     description
+-----------     -----------
+.
+
+format STRAT =
+@@<<<<<<<<<<<<<< @@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+$strat, $strats{$strat}
+.
+
+
+__END__
+
+=head1 NAME
+
+dict - perl client for the DICT protocol described in RFC 2229
+
+=head1 SYNOPSIS
+
+dict [B<-d> I<database>] [B<-m> I<strategy>] [B<-i> I<database>]
+     [B<-D>] [B<-M>] [B<-I>] [B<-h> I<server>[:I<port>]] [B<-v>] [I<word> ...]
+
+=head1 DESCRIPTION
+
+B<dict> is a client for the DICT protocol described in RFC 2229.  DICT
+is a protocol that allows a client to access dictionary definitions
+from a set of natural language dictionary databases.  More informatin
+on the DICT project is available at http://www.dict.org/ .
+
+Every DICT server has a set of databases and a set of matching
+strategies.  Unless otherwise specified (with the B<-m> option and a
+matching I<strategy>), B<dict> will request definitions of I<word>s
+specified on the command line.
+
+=head2 OPTIONS
+
+=item B<-d> I<database>
+
+Use I<database> for this query.  (Obtain a list of I<database>s with
+B<dict -D>.)  Without this option, all I<databases> will be searched.
+
+=item B<-m> I<strategy>
+
+Use I<strategy> for this query.  (Obtain a list of I<strategies> with
+B<dict -M>.)  With this option, the default behavior (returning
+definitons) is overridden and a list of words matching the query
+I<word> using the specified I<strategy> is returned.
+
+=item B<-i> I<database>
+
+Ask the server for information on I<database>.
+
+=item B<-D>
+
+Get a list of available I<database>s and their full names.
+
+=item B<-M>
+
+Get a list of available matching I<strategies>.
+
+=item B<-h> I<server>[:I<port>]
+
+Override the default I<server> (and optionally I<port>).
+
+=item B<-v>
+
+Be verbose about the DICT transaction.  This is really only useful for
+debugging.
+
+=head1 AUTHOR
+
+Bret A. Martin (bamartin@@miranda.org).
+
+=head1 BUGS
+
+B<dict> does not implement the AUTH command and associated
+functionality for authentication as specified in RFC 2229.
+
+Domain name lookup did not work (grep for NOCLUE in the source).
+$MirBSD: src/gnu/usr.bin/dict/dict,v 1.2 2004/01/28 19:04:25 tg Stab $
+
+=head1 COPYRIGHT
+
+Copyright 1997-1998 Bret A. Martin (bamartin@@miranda.org).
+
+This program is subject to the Netscape Public License Version 1.0
+(the "NPL"); you may not use this file except in compliance with the
+NPL, Version 1.0, which is outlined below:
+
+=head1 LICENCE
+
+NETSCAPE PUBLIC LICENSE
+Version 1.0
+
+=head2 1. Definitions.
+
+1.1. "Contributor" means each entity that creates or contributes to
+the creation of Modifications.
+
+1.2. "Contributor Version" means the combination of the Original
+Code, prior Modifications used by a Contributor, and the Modifications
+made by that particular Contributor.
+
+1.3. "Covered Code" means the Original Code or Modifications or the
+combination of the Original Code and Modifications, in each case
+including portions thereof.
+
+1.4. "Electronic Distribution Mechanism" means a mechanism generally
+accepted in the software development community for the electronic
+transfer of data.
+
+1.5. "Executable" means Covered Code in any form other than Source
+Code.
+
+1.6. "Initial Developer" means the individual or entity identified as
+the Initial Developer in the Source Code notice required by Exhibit A.
+
+1.7. "Larger Work" means a work which combines Covered Code or
+portions thereof with code not governed by the terms of this License.
+
+1.8. "License" means this document.
+
+1.9. "Modifications" means any addition to or deletion from the
+substance or structure of either the Original Code or any previous
+Modifications. When Covered Code is released as a series of files, a
+Modification is:
+
+    A. Any addition to or deletion from the contents of a file
+    containing Original Code or previous Modifications.
+
+    B. Any new file that contains any part of the Original Code or
+    previous Modifications.
+
+1.10. "Original Code" means Source Code of computer software code
+which is described in the Source Code notice required by Exhibit A as
+Original Code, and which, at the time of its release under this License
+is not already Covered Code governed by this License.
+
+1.11. "Source Code" means the preferred form of the Covered Code for
+making modifications to it, including all modules it contains, plus any
+associated interface definition files, scripts used to control
+compilation and installation of an Executable, or a list of source code
+differential comparisons against either the Original Code or another
+well known, available Covered Code of the Contributor's choice. The
+Source Code can be in a compressed or archival form, provided the
+appropriate decompression or de-archiving software is widely available
+for no charge.
+
+1.12. "You" means an individual or a legal entity exercising rights
+under, and complying with all of the terms of, this License or a future
+version of this License issued under Section 6.1. For legal entities,
+"You" includes any entity which controls, is controlled by, or is
+under common control with You. For purposes of this definition,
+"control" means (a) the power, direct or indirect, to cause the
+direction or management of such entity, whether by contract or
+otherwise, or (b) ownership of fifty percent (50%) or more of the
+outstanding shares or beneficial ownership of such entity.
+
+=head2 2. Source Code License.
+
+2.1. The Initial Developer Grant.
+The Initial Developer hereby grants You a world-wide, royalty-free,
+non-exclusive license, subject to third party intellectual property
+claims:
+
+    (a) to use, reproduce, modify, display, perform, sublicense and
+    distribute the Original Code (or portions thereof) with or without
+    Modifications, or as part of a Larger Work; and
+
+    (b) under patents now or hereafter owned or controlled by Initial
+    Developer, to make, have made, use and sell ("Utilize") the
+    Original Code (or portions thereof), but solely to the extent that
+    any such patent is reasonably necessary to enable You to Utilize
+    the Original Code (or portions thereof) and not to any greater
+    extent that may be necessary to Utilize further Modifications or
+    combinations.
+
+2.2. Contributor Grant.
+Each Contributor hereby grants You a world-wide, royalty-free,
+non-exclusive license, subject to third party intellectual property
+claims:
+
+    (a) to use, reproduce, modify, display, perform, sublicense and
+    distribute the Modifications created by such Contributor (or
+    portions thereof) either on an unmodified basis, with other
+    Modifications, as Covered Code or as part of a Larger Work; and
+
+    (b) under patents now or hereafter owned or controlled by
+    Contributor, to Utilize the Contributor Version (or portions
+    thereof), but solely to the extent that any such patent is
+    reasonably necessary to enable You to Utilize the Contributor
+    Version (or portions thereof), and not to any greater extent that
+    may be necessary to Utilize further Modifications or combinations.
+
+=head2 3. Distribution Obligations.
+
+3.1. Application of License.
+The Modifications which You create or to which You contribute are
+governed by the terms of this License, including without limitation
+Section 2.2. The Source Code version of Covered Code may be distributed
+only under the terms of this License or a future version of this
+License released under Section 6.1, and You must include a copy of this
+License with every copy of the Source Code You distribute. You may not
+offer or impose any terms on any Source Code version that alters or
+restricts the applicable version of this License or the recipients'
+rights hereunder. However, You may include an additional document
+offering the additional rights described in Section 3.5.
+
+3.2. Availability of Source Code.
+Any Modification which You create or to which You contribute must be
+made available in Source Code form under the terms of this License
+either on the same media as an Executable version or via an accepted
+Electronic Distribution Mechanism to anyone to whom you made an
+Executable version available; and if made available via Electronic
+Distribution Mechanism, must remain available for at least twelve (12)
+months after the date it initially became available, or at least six
+(6) months after a subsequent version of that particular Modification
+has been made available to such recipients. You are responsible for
+ensuring that the Source Code version remains available even if the
+Electronic Distribution Mechanism is maintained by a third party.
+
+3.3. Description of Modifications.
+You must cause all Covered Code to which you contribute to contain a
+file documenting the changes You made to create that Covered Code and
+the date of any change. You must include a prominent statement that the
+Modification is derived, directly or indirectly, from Original Code
+provided by the Initial Developer and including the name of the Initial
+Developer in (a) the Source Code, and (b) in any notice in an
+Executable version or related documentation in which You describe the
+origin or ownership of the Covered Code.
+
+3.4. Intellectual Property Matters
+
+    (a) Third Party Claims.
+    If You have knowledge that a party claims an intellectual property
+    right in particular functionality or code (or its utilization
+    under this License), you must include a text file with the source
+    code distribution titled "LEGAL" which describes the claim and
+    the party making the claim in sufficient detail that a recipient
+    will know whom to contact. If you obtain such knowledge after You
+    make Your Modification available as described in Section 3.2, You
+    shall promptly modify the LEGAL file in all copies You make
+    available thereafter and shall take other steps (such as notifying
+    appropriate mailing lists or newsgroups) reasonably calculated to
+    inform those who received the Covered Code that new knowledge has
+    been obtained.
+
+    (b) Contributor APIs.
+    If Your Modification is an application programming interface and
+    You own or control patents which are reasonably necessary to
+    implement that API, you must also include this information in the
+    LEGAL file.
+
+3.5. Required Notices.
+You must duplicate the notice in Exhibit A in each file of the Source
+Code, and this License in any documentation for the Source Code, where
+You describe recipients' rights relating to Covered Code. If You
+created one or more Modification(s), You may add your name as a
+Contributor to the notice described in Exhibit A. If it is not possible
+to put such notice in a particular Source Code file due to its
+structure, then you must include such notice in a location (such as a
+relevant directory file) where a user would be likely to look for such
+a notice. You may choose to offer, and to charge a fee for, warranty,
+support, indemnity or liability obligations to one or more recipients
+of Covered Code. However, You may do so only on Your own behalf, and
+not on behalf of the Initial Developer or any Contributor. You must
+make it absolutely clear than any such warranty, support, indemnity or
+liability obligation is offered by You alone, and You hereby agree to
+indemnify the Initial Developer and every Contributor for any liability
+incurred by the Initial Developer or such Contributor as a result of
+warranty, support, indemnity or liability terms You offer.
+
+3.6. Distribution of Executable Versions.
+You may distribute Covered Code in Executable form only if the
+requirements of Section 3.1-3.5 have been met for that Covered Code,
+and if You include a notice stating that the Source Code version of the
+Covered Code is available under the terms of this License, including a
+description of how and where You have fulfilled the obligations of
+Section 3.2. The notice must be conspicuously included in any notice in
+an Executable version, related documentation or collateral in which You
+describe recipients' rights relating to the Covered Code. You may
+distribute the Executable version of Covered Code under a license of
+Your choice, which may contain terms different from this License,
+provided that You are in compliance with the terms of this License and
+that the license for the Executable version does not attempt to limit
+or alter the recipient's rights in the Source Code version from the
+rights set forth in this License. If You distribute the Executable
+version under a different license You must make it absolutely clear
+that any terms which differ from this License are offered by You alone,
+not by the Initial Developer or any Contributor. You hereby agree to
+indemnify the Initial Developer and every Contributor for any liability
+incurred by the Initial Developer or such Contributor as a result of
+any such terms You offer.
+
+3.7. Larger Works.
+You may create a Larger Work by combining Covered Code with other code
+not governed by the terms of this License and distribute the Larger
+Work as a single product. In such a case, You must make sure the
+requirements of this License are fulfilled for the Covered Code.
+
+=head2 4. Inability to Comply Due to Statute or Regulation.
+
+If it is impossible for You to comply with any of the terms of this
+License with respect to some or all of the Covered Code due to statute
+or regulation then You must: (a) comply with the terms of this License
+to the maximum extent possible; and (b) describe the limitations and
+the code they affect. Such description must be included in the LEGAL
+file described in Section 3.4 and must be included with all
+distributions of the Source Code. Except to the extent prohibited by
+statute or regulation, such description must be sufficiently detailed
+for a recipient of ordinary skill to be able to understand it.
+
+=head2 5. Application of this License.
+
+This License applies to code to which the Initial Developer has
+attached the notice in Exhibit A, and to related Covered Code.
+
+=head2 6. Versions of the License.
+
+6.1. New Versions.
+Netscape Communications Corporation ("Netscape") may publish revised
+and/or new versions of the License from time to time. Each version will
+be given a distinguishing version number.
+
+6.2. Effect of New Versions.
+Once Covered Code has been published under a particular version of the
+License, You may always continue to use it under the terms of that
+version. You may also choose to use such Covered Code under the terms
+of any subsequent version of the License published by Netscape. No one
+other than Netscape has the right to modify the terms applicable to
+Covered Code created under this License.
+
+6.3. Derivative Works.
+If you create or use a modified version of this License (which you may
+only do in order to apply it to code which is not already Covered Code
+governed by this License), you must (a) rename Your license so that the
+phrases "Mozilla", "MOZILLAPL", "MOZPL", "Netscape", "NPL" or
+any confusingly similar phrase do not appear anywhere in your license
+and (b) otherwise make it clear that your version of the license
+contains terms which differ from the Mozilla Public License and
+Netscape Public License. (Filling in the name of the Initial Developer,
+Original Code or Contributor in the notice described in Exhibit A shall
+not of themselves be deemed to be modifications of this License.)
+
+=head2 7. DISCLAIMER OF WARRANTY.
+
+COVERED CODE IS PROVIDED UNDER THIS LICENSE ON AN "AS IS" BASIS,
+WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING,
+WITHOUT LIMITATION, WARRANTIES THAT THE COVERED CODE IS FREE OF
+DEFECTS, MERCHANTABLE, FIT FOR A PARTICULAR PURPOSE OR NON-INFRINGING.
+THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE COVERED CODE
+IS WITH YOU. SHOULD ANY COVERED CODE PROVE DEFECTIVE IN ANY RESPECT,
+YOU (NOT THE INITIAL DEVELOPER OR ANY OTHER CONTRIBUTOR) ASSUME THE
+COST OF ANY NECESSARY SERVICING, REPAIR OR CORRECTION. THIS DISCLAIMER
+OF WARRANTY CONSTITUTES AN ESSENTIAL PART OF THIS LICENSE. NO USE OF
+ANY COVERED CODE IS AUTHORIZED HEREUNDER EXCEPT UNDER THIS DISCLAIMER.
+
+=head2 8. TERMINATION.
+
+This License and the rights granted hereunder will terminate
+automatically if You fail to comply with terms herein and fail to cure
+such breach within 30 days of becoming aware of the breach. All
+sublicenses to the Covered Code which are properly granted shall
+survive any termination of this License. Provisions which, by their
+nature, must remain in effect beyond the termination of this License
+shall survive.
+
+=head2 9. LIMITATION OF LIABILITY.
+
+UNDER NO CIRCUMSTANCES AND UNDER NO LEGAL THEORY, WHETHER TORT
+(INCLUDING NEGLIGENCE), CONTRACT, OR OTHERWISE, SHALL THE INITIAL
+DEVELOPER, ANY OTHER CONTRIBUTOR, OR ANY DISTRIBUTOR OF COVERED CODE,
+OR ANY SUPPLIER OF ANY OF SUCH PARTIES, BE LIABLE TO YOU OR ANY OTHER
+PERSON FOR ANY INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES
+OF ANY CHARACTER INCLUDING, WITHOUT LIMITATION, DAMAGES FOR LOSS OF
+GOODWILL, WORK STOPPAGE, COMPUTER FAILURE OR MALFUNCTION, OR ANY AND
+ALL OTHER COMMERCIAL DAMAGES OR LOSSES, EVEN IF SUCH PARTY SHALL HAVE
+BEEN INFORMED OF THE POSSIBILITY OF SUCH DAMAGES. THIS LIMITATION OF
+LIABILITY SHALL NOT APPLY TO LIABILITY FOR DEATH OR PERSONAL INJURY
+RESULTING FROM SUCH PARTY'S NEGLIGENCE TO THE EXTENT APPLICABLE LAW
+PROHIBITS SUCH LIMITATION. SOME JURISDICTIONS DO NOT ALLOW THE
+EXCLUSION OR LIMITATION OF INCIDENTAL OR CONSEQUENTIAL DAMAGES, SO THAT
+EXCLUSION AND LIMITATION MAY NOT APPLY TO YOU.
+
+=head2 10. U.S. GOVERNMENT END USERS.
+
+The Covered Code is a "commercial item," as that term is defined in
+48 C.F.R. 2.101 (Oct. 1995), consisting of "commercial computer
+software" and "commercial computer software documentation," as such
+terms are used in 48 C.F.R. 12.212 (Sept. 1995). Consistent with 48
+C.F.R. 12.212 and 48 C.F.R. 227.7202-1 through 227.7202-4 (June 1995),
+all U.S. Government End Users acquire Covered Code with only those
+rights set forth herein.
+
+=head2 11. MISCELLANEOUS.
+
+This License represents the complete agreement concerning subject
+matter hereof. If any provision of this License is held to be
+unenforceable, such provision shall be reformed only to the extent
+necessary to make it enforceable. This License shall be governed by
+California law provisions (except to the extent applicable law, if any,
+provides otherwise), excluding its conflict-of-law provisions. With
+respect to disputes in which at least one party is a citizen of, or an
+entity chartered or registered to do business in, the United States of
+America: (a) unless otherwise agreed in writing, all disputes relating
+to this License (excepting any dispute relating to intellectual
+property rights) shall be subject to final and binding arbitration,
+with the losing party paying all costs of arbitration; (b) any
+arbitration relating to this Agreement shall be held in Santa Clara
+County, California, under the auspices of JAMS/EndDispute; and (c) any
+litigation relating to this Agreement shall be subject to the
+jurisdiction of the Federal Courts of the Northern District of
+California, with venue lying in Santa Clara County, California, with
+the losing party responsible for costs, including without limitation,
+court costs and reasonable attorneys fees and expenses. The application
+of the United Nations Convention on Contracts for the International
+Sale of Goods is expressly excluded. Any law or regulation which
+provides that the language of a contract shall be construed against the
+drafter shall not apply to this License.
+
+=head2 12. RESPONSIBILITY FOR CLAIMS.
+
+Except in cases where another Contributor has failed to comply with
+Section 3.4, You are responsible for damages arising, directly or
+indirectly, out of Your utilization of rights under this License, based
+on the number of copies of Covered Code you made available, the
+revenues you received from utilizing such rights, and other relevant
+factors. You agree to work with affected parties to distribute
+responsibility on an equitable basis.
+
+=head2 AMENDMENTS
+Additional Terms applicable to the Netscape Public License.
+
+I. Effect.
+These additional terms described in this Netscape Public License --
+Amendments shall apply to the Mozilla Communicator client code and to
+all Covered Code under this License.
+
+II. "Netscape's Branded Code" means Covered Code that Netscape
+distributes and/or permits others to distribute under one or more
+trademark(s) which are controlled by Netscape but which are not
+licensed for use under this License.
+
+III. Netscape and logo.
+This License does not grant any rights to use the trademark
+"Netscape", the "Netscape N and horizon" logo or the Netscape
+lighthouse logo, even if such marks are included in the Original Code.
+
+IV. Inability to Comply Due to Contractual Obligation.
+Prior to licensing the Original Code under this License, Netscape has
+licensed third party code for use in Netscape's Branded Code. To the
+extent that Netscape is limited contractually from making such third
+party code available under this License, Netscape may choose to
+reintegrate such code into Covered Code without being required to
+distribute such code in Source Code form, even if such code would
+otherwise be considered "Modifications" under this License.
+
+V. Use of Modifications and Covered Code by Initial Developer.
+
+    V.1. In General.
+    The obligations of Section 3 apply to Netscape, except to the
+    extent specified in this Amendment, Section V.2 and V.3.
+
+    V.2. Other Products.
+    Netscape may include Covered Code in products other than the
+    Netscape's Branded Code which are released by Netscape during the
+    two (2) years following the release date of the Original Code,
+    without such additional products becoming subject to the terms of
+    this License, and may license such additional products on
+    different terms from those contained in this License.
+
+    V.3. Alternative Licensing.
+    Netscape may license the Source Code of Netscape's Branded Code,
+    including Modifications incorporated therein, without such
+    additional products becoming subject to the terms of this License,
+    and may license such additional products on different terms from
+    those contained in this License.
+
+VI. Arbitration and Litigation.
+Notwithstanding the limitations of Section 11 above, the provisions
+regarding arbitration and litigation in Section 11(a), (b) and (c) of
+the License shall apply to all disputes relating to this License.
+
+=head2 EXHIBIT A.
+
+"The contents of this file are subject to the Netscape Public License
+Version 1.0 (the "License"); you may not use this file except in
+compliance with the License. You may obtain a copy of the License at
+http://www.mozilla.org/NPL/
+
+Software distributed under the License is distributed on an "AS IS"
+basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the
+License for the specific language governing rights and limitations
+under the License.
+
+The Original Code is Mozilla Communicator client code, released March
+31, 1998.
+
+The Initial Developer of the Original Code is Netscape Communications
+Corporation. Portions created by Netscape are Copyright (C) 1998
+Netscape Communications Corporation. All Rights Reserved.
+
+Contributor(s): ______________________________________."
+
+[NOTE: The text of this Exhibit A may differ slightly from the text of
+the notices in the Source Code files of the Original Code. This is due
+to time constraints encountered in simultaneously finalizing the
+License and in preparing the Original Code for release. You should use
+the text of this Exhibit A rather than the text found in the Original
+Code Source Code for Your Modifications.]
+
+=cut
+@
+
+
+1.2
+log
+@miranda.org -> down
+use dict.org
+@
+text
+@d7 1
+a7 1
+# Revised: $Date: 2003/03/23 22:43:07 $ by x86@@ePost.de
+d346 1
+a346 1
+$MirBSD: dict,v 1.1 2003/03/23 22:43:07 tg Exp $
+@
+
+
+1.1
+log
+@forgot to commit the dict and tinyirc actual files, oops
+@
+text
+@d7 1
+a7 1
+# Revised: $Date: 2003/03/22 22:33:31 $ by x86@@ePost.de
+d32 2
+a33 2
+# This is miranda.org:
+$server = "209.58.150.153";
+d346 1
+a346 1
+$MirBSD$
+@
+

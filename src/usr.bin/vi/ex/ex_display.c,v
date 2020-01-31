@@ -1,0 +1,254 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.43;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.43;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: ex_display.c,v 1.4 2002/02/16 21:27:57 millert Exp $	*/
+
+/*-
+ * Copyright (c) 1992, 1993, 1994
+ *	The Regents of the University of California.  All rights reserved.
+ * Copyright (c) 1992, 1993, 1994, 1995, 1996
+ *	Keith Bostic.  All rights reserved.
+ *
+ * See the LICENSE file for redistribution information.
+ */
+
+#include "config.h"
+
+#ifndef lint
+static const char sccsid[] = "@@(#)ex_display.c	10.12 (Berkeley) 4/10/96";
+#endif /* not lint */
+
+#include <sys/types.h>
+#include <sys/queue.h>
+
+#include <bitstring.h>
+#include <ctype.h>
+#include <limits.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "../common/common.h"
+#include "tag.h"
+
+static int	bdisplay(SCR *);
+static void	db(SCR *, CB *, CHAR_T *);
+
+/*
+ * ex_display -- :display b[uffers] | c[onnections] | s[creens] | t[ags]
+ *
+ *	Display cscope connections, buffers, tags or screens.
+ *
+ * PUBLIC: int ex_display(SCR *, EXCMD *);
+ */
+int
+ex_display(sp, cmdp)
+	SCR *sp;
+	EXCMD *cmdp;
+{
+	switch (cmdp->argv[0]->bp[0]) {
+	case 'b':
+#undef	ARG
+#define	ARG	"buffers"
+		if (cmdp->argv[0]->len >= sizeof(ARG) ||
+		    memcmp(cmdp->argv[0]->bp, ARG, cmdp->argv[0]->len))
+			break;
+		return (bdisplay(sp));
+	case 'c':
+#undef	ARG
+#define	ARG	"connections"
+		if (cmdp->argv[0]->len >= sizeof(ARG) ||
+		    memcmp(cmdp->argv[0]->bp, ARG, cmdp->argv[0]->len))
+			break;
+		return (cscope_display(sp));
+	case 's':
+#undef	ARG
+#define	ARG	"screens"
+		if (cmdp->argv[0]->len >= sizeof(ARG) ||
+		    memcmp(cmdp->argv[0]->bp, ARG, cmdp->argv[0]->len))
+			break;
+		return (ex_sdisplay(sp));
+	case 't':
+#undef	ARG
+#define	ARG	"tags"
+		if (cmdp->argv[0]->len >= sizeof(ARG) ||
+		    memcmp(cmdp->argv[0]->bp, ARG, cmdp->argv[0]->len))
+			break;
+		return (ex_tag_display(sp));
+	}
+	ex_emsg(sp, cmdp->cmd->usage, EXM_USAGE);
+	return (1);
+}
+
+/*
+ * bdisplay --
+ *
+ *	Display buffers.
+ */
+static int
+bdisplay(sp)
+	SCR *sp;
+{
+	CB *cbp;
+
+	if (sp->gp->cutq.lh_first == NULL && sp->gp->dcbp == NULL) {
+		msgq(sp, M_INFO, "123|No cut buffers to display");
+		return (0);
+	}
+
+	/* Display regular cut buffers. */
+	for (cbp = sp->gp->cutq.lh_first; cbp != NULL; cbp = cbp->q.le_next) {
+		if (isdigit(cbp->name))
+			continue;
+		if (cbp->textq.cqh_first != (void *)&cbp->textq)
+			db(sp, cbp, NULL);
+		if (INTERRUPTED(sp))
+			return (0);
+	}
+	/* Display numbered buffers. */
+	for (cbp = sp->gp->cutq.lh_first; cbp != NULL; cbp = cbp->q.le_next) {
+		if (!isdigit(cbp->name))
+			continue;
+		if (cbp->textq.cqh_first != (void *)&cbp->textq)
+			db(sp, cbp, NULL);
+		if (INTERRUPTED(sp))
+			return (0);
+	}
+	/* Display default buffer. */
+	if ((cbp = sp->gp->dcbp) != NULL)
+		db(sp, cbp, "default buffer");
+	return (0);
+}
+
+/*
+ * db --
+ *	Display a buffer.
+ */
+static void
+db(sp, cbp, name)
+	SCR *sp;
+	CB *cbp;
+	CHAR_T *name;
+{
+	CHAR_T *p;
+	GS *gp;
+	TEXT *tp;
+	size_t len;
+
+	gp = sp->gp;
+	(void)ex_printf(sp, "********** %s%s\n",
+	    name == NULL ? KEY_NAME(sp, cbp->name) : name,
+	    F_ISSET(cbp, CB_LMODE) ? " (line mode)" : " (character mode)");
+	for (tp = cbp->textq.cqh_first;
+	    tp != (void *)&cbp->textq; tp = tp->q.cqe_next) {
+		for (len = tp->len, p = tp->lb; len--; ++p) {
+			(void)ex_puts(sp, KEY_NAME(sp, *p));
+			if (INTERRUPTED(sp))
+				return;
+		}
+		(void)ex_puts(sp, "\n");
+	}
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

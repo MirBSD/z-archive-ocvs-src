@@ -1,0 +1,359 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	cvs-200410222320:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200309171845:1.1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	cvs-20030329-2200:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.44.33;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.33;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.09.17.18.47.48;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/usr/bin/perl
+# doublebounce.pl
+#
+# Return a doubly-bounced e-mail to postmaster.  Specific to sendmail,
+# updated to work on sendmail 8.12.6.
+#
+# Based on the original doublebounce.pl code by jr@@terra.net, 12/4/97.
+# Updated by bicknell@@ufp.org, 12/4/2002 to understand new sendmail DSN
+# bounces.  Code cleanup also performed, mainly making things more
+# robust.
+#
+# Original intro included below, lines with ##
+##	attempt to return a doubly-bounced email to a postmaster
+##	jr@@terra.net, 12/4/97
+##
+##	invoke by creating an mail alias such as:
+##		doublebounce:	"|/usr/local/sbin/doublebounce"
+##	then adding this line to your sendmail.cf:
+##		O DoubleBounceAddress=doublebounce
+##
+##	optionally, add a "-d" flag in the aliases file, to send a
+##	debug trace to your own postmaster showing what is going on
+##
+##	this allows the "postmaster" address to still go to a human being,
+##	while bounce messages can go to this script, which will bounce them
+##	back to the postmaster at the sending site.
+##
+##	the algorithm is to scan the double-bounce error report generated
+##	by sendmail on stdin, for the original message (it starts after the
+##	second "Orignal message follows" marker), look for From, Sender, and
+##	Received headers from the point closest to the sender back to the point
+##	closest to us, and try to deliver a double-bounce report back to a
+##	postmaster at one of these sites in the hope that they can
+##	return the message to the original sender, or do something about
+##	the fact that that sender's return address is not valid.
+
+use Socket;
+use Getopt::Std;
+use POSIX;
+use Sys::Syslog qw(:DEFAULT setlogsock);
+use strict;
+use vars qw( $opt_d $tmpfile);
+
+# parseaddr()
+#	parse hostname from From: header
+#
+sub parseaddr {
+  my($hdr) = @@_;
+  my($addr);
+
+  if ($hdr =~ /<.*>/) {
+    ($addr) = $hdr =~ m/<(.*)>/;
+    $addr =~ s/.*\@@//;
+    return $addr;
+  }
+  if ($addr =~ /\s*\(/) {
+    ($addr) = $hdr =~ m/\s*(.*)\s*\(/;
+    $addr =~ s/.*\@@//;
+    return $addr;
+  }
+  ($addr) = $hdr =~ m/\s*(.*)\s*/;
+  $addr =~ s/.*\@@//;
+  return $addr;
+}
+
+# sendbounce()
+#	send bounce to postmaster
+#
+#	this re-invokes sendmail in immediate and quiet mode to try
+#	to deliver to a postmaster.  sendmail's exit status tells us
+#	whether the delivery attempt really was successful.
+#
+sub send_bounce {
+  my($addr, $from) = @@_;
+  my($st);
+  my($result);
+
+  my($dest) = "postmaster\@@" . parseaddr($addr);
+
+  if ($opt_d) {
+    syslog ('info', "Attempting to send to user $dest");
+  }
+  open(MAIL, "| /usr/sbin/sendmail -oeq $dest");
+  print MAIL <<EOT;
+From: Mail Delivery Subsystem <mail-router>
+Subject: Postmaster notify: double bounce
+Reply-To: nobody
+Errors-To: nobody
+Precedence: junk
+Auto-Submitted: auto-generated (postmaster notification)
+
+The following message was received for an invalid recipient.  The
+sender's address was also invalid.  Since the message originated
+at or transited through your mailer, this notification is being
+sent to you in the hope that you will determine the real originator
+and have them correct their From or Sender address.
+
+The from header on the original e-mail was: $from.
+
+   ----- The following is a double bounce -----
+
+EOT
+
+  open(MSG, "<$tmpfile");
+  print MAIL <MSG>;
+  close(MSG);
+  $result = close(MAIL);
+  if ($result) {
+    syslog('info', 'doublebounce successfully sent to %s', $dest);
+  }
+  return $result;
+}
+
+sub main {
+  # Get our command line options
+  getopts('d');
+
+  # Set up syslog
+  setlogsock('unix');
+  openlog('doublebounce', 'pid', 'mail');
+ 
+  if ($opt_d) {
+    syslog('info', 'Processing a doublebounce.');
+  }
+
+  # The bounced e-mail may be large, so we'd better not try to buffer
+  # it in memory, get a temporary file.
+  $tmpfile = POSIX::tmpnam();
+
+  if (!open(MSG, ">$tmpfile")) {
+    syslog('err', "Unable to open temporary file $tmpfile");
+    exit(75); # 75 is a temporary failure, sendmail should retry
+  }
+  print(MSG <STDIN>);
+  close(MSG);
+  if (!open(MSG, "<$tmpfile")) {
+    syslog('err', "Unable to reopen temporary file $tmpfile");
+    exit(74); # 74 is an IO error
+  }
+
+  # Ok, now we can get down to business, find the original message
+  my($skip_lines, $in_header, $headers_found, @@addresses);
+  $skip_lines = 0;
+  $in_header = 0;
+  $headers_found = 0;
+  while (<MSG>) {
+    if ($skip_lines > 0) {
+      $skip_lines--;
+      next;
+    }
+    chomp;
+    # Starting message depends on your version of sendmail
+    if (/^   ----- Original message follows -----$/ ||
+        /^   ----Unsent message follows----$/ ||
+        /^Content-Type: message\/rfc822$/) {
+      # Found the original message
+      $skip_lines++;
+      $in_header = 1;
+      $headers_found++;
+      next;
+    }
+    if (/^$/) {
+      if ($headers_found >= 2) {
+         # We only process two deep, even if there are more
+         last;
+      }
+      if ($in_header) {
+         # We've found the end of a header, scan for the next one
+         $in_header = 0;
+      }
+      next;
+    }
+    if ($in_header) {
+      if (! /^[ \t]/) {
+        # New Header
+        if (/^(received): (.*)/i ||
+            /^(reply-to): (.*)/i ||    
+            /^(sender): (.*)/i ||    
+            /^(from): (.*)/i ) {
+          $addresses[$headers_found]{$1} = $2;
+        }
+        next;
+      } else {
+        # continuation header
+        # we should really process these, but we don't yet
+        next;
+      }
+    } else {
+      # Nothing to do if we're not in a header
+      next;
+    }
+  }
+  close(MSG);
+
+  # Start with the original (inner) sender
+  my($addr, $sent);
+  foreach $addr (keys %{$addresses[2]}) {
+    if ($opt_d) {
+      syslog('info', "Trying to send to $addresses[2]{$addr} - $addresses[2]{\"From\"}");
+    }
+    $sent = send_bounce($addresses[2]{$addr}, $addresses[2]{"From"});
+    last if $sent;
+  }
+  if (!$sent && $opt_d) {
+    if ($opt_d) {
+      syslog('info', 'Unable to find original sender, falling back.');
+    }
+    foreach $addr (keys %{$addresses[1]}) {
+      if ($opt_d) {
+        syslog('info', "Trying to send to $addresses[2]{$addr} - $addresses[2]{\"From\"}");
+      }
+      $sent = send_bounce($addresses[1]{$addr}, $addresses[2]{"From"});
+      last if $sent;
+    }
+    if (!$sent) {
+      syslog('info', 'Unable to find anyone to send a doublebounce notification');
+    }
+  }
+
+  unlink($tmpfile);
+}
+
+main();
+exit(0);
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Fuck. Two times two upgrades to the same product in row.
+Man, can't you guys handle this more smoothly?
+
+Well, sendmail 8.12.10 or so, and OpenBSD-current.
+@
+text
+@d39 1
+a39 1
+use File::Temp;
+d128 1
+a128 1
+  $tmpfile = tmpnam();
+@
+

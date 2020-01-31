@@ -1,0 +1,295 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.07.18.13.29.10;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.36.03;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.36.03;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke egcs (pgcc, gcc2) and simplify the system a bit
+also fix placement of GNUSYSTEM_AUX_DIR equation in <bsd.own.mk> while here
+remove some sparc and xc-old/xc-mit remnants
+for now, all distribution lists are mi, since we only have 1 arch
+
+XXX comp is second-largest now (after xfont), need ideas, come to IRC
+
+agreed: <benz|lernen> joa, warum nicht
+@
+text
+@/* Threads compatibily routines for libgcc2.  */
+/* Compile this one with gcc.  */
+/* Copyright (C) 1997 Free Software Foundation, Inc.
+
+This file is part of GNU CC.
+
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2, or (at your option)
+any later version.
+
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 59 Temple Place - Suite 330,
+Boston, MA 02111-1307, USA.  */
+
+/* As a special exception, if you link this library with other files,
+   some of which are compiled with GCC, to produce an executable,
+   this library does not by itself cause the resulting executable
+   to be covered by the GNU General Public License.
+   This exception does not however invalidate any other reasons why
+   the executable file might be covered by the GNU General Public License.  */
+
+#ifndef __gthr_solaris_h
+#define __gthr_solaris_h
+
+/* Solaris threads as found in Solaris 2.[456].
+   Actually these are Unix International (UI) threads, but I don't
+   know if anyone else implements these. */
+
+#define __GTHREADS 1
+
+#include <thread.h>
+#include <errno.h>
+
+typedef thread_key_t __gthread_key_t;
+typedef struct
+{
+  mutex_t mutex;
+  int once;
+} __gthread_once_t;
+typedef mutex_t __gthread_mutex_t;
+
+#define __GTHREAD_ONCE_INIT { DEFAULTMUTEX, 0 }
+#define __GTHREAD_MUTEX_INIT DEFAULTMUTEX
+
+#if SUPPORTS_WEAK && GTHREAD_USE_WEAK
+
+#pragma weak thr_keycreate
+#pragma weak thr_getspecific
+#pragma weak thr_setspecific
+#pragma weak thr_create
+
+#pragma weak mutex_lock
+#pragma weak mutex_trylock
+#pragma weak mutex_unlock
+
+/* This will not actually work in Solaris 2.5, since libc contains
+   dummy symbols of all thr_* routines. */
+
+static void *__gthread_active_ptr = &thr_create;
+
+static inline int
+__gthread_active_p ()
+{
+  return __gthread_active_ptr != 0;
+}
+
+#else /* not SUPPORTS_WEAK */
+
+static inline int
+__gthread_active_p ()
+{
+  return 1;
+}
+
+#endif /* SUPPORTS_WEAK */
+
+static inline int
+__gthread_once (__gthread_once_t *once, void (*func) ())
+{
+  if (! __gthread_active_p ())
+    return -1;
+
+  if (once == 0 || func == 0)
+    return EINVAL;
+
+  if (once->once == 0)
+    {
+      int status = mutex_lock (&once->mutex);
+      if (status != 0)
+	return status;
+      if (once->once == 0)
+	{
+	  (*func) ();
+	  once->once ++;
+	}
+      mutex_unlock (&once->mutex);
+    }
+  return 0;
+}
+
+static inline int
+__gthread_key_create (__gthread_key_t *key, void (*dtor) (void *))
+{
+  /* Solaris 2.5 contains thr_* routines no-op in libc, so test if we actually
+     got a reasonable key value, and if not, fail. */
+  *key = -1;
+  if (thr_keycreate (key, dtor) != 0 || *key == -1)
+    return -1;
+  else
+    return 0;
+}
+
+static inline int
+__gthread_key_dtor (__gthread_key_t key, void *ptr)
+{
+  /* Nothing needed. */
+  return 0;
+}
+
+static inline int
+__gthread_key_delete (__gthread_key_t key)
+{
+  /* Not possible. */
+  return -1;
+}
+
+static inline void *
+__gthread_getspecific (__gthread_key_t key)
+{
+  void *ptr;
+  if (thr_getspecific (key, &ptr) == 0)
+    return ptr;
+  else
+    return 0;
+}
+
+static inline int
+__gthread_setspecific (__gthread_key_t key, const void *ptr)
+{
+  return thr_setspecific (key, (void *) ptr);
+}
+
+static inline int
+__gthread_mutex_lock (__gthread_mutex_t *mutex)
+{
+  if (__gthread_active_p ())
+    return mutex_lock (mutex);
+  else
+    return 0;
+}
+
+static inline int
+__gthread_mutex_trylock (__gthread_mutex_t *mutex)
+{
+  if (__gthread_active_p ())
+    return mutex_trylock (mutex);
+  else
+    return 0;
+}
+
+static inline int
+__gthread_mutex_unlock (__gthread_mutex_t *mutex)
+{
+  if (__gthread_active_p ())
+    return mutex_unlock (mutex);
+  else
+    return 0;
+}
+
+#endif /* not __gthr_solaris_h */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

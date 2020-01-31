@@ -1,0 +1,246 @@
+head	1.2;
+access;
+symbols
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.08.16.15.20.12;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.42.05;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.05;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Merge OpenBSD
+@
+text
+@#!/bin/sh
+
+check=0
+pipe=0
+opt=
+files=
+keep=0
+res=0
+old=0
+new=0
+block=1024
+# block is the disk block size (best guess, need not be exact)
+
+case "$GZIP" in
+  *-S*) ext=`echo "$GZIP" | sed 's/^.*-S[[:space:]]*\([^[:space:]]*\).*$/\1/'`
+	;;
+  *-suffix=*) ext=`echo "$GZIP" | sed 's/^.*--suffix=\([^[:space:]]*\).*$/\1/'`
+	;;
+  *-suffix*) ext=`echo "$GZIP" | sed 's/^.*--suffix[[:space:]][[:space:]]*\([^[:space:]]*\).*$/\1/'`
+	;;
+  *)	ext='.gz'
+	;;
+esac
+if test "$ext" = ".Z"; then
+  echo znew: cannot use .Z as gzip extension.
+  exit 1
+fi
+
+warn="(does not preserve modes and timestamp)"
+TMP1=`mktemp /tmp/zfoo.XXXXXXXXXX` || exit 1
+TMP2=`mktemp /tmp/zbar.XXXXXXXXXX`
+if [ $? -ne 0 ]; then
+  rm -f $TMP1
+  exit 1
+fi
+echo hi > $TMP1
+echo hi > $TMP2
+if test -z "`(${CPMOD-cpmod} $TMP1 $TMP2) 2>&1`"; then
+  cpmod=${CPMOD-cpmod}
+  warn=""
+fi
+
+if test -z "$cpmod" && ${TOUCH-touch} -r $TMP1 $TMP2 2>/dev/null; then
+  cpmod="${TOUCH-touch}"
+  cpmodarg="-r"
+  warn="(does not preserve file modes)"
+fi
+rm -f $TMP1 $TMP2
+
+for arg
+do
+  case "$arg" in
+  -*)     opt="$opt $arg"; shift;;
+   *)     break;;
+  esac
+done
+
+if test $# -eq 0; then
+  echo "recompress .Z files into $ext (gzip) files"
+  echo usage: `echo $0 | sed 's,^.*/,,'` "[-tv9KP]" file.Z...
+  echo "  -t tests the new files before deleting originals"
+  echo "  -v be verbose"
+  echo "  -9 use the slowest compression method (optimal compression)"
+  echo "  -K keep a .Z file when it is smaller than the $ext file"
+  echo "  -P use pipes for the conversion $warn"
+  exit 1
+fi
+
+opt=`echo "$opt" | sed -e 's/ //g' -e 's/-//g'`
+case "$opt" in
+  *t*) check=1; opt=`echo "$opt" | sed 's/t//g'`
+esac
+case "$opt" in
+  *K*) keep=1; opt=`echo "$opt" | sed 's/K//g'`
+esac
+case "$opt" in
+  *P*) pipe=1; opt=`echo "$opt" | sed 's/P//g'`
+esac
+if test -n "$opt"; then
+  opt="-$opt"
+fi
+
+for i do
+  n=`echo $i | sed 's/.Z$//'`
+  if test ! -f "$n.Z" ; then
+    echo $n.Z not found
+    res=1; continue
+  fi
+  test $keep -eq 1 && old=`wc -c < "$n.Z"`
+  if test $pipe -eq 1; then
+    if gzip -d < "$n.Z" | gzip $opt > "$n$ext"; then
+      # Copy file attributes from old file to new one, if possible.
+      test -n "$cpmod" && $cpmod $cpmodarg "$n.Z" "$n$ext" 2> /dev/null
+    else
+      echo error while recompressing $n.Z
+      res=1; continue
+    fi
+  else
+    if test $check -eq 1; then
+      if cp -p "$n.Z" "$n.$$" 2> /dev/null || cp "$n.Z" "$n.$$"; then
+	:
+      else
+	echo cannot backup "$n.Z"
+        res=1; continue
+      fi
+    fi
+    if gzip -d "$n.Z"; then
+      :
+    else
+      test $check -eq 1 && mv "$n.$$" "$n.Z"
+      echo error while uncompressing $n.Z
+      res=1; continue
+    fi
+    if gzip $opt "$n"; then
+      :
+    else
+      if test $check -eq 1; then
+	mv "$n.$$" "$n.Z" && rm -f "$n"
+        echo error while recompressing $n
+      else
+	# compress $n  (might be dangerous if disk full)
+        echo error while recompressing $n, left uncompressed
+      fi
+      res=1; continue
+    fi
+  fi
+  test $keep -eq 1 && new=`wc -c < "$n$ext"`
+  if test $keep -eq 1 -a `expr \( $old + $block - 1 \) / $block` -lt \
+                         `expr \( $new + $block - 1 \) / $block`; then
+    if test $pipe -eq 1; then
+      rm -f "$n$ext"
+    elif test $check -eq 1; then
+      mv "$n.$$" "$n.Z" && rm -f "$n$ext"
+    else
+      gzip -d "$n$ext" && compress "$n" && rm -f "$n$ext"
+    fi
+    echo "$n.Z smaller than $n$ext -- unchanged"
+
+  elif test $check -eq 1; then
+    if gzip -t "$n$ext" ; then
+      rm -f "$n.$$" "$n.Z"
+    else
+      test $pipe -eq 0 && mv "$n.$$" "$n.Z"
+      rm -f "$n$ext"
+      echo error while testing $n$ext, $n.Z unchanged
+      res=1; continue
+    fi
+  elif test $pipe -eq 1; then
+    rm -f "$n.Z"
+  fi
+done
+exit $res
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,450 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.36;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.36;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.53.24;	author tg;	state Stab;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.10.23.18.37.13;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl -w
+BEGIN { @@INC = qw(lib) }
+use strict;
+use Config;
+use Getopt::Long;
+use File::Find;
+use File::Copy;
+use File::Path qw(mkpath);
+use ExtUtils::Packlist;
+use Pod::Man;
+use subs qw(unlink chmod rename link);
+use vars qw($packlist);
+
+if ($Config{d_umask}) {
+    umask(022); # umasks like 077 aren't that useful for installations
+}
+
+$ENV{SHELL} = 'sh' if $^O eq 'os2';
+
+my $ver = $Config{version};     # Not used presently.
+my $release = substr($],0,3);   # Not used presently.
+my $patchlevel = substr($],3,2);
+die "Patchlevel of perl ($patchlevel)",
+    "and patchlevel of config.sh ($Config{'PERL_VERSION'}) don't match\n"
+	if $patchlevel != $Config{'PERL_VERSION'};
+
+my $usage =
+"Usage:  installman --man1dir=/usr/wherever --man1ext=1
+                   --man3dir=/usr/wherever --man3ext=3
+		   --batchlimit=40
+	           --notify --verbose --silent --help
+	Defaults are:
+	man1dir = $Config{'installman1dir'};
+	man1ext = $Config{'man1ext'};
+	man3dir = $Config{'installman3dir'};
+	man3ext = $Config{'man3ext'};
+	--notify  (or -n) just lists commands that would be executed.
+        --verbose (or -V) report all progress.
+        --silent  (or -S) be silent. Only report errors.\n";
+
+my %opts;
+GetOptions( \%opts,
+            qw( man1dir=s man1ext=s man3dir=s man3ext=s batchlimit=i
+                notify n help silent S verbose V)) 
+	|| die $usage;
+die $usage if $opts{help};
+
+$opts{man1dir} = $Config{'installman1dir'}
+    unless defined($opts{man1dir}); 
+$opts{man1ext} = $Config{'man1ext'}
+    unless defined($opts{man1ext}); 
+$opts{man3dir} = $Config{'installman3dir'}
+    unless defined($opts{man3dir}); 
+$opts{man3ext} = $Config{'man3ext'}
+    unless defined($opts{man3ext}); 
+$opts{silent} ||= $opts{S};
+$opts{notify} ||= $opts{n};
+$opts{verbose} ||= $opts{V} || $opts{notify};
+
+#Sanity checks
+
+-x  "./perl$Config{exe_ext}" 
+  or warn "./perl$Config{exe_ext} not found!  Have you run make?\n";
+-d  $Config{'installprivlib'}
+	|| warn "Perl library directory $Config{'installprivlib'} not found.
+		Have you run make install?.  (Installing anyway.)\n";
+-x "t/perl$Config{exe_ext}"		|| warn "WARNING: You've never run 'make test'!!!",
+	"  (Installing anyway.)\n";
+
+$packlist = ExtUtils::Packlist->new("$Config{installarchlib}/.packlist");
+
+
+# Install the main pod pages.
+pod2man('pod', $opts{man1dir}, $opts{man1ext});
+
+# Install the pods for library modules.
+pod2man('lib', $opts{man3dir}, $opts{man3ext});
+
+# Install the pods embedded in the installed scripts
+my $has_man1dir = $opts{man1dir} ne '' && -d $opts{man1dir};
+open UTILS, "utils.lst" or die "Can't open 'utils.lst': $!";
+while (<UTILS>) {
+    next if /^#/;
+    chomp;
+    $_ = $1 if /#.*pod\s*=\s*(\S+)/;
+    my ($where, $what) = m|^(\S*)/(\S+)|;
+    pod2man($where, $opts{man1dir}, $opts{man1ext}, $what);
+    if ($has_man1dir) {
+	if (my ($where2, $what2) = m|#.*link\s*=\s*(\S+)/(\S+)|) {
+	    my $old = "$opts{man1dir}/$what.$opts{man1ext}";
+	    my $new = "$opts{man1dir}/$what2.$opts{man1ext}";
+	    unlink($new);
+	    link($old, $new);
+	}
+    }
+}
+
+sub pod2man {
+    # @@script is scripts names if we are installing manpages embedded 
+    # in scripts, () otherwise
+    my($poddir, $mandir, $manext, @@script) = @@_;
+    if ($mandir eq ' ' or $mandir eq '') {
+	if (@@script) {
+	    warn "Skipping installation of $poddir/$_ man page.\n"
+		foreach @@script;
+	} else {
+	    warn "Skipping installation of $poddir man pages.\n";
+	}
+	return;
+    }
+
+    print "installing from $poddir\n" if $opts{verbose};
+
+    mkpath($mandir, $opts{verbose}, 0777) unless $opts{notify};  # In File::Path
+    # Make a list of all the .pm and .pod files in the directory.  We avoid
+    # chdir because we are running with @@INC = '../lib', and modules may wish
+    # to dynamically require Carp::Heavy or other diagnostics warnings.
+    # Hash the names of files we find, keys are names relative to perl build
+    # dir ('.'), values are names relative to $poddir.
+    my %modpods;
+    if (@@script) {
+	%modpods = (map {+"$poddir/$_", $_} @@script);
+    }
+    else {
+	File::Find::find({no_chdir=>1,
+                          wanted => sub {
+                              # $_ is $File::Find::name when using no_chdir
+                              if (-f $_ and /\.p(?:m|od)$/) {
+                                  my $fullname = $_;
+                                  s!^\Q$poddir\E/!!;
+                                  $modpods{$fullname} = $_;
+                              }
+                          }},
+                         $poddir);
+    }
+    my @@to_process;
+    foreach my $mod (sort keys %modpods) {
+        my $manpage = $modpods{$mod};
+	my $tmp;
+	# Skip .pm files that have corresponding .pod files, and Functions.pm.
+	next if (($tmp = $mod) =~ s/\.pm$/.pod/ && -f $tmp);
+	next if $mod =~ m:/t/:; # no pods from test directories 
+	next if ($manpage eq 'Pod/Functions.pm'); #### Used only by pod itself
+
+	# Convert name from  File/Basename.pm to File::Basename.3 format,
+	# if necessary.
+	$manpage =~ s#\.p(m|od)$##;
+	if ($^O eq 'os2' || $^O eq 'amigaos' || $^O eq 'uwin' || $^O eq 'cygwin') {
+	  $manpage =~ s#/#.#g;
+	}
+	else {
+	  $manpage =~ s#/#::#g;
+	}
+	$tmp = "${mandir}/${manpage}.tmp";
+	$manpage = "${mandir}/${manpage}.${manext}";
+	push @@to_process, [$mod, $tmp, $manpage];
+    }
+
+    my $parser = Pod::Man->new( section => $manext,
+                                official=> 1,
+                                center  => 'Perl Programmers Reference Guide'
+                              );
+    foreach my $page (@@to_process) {
+	my($pod, $tmp, $manpage) = @@$page;
+
+        print "  $manpage\n";
+	if (!$opts{notify} && $parser->parse_from_file($pod, $tmp)) {
+            if (-s $tmp) {
+                if (rename($tmp, $manpage)) {
+                    $packlist->{$manpage} = { type => 'file' };
+                    next;
+                }
+            }
+            unlink($tmp);
+	}
+    }
+}
+
+$packlist->write() unless $opts{notify};
+print "  Installation complete\n" if $opts{verbose};
+
+exit 0;
+    
+
+###############################################################################
+# Utility subroutines from installperl
+
+sub unlink {
+    my(@@names) = @@_;
+    my $cnt = 0;
+
+    foreach my $name (@@names) {
+	next unless -e $name;
+	chmod 0777, $name if $^O eq 'os2';
+	print "  unlink $name\n" if $opts{verbose};
+	( CORE::unlink($name) and ++$cnt 
+	    or warn "Couldn't unlink $name: $!\n" ) unless $opts{notify};
+    }
+    return $cnt;
+}
+
+sub link {
+    my($from,$to) = @@_;
+    my($success) = 0;
+
+    print "  ln $from $to\n" if $opts{verbose};
+    eval {
+        CORE::link($from, $to)
+            ? $success++
+            : ($from =~ m#^/afs/# || $to =~ m#^/afs/#)
+              ? die "AFS"  # okay inside eval {}
+              : warn "Couldn't link $from to $to: $!\n"
+          unless $opts{notify};
+    };
+    if ($@@) {
+        File::Copy::copy($from, $to)
+            ? $success++
+            : warn "Couldn't copy $from to $to: $!\n"
+          unless $opts{notify};
+    }
+    $success;
+}
+
+sub rename {
+    my($from,$to) = @@_;
+    if (-f $to and not unlink($to)) {
+	my($i);
+	for ($i = 1; $i < 50; $i++) {
+	    last if CORE::rename($to, "$to.$i");
+	}
+	warn("Cannot rename to `$to.$i': $!"), return 0 
+	    if $i >= 50;	# Give up!
+    }
+    link($from,$to) || return 0;
+    unlink($from);
+}
+
+sub chmod {
+    my($mode,$name) = @@_;
+
+    printf "  chmod %o %s\n", $mode, $name if $opts{verbose};
+    CORE::chmod($mode,$name) || warn sprintf("Couldn't chmod %o %s: $!\n",$mode,$name)
+	unless $opts{notify};
+}
+
+sub samepath {
+    my($p1, $p2) = @@_;
+    my($dev1, $ino1, $dev2, $ino2);
+
+    if ($p1 ne $p2) {
+	($dev1, $ino1) = stat($p1);
+	($dev2, $ino2) = stat($p2);
+	($dev1 == $dev2 && $ino1 == $ino2);
+    }
+    else {
+	1;
+    }
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d44 1
+a44 1
+                destdir:s notify n help silent S verbose V)) 
+d48 1
+a48 1
+$opts{man1dir} = "$opts{destdir}$Config{'installman1dir'}"
+d52 1
+a52 1
+$opts{man3dir} = "$opts{destdir}$Config{'installman3dir'}"
+d64 1
+a64 1
+-d  "$opts{destdir}$Config{'installprivlib'}"
+d70 1
+a70 1
+$packlist = ExtUtils::Packlist->new("$opts{destdir}$Config{installarchlib}/.packlist");
+a144 19
+	# Skip files without pod docs
+	my $has_pod;
+	if (open T, $mod)
+	{
+	    local $_;
+	    while (<T>)
+	    {
+		++$has_pod and last if /^=(?:head\d+|item|pod)\b/;
+	    }
+
+	    close T;
+	}
+
+	unless ($has_pod)
+	{
+	    warn "no documentation in $mod\n";
+	    next;
+	}
+
+d166 1
+a166 3
+	my $xmanpage = $manpage;
+	$xmanpage =~ s/^\Q$opts{'destdir'}\E// if $opts{'destdir'};
+        print "  $xmanpage\n";
+d170 1
+a170 1
+                    $packlist->{$xmanpage} = { type => 'file' };
+@
+
+
+1.1.1.3
+log
+@5.8.5
+@
+text
+@a93 5
+	    my $xold = $old;
+	    $xold =~ s/^\Q$opts{'destdir'}\E// if $opts{'destdir'};
+	    my $xnew = $new;
+	    $xnew =~ s/^\Q$opts{'destdir'}\E// if $opts{'destdir'};
+	    $packlist->{$xnew} = { from => $xold, type => 'link' };
+@
+
+

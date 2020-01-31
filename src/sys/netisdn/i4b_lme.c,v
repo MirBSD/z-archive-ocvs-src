@@ -1,0 +1,276 @@
+head	1.3;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.3
+	tg-mergefixes-1-branch:1.3.0.14
+	tg-mergefixes-1-base:1.3
+	MIROS_X:1.3.0.12
+	MIROS_X_BASE:1.3
+	MIRBSD_XP_MIRPPC:1.3.0.10
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.8
+	MIRBSD_7quater:1.3
+	MIRBSD_7_ALPHA:1.3.0.6
+	MIRBSD_7:1.3.0.4
+	MIRBSD_7ter:1.3
+	MIRBSD_7_DEV:1.3.0.2
+	MIRBSD_5:1.2
+	MIRBSD_4:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2003.10.03.17.24.16;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2003.05.14.19.55.17;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.04.06.04.37.48;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@kernel-side support for ISDN BRI/PRI rate-independent interface
+makes us support, in addition to BRI (basic rate interface,
+ 2x64 kbps B channels, 1x16 kbps D channel, BASIC ACCESS), PRI cards
+(primary rate interface, 30x64 kbps B channels, 1x64 kbps D channel,
+ 1x64 kbps SYNC channel -> 2048 kbps E1 line; PRIMARY MULTIPLEX;
+ as well as its US/japanese equivalent).
+
+This is the theory. This is live code from NetBSD.
+@
+text
+@/*
+ * Copyright (c) 1997, 2000 Hellmuth Michaelis. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *---------------------------------------------------------------------------
+ *
+ *	i4b_lme.c - layer management entity
+ *	-------------------------------------
+ *
+ *	$Id: i4b_lme.c,v 1.2 2003/05/14 19:55:17 tg Exp $ 
+ *
+ * $FreeBSD$
+ *
+ *      last edit-date: [Fri Jan  5 11:33:47 2001]
+ *
+ *---------------------------------------------------------------------------*/
+
+#include <sys/cdefs.h>
+__KERNEL_RCSID(0, "$NetBSD: i4b_lme.c,v 1.5 2002/05/21 10:31:11 martin Exp $");
+
+#ifdef __FreeBSD__
+#include "i4bq921.h"
+#else
+#define	NI4BQ921	1
+#endif
+#if NI4BQ921 > 0
+
+#include <sys/param.h>
+#include <sys/kernel.h>
+#include <sys/systm.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+#include <net/if.h>
+
+#include <sys/timeout.h>
+
+#ifdef __FreeBSD__
+#include <machine/i4b_debug.h>
+#include <machine/i4b_ioctl.h>
+#else
+#include <netisdn/i4b_debug.h>
+#include <netisdn/i4b_ioctl.h>
+#endif
+
+#include <netisdn/i4b_l2.h>
+#include <netisdn/i4b_l1l2.h>
+#include <netisdn/i4b_isdnq931.h>
+#include <netisdn/i4b_mbuf.h>
+#include <netisdn/i4b_l2fsm.h>
+#include <netisdn/i4b_l3l4.h>
+
+/*---------------------------------------------------------------------------*
+ *	mdl assign indication handler
+ *---------------------------------------------------------------------------*/
+void
+i4b_mdl_assign_ind(l2_softc_t *l2sc)
+{
+	NDBGL2(L2_PRIM, "isdnif %d", l2sc->drv->isdnif);
+	
+	i4b_l1_activate(l2sc);
+	
+	if(l2sc->tei_valid == TEI_VALID)
+	{
+		l2sc->T202func = (void(*)(void*))i4b_tei_verify;
+		l2sc->N202 = N202DEF;
+		i4b_tei_verify(l2sc);
+	}
+	else
+	{
+		l2sc->T202func = (void(*)(void*))i4b_tei_assign;
+		l2sc->N202 = N202DEF;
+		i4b_tei_assign(l2sc);
+	}		
+}
+
+/*---------------------------------------------------------------------------*
+ *	i4b_mdl_error_ind handler (Q.921 01/94 pp 156)
+ *---------------------------------------------------------------------------*/
+void
+i4b_mdl_error_ind(l2_softc_t *l2sc, char *where, int errorcode)
+{
+#if DO_I4B_DEBUG
+	static char *error_text[] = {
+		"MDL_ERR_A: rx'd unsolicited response - supervisory (F=1)",
+		"MDL_ERR_B: rx'd unsolicited response - DM (F=1)",
+		"MDL_ERR_C: rx'd unsolicited response - UA (F=1)",
+		"MDL_ERR_D: rx'd unsolicited response - UA (F=0)",
+		"MDL_ERR_E: rx'd unsolicited response - DM (F=0)",
+		"MDL_ERR_F: peer initiated re-establishment - SABME",
+		"MDL_ERR_G: unsuccessful transmission N200times - SABME",
+		"MDL_ERR_H: unsuccessful transmission N200times - DIS",
+		"MDL_ERR_I: unsuccessful transmission N200times - Status ENQ",
+		"MDL_ERR_J: other error - N(R) error",
+		"MDL_ERR_K: other error - rx'd FRMR response",
+		"MDL_ERR_L: other error - rx'd undefined frame",
+		"MDL_ERR_M: other error - receipt of I field not permitted",
+		"MDL_ERR_N: other error - rx'd frame with wrong size",
+		"MDL_ERR_O: other error - N201 error",
+		"MDL_ERR_MAX: i4b_mdl_error_ind called with wrong parameter!!!"
+	};
+#endif
+
+	if(errorcode > MDL_ERR_MAX)
+		errorcode = MDL_ERR_MAX;
+		
+	NDBGL2(L2_ERROR, "isdnif = %d, location = %s",
+	    l2sc->drv->isdnif, where);
+	NDBGL2(L2_ERROR, "error = %s", error_text[errorcode]);
+
+	switch(errorcode)
+	{	
+		case MDL_ERR_A:
+		case MDL_ERR_B:
+			break;
+
+		case MDL_ERR_C:
+		case MDL_ERR_D:
+			i4b_tei_verify(l2sc);
+			break;
+
+		case MDL_ERR_E:
+		case MDL_ERR_F:
+			break;
+
+		case MDL_ERR_G:
+		case MDL_ERR_H:
+			i4b_tei_verify(l2sc);
+			break;
+
+		case MDL_ERR_I:
+		case MDL_ERR_J:
+		case MDL_ERR_K:
+		case MDL_ERR_L:
+		case MDL_ERR_M:
+		case MDL_ERR_N:
+		case MDL_ERR_O:
+			break;
+
+		default:
+			break;
+	}
+}
+ 
+#endif /* NI4BQ921 > 0 */
+@
+
+
+1.2
+log
+@kill the NetBSD callout timeout-API, which was cloned
+from ours and introduced for I4B only anyways.
+
+feature: callout_init() translates to a NOP, because
+it just zeroed out the structure. This even saves us
+a couple of bytes and cycles.
+@
+text
+@d30 1
+a30 1
+ *	$Id: i4b_lme.c,v 1.1 2003/04/06 04:37:48 tg Exp $ 
+d78 1
+a78 1
+	NDBGL2(L2_PRIM, "bri %d", l2sc->drv->bri);
+d126 2
+a127 1
+	NDBGL2(L2_ERROR, "bri = %d, location = %s", l2sc->drv->bri, where);
+@
+
+
+1.1
+log
+@Pull in ISDN support from NetBSD, push out the old
+one with the "I require you to send me a postcard"
+licence.
+
+This enables building a kernel with ISDN support
+(it's just slower and like 200 KiB bigger), but
+disables isdnd from userland and needs different
+manpages and other fixes from NetBSD.
+
+Also added:
+ - support for the callout API from NetBSD, which
+   is in fact our stolen new-style timeout API,
+   just with a bit more overhead and different names
+   for the structure
+ - some includes sync with NBSD
+ - a shitload of kludges to make ISDN build
+
+This needs security, style and bloat audits fast.
+And testing.
+@
+text
+@d30 1
+a30 1
+ *	$Id: i4b_lme.c,v 1.5 2002/05/21 10:31:11 martin Exp $ 
+d55 1
+a55 3
+#if defined(__NetBSD__) && __NetBSD_Version__ >= 104230000
+#include <sys/callout.h>
+#endif
+@
+

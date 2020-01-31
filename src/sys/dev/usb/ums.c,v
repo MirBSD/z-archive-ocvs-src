@@ -1,0 +1,495 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	cvs-200305131745:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.51.42;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.51.42;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.21.19.10.09;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: ums.c,v 1.12 2002/11/11 02:32:32 nate Exp $ */
+/*	$NetBSD: ums.c,v 1.59 2002/09/23 05:59:01 simonb Exp $	*/
+
+/*
+ * Copyright (c) 1998 The NetBSD Foundation, Inc.
+ * All rights reserved.
+ *
+ * This code is derived from software contributed to The NetBSD Foundation
+ * by Lennart Augustsson (lennart@@augustsson.net) at
+ * Carlstedt Research & Technology.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *        This product includes software developed by the NetBSD
+ *        Foundation, Inc. and its contributors.
+ * 4. Neither the name of The NetBSD Foundation nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * HID spec: http://www.usb.org/developers/data/devclass/hid1_1.pdf
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/malloc.h>
+#include <sys/device.h>
+#include <sys/ioctl.h>
+#include <sys/tty.h>
+#include <sys/file.h>
+#include <sys/select.h>
+#include <sys/proc.h>
+#include <sys/vnode.h>
+#include <sys/poll.h>
+
+#include <dev/usb/usb.h>
+#include <dev/usb/usbhid.h>
+
+#include <dev/usb/usbdi.h>
+#include <dev/usb/usbdi_util.h>
+#include <dev/usb/usbdevs.h>
+#include <dev/usb/usb_quirks.h>
+#include <dev/usb/uhidev.h>
+#include <dev/usb/hid.h>
+
+#include <dev/wscons/wsconsio.h>
+#include <dev/wscons/wsmousevar.h>
+
+#ifdef USB_DEBUG
+#define DPRINTF(x)	if (umsdebug) logprintf x
+#define DPRINTFN(n,x)	if (umsdebug>(n)) logprintf x
+int	umsdebug = 0;
+#else
+#define DPRINTF(x)
+#define DPRINTFN(n,x)
+#endif
+
+#define UMS_BUT(i) ((i) == 1 || (i) == 2 ? 3 - (i) : i)
+
+#define UMSUNIT(s)	(minor(s))
+
+#define PS2LBUTMASK	x01
+#define PS2RBUTMASK	x02
+#define PS2MBUTMASK	x04
+#define PS2BUTMASK 0x0f
+
+#define MAX_BUTTONS	7	/* must not exceed size of sc_buttons */
+
+struct ums_softc {
+	struct uhidev sc_hdev;
+
+	struct hid_location sc_loc_x, sc_loc_y, sc_loc_z;
+	struct hid_location sc_loc_btn[MAX_BUTTONS];
+
+	int sc_enabled;
+
+	int flags;		/* device configuration */
+#define UMS_Z		0x01	/* z direction available */
+#define UMS_SPUR_BUT_UP	0x02	/* spurious button up events */
+#define UMS_REVZ	0x04	/* Z-axis is reversed */
+
+	int nbuttons;
+
+	u_int32_t sc_buttons;	/* mouse button status */
+	struct device *sc_wsmousedev;
+
+	char			sc_dying;
+};
+
+#define MOUSE_FLAGS_MASK (HIO_CONST|HIO_RELATIVE)
+#define MOUSE_FLAGS (HIO_RELATIVE)
+
+Static void ums_intr(struct uhidev *addr, void *ibuf, u_int len);
+
+Static int	ums_enable(void *);
+Static void	ums_disable(void *);
+Static int	ums_ioctl(void *, u_long, caddr_t, int, usb_proc_ptr);
+
+const struct wsmouse_accessops ums_accessops = {
+	ums_enable,
+	ums_ioctl,
+	ums_disable,
+};
+
+USB_DECLARE_DRIVER(ums);
+
+USB_MATCH(ums)
+{
+	USB_MATCH_START(ums, uaa);
+	struct uhidev_attach_arg *uha = (struct uhidev_attach_arg *)uaa;
+	int size;
+	void *desc;
+
+	uhidev_get_report_desc(uha->parent, &desc, &size);
+	if (!hid_is_collection(desc, size, uha->reportid,
+			       HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_MOUSE)))
+		return (UMATCH_NONE);
+
+	return (UMATCH_IFACECLASS);
+}
+
+USB_ATTACH(ums)
+{
+	USB_ATTACH_START(ums, sc, uaa);
+	struct uhidev_attach_arg *uha = (struct uhidev_attach_arg *)uaa;
+	struct wsmousedev_attach_args a;
+	int size;
+	void *desc;
+	u_int32_t flags, quirks;
+	int i, wheel;
+	struct hid_location loc_btn;
+
+	sc->sc_hdev.sc_intr = ums_intr;
+	sc->sc_hdev.sc_parent = uha->parent;
+	sc->sc_hdev.sc_report_id = uha->reportid;
+
+	quirks = usbd_get_quirks(uha->parent->sc_udev)->uq_flags;
+	if (quirks & UQ_MS_REVZ)
+		sc->flags |= UMS_REVZ;
+	if (quirks & UQ_SPUR_BUT_UP)
+		sc->flags |= UMS_SPUR_BUT_UP;
+
+	uhidev_get_report_desc(uha->parent, &desc, &size);
+
+	if (!hid_locate(desc, size, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
+	       uha->reportid, hid_input, &sc->sc_loc_x, &flags)) {
+		printf("\n%s: mouse has no X report\n",
+		       USBDEVNAME(sc->sc_hdev.sc_dev));
+		USB_ATTACH_ERROR_RETURN;
+	}
+	if ((flags & MOUSE_FLAGS_MASK) != MOUSE_FLAGS) {
+		printf("\n%s: X report 0x%04x not supported\n",
+		       USBDEVNAME(sc->sc_hdev.sc_dev), flags);
+		USB_ATTACH_ERROR_RETURN;
+	}
+
+	if (!hid_locate(desc, size, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
+	       uha->reportid, hid_input, &sc->sc_loc_y, &flags)) {
+		printf("\n%s: mouse has no Y report\n",
+		       USBDEVNAME(sc->sc_hdev.sc_dev));
+		USB_ATTACH_ERROR_RETURN;
+	}
+	if ((flags & MOUSE_FLAGS_MASK) != MOUSE_FLAGS) {
+		printf("\n%s: Y report 0x%04x not supported\n",
+		       USBDEVNAME(sc->sc_hdev.sc_dev), flags);
+		USB_ATTACH_ERROR_RETURN;
+	}
+
+	/* Try to guess the Z activator: first check Z, then WHEEL. */
+	wheel = 0;
+	if (hid_locate(desc, size, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Z),
+	       uha->reportid, hid_input, &sc->sc_loc_z, &flags) ||
+	    (wheel = hid_locate(desc, size, HID_USAGE2(HUP_GENERIC_DESKTOP,
+						       HUG_WHEEL),
+	       uha->reportid, hid_input, &sc->sc_loc_z, &flags))) {
+		if ((flags & MOUSE_FLAGS_MASK) != MOUSE_FLAGS) {
+			sc->sc_loc_z.size = 0;	/* Bad Z coord, ignore it */
+		} else {
+			sc->flags |= UMS_Z;
+			/* Wheels need the Z axis reversed. */
+			if (wheel)
+				sc->flags ^= UMS_REVZ;
+		}
+	}
+
+	/* figure out the number of buttons */
+	for (i = 1; i <= MAX_BUTTONS; i++)
+		if (!hid_locate(desc, size, HID_USAGE2(HUP_BUTTON, i),
+			uha->reportid, hid_input, &loc_btn, 0))
+			break;
+	sc->nbuttons = i - 1;
+
+	printf(": %d button%s%s\n",
+	    sc->nbuttons, sc->nbuttons == 1 ? "" : "s",
+	    sc->flags & UMS_Z ? " and Z dir." : "");
+
+	for (i = 1; i <= sc->nbuttons; i++)
+		hid_locate(desc, size, HID_USAGE2(HUP_BUTTON, i),
+			   uha->reportid, hid_input,
+			   &sc->sc_loc_btn[i-1], 0);
+
+#ifdef USB_DEBUG
+	DPRINTF(("ums_attach: sc=%p\n", sc));
+	DPRINTF(("ums_attach: X\t%d/%d\n",
+		 sc->sc_loc_x.pos, sc->sc_loc_x.size));
+	DPRINTF(("ums_attach: Y\t%d/%d\n",
+		 sc->sc_loc_y.pos, sc->sc_loc_y.size));
+	if (sc->flags & UMS_Z)
+		DPRINTF(("ums_attach: Z\t%d/%d\n",
+			 sc->sc_loc_z.pos, sc->sc_loc_z.size));
+	for (i = 1; i <= sc->nbuttons; i++) {
+		DPRINTF(("ums_attach: B%d\t%d/%d\n",
+			 i, sc->sc_loc_btn[i-1].pos,sc->sc_loc_btn[i-1].size));
+	}
+#endif
+
+	a.accessops = &ums_accessops;
+	a.accesscookie = sc;
+
+	sc->sc_wsmousedev = config_found(self, &a, wsmousedevprint);
+
+	USB_ATTACH_SUCCESS_RETURN;
+}
+
+int
+ums_activate(device_ptr_t self, enum devact act)
+{
+	struct ums_softc *sc = (struct ums_softc *)self;
+	int rv = 0;
+
+	switch (act) {
+	case DVACT_ACTIVATE:
+		return (EOPNOTSUPP);
+
+	case DVACT_DEACTIVATE:
+		if (sc->sc_wsmousedev != NULL)
+			rv = config_deactivate(sc->sc_wsmousedev);
+		sc->sc_dying = 1;
+		break;
+	}
+	return (rv);
+}
+
+USB_DETACH(ums)
+{
+	USB_DETACH_START(ums, sc);
+	int rv = 0;
+
+	DPRINTF(("ums_detach: sc=%p flags=%d\n", sc, flags));
+
+	/* No need to do reference counting of ums, wsmouse has all the goo. */
+	if (sc->sc_wsmousedev != NULL)
+		rv = config_detach(sc->sc_wsmousedev, flags);
+
+	return (rv);
+}
+
+void
+ums_intr(struct uhidev *addr, void *ibuf, u_int len)
+{
+	struct ums_softc *sc = (struct ums_softc *)addr;
+	int dx, dy, dz;
+	u_int32_t buttons = 0;
+	int i;
+	int s;
+
+	DPRINTFN(5,("ums_intr: len=%d\n", len));
+
+	dx =  hid_get_data(ibuf, &sc->sc_loc_x);
+	dy = -hid_get_data(ibuf, &sc->sc_loc_y);
+	dz =  hid_get_data(ibuf, &sc->sc_loc_z);
+	if (sc->flags & UMS_REVZ)
+		dz = -dz;
+	for (i = 0; i < sc->nbuttons; i++)
+		if (hid_get_data(ibuf, &sc->sc_loc_btn[i]))
+			buttons |= (1 << UMS_BUT(i));
+
+	if (dx != 0 || dy != 0 || dz != 0 || buttons != sc->sc_buttons) {
+		DPRINTFN(10, ("ums_intr: x:%d y:%d z:%d buttons:0x%x\n",
+			dx, dy, dz, buttons));
+		sc->sc_buttons = buttons;
+		if (sc->sc_wsmousedev != NULL) {
+			s = spltty();
+			wsmouse_input(sc->sc_wsmousedev, buttons, dx, dy, dz,
+				      WSMOUSE_INPUT_DELTA);
+			splx(s);
+		}
+	}
+}
+
+Static int
+ums_enable(void *v)
+{
+	struct ums_softc *sc = v;
+
+	DPRINTFN(1,("ums_enable: sc=%p\n", sc));
+
+	if (sc->sc_dying)
+		return (EIO);
+
+	if (sc->sc_enabled)
+		return (EBUSY);
+
+	sc->sc_enabled = 1;
+	sc->sc_buttons = 0;
+
+	return (uhidev_open(&sc->sc_hdev));
+}
+
+Static void
+ums_disable(void *v)
+{
+	struct ums_softc *sc = v;
+
+	DPRINTFN(1,("ums_disable: sc=%p\n", sc));
+#ifdef DIAGNOSTIC
+	if (!sc->sc_enabled) {
+		printf("ums_disable: not enabled\n");
+		return;
+	}
+#endif
+
+	sc->sc_enabled = 0;
+	uhidev_close(&sc->sc_hdev);
+}
+
+Static int
+ums_ioctl(void *v, u_long cmd, caddr_t data, int flag, usb_proc_ptr p)
+
+{
+	switch (cmd) {
+	case WSMOUSEIO_GTYPE:
+		*(u_int *)data = WSMOUSE_TYPE_USB;
+		return (0);
+	}
+
+	return (-1);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync MirBSD main source tree against OpenBSD-current,
+which should be fairly stable after the Hackathon now.
+@
+text
+@d1 2
+a2 2
+/*	$OpenBSD: ums.c,v 1.13 2003/05/19 00:37:19 nate Exp $ */
+/*	$NetBSD: ums.c,v 1.60 2003/03/11 16:44:00 augustss Exp $	*/
+d42 1
+a42 1
+ * HID spec: http://www.usb.org/developers/devclass_docs/HID1_11.pdf
+@
+

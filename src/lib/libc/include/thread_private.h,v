@@ -1,0 +1,375 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406230735:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200402042200:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.46.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.18;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.23.07.41.05;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/* $OpenBSD: thread_private.h,v 1.15 2003/01/28 04:58:00 marc Exp $ */
+
+#ifndef _THREAD_PRIVATE_H_
+#define _THREAD_PRIVATE_H_
+
+#include <pthread.h>
+
+/*
+ * This variable is initially 0 when there is exactly one thread.
+ * It should never decrease.
+ */
+extern int __isthreaded;
+
+/*
+ * Weak symbols are used in libc so that the thread library can
+ * efficiently wrap libc functions.
+ * 
+ * Use WEAK_NAME(n) to get a libc-private name for n (_weak_n),
+ *     WEAK_ALIAS(n) to generate the weak symbol n pointing to _weak_n,
+ *     WEAK_PROTOTYPE(n) to generate a prototype for _weak_n (based on n).
+ */
+#define WEAK_NAME(name)			__CONCAT(_weak_,name)
+#define WEAK_ALIAS(name)		__weak_alias(name, WEAK_NAME(name))
+#ifdef __GNUC__
+#define WEAK_PROTOTYPE(name)		__typeof__(name) WEAK_NAME(name)
+#else
+#define WEAK_PROTOTYPE(name)		/* typeof() only in gcc */
+#endif
+
+/*
+ * These macros help in making persistent storage thread-specific.
+ * Libc makes extensive use of private static data structures
+ * that hold state across function invocation, and these macros
+ * are no-ops when running single-threaded.
+ *
+ * Linking against the user-thread library causes these macros to
+ * allocate storage on a per-thread basis.
+ */
+	
+#define __THREAD_MUTEX_NAME(name)	__CONCAT(_libc_storage_mutex_,name)
+#define __THREAD_KEY_NAME(name)		__CONCAT(_libc_storage_key_,name)
+
+struct _thread_private_key_struct {
+	pthread_once_t		once;
+	void			(*cleanfn)(void *);
+	pthread_key_t		key;
+};
+
+void	_libc_private_storage_lock(pthread_mutex_t *);
+void	_libc_private_storage_unlock(pthread_mutex_t *);
+void *	_libc_private_storage(volatile struct _thread_private_key_struct *,
+			      void *, size_t, void *);
+
+/* Declare a module mutex. */
+#define _THREAD_PRIVATE_MUTEX(name)					\
+	static pthread_mutex_t __THREAD_MUTEX_NAME(name) = 		\
+		PTHREAD_MUTEX_INITIALIZER			
+		
+/* Lock a module mutex against use by any other threads. */
+#define _THREAD_PRIVATE_MUTEX_LOCK(name) 				\
+	_libc_private_storage_lock(&__THREAD_MUTEX_NAME(name))
+		
+/* Unlock a module mutex. */
+#define _THREAD_PRIVATE_MUTEX_UNLOCK(name) 				\
+	_libc_private_storage_unlock(&__THREAD_MUTEX_NAME(name))
+
+/* Declare a thread-private storage key. */
+#define _THREAD_PRIVATE_KEY(name)					\
+	static volatile struct _thread_private_key_struct		\
+	__THREAD_KEY_NAME(name) = {					\
+		PTHREAD_ONCE_INIT, 					\
+		0							\
+	}
+
+/*
+ * In threaded mode, return a pointer to thread-private memory of
+ * the same size as, and (initially) with the same contents as 'storage'. If
+ * an error occurs, the 'error' parameter is returned.
+ * In single-threaded mode, no storage is allocated. Instead, a pointer
+ * to storage is always returned.
+ * The 'cleanfn' function of the key structure is called to free the storage.
+ * If 'cleanfn' is NULL, then free() is used. This hook can be useful for
+ * getting rid of memory leaks.
+ */
+#define _THREAD_PRIVATE(keyname, storage, error) 			\
+	_libc_private_storage(&__THREAD_KEY_NAME(keyname),		\
+			      &(storage), sizeof (storage), error)
+
+/*
+ * Keys used to access the per thread instances of resolver global data.
+ * These are not static as they are referenced in several places.
+ */
+extern volatile struct _thread_private_key_struct __THREAD_KEY_NAME(_res);
+#ifdef INET6
+extern volatile struct _thread_private_key_struct __THREAD_KEY_NAME(_res_ext);
+#endif
+
+/*
+ * File descriptor locking definitions.
+ */
+#define FD_READ		    0x1
+#define FD_WRITE	    0x2
+#define FD_RDWR		    (FD_READ | FD_WRITE)
+
+#define _FD_LOCK(_fd,_type,_ts)						\
+		_thread_fd_lock(_fd, _type, _ts, __FILE__, __LINE__)
+#define _FD_UNLOCK(_fd,_type)						\
+		_thread_fd_unlock(_fd, _type, __FILE__, __LINE__)
+
+int	_thread_fd_lock(int, int, struct timespec *, const char *, int);
+void	_thread_fd_unlock(int, int, const char *, int);
+
+/*
+ * malloc lock/unlock definitions
+ */
+# define _MALLOC_LOCK()		do {					\
+					if (__isthreaded)		\
+						_thread_malloc_lock();	\
+				} while (0)
+# define _MALLOC_UNLOCK()	do {					\
+					if (__isthreaded)		\
+						_thread_malloc_unlock();\
+				} while (0)
+# define _MALLOC_LOCK_INIT()do {					\
+					if (__isthreaded)		\
+						_thread_malloc_init();\
+				} while (0)
+
+
+void	_thread_malloc_init(void);
+void	_thread_malloc_lock(void);
+void	_thread_malloc_unlock(void);
+
+#endif /* _THREAD_PRIVATE_H_ */
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@OpenBSD libc as of today
+@
+text
+@d1 1
+a1 3
+/* $OpenBSD: thread_private.h,v 1.16 2004/06/07 21:11:23 marc Exp $ */
+
+/* PUBLIC DOMAIN: No Rights Reserved. Marco S Hyman <marc@@snafu.org> */
+d6 1
+a6 6
+/*
+ * This file defines the thread library interface to libc.  Thread
+ * libraries must implement the functions described here for proper
+ * inter-operation with libc.   libc contains weak versions of the
+ * described functions for operation in a non-threaded environment.
+ */
+d9 2
+a10 1
+ * This variable is 0 until a second thread is created.
+d22 2
+a23 2
+#define WEAK_NAME(name)		__CONCAT(_weak_,name)
+#define WEAK_ALIAS(name)	__weak_alias(name, WEAK_NAME(name))
+d25 1
+a25 1
+#define WEAK_PROTOTYPE(name)	__typeof__(name) WEAK_NAME(name)
+d27 1
+a27 1
+#define WEAK_PROTOTYPE(name)	/* typeof() only in gcc */
+d31 7
+a37 1
+ * helper macro to make unique names in the thread namespace
+d39 14
+a52 1
+#define __THREAD_NAME(name)	__CONCAT(_thread_tagname_,name)
+d54 12
+a65 20
+/*
+ * helper functions that exist as (weak) null functions in libc and
+ * (strong) functions in the thread library.   These functions:
+ *
+ * _thread_tag_lock:
+ *	lock the mutex associated with the given tag.   If the given
+ *	tag is NULL a tag is first allocated.
+ *
+ * _thread_tag_unlock:
+ *	unlock the mutex associated with the given tag.   If the given
+ *	tag is NULL a tag is first allocated.
+ *
+ * _thread_tag_storage:
+ *	return a pointer to per thread instance of data associated
+ *	with the given tag.  If the given tag is NULL a tag is first
+ *	allocated.
+ */
+void	_thread_tag_lock(void **);
+void	_thread_tag_unlock(void **);
+void   *_thread_tag_storage(void **, void *, size_t, void *);
+d67 1
+a67 7
+/*
+ * Macros used in libc to access thread mutex, keys, and per thread storage.
+ * _THREAD_PRIVATE_KEY and _THREAD_PRIVATE_MUTEX are different macros for
+ * historical reasons.   They do the same thing, define a static variable
+ * keyed by 'name' that identifies a mutex and a key to identify per thread
+ * data.
+ */
+d69 28
+a96 16
+	static void *__THREAD_NAME(name)
+#define _THREAD_PRIVATE_MUTEX(name)					\
+	static void *__THREAD_NAME(name)
+#define _THREAD_PRIVATE_MUTEX_LOCK(name)				\
+	_thread_tag_lock(&(__THREAD_NAME(name)))
+#define _THREAD_PRIVATE_MUTEX_UNLOCK(name)				\
+	_thread_tag_unlock(&(__THREAD_NAME(name)))
+#define _THREAD_PRIVATE(keyname, storage, error)			\
+	_thread_tag_storage(&(__THREAD_NAME(keyname)), &(storage),	\
+			    sizeof (storage), error)
+/*
+ * Resolver code is special cased in that it uses global keys.
+ */
+extern void *__THREAD_NAME(_res);
+extern void *__THREAD_NAME(_res_ext);
+extern void *__THREAD_NAME(serv_mutex);
+d101 3
+a103 6
+#define FD_READ		0x1
+#define FD_WRITE	0x2
+#define FD_RDWR		(FD_READ | FD_WRITE)
+
+int	_thread_fd_lock(int, int, struct timespec *);
+void	_thread_fd_unlock(int, int);
+d105 4
+a108 6
+/*
+ * Macros are used in libc code for historical (debug) reasons.
+ * Define them here.
+ */
+#define _FD_LOCK(_fd,_type,_ts)	_thread_fd_lock(_fd, _type, _ts)
+#define _FD_UNLOCK(_fd,_type)	_thread_fd_unlock(_fd, _type)
+d110 2
+d114 1
+a114 1
+ * malloc lock/unlock prototypes and definitions
+d116 1
+a116 5
+void	_thread_malloc_init(void);
+void	_thread_malloc_lock(void);
+void	_thread_malloc_unlock(void);
+
+#define _MALLOC_LOCK()		do {					\
+d120 1
+a120 1
+#define _MALLOC_UNLOCK()	do {					\
+d124 1
+a124 1
+#define _MALLOC_LOCK_INIT()	do {					\
+d129 4
+@
+

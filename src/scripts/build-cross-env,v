@@ -1,0 +1,524 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2.6.9
+	tg-mergefixes-1-branch:1.2.0.8
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.6
+	MIROS_X_BASE:1.2
+	MIRBSD_XP_MIRPPC:1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.10.08.23.28.04;	author tg;	state Exp;
+branches
+	1.2.6.1
+	1.2.8.1;
+next	1.1;
+
+1.1
+date	2004.10.08.21.37.53;	author tg;	state Exp;
+branches;
+next	;
+
+1.2.6.1
+date	2004.12.28.11.10.34;	author tg;	state Exp;
+branches;
+next	1.2.6.2;
+
+1.2.6.2
+date	2004.12.28.11.42.55;	author tg;	state Exp;
+branches;
+next	1.2.6.3;
+
+1.2.6.3
+date	2004.12.28.11.49.16;	author tg;	state Exp;
+branches;
+next	1.2.6.4;
+
+1.2.6.4
+date	2004.12.28.12.13.02;	author tg;	state Exp;
+branches;
+next	1.2.6.5;
+
+1.2.6.5
+date	2004.12.28.12.20.15;	author tg;	state Exp;
+branches;
+next	1.2.6.6;
+
+1.2.6.6
+date	2004.12.28.13.10.50;	author tg;	state Exp;
+branches;
+next	1.2.6.7;
+
+1.2.6.7
+date	2004.12.28.13.30.52;	author tg;	state Exp;
+branches;
+next	1.2.6.8;
+
+1.2.6.8
+date	2004.12.28.13.45.40;	author tg;	state Exp;
+branches;
+next	1.2.6.9;
+
+1.2.6.9
+date	2004.12.28.13.58.30;	author tg;	state Exp;
+branches;
+next	;
+
+1.2.8.1
+date	2004.12.28.18.42.16;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@fresh from the irc logs: (long lines wrapped, look tyler@@)
+
+<mira> tg@@odem:/usr/cross/i386-pc-linux-gnu $ file a.out; ./a.out ; uname -a
+<mira> a.out: ELF 32-bit LSB executable, Intel 80386, version 1, for
+	GNU/Linux 2.2.0, statically linked, not stripped
+<mira> Hello, World!
+<mira> MirBSD odem.66h.42h.de 7 Kv#7uC3-20040929 GENERIC#518 i386
+
+<mira> tg@@odem:/usr/cross/i386-pc-linux-gnu $ i386-pc-linux-gnu-gcc hello.o
+	-Wl,-rpath-link,/usr/cross/i386-pc-linux-gnu/usr/lib
+<mira> /usr/cross/i386-pc-linux-gnu/lib/libc.so.6: undefined reference to
+	`__libc_stack_end@@GLIBC_PRIVATE'
+<mira> /usr/cross/i386-pc-linux-gnu/lib/libc.so.6: undefined reference to
+	`_dl_tls_symaddr@@GLIBC_PRIVATE'
+<mira> collect2: ld returned 1 exit status
+<mira> cool, bin runter auf 2 fehler
+
+* mira $ scp linuxsys.de:/lib/ld-linux.so.2 ~
+<mira> tg@@odem:/usr/cross/i386-pc-linux-gnu $ file a.out; ./a.out
+<mira> a.out: ELF 32-bit LSB executable, Intel 80386, version 1, for
+	GNU/Linux 2.2.0, dynamically linked (uses shared libs), not stripped
+<mira> Hello, World!
+
+You need, of course, some special environment setup, so that the as is
+found. (Stripping works, even with the native /usr/bin/strip :)
+____________________________________________________________
+
+special note to wbx@@: no, cross-building the world isn't possible,
+and before gcc 3.4, this is only thought for playing anyway.
+@
+text
+@#!/bin/ksh
+# $MirBSD: src/scripts/build-cross-env,v 1.1 2004/10/08 21:37:53 tg Exp $
+#-
+# Copyright (c) 2004
+#	Thorsten "mirabile" Glaser <tg@@66h.42h.de>
+#
+# Licensee is hereby permitted to deal in this work without restric-
+# tion, including unlimited rights to use, publically perform, modi-
+# fy, merge, distribute, sell, give away or sublicence, provided the
+# above copyright notices, these terms and the disclaimer are retai-
+# ned in all redistributions, or reproduced in accompanying documen-
+# tation or other materials provided with binary redistributions.
+#
+# Licensor hereby provides this work "AS IS" and WITHOUT WARRANTY of
+# any kind, expressed or implied, to the maximum extent permitted by
+# applicable law, but with the warranty of being written without ma-
+# licious intent or gross negligence; in no event shall licensor, an
+# author or contributor be held liable for any damage, direct, indi-
+# rect or other, however caused, arising in any way out of the usage
+# of covered work, even if advised of the possibility of such damage.
+#-
+# call this with the machine as first parameter and canonical target
+# name as second parameter; optionally the machine arch as third.
+
+MACHINE=$1
+TARGET=$2
+
+[[ -z $MACHINE && -n $TARGET ]] && MACHINE=${TARGET%%-*}
+
+if [[ -z $MACHINE ]]; then
+	print No target or machine given.
+	exit 1
+fi
+
+case $MACHINE in
+alpha|amd64|hppa|i386|m68k|m88k|powerpc|sparc|sparc64|vax)
+	MARCH=$MACHINE ;;
+amiga|hp300|mac68k|mvme68k)
+	MARCH=m68k ;;
+luna88k|mvme88k)
+	MARCH=m88k ;;
+macppc|mvmeppc)
+	MARCH=powerpc ;;
+sgi)
+	MARCH=mips ;;
+*)
+	[[ -n $3 ]] && MARCH=$3
+	if [[ -z $MARCH ]]; then
+		print Cannot guess machine arch for $MACHINE,
+		print target $TARGET - please supply.
+		exit 1
+	fi
+	;;
+esac
+
+[[ -z $TARGET ]] && TARGET=${MARCH}-unknown-mirbsd$(uname -r)
+[[ -z $BSDSRCDIR ]] && BSDSRCDIR=/usr/src
+[[ -z $SHELL ]] && SHELL=/bin/ksh
+if ! FOO=$($SHELL $BSDSRCDIR/gnu/share/config.sub $TARGET 2>/dev/null); then
+	print Invalid target $TARGET chosen, exiting.
+	exit 1
+else
+	TARGET=$FOO
+fi
+CROSSDIR=${DESTDIR}/usr/cross/${TARGET}
+HOST=$(cd $BSDSRCDIR; make ___DISPLAY_MAKEVARS=OStriplet)
+
+set -e
+set -x
+
+mkdir -p $CROSSDIR/usr/$TARGET/bin
+( cd $CROSSDIR/usr/$TARGET; ln -sf ../include .; ln -sf ../lib . )
+( cd $BSDSRCDIR; DESTDIR=$CROSSDIR make distrib-dirs )
+
+print $MACHINE >$CROSSDIR/T_MACHINE
+print $MARCH >$CROSSDIR/T_MACHINE_ARCH
+print $TARGET >$CROSSDIR/T_CANON
+print $HOST >$CROSSDIR/H_CANON
+
+( cd $BSDSRCDIR; \
+    BSDSRCDIR=$BSDSRCDIR \
+    BSDOBJDIR=$CROSSDIR/usr/obj \
+    OStriplet=$HOST \
+    MACHINE=$MACHINE \
+    MACHINE_ARCH=$MARCH \
+    MAKEOBJDIR=obj.$MACHINE \
+    SKIPDIR="$SKIPDIR X-Window" \
+    make obj )
+
+CROSSCPPFLAGS="$CROSSCPPFLAGS -nostdinc -I${CROSSDIR}/usr/include"
+CROSSLDFLAGS="$CROSSLDFLAGS -nostdlib -L${CROSSDIR}/usr/lib -static"
+CROSSCFLAGS="$CROSSCFLAGS $CROSSCPPFLAGS"
+
+cat >$CROSSDIR/T_BASEENV <<-EOF
+	BSDSRCDIR=$BSDSRCDIR
+	BSDOBJDIR=$CROSSDIR/usr/obj
+	HOST=$HOST
+	MACHINE=$MACHINE
+	MACHINE_ARCH=$MARCH
+EOF
+
+cat >$CROSSDIR/T_ENV <<-EOF
+	AR=$CROSSDIR/usr/bin/ar
+	AS=$CROSSDIR/usr/bin/as
+	CC=$CROSSDIR/usr/bin/cc
+	CFLAGS='$CROSSCFLAGS'
+	CPP=$CROSSDIR/usr/bin/cpp
+	CPPFLAGS='$CROSSCPPFLAGS'
+	CROSS_MODE=yes
+	DESTDIR=$CROSSDIR
+	HOSTCC=/usr/bin/gcc
+	HOSTCFLAGS='$CFLAGS'
+	HOSTLDFLAGS='$LDFLAGS'
+	LD=$CROSSDIR/usr/bin/ld
+	LDFLAGS='$CROSSLDFLAGS'
+	LDSTATIC=-static
+	LORDER=/usr/bin/lorder
+	NM=$CROSSDIR/usr/bin/nm
+	NOMAN=yes
+	NOPIC=yes
+	OBJCOPY=$CROSSDIR/usr/bin/objcopy
+	OBJDUMP=$CROSSDIR/usr/bin/objdump
+	RANLIB=$CROSSDIR/usr/bin/ranlib
+	SIZE=$CROSSDIR/usr/bin/size
+	STRIP=$CROSSDIR/usr/bin/strip
+EOF
+
+set +x
+print
+print Building on $HOST for $TARGET
+exit 0
+@
+
+
+1.2.8.1
+log
+@merge the first bunch of MirOS X (branch MIROS_X tag tg-mergetmp-mirosx-1) into mergefixes branch
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-env,v 1.2.6.9 2004/12/28 13:58:30 tg Exp $
+d8 5
+a12 5
+# tion, including unlimited rights to use, publicly perform, modify,
+# merge, distribute, sell, give away or sublicence, provided all co-
+# pyright notices above, these terms and the disclaimer are retained
+# in all redistributions or reproduced in accompanying documentation
+# or other materials provided with binary redistributions.
+d20 1
+a20 1
+# of this work, even if advised of the possibility of such damage.
+d66 1
+a66 2
+HOST=$(cd $BSDSRCDIR/scripts; make ___DISPLAY_MAKEVARS=OStriplet)
+[[ -n $CFLAGS ]] || CFLAGS="$(cd $BSDSRCDIR/scripts; make ___DISPLAY_MAKEVARS=CFLAGS)"
+a90 1
+BUILDLDFLAGS="$CROSSLDFLAGS -L${CROSSDIR}/usr/lib -static"
+d92 1
+a92 1
+CROSSCFLAGS="-O2 $CROSSCFLAGS $CROSSCPPFLAGS"
+d112 1
+a112 1
+	HOSTCFLAGS='$CFLAGS -Wno-error'
+a126 40
+
+cat >$CROSSDIR/T_MAKE <<-EOF
+#!/bin/ksh
+exec env \
+	CFLAGS='$CROSSCFLAGS' \
+	CPPFLAGS='$CROSSCPPFLAGS' \
+	HOSTCFLAGS='$CFLAGS -Wno-error' \
+	MACHINE=$MACHINE \
+	MACHINE_ARCH=$MARCH \
+	OStriplet=$HOST \
+	GCCHOST=$TARGET \
+	GCCTARGET=$TARGET \
+    make MAKE=\$0 \
+	__objdir=obj.$MACHINE \
+	BSDSRCDIR=$BSDSRCDIR \
+	BSDOBJDIR=$CROSSDIR/usr/obj \
+	HOST=$HOST \
+	AR=$CROSSDIR/usr/bin/ar \
+	AS=$CROSSDIR/usr/bin/as \
+	CC=$CROSSDIR/usr/bin/cc \
+	CPP=$CROSSDIR/usr/bin/cpp \
+	CROSS_MODE=yes \
+	DESTDIR=$CROSSDIR \
+	HOSTCC=/usr/bin/gcc \
+	HOSTLDFLAGS='$LDFLAGS' \
+	LD=$CROSSDIR/usr/bin/ld \
+	LDFLAGS='$BUILDLDFLAGS' \
+	LDSTATIC=-static \
+	LORDER=/usr/bin/lorder \
+	NM=$CROSSDIR/usr/bin/nm \
+	NOMAN=yes \
+	NOPIC=yes \
+	OBJCOPY=$CROSSDIR/usr/bin/objcopy \
+	OBJDUMP=$CROSSDIR/usr/bin/objdump \
+	RANLIB=$CROSSDIR/usr/bin/ranlib \
+	SIZE=$CROSSDIR/usr/bin/size \
+	STRIP=$CROSSDIR/usr/bin/strip \
+    "\$@@"
+EOF
+chmod 755 $CROSSDIR/T_MAKE
+@
+
+
+1.2.6.1
+log
+@first adjustments from stuff I learned during the first build round
+also, add back the RCS ID to crti.o which mirppc still uses, and install
+the *crt*.o from gcc
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/share/misc/licence.template,v 1.20 2004/12/03 16:18:37 tg Rel $
+d8 5
+a12 5
+# tion, including unlimited rights to use, publicly perform, modify,
+# merge, distribute, sell, give away or sublicence, provided all co-
+# pyright notices above, these terms and the disclaimer are retained
+# in all redistributions or reproduced in accompanying documentation
+# or other materials provided with binary redistributions.
+d20 1
+a20 1
+# of this work, even if advised of the possibility of such damage.
+a90 1
+BUILDLDFLAGS="$CROSSLDFLAGS -L${CROSSDIR}/usr/lib -static"
+a125 35
+EOF
+
+cat >$CROSSDIR/T_MAKE <<-EOF
+#!/bin/ksh
+exec env \
+	CFLAGS='$CROSSCFLAGS' \
+	CPPFLAGS='$CROSSCPPFLAGS' \
+    make MAKE=\$0 \
+	BSDSRCDIR=$BSDSRCDIR \
+	BSDOBJDIR=$CROSSDIR/usr/obj \
+	HOST=$HOST \
+	MACHINE=$MACHINE \
+	MACHINE_ARCH=$MARCH \
+	AR=$CROSSDIR/usr/bin/ar \
+	AS=$CROSSDIR/usr/bin/as \
+	CC=$CROSSDIR/usr/bin/cc \
+	CPP=$CROSSDIR/usr/bin/cpp \
+	CROSS_MODE=yes \
+	DESTDIR=$CROSSDIR \
+	HOSTCC=/usr/bin/gcc \
+	HOSTCFLAGS='$CFLAGS' \
+	HOSTLDFLAGS='$LDFLAGS' \
+	LD=$CROSSDIR/usr/bin/ld \
+	LDFLAGS='$BUILDLDFLAGS' \
+	LDSTATIC=-static \
+	LORDER=/usr/bin/lorder \
+	NM=$CROSSDIR/usr/bin/nm \
+	NOMAN=yes \
+	NOPIC=yes \
+	OBJCOPY=$CROSSDIR/usr/bin/objcopy \
+	OBJDUMP=$CROSSDIR/usr/bin/objdump \
+	RANLIB=$CROSSDIR/usr/bin/ranlib \
+	SIZE=$CROSSDIR/usr/bin/size \
+	STRIP=$CROSSDIR/usr/bin/strip \
+    "$@@"
+@
+
+
+1.2.6.2
+log
+@add -O2 and forgot chmod +x
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-env,v 1.2.6.1 2004/12/28 11:10:34 tg Exp $
+d93 1
+a93 1
+CROSSCFLAGS="-O2 $CROSSCFLAGS $CROSSCPPFLAGS"
+a162 1
+chmod 755 $CROSSDIR/T_MAKE
+@
+
+
+1.2.6.3
+log
+@yuck
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-env,v 1.2.6.2 2004/12/28 11:42:55 tg Exp $
+d161 1
+a161 1
+    "\$@@"
+@
+
+
+1.2.6.4
+log
+@better HOSTCFLAGS...
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-env,v 1.2.6.3 2004/12/28 11:49:16 tg Exp $
+a66 1
+[[ -n $CFLAGS ]] || CFLAGS="$(cd $BSDSRCDIR; make ___DISPLAY_MAKEVARS=CFLAGS)"
+a133 1
+	HOSTCFLAGS='$CFLAGS' \
+d147 1
+@
+
+
+1.2.6.5
+log
+@get the _real_ host CFLAGS
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-env,v 1.2.6.4 2004/12/28 12:13:02 tg Exp $
+d66 2
+a67 2
+HOST=$(cd $BSDSRCDIR/scripts; make ___DISPLAY_MAKEVARS=OStriplet)
+[[ -n $CFLAGS ]] || CFLAGS="$(cd $BSDSRCDIR/scripts; make ___DISPLAY_MAKEVARS=CFLAGS)"
+@
+
+
+1.2.6.6
+log
+@-Wno-error for HOSTCFLAGS
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-env,v 1.2.6.5 2004/12/28 12:20:15 tg Exp $
+d114 1
+a114 1
+	HOSTCFLAGS='$CFLAGS -Wno-error'
+d135 1
+a135 1
+	HOSTCFLAGS='$CFLAGS -Wno-error' \
+@
+
+
+1.2.6.7
+log
+@make(1) needs MACHINE and MACHINE_ARCH in the environment, not as parametres
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-env,v 1.2.6.6 2004/12/28 13:10:50 tg Exp $
+a135 2
+	MACHINE=$MACHINE \
+	MACHINE_ARCH=$MARCH \
+d140 2
+@
+
+
+1.2.6.8
+log
+@with these I could xbuild less(1)
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-env,v 1.2.6.7 2004/12/28 13:30:52 tg Exp $
+a137 3
+	OStriplet=$HOST \
+	GCCHOST=$TARGET \
+	GCCTARGET=$TARGET \
+@
+
+
+1.2.6.9
+log
+@probably Ada
+better __objdir
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-env,v 1.2.6.8 2004/12/28 13:45:40 tg Exp $
+a141 1
+	__objdir=obj.$MACHINE \
+@
+
+
+1.1
+log
+@start cross-compiling efforts
+I'm currently playing with this, expect it to change.
+I'll try crossbuilding from i386-ecce-mirbsd7 to i386-pc-linux-gnu
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/share/misc/licence.template,v 1.14 2004/08/15 15:29:11 tg Rel $
+d72 1
+a72 1
+( cd $CROSSDIR/usr/$TARGET; ln -s ../include .; ln -s ../lib . )
+d128 1
+a128 1
+@@set +x
+@
+

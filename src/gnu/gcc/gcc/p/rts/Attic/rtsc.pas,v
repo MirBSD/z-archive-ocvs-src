@@ -1,0 +1,810 @@
+head	1.2;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.13.04.53.48;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.01.24;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.01.24;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@no C++, Java(TM), Pascal, Objective C or Fortran 77 for a while
+as discussed on the mailing list
+@
+text
+@{ Pascal declarations of the GPC Run Time System routines that are
+  implemented in C
+
+  Note about the `GPC_' prefix:
+  This is inserted so that some identifiers don't conflict with the
+  built-in ones. In some cases, the built-in ones do exactly the
+  same as the ones declared here, but often enough, they contain
+  some "magic", so they should be used instead of the plain
+  declarations here. In general, routines with a `GPC_' prefix
+  should not be called from programs. They may change or disappear
+  in future GPC versions.
+
+  Copyright (C) 1998-2003 Free Software Foundation, Inc.
+
+  Author: Frank Heckenbach <frank@@pascal.gnu.de>
+
+  This file is part of GNU Pascal.
+
+  GNU Pascal is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published
+  by the Free Software Foundation; either version 2, or (at your
+  option) any later version.
+
+  GNU Pascal is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with GNU Pascal; see the file COPYING. If not, write to the
+  Free Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+  02111-1307, USA.
+
+  As a special exception, if you link this file with files compiled
+  with a GNU compiler to produce an executable, this does not cause
+  the resulting executable to be covered by the GNU General Public
+  License. This exception does not however invalidate any other
+  reasons why the executable file might be covered by the GNU
+  General Public License. }
+
+{$gnu-pascal,I-}
+
+unit RTSC; attribute (name = 'GPC');
+
+interface
+
+const
+  MaxLongInt = High (LongInt);
+
+  { Maximum size of a variable }
+  MaxVarSize = MaxInt div 8;
+
+{ If set, characters >= #$80 are assumed to be letters even if the
+  locale routines don't say so. This is a kludge because some
+  systems don't have correct non-English locale tables. }
+var
+  FakeHighLetters: Boolean = False; attribute (name = '_p_FakeHighLetters');
+
+{@@internal}
+{$define SqRt InternalSqRt} {$define Exp InternalExp} {$define Ln InternalLn}  { @@@@ }
+{ The following declarations were created by running rts-c-to-pas }
+{@@endinternal}
+
+type
+  PCStrings = ^TCStrings;
+  TCStrings = array [0 .. MaxVarSize div SizeOf (CString) - 1] of CString;
+
+  Int64 = Integer attribute (Size = 64);
+  UnixTimeType = LongInt;  { This is hard-coded in the compiler. Do not change here. }
+  MicroSecondTimeType = LongInt;
+  FileSizeType = LongInt;
+  SignedSizeType = Integer attribute (Size = BitSizeOf (SizeType));
+  TSignalHandler = procedure (Signal: Integer);
+
+  StatFSBuffer = record
+    BlockSize, BlocksTotal, BlocksFree: LongestInt;
+    FilesTotal, FilesFree: Integer
+  end;
+
+  InternalSelectType = record
+    Handle: Integer;
+    Read, Write, Exception: Boolean
+  end;
+
+  PString = ^String;
+
+  { `Max' so the size of the array is not zero for Count = 0 }
+  PPStrings = ^TPStrings;
+  TPStrings (Count: Cardinal) = array [1 .. Max (Count, 1)] of PString;
+
+  GlobBuffer = record
+    Result: PPStrings;
+    Internal1: Pointer;
+    Internal2: PCStrings;
+    Internal3: Integer
+  end;
+
+  {@@internal}
+  TCPasswordEntry = record
+    UserName, RealName, Password, HomeDirectory, Shell: CString;
+    UID, GID: Integer
+  end;
+
+  PCPasswordEntries = ^TCPasswordEntries;
+  TCPasswordEntries = array [0 .. MaxVarSize div SizeOf (TCPasswordEntry) - 1] of TCPasswordEntry;
+  {@@endinternal}
+
+{@@internal}
+{@@endinternal}
+
+
+{ Mathematical routines }
+
+{@@internal}
+function  Sin (x: Real): Real; attribute (const); external name '_p_Sin';
+function  Cos (x: Real): Real; attribute (const); external name '_p_Cos';
+function  ArcSin (x: Real): Real; attribute (const); external name '_p_ArcSin';
+function  ArcCos (x: Real): Real; attribute (const); external name '_p_ArcCos';
+function  ArcTan (x: Real): Real; attribute (const); external name '_p_ArcTan';
+function  SqRt (x: Real): Real; attribute (const); external name '_p_SqRt';
+function  Ln (x: Real): Real; attribute (const); external name '_p_Ln';
+function  Exp (x: Real): Real; attribute (const); external name '_p_Exp';
+function  Power (x: Real; y: Real): Real; attribute (const); external name '_p_Power';
+function  InternalHypot (x: Real; y: Real): Real; attribute (const); external name '_p_InternalHypot';
+function  InternalLn1Plus (x: Real): Real; attribute (const); external name '_p_InternalLn1Plus';
+function  LongReal_Sin (x: LongReal): LongReal; attribute (const); external name '_p_LongReal_Sin';
+function  LongReal_Cos (x: LongReal): LongReal; attribute (const); external name '_p_LongReal_Cos';
+function  LongReal_ArcSin (x: LongReal): LongReal; attribute (const); external name '_p_LongReal_ArcSin';
+function  LongReal_ArcCos (x: LongReal): LongReal; attribute (const); external name '_p_LongReal_ArcCos';
+function  LongReal_ArcTan (x: LongReal): LongReal; attribute (const); external name '_p_LongReal_ArcTan';
+function  LongReal_SqRt (x: LongReal): LongReal; attribute (const); external name '_p_LongReal_SqRt';
+function  LongReal_Ln (x: LongReal): LongReal; attribute (const); external name '_p_LongReal_Ln';
+function  LongReal_Exp (x: LongReal): LongReal; attribute (const); external name '_p_LongReal_Exp';
+function  LongReal_Power (x: LongReal; y: LongReal): LongReal; attribute (const); external name '_p_LongReal_Power';
+{@@endinternal}
+
+function  SinH (x: Real): Real; attribute (const); external name '_p_SinH';
+function  CosH (x: Real): Real; attribute (const); external name '_p_CosH';
+function  ArcTan2 (y: Real; x: Real): Real; attribute (const); external name '_p_ArcTan2';
+function  IsInfinity (x: LongReal): Boolean; attribute (const); external name '_p_IsInfinity';
+function  IsNotANumber (x: LongReal): Boolean; attribute (const); external name '_p_IsNotANumber';
+procedure SplitReal (x: LongReal; var Exponent: Integer; var Mantissa: LongReal); external name '_p_SplitReal';
+
+{ Character routines }
+
+{ Convert a character to upper case, according to the current
+  locale.
+  Except in `--borland-pascal' mode, `UpCase' does the same. }
+function  UpCase (ch: Char): Char; attribute (const); external name '_p_UpCase';
+
+{ Convert a character to lower case, according to the current
+  locale. }
+function  LoCase (ch: Char): Char; attribute (const); external name '_p_LoCase';
+function  IsUpCase (ch: Char): Boolean; attribute (const); external name '_p_IsUpCase';
+function  IsLoCase (ch: Char): Boolean; attribute (const); external name '_p_IsLoCase';
+function  IsAlpha (ch: Char): Boolean; attribute (const); external name '_p_IsAlpha';
+function  IsAlphaNum (ch: Char): Boolean; attribute (const); external name '_p_IsAlphaNum';
+function  IsAlphaNumUnderscore (ch: Char): Boolean; attribute (const); external name '_p_IsAlphaNumUnderscore';
+function  IsSpace (ch: Char): Boolean; attribute (const); external name '_p_IsSpace';
+function  IsPrintable (ch: Char): Boolean; attribute (const); external name '_p_IsPrintable';
+
+{ Time routines }
+
+{ Sleep for a given number of seconds. }
+procedure Sleep (Seconds: Integer); external name '_p_Sleep';
+
+{ Sleep for a given number of microseconds. }
+procedure SleepMicroSeconds (MicroSeconds: Integer); external name '_p_SleepMicroSeconds';
+
+{ Set an alarm timer. }
+function  Alarm (Seconds: Integer): Integer; external name '_p_Alarm';
+
+{ Convert a Unix time value to broken-down local time.
+  All parameters except Time may be Null. }
+procedure UnixTimeToTime (Time: UnixTimeType; var Year: Integer; var Month: Integer; var Day: Integer; var Hour: Integer; var Minute: Integer; var Second: Integer;
+                                var TimeZone: Integer; var DST: Boolean; var TZName1: CString; var TZName2: CString); external name '_p_UnixTimeToTime';
+
+{ Convert broken-down local time to a Unix time value. }
+function  TimeToUnixTime (Year: Integer; Month: Integer; Day: Integer; Hour: Integer; Minute: Integer; Second: Integer): UnixTimeType; external name '_p_TimeToUnixTime';
+
+{ Get the real time. MicroSecond can be Null and is ignored then. }
+function  GetUnixTime (var MicroSecond: Integer): UnixTimeType; external name '_p_GetUnixTime';
+
+{ Get the CPU time used. MicroSecond can be Null and is ignored
+  then. Now, GetCPUTime can measure long CPU times reliably on most
+  systems (e.g. Solaris where it didn't work before). }
+function  GetCPUTime (var MicroSecond: Integer): Integer; external name '_p_GetCPUTime';
+
+{@@internal}
+procedure InitTime; external name '_p_InitTime';
+function  CFormatTime (Time: UnixTimeType; Format: CString; Buf: CString; Size: Integer): Integer; external name '_p_CFormatTime';
+{@@endinternal}
+
+
+{ Signal and process routines }
+
+{ Extract information from the status returned by PWait }
+function  StatusExited (Status: Integer): Boolean; attribute (const); external name '_p_StatusExited';
+function  StatusExitCode (Status: Integer): Integer; attribute (const); external name '_p_StatusExitCode';
+function  StatusSignaled (Status: Integer): Boolean; attribute (const); external name '_p_StatusSignaled';
+function  StatusTermSignal (Status: Integer): Integer; attribute (const); external name '_p_StatusTermSignal';
+function  StatusStopped (Status: Integer): Boolean; attribute (const); external name '_p_StatusStopped';
+function  StatusStopSignal (Status: Integer): Integer; attribute (const); external name '_p_StatusStopSignal';
+
+{ Install a signal handler and optionally return the previous
+  handler. OldHandler and OldRestart may be Null. }
+function  InstallSignalHandler (Signal: Integer; Handler: TSignalHandler; Restart: Boolean; UnlessIgnored: Boolean;
+  var OldHandler: TSignalHandler; var OldRestart: Boolean): Boolean; external name '_p_InstallSignalHandler';
+
+{ Block or unblock a signal. }
+procedure BlockSignal (Signal: Integer; Block: Boolean); external name '_p_BlockSignal';
+
+{ Test whether a signal is blocked. }
+function  SignalBlocked (Signal: Integer): Boolean; external name '_p_SignalBlocked';
+
+{ Sends a signal to a process. Returns True if successful. If Signal
+  is 0, it doesn't send a signal, but still checks whether it would
+  be possible to send a signal to the given process. }
+function  Kill (PID: Integer; Signal: Integer): Boolean; external name '_p_Kill';
+
+{ Constant for WaitPID }
+const
+  AnyChild = -1;
+
+{ Waits for a child process with the given PID (or any child process
+  if PID = AnyChild) to terminate or be stopped. Returns the PID of
+  the process. WStatus will contain the status and can be evaluated
+  with StatusExited etc.. If nothing happened, and Block is False,
+  the function will return 0, and WStatus will be 0. If an error
+  occurred (especially on single tasking systems where WaitPID is
+  not possible), the function will return a negative value, and
+  WStatus will be 0. }
+function  WaitPID (PID: Integer; var WStatus: Integer; Block: Boolean): Integer; external name '_p_WaitPID';
+
+{ Returns the process ID. }
+function  ProcessID: Integer; external name '_p_ProcessID';
+
+{ Returns the process group. }
+function  ProcessGroup: Integer; external name '_p_ProcessGroup';
+
+{ Returns the real or effective user ID of the process. }
+function  UserID (Effective: Boolean): Integer; external name '_p_UserID';
+
+{ Tries to change the real and/or effective user ID. }
+function  SetUserID (Real: Integer; Effective: Integer): Boolean; external name '_p_SetUserID';
+
+{ Returns the real or effective group ID of the process. }
+function  GroupID (Effective: Boolean): Integer; external name '_p_GroupID';
+
+{ Tries to change the real and/or effective group ID. }
+function  SetGroupID (Real: Integer; Effective: Integer): Boolean; external name '_p_SetGroupID';
+
+{ Low-level file routines. Mostly for internal use. }
+
+{ Get information about a file system. }
+function  StatFS (Path: CString; var Buf: StatFSBuffer): Boolean; external name '_p_StatFS';
+function  CStringOpenDir (DirName: CString): Pointer; external name '_p_CStringOpenDir';
+function  CStringReadDir (Dir: Pointer): CString; external name '_p_CStringReadDir';
+procedure CStringCloseDir (Dir: Pointer); external name '_p_CStringCloseDir';
+
+{ Returns the value of the symlink FileName in a CString allocated
+  from the heap. Returns nil if it is no symlink or the function
+  is not supported. }
+function  ReadLink (FileName: CString): CString; external name '_p_ReadLink';
+
+{ The result of the following function is a pointer to a *static*
+  buffer! }
+function  CStringRealPath (Path: CString): CString; external name '_p_CStringRealPath';
+
+{ File mode constants that are ORed for BindingType.Mode, ChMod,
+  CStringChMod and Stat. The values below are valid for all OSs
+  (as far as supported). If the OS uses different values, they're
+  converted internally. }
+const
+  fm_SetUID           = 8#4000;
+  fm_SetGID           = 8#2000;
+  fm_Sticky           = 8#1000;
+  fm_UserReadable     = 8#400;
+  fm_UserWritable     = 8#200;
+  fm_UserExecutable   = 8#100;
+  fm_GroupReadable    = 8#40;
+  fm_GroupWritable    = 8#20;
+  fm_GroupExecutable  = 8#10;
+  fm_OthersReadable   = 8#4;
+  fm_OthersWritable   = 8#2;
+  fm_OthersExecutable = 8#1;
+
+{ Constants for Access and OpenHandle }
+const
+  MODE_EXEC     = 1 shl 0;
+  MODE_WRITE    = 1 shl 1;
+  MODE_READ     = 1 shl 2;
+  MODE_FILE     = 1 shl 3;
+  MODE_DIR      = 1 shl 4;
+  MODE_SPECIAL  = 1 shl 5;
+  MODE_SYMLINK  = 1 shl 6;
+  MODE_CREATE   = 1 shl 7;
+  MODE_EXCL     = 1 shl 8;
+  MODE_TRUNCATE = 1 shl 9;
+  MODE_BINARY   = 1 shl 10;
+
+{ Check if a file name is accessible. }
+function  Access (FileName: CString; Request: Integer): Integer; external name '_p_Access';
+
+{ Get information about a file. Any argument except FileName can
+  be Null. }
+function  Stat (FileName: CString; var Size: FileSizeType;
+  var ATime: UnixTimeType; var MTime: UnixTimeType; var CTime: UnixTimeType;
+  var User: Integer; var Group: Integer; var Mode: Integer; var Device: Integer; var INode: Integer; var Links: Integer;
+  var SymLink: Boolean; var Dir: Boolean; var Special: Boolean): Integer; external name '_p_Stat';
+function  OpenHandle (FileName: CString; Mode: Integer): Integer; external name '_p_OpenHandle';
+function  ReadHandle (Handle: Integer; Buffer: Pointer; Size: SizeType): SignedSizeType; external name '_p_ReadHandle';
+function  WriteHandle (Handle: Integer; Buffer: Pointer; Size: SizeType): SignedSizeType; external name '_p_WriteHandle';
+function  CloseHandle (Handle: Integer): Integer; external name '_p_CloseHandle';
+procedure FlushHandle (Handle: Integer); external name '_p_FlushHandle';
+function  DupHandle (Src: Integer; Dest: Integer): Integer; external name '_p_DupHandle';
+function  CStringRename (OldName: CString; NewName: CString): Integer; external name '_p_CStringRename';
+function  CStringUnlink (FileName: CString): Integer; external name '_p_CStringUnlink';
+function  CStringChDir (FileName: CString): Integer; external name '_p_CStringChDir';
+function  CStringMkDir (FileName: CString): Integer; external name '_p_CStringMkDir';
+function  CStringRmDir (FileName: CString): Integer; external name '_p_CStringRmDir';
+function  CStringChMod (FileName: CString; Mode: Integer): Integer; external name '_p_CStringChMod';
+function  CStringChOwn (FileName: CString; Owner: Integer; Group: Integer): Integer; external name '_p_CStringChOwn';
+function  CStringUTime (FileName: CString; AccessTime: UnixTimeType; ModificationTime: UnixTimeType): Integer; external name '_p_CStringUTime';
+
+{ Constants for SeekHandle }
+const
+  SeekAbsolute = 0;
+  SeekRelative = 1;
+  SeekFileEnd  = 2;
+
+{ Seek to a position on a file handle. }
+function  SeekHandle (Handle: Integer; Offset: FileSizeType; Whence: Integer): FileSizeType; external name '_p_SeekHandle';
+function  TruncateHandle (Handle: Integer; Size: FileSizeType): Integer; external name '_p_TruncateHandle';
+function  LockHandle (Handle: Integer; WriteLock: Boolean; Block: Boolean): Boolean; external name '_p_LockHandle';
+function  UnlockHandle (Handle: Integer): Boolean; external name '_p_UnlockHandle';
+function  SelectHandle (Count: Integer; var Events: InternalSelectType; MicroSeconds: MicroSecondTimeType): Integer; external name '_p_SelectHandle';
+
+{ Constants for MMapHandle and MemoryMap }
+const
+  mm_Readable   = 1;
+  mm_Writable   = 2;
+  mm_Executable = 4;
+
+{ Try to map (a part of) a file to memory. }
+function  MMapHandle (Start: Pointer; Length: SizeType; Access: Integer; Shared: Boolean; Handle: Integer; Offset: FileSizeType): Pointer; external name '_p_MMapHandle';
+
+{ Unmap a previous memory mapping. }
+function  MUnMapHandle (Start: Pointer; Length: SizeType): Integer; external name '_p_MUnMapHandle';
+
+{ Returns the file name of the terminal device that is open on
+  Handle. Returns nil if (and only if) Handle is not open or not
+  connected to a terminal. If NeedName is False, it doesn't bother
+  to search for the real name and just returns DefaultName if it
+  is a terminal and nil otherwise. DefaultName is also returned if
+  NeedName is True, Handle is connected to a terminal, but the
+  system does not provide information about the real file name. }
+function  GetTerminalNameHandle (Handle: Integer; NeedName: Boolean; DefaultName: CString): CString; external name '_p_GetTerminalNameHandle';
+
+{ I/O routines }
+
+{ Sets the process group of Process (or the current one if Process
+  is 0) to ProcessGroup (or its PID if ProcessGroup is 0). Returns
+  True if successful. }
+function  SetProcessGroup (Process: Integer; ProcessGroup: Integer): Boolean; external name '_p_SetProcessGroup';
+
+{ Sets the process group of a terminal given by Terminal (as a file
+  handle) to ProcessGroup. ProcessGroup must be the ID of a process
+  group in the same session. Returns True if successful. }
+function  SetTerminalProcessGroup (Handle: Integer; ProcessGroup: Integer): Boolean; external name '_p_SetTerminalProcessGroup';
+
+{ Returns the process group of a terminal given by Terminal (as a
+  file handle), or -1 on error. }
+function  GetTerminalProcessGroup (Handle: Integer): Integer; external name '_p_GetTerminalProcessGroup';
+
+{ Set the standard input's signal generation, if it is a terminal. }
+procedure SetInputSignals (Signals: Boolean); external name '_p_SetInputSignals';
+
+{ Get the standard input's signal generation, if it is a terminal. }
+function  GetInputSignals: Boolean; external name '_p_GetInputSignals';
+
+{ Internal routines }
+
+{ Returns system information if available. Fields not available will
+  be set to nil. }
+procedure CStringSystemInfo (var SysName: CString; var NodeName: CString; var Release: CString; var Version: CString; var Machine: CString; var DomainName: CString); external name '_p_CStringSystemInfo';
+
+{ Returns the path of the running executable *if possible*. }
+function  CStringExecutablePath (Buffer: CString): CString; external name '_p_CStringExecutablePath';
+
+{@@internal}
+
+{ Returns a temporary directory name *if possible*. }
+function  CStringGetTempDirectory (Buffer: CString; Size: Integer): CString; external name '_p_CStringGetTempDirectory';
+
+{ Executes a command line. }
+function  CSystem (CmdLine: CString): Integer; external name '_p_CSystem';
+function  GetStartEnvironment (ValueIfNotFound: PCStrings): PCStrings; external name '_p_GetStartEnvironment';
+procedure CStringSetEnv (VarName: CString; Value: CString; NewEnvCString: CString; UnSet: Boolean); external name '_p_CStringSetEnv';
+{@@endinternal}
+
+
+{ Sets ErrNo to the value of `errno' and returns the description
+  for this error. May return nil if not supported! ErrNo may be
+  Null (then only the description is returned). }
+function  CStringStrError (var ErrNo: Integer): CString; external name '_p_CStringStrError';
+
+{@@internal}
+
+{ Returns a description for a signal. May return nil if not supported! }
+function  CStringStrSignal (Signal: Integer): CString; external name '_p_CStringStrSignal';
+function  FNMatch (Pattern: CString; FileName: CString): Integer; external name '_p_FNMatch';
+procedure GlobInternal (var Buf: GlobBuffer; Pattern: CString); external name '_p_GlobInternal';
+procedure GlobFreeInternal (var Buf: GlobBuffer); external name '_p_GlobFreeInternal';
+function  CGetPwNam (UserName: CString; var Entry: TCPasswordEntry): Boolean; external name '_p_CGetPwNam';
+function  CGetPwUID (UID: Integer; var Entry: TCPasswordEntry): Boolean; external name '_p_CGetPwUID';
+function  CGetPwEnt (var Entries: PCPasswordEntries): Integer; external name '_p_CGetPwEnt';
+procedure InitMisc; external name '_p_InitMisc';
+procedure InitMalloc (procedure WarnProc (Msg: CString)); external name '_p_InitMalloc';
+procedure ExitProgram (Status: Integer; AbortFlag: Boolean); attribute (noreturn); external name '_p_ExitProgram';
+{@@endinternal}
+
+{@@internal}
+{ End of declarations created by rts-c-to-pas }
+{@@endinternal}
+
+{@@internal}
+{ error.pas }
+procedure GPC_CheckInOutRes; external name '_p_CheckInOutRes';
+
+{ rtsc.pas }
+type
+  PProcedure = ^procedure;
+  PProcList = ^TProcList;
+  TProcList = record
+    Next, Prev: PProcList;
+    Proc: PProcedure
+  end;
+
+procedure RunFinalizers (var AtExitProcs: PProcList); attribute (name = '_p_RunFinalizers');
+
+{ file.c }
+
+type
+  GPC_TChars = packed array [1 .. 1] of Char;
+  GPC_PChars = ^GPC_TChars;
+
+{@@endinternal}
+{ File routines }
+
+type
+  TOpenMode = (fo_None, fo_Reset, fo_Rewrite, fo_Append, fo_SeekRead, fo_SeekWrite, fo_SeekUpdate);
+  PAnyFile = ^AnyFile;
+{@@internal}
+
+procedure GPC_Initialize_Std_Files; attribute (iocritical); external name '_p_Initialize_Std_Files';
+
+{ Automatically called at the end of the program }
+procedure GPC_Done_Files; external name '_p_Done_Files';
+
+type
+  PFileAssociation = ^TFileAssociation;
+  TFileAssociation = record
+    Next: PFileAssociation;
+    IntName, ExtName: CString
+  end;
+
+procedure FlushAllFiles; external name '_p_FlushAllFiles';
+
+type
+  InternalIOSelectTypePtr = ^InternalIOSelectType;
+  InternalIOSelectType = record
+    fi: PAnyFile;
+    WantedReadOrEOF,
+    WantedRead,
+    WantedEOF,
+    WantedWrite,
+    WantedException,
+    WantedAlways,
+    OccurredReadOrEOF,
+    OccurredRead,
+    OccurredEOF,
+    OccurredWrite,
+    OccurredException: Boolean
+  end;
+
+var
+  { True if the EOLn hack is wanted.
+
+    If False: EOLn will validate the file buffer if tst_UND
+
+    If True, when EOLn is tested when all of the following are true
+      - tst_UND
+      - tst_UNREAD (nothing has been read after reset)
+      - tst_TXT
+      - tst_Tty
+      - tst_LGET,
+    then the EOLn test returns True.
+
+    If the EOLn is *not tested*, it is False. This is to make the
+    program with `if EOLn then ReadLn;' in the very beginning work,
+    they skip the EOLn when they test it, if you don't test, you
+    don't have to skip it. }
+  EOLnResetHack: Boolean; external name '_p_EOLnResetHack'; external;
+
+  { True if direct access routines should work only for direct access files. }
+  ForceDirectFiles: Boolean; external name '_p_ForceDirectFiles'; external;
+
+  FileAssociation: PFileAssociation; external name '_p_FileAssociation'; external;
+
+  CurrentStdIn: ^Text; external name '_p_CurrentStdin'; external;
+
+function  GPC_GetSize      (          var aFile: AnyFile): FileSizeType;  external name '_p_FileSize';
+procedure GPC_Truncate     (          var aFile: AnyFile);                external name '_p_Truncate';
+procedure GPC_DefineSize   (          var aFile: AnyFile; NewSize : FileSizeType); external name '_p_DefineSize';
+procedure GPC_Seek         (          var aFile: AnyFile; NewPlace: FileSizeType); external name '_p_Seek';
+procedure GPC_SeekRead     (          var aFile: AnyFile; NewPlace: FileSizeType); external name '_p_SeekRead';
+procedure GPC_SeekWrite    (          var aFile: AnyFile; NewPlace: FileSizeType); external name '_p_SeekWrite';
+procedure GPC_SeekUpdate   (          var aFile: AnyFile; NewPlace: FileSizeType); external name '_p_SeekUpdate';
+function  GPC_Empty        (protected var aFile: AnyFile): Boolean;       external name '_p_Empty';
+procedure GPC_Update       (          var aFile: AnyFile);                external name '_p_Update';
+function  GPC_LastPosition (          var aFile: AnyFile): FileSizeType;  external name '_p_LastPosition';
+function  GPC_Position     (          var aFile: AnyFile): FileSizeType;  external name '_p_Position';
+
+{ Versions with only 3 parameters are still overloaded magically }
+{ @@@@ } procedure GPC_BlockRead  (var aFile: File;           var Buf: Void; Count: Cardinal; var BytesRead   : Cardinal); external name '_p_BlockRead';
+{ @@@@ } procedure GPC_BlockWrite (var aFile: File; protected var Buf: Void; Count: Cardinal; var BytesWritten: Cardinal); external name '_p_BlockWrite';
+
+function  FileName_CString (protected var aFile: AnyFile): CString; external name '_p_FileName_CString';
+
+function  InternalIOSelect (Events: InternalIOSelectTypePtr; EventsLow, Count: Integer; MicroSeconds: MicroSecondTimeType): Integer; external name '_p_Select';
+procedure GPC_InitFDR (var aFile: AnyFile; InternalName: CString; Size, Flags: Integer); external name '_p_InitFDR';
+procedure GPC_DoneFDR (var aFile: AnyFile); external name '_p_DoneFDR';
+
+function  GPC_LazyTryGet (var aFile: AnyFile): Pointer; external name '_p_LazyTryGet';
+function  GPC_LazyGet    (var aFile: AnyFile): Pointer; external name '_p_LazyGet';
+function  GPC_LazyUnget  (var aFile: AnyFile): Pointer; external name '_p_LazyUnget';
+
+{ If an error occurs or remaining characters (including whitespace!) are left,
+  the position of the error, not the error code, is returned (BP compatibility!) }
+function  GPC_Val_ByteInt_NoCheck   (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: ByteInt  ): Integer; external name '_p_Val_ByteInt_NoCheck';
+function  GPC_Val_ShortInt_NoCheck  (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: ShortInt ): Integer; external name '_p_Val_ShortInt_NoCheck';
+function  GPC_Val_Integer_NoCheck   (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: Integer  ): Integer; external name '_p_Val_Integer_NoCheck';
+function  GPC_Val_MedInt_NoCheck    (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: MedInt   ): Integer; external name '_p_Val_MedInt_NoCheck';
+function  GPC_Val_LongInt_NoCheck   (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: LongInt  ): Integer; external name '_p_Val_LongInt_NoCheck';
+function  GPC_Val_ByteCard_NoCheck  (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: ByteCard ): Integer; external name '_p_Val_ByteCard_NoCheck';
+function  GPC_Val_ShortCard_NoCheck (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: ShortCard): Integer; external name '_p_Val_ShortCard_NoCheck';
+function  GPC_Val_Cardinal_NoCheck  (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: Cardinal ): Integer; external name '_p_Val_Cardinal_NoCheck';
+function  GPC_Val_MedCard_NoCheck   (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: MedCard  ): Integer; external name '_p_Val_MedCard_NoCheck';
+function  GPC_Val_LongCard_NoCheck  (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: LongCard ): Integer; external name '_p_Val_LongCard_NoCheck';
+{$if 0}  { Not yet built-in }
+function  GPC_Val_ByteInt_Check     (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: ByteInt;   MinRange, MaxRange: ByteInt  ): Integer; external name '_p_Val_ByteInt_Check';
+function  GPC_Val_ShortInt_Check    (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: ShortInt;  MinRange, MaxRange: ShortInt ): Integer; external name '_p_Val_ShortInt_Check';
+function  GPC_Val_Integer_Check     (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: Integer;   MinRange, MaxRange: Integer  ): Integer; external name '_p_Val_Integer_Check';
+function  GPC_Val_MedInt_Check      (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: MedInt;    MinRange, MaxRange: MedInt   ): Integer; external name '_p_Val_MedInt_Check';
+function  GPC_Val_LongInt_Check     (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: LongInt;   MinRange, MaxRange: LongInt  ): Integer; external name '_p_Val_LongInt_Check';
+function  GPC_Val_ByteCard_Check    (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: ByteCard;  MinRange, MaxRange: ByteCard ): Integer; external name '_p_Val_ByteCard_Check';
+function  GPC_Val_ShortCard_Check   (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: ShortCard; MinRange, MaxRange: ShortCard): Integer; external name '_p_Val_ShortCard_Check';
+function  GPC_Val_Cardinal_Check    (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: Cardinal;  MinRange, MaxRange: Cardinal ): Integer; external name '_p_Val_Cardinal_Check';
+function  GPC_Val_MedCard_Check     (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: MedCard;   MinRange, MaxRange: MedCard  ): Integer; external name '_p_Val_MedCard_Check';
+function  GPC_Val_LongCard_Check    (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: LongCard;  MinRange, MaxRange: LongCard ): Integer; external name '_p_Val_LongCard_Check';
+{$endif}
+function  GPC_Val_ShortReal         (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: ShortReal): Integer; external name '_p_Val_ShortReal';
+function  GPC_Val_Real              (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: Real     ): Integer; external name '_p_Val_Real';
+function  GPC_Val_LongReal          (Source: GPC_PChars; StrLength, Flags: Integer; var Dest: LongReal ): Integer; external name '_p_Val_LongReal';
+
+procedure GPC_Page      (var aFile: Text);    external name '_p_Page';
+procedure GPC_Put       (var aFile: AnyFile); external name '_p_Put';
+
+{ The result of the following function is a pointer to a *static*
+  buffer! }
+function  GetErrorMessageFileName (protected var f: AnyFile): CString; external name '_p_GetErrorMessageFileName';
+
+const  { from constants.h }
+  Binding_Name_Length = 255;
+
+type
+  { The standard fields are Bound and Name. The others are extensions. }
+  GPC_BindingType = { @@@@packed } record
+    Bound            : Boolean;
+    Force            : Boolean;       { Can be set to allow binding to
+                                        directories or inaccessible files }
+    Extensions_Valid : Boolean;
+    Readable         : Boolean;
+    Writable         : Boolean;
+    Executable       : Boolean;
+    Existing         : Boolean;       { Binding points to an existing file }
+    Directory        : Boolean;       { Binding points to an existing
+                                        directory; `Existing' is False then }
+    Special          : Boolean;       { Binding points to an existing
+                                        special file (device, pipe, socket,
+                                        etc.); `Existing' is False then }
+    SymLink          : Boolean;       { Binding points to a symbolic link }
+    Size             : FileSizeType;  { Size of file, or -1 if unknown }
+    AccessTime,                       { Time of last access }
+    ModificationTime,                 { Time of last modification }
+    ChangeTime       : UnixTimeType;  { Time of last change }
+    User,                             { User ID of owner }
+    Group,                            { Group ID of owner }
+    Mode,                             { Access permissions, cf. ChMod }
+    Device,                           { Device the file is on }
+    INode            : Integer;       { Unix INode number }
+    TextBinary       : Boolean;       { Open a Text file in binary mode }
+    Handle           : Integer;       { Can be set to bind a Pascal file to
+                                        a given file handle }
+    CloseFlag        : Boolean;       { If Handle is used, tell whether to
+                                        close it when file is closed }
+    Name             : String (Binding_Name_Length)
+  end;
+
+procedure GPC_Bind   (var aFile: AnyFile; protected var aBinding: BindingType); external name '_p_Bind';
+procedure GPC_Unbind (var aFile: AnyFile);                                      external name '_p_Unbind';
+
+procedure GPC_Internal_Open (var aFile: AnyFile; aFileName: CString; aLength, BufferSize: Integer; Mode: TOpenMode); external name '_p_InternalOpen';
+procedure GPC_Flush (var aFile: AnyFile); external name '_p_Flush';
+procedure GPC_Erase (var aFile: AnyFile); external name '_p_Erase';
+
+{@@endinternal}
+
+var
+  FileMode: Integer; external name '_p_FileMode'; external;
+
+procedure GetBinding   (protected var aFile: AnyFile; var aBinding: BindingType); external name '_p_Binding';
+procedure ClearBinding (var aBinding: BindingType);                               external name '_p_ClearBinding';
+
+{ TFDD interface @@@@ Subject to change! Use with caution! }
+
+type
+  TOpenProc   = procedure (var PrivateData; Mode: TOpenMode);
+  TSelectFunc = function  (var PrivateData; Writing: Boolean): Integer;  { called before SelectHandle, must return a file handle }
+  TSelectProc = procedure (var PrivateData; var ReadSelect, WriteSelect, ExceptSelect: Boolean);  { called before and after SelectHandle }
+  TReadFunc   = function  (var PrivateData; var   Buffer; Size: SizeType): SizeType;
+  TWriteFunc  = function  (var PrivateData; const Buffer; Size: SizeType): SizeType;
+  TFileProc   = procedure (var PrivateData);
+  TFlushProc  = TFileProc;
+  TCloseProc  = TFileProc;
+  TDoneProc   = TFileProc;
+
+procedure AssignTFDD (var f: AnyFile;
+                      OpenProc   : TOpenProc;
+                      SelectFunc : TSelectFunc;
+                      SelectProc : TSelectProc;
+                      ReadFunc   : TReadFunc;
+                      WriteFunc  : TWriteFunc;
+                      FlushProc  : TFlushProc;
+                      CloseProc  : TCloseProc;
+                      DoneProc   : TDoneProc;
+                      PrivateData: Pointer);       external name '_p_AssignTFDD';
+
+procedure SetTFDD    (var f: AnyFile;
+                      OpenProc   : TOpenProc;
+                      SelectFunc : TSelectFunc;
+                      SelectProc : TSelectProc;
+                      ReadFunc   : TReadFunc;
+                      WriteFunc  : TWriteFunc;
+                      FlushProc  : TFlushProc;
+                      CloseProc  : TCloseProc;
+                      DoneProc   : TDoneProc;
+                      PrivateData: Pointer);       external name '_p_SetTFDD';
+
+{ Any parameter except f may be Null }
+procedure GetTFDD    (var f: AnyFile;
+                      var OpenProc   : TOpenProc;
+                      var SelectFunc : TSelectFunc;
+                      var SelectProc : TSelectProc;
+                      var ReadFunc   : TReadFunc;
+                      var WriteFunc  : TWriteFunc;
+                      var FlushProc  : TFlushProc;
+                      var CloseProc  : TCloseProc;
+                      var DoneProc   : TDoneProc;
+                      var PrivateData: Pointer);   external name '_p_GetTFDD';
+
+procedure FileMove (var f: AnyFile; NewName: CString; Overwrite: Boolean); attribute (iocritical); external name '_p_Mv';
+
+{ Flags that can be ORed into FileMode. The default value of
+  FileMode is FileMode_Reset_ReadWrite. The somewhat confusing
+  values are meant to be compatible to BP (as far as BP supports
+  them). }
+const
+  { Allow writing to binary files opened with Reset }
+  FileMode_Reset_ReadWrite      = 2;
+
+  { Do not allow reading from files opened with Rewrite }
+  FileMode_Rewrite_WriteOnly    = 4;
+
+  { Do not allow reading from files opened with Extend }
+  FileMode_Extend_WriteOnly     = 8;
+
+  { Allow writing to text files opened with Reset }
+  FileMode_Text_Reset_ReadWrite = $100;
+
+type
+  TextFile = Text;
+
+const
+  NoChange = -1;  { can be passed to ChOwn for Owner and/or Group to not change that value }
+
+procedure CloseFile (var aFile: AnyFile); external name '_p_Close';
+procedure ChMod (var aFile: AnyFile; Mode: Integer); attribute (iocritical); external name '_p_ChMod';
+procedure ChOwn (var aFile: AnyFile; Owner, Group: Integer); attribute (iocritical); external name '_p_ChOwn';
+
+{ Checks if data are available to be read from aFile. This is
+  similar to `not EOF (aFile)', but does not block on "files" that
+  can grow, like Ttys or pipes. }
+function  CanRead      (var aFile: AnyFile): Boolean; external name '_p_CanRead';
+
+{ Checks if data can be written to aFile. }
+function  CanWrite     (var aFile: AnyFile): Boolean; external name '_p_CanWrite';
+
+{ Get the file handle. }
+function  FileHandle   (protected var aFile: AnyFile): Integer; external name '_p_FileHandle';
+
+{ Lock files }
+function  FileLock   (var aFile: AnyFile; WriteLock, Block: Boolean): Boolean; external name '_p_FileLock';
+function  FileUnlock (var aFile: AnyFile): Boolean; external name '_p_FileUnlock';
+
+{ Try to map (a part of) a file to memory. }
+function  MemoryMap (Start: Pointer; Length: SizeType; Access: Integer; Shared: Boolean;
+                     var aFile: AnyFile; Offset: FileSizeType): Pointer; external name '_p_MemoryMap';
+
+{ Unmap a previous memory mapping. }
+procedure MemoryUnMap (Start: Pointer; Length: SizeType); external name '_p_MemoryUnMap';
+
+implementation
+
+{ This file is always compiled with debug information (see
+  Makefile.in), but the file name of the following routine is set to
+  a magic name, so a debugger can recognize it automatically and
+  step over it into the finalizers themselves. }
+{$ifndef DEBUG}
+#line 1 "<implicit code>"
+{$endif}
+procedure RunFinalizers (var AtExitProcs: PProcList);
+var
+  p: PProcList;
+  Proc: PProcedure;
+begin
+  while AtExitProcs <> nil do
+    begin
+      p := AtExitProcs;
+      AtExitProcs := AtExitProcs^.Next;
+      Proc := p^.Proc;
+      Dispose (p);
+      Proc^
+    end
+end;
+
+{$I+}
+
+begin
+  GPC_Initialize_Std_Files;
+  InitMisc;
+  InitTime
+end.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

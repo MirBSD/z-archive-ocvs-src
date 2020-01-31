@@ -1,0 +1,392 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410261930:1.1.1.1
+	cvs-200410222040:1.1.1.1
+	tg-mergetmp-1:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406230735:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200402042200:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.46.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.18;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: getifaddrs.c,v 1.9 2002/08/09 06:12:25 itojun Exp $	*/
+
+/*
+ * Copyright (c) 1995, 1999
+ *	Berkeley Software Design, Inc.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ * THIS SOFTWARE IS PROVIDED BY Berkeley Software Design, Inc. ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL Berkeley Software Design, Inc. BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	BSDI getifaddrs.c,v 2.12 2000/02/23 14:51:59 dab Exp
+ */
+
+#include <sys/types.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <net/if.h>
+#include <sys/param.h>
+#include <net/route.h>
+#include <sys/sysctl.h>
+#include <net/if_dl.h>
+
+#include <errno.h>
+#include <ifaddrs.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#define	SALIGN	(sizeof(long) - 1)
+#define	SA_RLEN(sa)	((sa)->sa_len ? (((sa)->sa_len + SALIGN) & ~SALIGN) : (SALIGN + 1))
+
+int
+getifaddrs(struct ifaddrs **pif)
+{
+	int icnt = 1;
+	int dcnt = 0;
+	int ncnt = 0;
+	int mib[6];
+	size_t needed;
+	char *buf;
+	char *next;
+	struct ifaddrs *cif = 0;
+	char *p, *p0;
+	struct rt_msghdr *rtm;
+	struct if_msghdr *ifm;
+	struct ifa_msghdr *ifam;
+	struct sockaddr_dl *dl;
+	struct sockaddr *sa;
+	u_short index = 0;
+	size_t len, alen;
+	struct ifaddrs *ifa, *ift;
+	int i;
+	char *data;
+	char *names;
+
+	mib[0] = CTL_NET;
+	mib[1] = PF_ROUTE;
+	mib[2] = 0;             /* protocol */
+	mib[3] = 0;             /* wildcard address family */
+	mib[4] = NET_RT_IFLIST;
+	mib[5] = 0;             /* no flags */
+	if (sysctl(mib, 6, NULL, &needed, NULL, 0) < 0)
+		return (-1);
+	if ((buf = malloc(needed)) == NULL)
+		return (-1);
+	if (sysctl(mib, 6, buf, &needed, NULL, 0) < 0) {
+		free(buf);
+		return (-1);
+	}
+
+	for (next = buf; next < buf + needed; next += rtm->rtm_msglen) {
+		rtm = (struct rt_msghdr *)next;
+		if (rtm->rtm_version != RTM_VERSION)
+			continue;
+		switch (rtm->rtm_type) {
+		case RTM_IFINFO:
+			ifm = (struct if_msghdr *)rtm;
+			if (ifm->ifm_addrs & RTA_IFP) {
+				index = ifm->ifm_index;
+				++icnt;
+				dl = (struct sockaddr_dl *)(ifm + 1);
+				dcnt += SA_RLEN((struct sockaddr *)dl) +
+					ALIGNBYTES;
+				dcnt += sizeof(ifm->ifm_data);
+				ncnt += dl->sdl_nlen + 1;
+			} else
+				index = 0;
+			break;
+
+		case RTM_NEWADDR:
+			ifam = (struct ifa_msghdr *)rtm;
+			if (index && ifam->ifam_index != index)
+				abort();	/* XXX abort illegal in library */
+
+#define	RTA_MASKS	(RTA_NETMASK | RTA_IFA | RTA_BRD)
+			if (index == 0 || (ifam->ifam_addrs & RTA_MASKS) == 0)
+				break;
+			p = (char *)(ifam + 1);
+			++icnt;
+			/* Scan to look for length of address */
+			alen = 0;
+			for (p0 = p, i = 0; i < RTAX_MAX; i++) {
+				if ((RTA_MASKS & ifam->ifam_addrs & (1 << i))
+				    == 0)
+					continue;
+				sa = (struct sockaddr *)p;
+				len = SA_RLEN(sa);
+				if (i == RTAX_IFA) {
+					alen = len;
+					break;
+				}
+				p += len;
+			}
+			for (p = p0, i = 0; i < RTAX_MAX; i++) {
+				if ((RTA_MASKS & ifam->ifam_addrs & (1 << i))
+				    == 0)
+					continue;
+				sa = (struct sockaddr *)p;
+				len = SA_RLEN(sa);
+				if (i == RTAX_NETMASK && sa->sa_len == 0)
+					dcnt += alen;
+				else
+					dcnt += len;
+				p += len;
+			}
+			break;
+		}
+	}
+
+	if (icnt + dcnt + ncnt == 1) {
+		*pif = NULL;
+		free(buf);
+		return (0);
+	}
+	data = malloc(sizeof(struct ifaddrs) * icnt + dcnt + ncnt);
+	if (data == NULL) {
+		free(buf);
+		return(-1);
+	}
+
+	ifa = (struct ifaddrs *)data;
+	data += sizeof(struct ifaddrs) * icnt;
+	names = data + dcnt;
+
+	memset(ifa, 0, sizeof(struct ifaddrs) * icnt);
+	ift = ifa;
+
+	index = 0;
+	for (next = buf; next < buf + needed; next += rtm->rtm_msglen) {
+		rtm = (struct rt_msghdr *)next;
+		if (rtm->rtm_version != RTM_VERSION)
+			continue;
+		switch (rtm->rtm_type) {
+		case RTM_IFINFO:
+			ifm = (struct if_msghdr *)rtm;
+			if (ifm->ifm_addrs & RTA_IFP) {
+				index = ifm->ifm_index;
+				dl = (struct sockaddr_dl *)(ifm + 1);
+
+				cif = ift;
+				ift->ifa_name = names;
+				ift->ifa_flags = (int)ifm->ifm_flags;
+				memcpy(names, dl->sdl_data, dl->sdl_nlen);
+				names[dl->sdl_nlen] = 0;
+				names += dl->sdl_nlen + 1;
+
+				ift->ifa_addr = (struct sockaddr *)data;
+				memcpy(data, dl,
+				    ((struct sockaddr *)dl)->sa_len);
+				data += SA_RLEN((struct sockaddr *)dl);
+
+				/* ifm_data needs to be aligned */
+				ift->ifa_data = data = (void *)ALIGN(data);
+				memcpy(data, &ifm->ifm_data, sizeof(ifm->ifm_data));
+ 				data += sizeof(ifm->ifm_data);
+
+				ift = (ift->ifa_next = ift + 1);
+			} else
+				index = 0;
+			break;
+
+		case RTM_NEWADDR:
+			ifam = (struct ifa_msghdr *)rtm;
+			if (index && ifam->ifam_index != index)
+				abort();	/* XXX abort illegal in library */
+
+			if (index == 0 || (ifam->ifam_addrs & RTA_MASKS) == 0)
+				break;
+			ift->ifa_name = cif->ifa_name;
+			ift->ifa_flags = cif->ifa_flags;
+			ift->ifa_data = NULL;
+			p = (char *)(ifam + 1);
+			/* Scan to look for length of address */
+			alen = 0;
+			for (p0 = p, i = 0; i < RTAX_MAX; i++) {
+				if ((RTA_MASKS & ifam->ifam_addrs & (1 << i))
+				    == 0)
+					continue;
+				sa = (struct sockaddr *)p;
+				len = SA_RLEN(sa);
+				if (i == RTAX_IFA) {
+					alen = len;
+					break;
+				}
+				p += len;
+			}
+			for (p = p0, i = 0; i < RTAX_MAX; i++) {
+				if ((RTA_MASKS & ifam->ifam_addrs & (1 << i))
+				    == 0)
+					continue;
+				sa = (struct sockaddr *)p;
+				len = SA_RLEN(sa);
+				switch (i) {
+				case RTAX_IFA:
+					ift->ifa_addr = (struct sockaddr *)data;
+					memcpy(data, p, len);
+					data += len;
+					break;
+
+				case RTAX_NETMASK:
+					ift->ifa_netmask =
+					    (struct sockaddr *)data;
+					if (sa->sa_len == 0) {
+						memset(data, 0, alen);
+						data += alen;
+						break;
+					}
+					memcpy(data, p, len);
+					data += len;
+					break;
+
+				case RTAX_BRD:
+					ift->ifa_broadaddr =
+					    (struct sockaddr *)data;
+					memcpy(data, p, len);
+					data += len;
+					break;
+				}
+				p += len;
+			}
+
+
+			ift = (ift->ifa_next = ift + 1);
+			break;
+		}
+	}
+
+	free(buf);
+	if (--ift >= ifa) {
+		ift->ifa_next = NULL;
+		*pif = ifa;
+	} else {
+		*pif = NULL;
+		free(ifa);
+	}
+	return (0);
+}
+
+void
+freeifaddrs(struct ifaddrs *ifp)
+{
+	free(ifp);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

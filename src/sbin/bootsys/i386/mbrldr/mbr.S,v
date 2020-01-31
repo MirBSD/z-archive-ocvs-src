@@ -1,0 +1,854 @@
+head	1.11;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.11
+	tg-mergefixes-1-branch:1.11.0.4
+	tg-mergefixes-1-base:1.11
+	MIROS_X:1.11.0.2
+	MIROS_X_BASE:1.11
+	MIRBSD_XP_MIRPPC:1.10.0.4
+	MIRBSD_XP_SPARC_BASE:1.10
+	MIRBSD_XP_SPARC:1.10.0.2;
+locks; strict;
+comment	@# @;
+
+
+1.11
+date	2004.12.05.13.24.45;	author tg;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2004.05.10.17.42.48;	author tg;	state Stab;
+branches;
+next	1.9;
+
+1.9
+date	2004.05.07.00.02.29;	author tg;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2004.04.29.23.29.12;	author tg;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2004.04.29.23.19.34;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2004.04.29.19.41.49;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2004.03.22.20.54.06;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.03.12.00.27.51;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.03.05.21.20.15;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.20.04.08.50;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2004.02.19.19.29.15;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.11
+log
+@* replace all occurences of old eMail addresses of mine
+  with their more recent counterparts
+* no $Log keyword!
+* update licence template to most recent version in files touched
+* in some places, don't add our own licence boilerplate, just
+  add my name to the others
+* make dev/rndvar.h suitable for inclusion in asm code
+* include dev/rndvar.h by in_cksum.s instead of
+  hardcoding pool size
+* ENTRY(a); ENTRY(b) -> NENTRY(a); ENTRY(b)
+* RCS IDs belong into .comment not .text
+@
+text
+@/**	$MirBSD: src/share/misc/licence.template,v 1.20 2004/12/03 16:18:37 tg Rel $ */
+
+/*-
+ * Copyright (c) 2004
+ *	Thorsten "mirabile" Glaser <tg@@66h.42h.de>
+ *
+ * Licensee is hereby permitted to deal in this work without restric-
+ * tion, including unlimited rights to use, publicly perform, modify,
+ * merge, distribute, sell, give away or sublicence, provided all co-
+ * pyright notices above, these terms and the disclaimer are retained
+ * in all redistributions or reproduced in accompanying documentation
+ * or other materials provided with binary redistributions.
+ *
+ * Licensor hereby provides this work "AS IS" and WITHOUT WARRANTY of
+ * any kind, expressed or implied, to the maximum extent permitted by
+ * applicable law, but with the warranty of being written without ma-
+ * licious intent or gross negligence; in no event shall licensor, an
+ * author or contributor be held liable for any damage, direct, indi-
+ * rect or other, however caused, arising in any way out of the usage
+ * of this work, even if advised of the possibility of such damage.
+ *-
+ * Just Another Rewritten Master/Partition boot record
+ * chainable, loads two 512-byte sectors at once, could run /boot too
+ */
+
+	.intel_syntax noprefix
+	.code16
+	.text
+	.globl	_start
+
+_start:	xor	ax,ax
+	push	ax
+	popf
+	add	ax,0x07A0
+	mov	ss,ax
+	mov	sp,0xFFFC
+	sti
+	push	ax
+	mov	ds,ax
+	mov	es,ax
+	mov	si,0x0200
+	xor	di,di
+	mov	cx,si
+	rep	movsb
+	push	offset Lmain
+	lret
+
+Lmsg:	.ascii	"Mir-" __BOOTSYS
+#ifdef	BOOTMANAGER
+	.ascii	": 0="
+Lm00:	.ascii	"00 1="
+Lm01:	.ascii	"00 2="
+Lm02:	.ascii	"00 3="
+Lm03:	.ascii	"00 4=MBR 5=fd CR=std\r\n"
+#endif
+	.asciz	">"
+
+Lotxt:	lodsb
+	or	al,al
+	jne	Lotxt_
+	ret
+Lotxt_:	mov	ah,0x0E
+	mov	bx,7
+	int	0x10
+	jmp	Lotxt
+
+#ifdef	BOOTMANAGER
+Lmod:	mov	di,offset Lm00
+	mov	al,[0x01C2]
+	call	LpBY
+	mov	di,offset Lm01
+	mov	al,[0x01D2]
+	call	LpBY
+	mov	di,offset Lm02
+	mov	al,[0x01E2]
+	call	LpBY
+	mov	di,offset Lm03
+	mov	al,[0x01F2]
+LpBY:	mov	ah,al
+	shr	al,4
+	and	ah,0x0F
+	add	ax,0x3030
+	cmp	al,0x39
+	jbe	LpBY1
+	add	al,7
+LpBY1:	cmp	ah,0x39
+	jbe	LpBY2
+	add	ah,7
+LpBY2:	stosw
+	ret
+#endif
+
+Ltry:	mov	bp,4
+	call	Ltry0
+	jc	Ltry1
+	cmp	ah,0x42
+	je	Ltry2
+	inc	cx
+	add	bh,2
+	jmp	Ltry3
+Ltry2:	add	byte ptr [5],2
+	inc	dword ptr [8]
+Ltry3:	call	Ltry0
+	push	dx
+	mov	ax,0x0E0D	/* magic -> this pbr */
+	mov	[0x600],ax	/* at 0x08000 linear */
+	xor	bx,bx
+	int	0x10
+	pop	dx
+	cli			/* be nice :) */
+	jmp	0,0x7C00
+Ltry0:	pusha
+	int	0x13
+	popa
+	jnc	Ltry1
+	pusha
+	xor	ax,ax
+	int	0x13
+	popa
+	dec	bp
+	jne	Ltry0
+	stc
+Ltry1:	ret
+
+Lmain:	mov	si,offset Lmsg
+#ifdef	BOOTMANAGER
+	call	Lmod
+#endif
+	call	Lotxt
+	mov	bx,0x01BE	/* partition table offset */
+#ifdef	BOOTMANAGER
+	xor	ax,ax		/* read CMOS clock ticks since midnight */
+	int	0x1A
+	add	dx,183		/* 10 seconds rounded up one tick */
+	Ltimeout = . - 2
+	adc	cl,0		/* carry over */
+	shl	ecx,16
+	mov	cx,dx
+	mov	edi,ecx
+Lilp:	mov	ah,1		/* check if key pressed */
+	int	0x16
+	jnz	Lkeyp		/* key was pressed */
+	xor	ax,ax
+	int	0x1A
+	shl	ecx,16
+	mov	cx,dx		/* current clock tick */
+	or	al,al		/* past midnight? */
+	jz	Lsame
+	add	ecx,1573040	/* according to Ralf Brown Interrupt List */
+Lsame:	cmp	ecx,edi		/* time is over? */
+	jbe	Lilp		/* not yet */
+	jmp	Lscanp		/* assume user pressed RETURN (default) */
+Lkeyp:	xor	ah,ah		/* get pressed key */
+	int	0x16
+	sub	al,13		/* return */
+	jb	Lkeyp		/* illegal */
+	je	Lscanp
+	sub	al,0x30-13	/* '0' */
+	jb	Lkeyp		/* illegal */
+	xor	dx,dx
+	xor	cx,cx
+	inc	cx
+	cmp	al,5
+	ja	Lkeyp		/* illegal */
+	je	LbCHS		/* 5: floppy */
+	xor	ebp,ebp
+	cmp	al,4
+	je	Lbjmp		/* 4: MBR */
+	shl	al,4
+	add	bl,al
+	jmp	LbLBA		/* 0..3: partition */
+#endif
+Lscanp:	mov	al,[apart]
+	cmp	al,3
+	jbe	Lscan2
+Lscan1:	cmp	byte ptr [bx],0x80
+	je	LbLBA		/* active partition */
+	add	bl,0x10
+	cmp	bl,0xFE
+	jb	Lscan1
+	jmp	Lkeyp		/* not found */
+Lscan2:	cbw
+	shl	al,4
+	add	bl,al
+LbLBA:	mov	dx,[bx]
+	mov	cx,[bx+2]
+	mov	ebp,[bx+8]
+Lbjmp:	mov	dl,0x80
+	xor	si,si
+	xor	di,di
+	mov	ax,0x0010
+	stosw
+	xor	ax,ax
+	inc	ax
+	stosw
+	mov	ax,0x7C00
+	stosw
+	xor	ax,ax
+	stosw
+	mov	eax,ebp
+	stosd
+	xor	eax,eax
+	stosd
+	mov	ah,0x42
+	call	Ltry
+LbCHS:	mov	ax,0x0201
+	mov	bx,0x0200
+	call	Ltry
+#ifndef	BOOTMANAGER
+Lkeyp:	/* only if not bootmanager code, this label here */
+#endif
+	call	Labend
+	.asciz	"bad magic\r\n"
+Labend:	pop	si
+	call	Lotxt
+	xor	ax,ax
+	int	0x16
+	jmp	0xF000,0xFFF0
+
+	. = 0x01B7
+apart:	.byte	0xFF
+
+	. = 0x01B8
+	/* some Microsoft® NT stuff */
+
+	. = 0x01BE
+	/* partition table */
+
+	. = 0x01EE
+	/* ABI for second-stage boot loader if used as PBR */
+	.word	0, Lotxt, 0	/* offset 0x01F0 - Lotxt */
+	.word	Ltry0		/* offset 0x01F4 - Ltry0 */
+	.word	0xAA55 - Lotxt	/* offset 0x01F6 - magic */
+#ifdef	BOOTMANAGER
+	.word	Ltimeout	/* offset 0x01F8 - timeout, measured in ticks */
+#else
+	.word	0xFFFF		/* nothing (this is for fdisk btw) */
+#endif
+	/* free */		/* offset 0x01FA..0x01FD */
+
+	. = 0x01FE
+	.word	0xAA55		/* magic */
+@
+
+
+1.10
+log
+@man, what must I have been smoking (well, passively - I've got to ask
+what the others in the Netzladen[.org] have been smoking) when I coded
+this bootsector... no wonder it had weird issues in bochs.
+
+Fixed in v2.70:
+* don't overwrite second sector loaded with magic bytes
+* if LBA fails, don't repeat forever until after Armaggedon,
+  instead try CHS loads immediately (well, after <n> retries)
+
+Added in v2.70:
+* for fdisk(8), there is an additional field in the PBR API,
+  which allows to set a different timeout than 10 seconds,
+  but only during an (u)pdate, as the machine code is modified
+  no code in fdisk for that yet, sorry
+@
+text
+@d1 3
+a3 2
+/* $MirBSD: src/sbin/bootsys/i386/mbrldr/mbr.S,v 1.9 2004/05/07 00:02:29 tg Exp $
+ *-
+d5 1
+a5 1
+ *	Thorsten "mirabile" Glaser <x86@@ePost.de>
+d8 5
+a12 5
+ * tion, including unlimited rights to use, publically perform, modi-
+ * fy, merge, distribute, sell, give away or sublicence, provided the
+ * above copyright notices, these terms and the disclaimer are retai-
+ * ned in all redistributions, or reproduced in accompanying documen-
+ * tation or other materials provided with binary redistributions.
+d14 7
+a20 7
+ * Licensor hereby provides this work "as is" and without any warran-
+ * ties whatsoever, express or implied, to the maximum extent permit-
+ * ted by applicable law, except that the work is not written or pub-
+ * lished with malice intent; in no event may authors or contributors
+ * be held liable for any damage, however caused, direct or indirect,
+ * arising in any way out of the usage of covered work, even if advi-
+ * sed of the possibility of such damage.
+@
+
+
+1.9
+log
+@* fix thinko introduced in last version (mov ecx,edi -> mov edi,ecx)
+  probably caused by reading too much bad AT&T syntax code, which
+  prevented the 10 second timeout from working
+* bump version number accordingly
+* echo/printf -> print conversion ("we use ksh anyways")
+* remove separate LICENCE file; BSD spirit is to licence per file
+* cleanup and simplify
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/sbin/bootsys/i386/mbrldr/mbr.S,v 1.8 2004/04/29 23:29:12 tg Exp $
+d6 6
+a11 6
+ * Subject to these terms, everybody who obtained a copy of this work
+ * is hereby permitted to deal in the work without restriction inclu-
+ * ding without limitation the rights to use, distribute, sell, modi-
+ * fy, publically perform, give away, merge or sublicence it provided
+ * this notice is kept and the authors and contributors are given due
+ * credit in derivates or accompanying documents.
+d13 7
+a19 6
+ * This work is provided by its developers (authors and contributors)
+ * "as is" and without any warranties whatsoever, express or implied,
+ * to the maximum extent permitted by applicable law; in no event may
+ * developers be held liable for damage caused, directly or indirect-
+ * ly, but not by a developer's malice intent, even if advised of the
+ * possibility of such damage.
+d30 1
+a30 1
+_start:	xor	eax,eax
+d104 2
+a105 2
+	mov	ax,0x0E0D
+	mov	[0x400],ax	/* magic -> this pbr */
+d120 2
+a121 1
+	jnc	Ltry0
+d134 1
+d233 6
+a238 1
+	/* free */		/* offset 0x01F8..0x01FC */
+@
+
+
+1.8
+log
+@oops... I wonder why I didn't have space left
+reorder code to achieve savings
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/sbin/bootsys/i386/mbrldr/mbr.S,v 1.7 2004/04/29 23:19:34 tg Exp $
+d135 1
+a135 1
+	mov	ecx,edi
+@
+
+
+1.7
+log
+@change the way priority boot selection works
+the offset (0..3) of the active partition is stored
+in another variable; any other value disables
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/sbin/bootsys/i386/mbrldr/mbr.S,v 1.6 2004/04/29 19:41:49 tg Exp $
+d52 1
+a52 1
+Lm03:	.ascii	"00 4=MBR 5=fd RET=std\r\n"
+d54 1
+a54 1
+	.asciz	"> "
+d171 1
+a171 5
+	ja	Lscan1
+	cbw
+	shl	ax,4
+	add	bx,ax
+	jmp	LbLBA
+d178 3
+@
+
+
+1.6
+log
+@0x80 means active - now, 0x42 means default entry
+settable by fdisk(8) RSN
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/sbin/bootsys/i386/mbrldr/mbr.S,v 1.5 2004/03/22 20:54:06 tg Exp $
+d52 1
+a52 1
+Lm03:	.ascii	"00 4=MBR 5=fd CR=std\r\n"
+d169 10
+a178 7
+Lscanp:	xor	bp,bp
+Lscan1:	cmp	byte ptr [bx],0x42
+	je	LbLBA		/* default partition */
+	cmp	byte ptr [bx],0x80
+	jne	Lscan2		/* active partition */
+	mov	bp,bx
+Lscan2:	add	bl,0x10
+d181 1
+a181 3
+	mov	bx,bp
+	or	bx,bx
+	jz	Lkeyp		/* not found */
+d216 3
+@
+
+
+1.5
+log
+@big commit:
+* fix xlock correctly, this time
+* add RCS IDs
+* nuke remaining unprotected calls to obsolete network protocols
+  (I hope I didn't remove too much)
+* build base + X11 through and sync sets
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.9 2004/03/19 23:25:19 tg Stab $
+d30 2
+a31 2
+	push	eax
+	popfd
+d34 1
+a34 1
+	mov	esp,0xFFFC
+d49 4
+a52 4
+Lm00:	.ascii	"00h 1="
+Lm01:	.ascii	"00h 2="
+Lm02:	.ascii	"00h 3="
+Lm03:	.ascii	"00h 4=MBR 5=fd0 RET=std\r\n"
+d131 1
+a131 2
+	mov	edi,183		/* 10 seconds rounded up one tick */
+	add	di,dx
+d134 2
+a135 1
+	add	edi,ecx
+d169 7
+a175 3
+Lscanp:	cmp	byte ptr [bx],0x80
+	je	LbLBA		/* active partition */
+	add	bl,0x10
+d177 4
+a180 2
+	jb	Lscanp
+	jmp	Lkeyp		/* not found */
+@
+
+
+1.4
+log
+@don't let MBRs have the API waste in them, fdisk(8) only clears
+the fourth entry (#3) on reinit, and PBRs will use the first
+entry (#0) for their bootage anyways
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: mbr.S,v 1.3 2004/03/05 21:20:15 tg Exp $
+d13 6
+a18 5
+ * This work is provided "as is" with no explicit or implicit warran-
+ * ties whatsoever to the maximum extent permitted by applicable law;
+ * in no event may an author or contributor be held liable for damage
+ * that is, directly or indirectly, caused by the work, even if advi-
+ * sed of the possibility of such damage.
+d21 1
+a21 1
+ * chainable, loads two 512-byte sectors at once
+@
+
+
+1.3
+log
+@guess what?
+we have a new MBR. this one's more stable.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.8 2003/12/17 14:35:00 tg Exp $
+d215 1
+a215 1
+	. = 0x01CE
+d217 4
+a220 3
+	.word	Lotxt, Ltry0	/* offsets 0x01CE, 0x01D0 */
+	.word	0xAA55 - Lotxt	/* reserved */
+	/* free */		/* offsets 0x01D4, 0x01D6, ... */
+@
+
+
+1.2
+log
+@you wouldn't believe me, if I started telling you which cool features
+the new two MBR set has, and I won't tell you anyways, especially not
+what I _still_ plan with them...
+
+go figure yourself, the code is pretty well documented, and this time
+I've not reduced room by tricks but rather by reducing message size -
+they're still more informative than before tho.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: mbr.S,v 1.1 2004/02/19 19:29:15 tg Exp $
+d3 2
+a4 2
+ * This file is subject to the terms and conditions set forth in
+ * ${BSDSRCDIR}/sbin/bootsys/LICENCE with the following authors:
+d6 6
+a11 1
+ * Copyright (c) Thorsten Glaser
+d13 5
+a17 2
+ * If this file is separated from the accompanying LICENCE file,
+ * the terms and conditions must be incorporated herein.
+d19 2
+a20 5
+ * Simple master boot record, including
+ * - a fake DOS BPB (BIOS Parameter Block)
+ * - code for a boot manager
+ * - space for a partition table
+ * it loads two sectors, not just one... *hint* *hint*
+d24 1
+a25 1
+	.code16
+d28 1
+a28 30
+_start:	jmp	Linit
+	nop
+	. = 3 + _start
+Lmsg:	.ascii	"Mir-" __BOOTSYS
+	.word	512		/* bytes per sector */
+	.byte	1		/* sectors per cluster */
+	.word	1		/* reserved sectors */
+Lcrlf:	.byte	0x0D		/* FATs per volume */
+	.word	0x0A		/* root dir entries */
+#ifdef	BOOTMANAGER
+	.word	1		/* sectors per drive */
+#else
+	.word	0xFFFF		/* pt to long BPB */
+#endif
+	.byte	0xF8		/* media ID */
+	.word	1		/* sectors per FAT */
+Lpbl:	.word	0x0010		/* sectors per track */
+	.word	0x0001		/* tracks per cylinder */
+	.long	0x00007C00	/* hidden sectors */
+#ifndef	BOOTMANAGER
+	/* long BPB - space constraints */
+	.long	1		/* sectors per drive */
+	.byte	0x80, 0		/* BIOS drive no. */
+	.byte	0x29		/* eBPB magic */
+	.long	0xFEEDCAFE	/* volume serial no. */
+	.asciz	"UNIX LABEL"	/* volume label */
+	.asciz	"UFS 4.4"	/* filesystem type */
+#endif
+
+Linit:	xor	eax,eax
+d33 1
+a33 1
+	mov	sp,0x1000	/* stack: 4K at 0x8A00 */
+d35 1
+d38 1
+a38 3
+	push	ax
+	push	offset Lmain
+	mov	si,0x0200	/* 0x7C00 */
+d40 1
+a40 1
+	mov	cx,si		/* one sector in bytes */
+d42 1
+d45 1
+d47 5
+a51 17
+Lcmsg:	.ascii	"> 0="
+Lc0:	.ascii	"00 1="
+Lc1:	.ascii	"00 2="
+Lc2:	.ascii	"00 3="
+Lc3:	.asciz	"00 4=MBR 5=fd0 RET=std\r\n"
+
+Lcvt:	mov	ah,al
+	shr	al,4
+	and	ah,0x0F
+	cmp	ah,9
+	jbe	Lcvt0
+	add	ah,7
+Lcvt0:	cmp	al,9
+	jbe	Lcvt1
+	add	al,7
+Lcvt1:	add	[bx],ax
+	add	bx,5
+d53 1
+a53 1
+Lret:	ret
+d57 3
+a59 2
+	je	Lret
+	mov	ah,0x0E
+a63 2
+Lmain:	mov	si,offset Lmsg
+	call	Lotxt
+d65 1
+a65 1
+	mov	bx,offset Lc0
+d67 2
+a68 1
+	call	Lcvt
+d70 2
+a71 1
+	call	Lcvt
+d73 2
+a74 1
+	call	Lcvt
+d76 49
+a124 2
+	call	Lcvt
+	mov	si,offset Lcmsg
+d126 2
+d150 6
+a155 5
+Lpkey:	sub	al,13		/* return */
+	jb	Lkeyp
+	je	Lscanp		/* scan for default partition */
+	sub	al,0x30-13	/* "0" */
+	jb	Lkeyp
+a157 1
+	xor	dx,dx
+d159 2
+a160 2
+	ja	Lkeyp
+	je	Lbchs
+d163 28
+a190 21
+	je	Lblba
+	xor	bx,bx
+	mov	bl,al
+	shl	bx,4
+	jmp	Lrpte
+#endif
+Lscanp:	xor	bx,bx
+Lscpl:	cmp	byte ptr [bx+0x01BE],0x80
+	je	Lrpte
+	add	bl,16
+	cmp	bl,0x40
+	jb	Lscpl
+	jmp	Lkeyp
+Lrpte:	mov	dx,[bx+0x1BE]
+	mov	cx,[bx+0x1C0]
+	mov	ebp,[bx+0x01C6]
+Lblba:	mov	dl,0x80
+	push	cx
+	push	dx
+	mov	si,offset Lpbl
+	mov	[si+8],ebp
+d192 1
+a192 1
+	mov	[si+12],eax
+d195 1
+a195 3
+	pop	dx
+	pop	cx
+Lbchs:	mov	ax,0x0201
+d199 1
+a199 1
+Lkeyp:	/* point to jump when no default partition found */
+d201 3
+a203 1
+	mov	si,offset Lfail
+d205 1
+a205 1
+	xor	ah,ah
+a208 36
+Ltry:	mov	bp,4
+	call	Ltry0
+	jc	Ltry9
+	cmp	ah,0x42
+	je	LtryX
+	inc	cx
+	add	bh,2
+	jmp	LtryD
+LtryX:	mov	byte ptr [si+5],0x7E
+	inc	dword ptr [si+8]
+LtryD:	call	Ltry0
+	mov	si,offset Lcrlf
+	call	Lotxt
+	jmp	0,0x7C00
+
+Ltry0:	pusha
+	int	0x13
+	popa
+	jc	Ltry1
+Ltry9:	ret
+Ltry1:	pusha
+	mov	ax,0x0E40
+	mov	bx,7
+	int	0x10
+	popa
+	dec	bp
+	jne	Ltry0
+	stc
+	ret
+
+#ifdef	BOOTMANAGER
+Lfail:	.asciz	" fail\r\n"
+#else
+Lfail:	.asciz	" failed. Press Return to reboot...\r\n"
+#endif
+
+d210 1
+a210 1
+	/* NT stuff */
+d214 6
+a219 7
+	.word	0x0080, 0x0001
+	.byte	0x27, 0, 0, 0
+	.long	0x00000001, 0
+
+	/* for access by first stage boot loader later: */
+	.word	Lotxt	/* fixed symbol Lotxt at 0x01CE */
+	.word	Ltry0	/* fixed symbol Ltry0 at 0x01D0 */
+d222 1
+a222 1
+	.byte	0x55,0xAA
+@
+
+
+1.1
+log
+@the beginning, still incomplete
+cnuke@@ and bsiegert@@ are prodding me to do more ports :(
+
+for now, use /sys/arch/i386/stand/mbr/mbr.S and
+insert __BOOTSYS for __BOOT_VER - then it'll work.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD$
+d15 1
+d26 1
+a26 1
+Lmsg:	.ascii	"MBR " __BOOTSYS
+d30 3
+a32 2
+	.byte	1		/* FATs per volume */
+	.word	16		/* root dir entries */
+d34 3
+d39 12
+a50 3
+	.word	63		/* sectors per track */
+	.word	16		/* tracks per cylinder */
+	.long	0		/* hidden sectors */
+d65 2
+a66 2
+	mov	cx,0x0100	/* one sector in words */
+	rep	movsw
+d68 169
+@
+

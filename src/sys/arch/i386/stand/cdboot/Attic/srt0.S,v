@@ -1,0 +1,527 @@
+head	1.9;
+access;
+symbols;
+locks; strict;
+comment	@# @;
+
+
+1.9
+date	2003.11.14.20.49.44;	author tg;	state dead;
+branches;
+next	1.8;
+
+1.8
+date	2003.11.09.12.54.25;	author tg;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2003.10.31.22.38.06;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2003.10.31.22.05.36;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2003.10.31.21.20.17;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2003.10.31.21.07.53;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2003.10.31.15.51.36;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.10.31.15.19.32;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.10.31.15.12.37;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.9
+log
+@switch to boot-new, which shares a common srt0 between CD and BIOS
+@
+text
+@/* $MirBSD: srt0.S,v 1.8 2003/11/09 12:54:25 tg Exp $
+ *-
+ * Copyright (c) 2003 Thorsten Glaser <x86@@ePost.de> for the MirOS Project
+ *
+ * Subject to these terms, everybody who obtained a copy of this work
+ * is hereby permitted to deal in the work without restriction inclu-
+ * ding without limitation the rights to use, distribute, sell, modi-
+ * fy, publically perform, give away, merge or sublicense it provided
+ * this notice is kept and the authors and contributors are given due
+ * credit in derivates or accompanying documents.
+ * This work is provided "as is" with no explicit or implicit warran-
+ * ties whatsoever to the maximum extend permitted by applicable law;
+ * in no event may an author or contributor be held liable for damage
+ * that is, directly or indirectly, caused by the work, even if advi-
+ * sed of the possibility of such damage.
+ *-
+ * CD Boot runtime environment - checks if CD booting, outputs messa-
+ * if not and reboots system. Provides functions for booting into an-
+ * other (floppy?) image. (XXX later)
+ * With apologies to Michael Shalayeff and Linus Torvalds.
+ */
+
+#include <machine/asm.h>
+#include <assym.h>
+
+	.intel_syntax noprefix
+	.code16
+	.globl	_C_LABEL(end)
+	.globl	_C_LABEL(edata)
+	.globl	_C_LABEL(boot)
+	.globl	_C_LABEL(_rtt)
+	.globl	_C_LABEL(bios_bootdev)
+	.globl	_C_LABEL(tori_pblk)
+	.globl	_C_LABEL(tori_bootflag)
+	.globl	_ASM_LABEL(pmm_init)
+	.globl	Gdtr
+	.globl	_start
+_start:	xor	eax,eax
+	push	eax
+	popfd
+	mov	ax,LOADSEG
+	mov	ss,ax
+	mov	esp,0x120		/* XXX ?? 0xFFFC */
+	jmp	LOADSEG,offset Lstart
+Lstart:	sti
+	mov	ds,ax
+	mov	es,ax
+	call	Lcdini
+	jnc	Lboot
+#ifdef	LOUD
+	mov	si,offset Lfail
+	call	Lotxt
+#endif
+	xor	ah,ah
+	int	0x16
+	int	0x19
+	jmp	0xF000,0xFFF0
+
+Lboot:	xor	edx,edx
+	mov	dl,[2+_C_LABEL(tori_pblk)]
+	mov	[_C_LABEL(bios_bootdev)],edx
+	xor	eax,eax
+	dec	eax
+	mov	al,dl
+	mov	[_C_LABEL(tori_bootflag)],eax
+	cli
+	addr32 data32 lgdt (Gdtr - SA_LOADADDR)
+	mov	ax,1
+	lmsw	ax
+	data32 jmp 8,offset Lpmon
+	.code32
+Lpmon:	mov	eax,0x10
+	mov	ss,ax
+	mov	esp,0x0000FFFC
+	mov	es,ax
+	mov	ds,ax
+	mov	fs,ax
+	mov	gs,ax
+	push	edx
+	call	_ASM_LABEL(pmm_init)
+	/* zero out .bss */
+	xor	eax,eax
+	mov	ecx,offset _C_LABEL(end)
+	mov	edi,offset _C_LABEL(edata)
+	sub	ecx,edi
+	cld
+	rep
+	stosb
+	/* jump into the boot loader */
+	call	_C_LABEL(boot)
+	jmp	_C_LABEL(_rtt)
+
+	.code16
+#ifdef	LOUD
+Lfail:	.asciz	"CD Boot failed. Press a key to reboot..."
+
+Lotxt:	lodsb
+	or	al,al
+	jz	Lretn
+	mov	ah,14
+	mov	bx,7
+	int	0x10
+	jmp	Lotxt
+#endif
+
+Lcdini:
+#ifdef	LOUD
+	call	1f
+	.asciz	"MirOS CDBOOT srt0 initializing\r\n"
+1:	pop	si
+	call	Lotxt
+#endif
+	/* get parameter block */
+	mov	ax,0x4B01
+	mov	si,offset _C_LABEL(tori_pblk)
+	int	0x13
+	jnc	Liscd
+Lretn:	ret
+#ifdef	LOUD
+LiscdM:	.ascii	"CD Drive "			/* drive no */
+Liscd0:	.ascii	"00 on "			/* load seg */
+Liscd1:	.ascii	"0000:0000, "			/* sectors  */
+Liscd2:	.ascii	"0000 sectors starting at "	/* img offs */
+Liscd3:	.asciz	"00000000 LBA\r\n"
+#endif
+Liscd:	/* we're hooked up on our CD drive now */
+#ifdef	LOUD
+	mov	di,offset Liscd0
+	mov	al,[2+_C_LABEL(tori_pblk)]
+	call	LpBY
+	mov	di,offset Liscd1
+	mov	ax,[12+_C_LABEL(tori_pblk)]
+	call	LpWO
+	mov	di,offset Liscd2
+	mov	ax,[14+_C_LABEL(tori_pblk)]
+	call	LpWO
+	mov	di,offset Liscd3
+	mov	eax,[4+_C_LABEL(tori_pblk)]
+	push	ax
+	shr	eax,16
+	call	LpWO
+	pop	ax
+	call	LpWO
+	mov	si,offset LiscdM
+	call	Lotxt
+#endif
+
+	/* XXX ENOCOFFEE
+	 * this is a good place for giving the user the
+	 * choice if he wants to continue loading our
+	 * cdboot.bin image, or rather boot from a floppy
+	 * image (e.g. Linux, DOS, even Win2k NOEMUL)
+	 */
+
+	clc
+	ret
+
+#ifdef	LOUD
+LpWO:
+	push	ax
+	xchg	ah,al
+	call	LpBY
+	pop	ax
+	/* fall-through */
+LpBY:	mov	ah,al
+	and	ah,0x0F
+	shr	al,4
+	add	ax,0x3030
+	cmp	al,0x39
+	jna	4f
+	add	al,7
+4:	cmp	ah,0x39
+	jna	5f
+	add	ah,7
+5:	stosw
+	ret
+#endif
+
+	/* don't place these in .bss *fg* */
+_C_LABEL(tori_bootflag):
+	.long	0
+_C_LABEL(tori_pblk):
+	.long	0,0,0,0
+	.byte	0,0,0
+
+	/* EOF */
+@
+
+
+1.8
+log
+@Mostly... not fully...
+
+One weekend's worth of work.
+
+- catch up website log with changes really done till today
+- add catch-up entries for wbx@@ and bsiegert@@, too
+- move GNU documentation to src/gnu/doc and simplify it
+- re-run autoconf on the gnu part of the tree again, to
+  catch up with the GFDL-documentation removal
+- provide non-GFDL-licenced as(1) and ld(1) manual pages
+  XXX these are more than outdated!
+- bump MirOS patchlevel
+- build the system through, fixing showstoppers where
+  they are encountered
+- index.cgi and index.php come before index.htm,
+  default.htm and index.html in httpd.conf
+- speed up PHP processing
+- prepare for "new" OpenBSD pkgtools (unsupported by MirBSD,
+  but some MirPorts people want to play with them)
+- move old weblog to CMS; update my info again
+- update hRef""s in old weblogs
+- move release announcements to /historic/
+- copy feature list from last release announcement
+  XXX need a "readible short list", or even
+  XXX	a separation for the target environment
+  XXX	(e.g. suits / techies / clients)
+- add some recent news, so the page ain't empty
+  missing:
+	- about
+	  + MirOS
+	  + MirPorts
+	- get MirOS!	(http d/l, http install, install docs)
+	- relations	(to other BSD)
+	  + ??? events ??? (here?)
+	- history
+	- older releases	(historic)
+	- help pages
+	  + FAQ
+	  + Docs/Tuts	(hi wbx@@ here comes your place)
+	    + install docs
+	  + mailing lists
+	- developers
+	  + wbx
+	  + bsiegert
+	  + cnuke
+	- CVSweb	(XXX need BSDadvocacy.org fix before)
+	- AnonCVS	(howto; link to)
+	- Links
+  alternatively, change the layout? suggestions?
+  why am I the only one who cares about www?
+- merge development plan
+- put a "project" into the miros page head
+- fix cdboot Makefile
+- fix gas wanting us a.out again (wut?)
+  (turned out to be a must-fix in configure.in)
+- stand/cdboot/NOTES merged into stand/README
+- sync distrib set lists
+- have TORI device (i386 libsa) always use bounce buffers
+  (which, in fact, makes it succeed in loading the kernel)
+  XXX kernel says it has less than 4 meg ram (degraded mode)
+  XXX may be a bochs issue?
+- fix random.S again
+- move determining of file name / raw file flag in both
+  bios/toridev.c to the end of bios/toriopen()
+  => enables us to have two drivers at once
+- fix disk probing for CD devices wrt BIOS driver
+
+(eww. The tree isn't fully broken, but neither boot
+ nor cdboot.bin are usable at all at the moment.
+ I'll fix that ASAP.)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: srt0.S,v 1.7 2003/10/31 22:38:06 tg Exp $
+@
+
+
+1.7
+log
+@another piece of data which must go into .text instead of .bss
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: srt0.S,v 1.6 2003/10/31 22:05:36 tg Exp $
+d50 1
+d53 1
+d94 1
+d104 1
+d106 3
+a108 1
+Lcdini:	call	1f
+d112 1
+d119 1
+d125 1
+d127 1
+d146 1
+d158 1
+d177 1
+@
+
+
+1.6
+log
+@my stupid ego tried to set a variable's content in .bss
+before the .bss region was even cleared...
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: srt0.S,v 1.5 2003/10/31 21:20:17 tg Exp $
+d165 2
+d169 5
+@
+
+
+1.5
+log
+@well, without the 'tori files, nothing would work anyways
+and #ifdef CDBOOT in libsa isn't a good idea in general either
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: srt0.S,v 1.4 2003/10/31 21:07:53 tg Exp $
+d59 5
+a77 1
+	mov	[_C_LABEL(bios_bootdev)],edx
+a78 4
+	xor	eax,eax
+	dec	eax
+	mov	al,[2+_C_LABEL(tori_pblk)]
+	mov	[_C_LABEL(tori_bootflag)],eax
+d165 2
+@
+
+
+1.4
+log
+@I've come so far that it at least boots /boot (in bochs)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: srt0.S,v 1.3 2003/10/31 15:51:36 tg Exp $
+d34 1
+d75 4
+@
+
+
+1.3
+log
+@the TORI routines need intrinsic knowledge of the parametre block,
+for example to know which device is the el torito one (and to chain
+to other loaders?)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: srt0.S,v 1.2 2003/10/31 15:19:32 tg Exp $
+d40 1
+a40 1
+	mov	ax,LINKSEG
+d42 3
+a44 2
+	mov	esp,0xFFFC
+	sti
+d57 1
+a57 1
+	mov	dl,[Lbootdev]
+d59 1
+a59 1
+	addr32 data32 lgdt (Gdtr - LINKADDR)
+a96 17
+// move this to tori_pblk
+// XXX so they can handle "only" the boot device,
+//     and hand over everything else to BIOS routines
+//
+//Lpkg:	.byte	0x13		/* length		*/
+//	.byte	0		/* emul type		*/
+//Lbootdev: .byte	0		/* drive no		*/
+//	.byte	0		/* controller no	*/
+//	.long	0		/* image offset		*/
+//	.word	0		/* master/slave		*/
+//	.word	0		/* 3K buffer seg	*/
+//	.word	0		/* load seg		*/
+//	.word	0		/* sector count		*/
+//	.byte	0		/* CH: cylinder [0..7]	*/
+//	.byte	0		/* CL: cyl; sec [0..5]	*/
+//	.byte	0		/* DH: head		*/
+
+d103 1
+a103 1
+	mov	si,offset tori_pblk
+d114 1
+a114 1
+	mov	al,[2+tori_pblk]
+d117 1
+a117 1
+	mov	ax,[12+tori_pblk]
+d120 1
+a120 1
+	mov	ax,[14+tori_pblk]
+d123 1
+a123 1
+	mov	eax,[4+tori_pblk]
+d140 19
+@
+
+
+1.2
+log
+@* RCS ID
+* make compile (a handfull of typos)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: srt0.S,v 1.1 2003/10/31 15:12:37 tg Exp $
+d33 1
+d96 16
+a111 12
+Lpkg:	.byte	0x13		/* length		*/
+	.byte	0		/* emul type		*/
+Lbootdev: .byte	0		/* drive no		*/
+	.byte	0		/* controller no	*/
+	.long	0		/* image offset		*/
+	.word	0		/* master/slave		*/
+	.word	0		/* 3K buffer seg	*/
+	.word	0		/* load seg		*/
+	.word	0		/* sector count		*/
+	.byte	0		/* CH: cylinder [0..7]	*/
+	.byte	0		/* CL: cyl; sec [0..5]	*/
+	.byte	0		/* DH: head		*/
+d119 1
+a119 1
+	mov	si,offset Lpkg
+d130 1
+a130 1
+	mov	al,[Lbootdev]
+d133 1
+a133 1
+	mov	ax,[10+Lbootdev]
+d136 1
+a136 1
+	mov	ax,[12+Lbootdev]
+d139 1
+a139 1
+	mov	eax,[2+Lbootdev]
+@
+
+
+1.1
+log
+@still not even started to finish, but a shot nearer at reality
+* install cdboot.bin (raw) not cdboot (ELF)
+* load it to LINKADDR because we don't jump into the ELF header
+* start writing an srt0.S, "stealing" the API from Mickey and
+  the "enter the protected mode" syntax from Linus Torvalds
+  (OF COURSE IT'S .intel_syntax noprefix - WHAT DID YOU EXPECT?)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.6 2003/10/22 08:19:40 tg Exp $
+d60 1
+a60 1
+	data32 jmp 8,Lpmon
+d62 1
+a62 1
+Lpmon:	mov	eax,10
+@
+

@@ -1,0 +1,236 @@
+head	1.2;
+access;
+symbols
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.08.16.15.20.11;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.42.05;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.05;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Merge OpenBSD
+@
+text
+@#!/bin/sh
+# gzexe: compressor for Unix executables.
+# Use this only for binaries that you do not use frequently.
+#
+# The compressed version is a shell script which decompresses itself after
+# skipping $skip lines of shell commands.  We try invoking the compressed
+# executable with the original name (for programs looking at their name).
+# We also try to retain the original file permissions on the compressed file.
+# For safety reasons, gzexe will not create setuid or setgid shell scripts.
+
+# WARNING: the first line of this file must be either : or #!/bin/sh
+# The : is required for some old versions of csh.
+# On Ultrix, /bin/sh is too buggy, change the first line to: #!/bin/sh5
+#
+# $OpenBSD: gzexe,v 1.7 2003/02/08 10:19:30 pvalchev Exp $
+
+x=`basename "$0"`
+if test $# = 0; then
+  echo compress executables. original file foo is renamed to foo~
+  echo usage: ${x} [-d] files...
+  echo   "   -d  decompress the executables"
+  exit 1
+fi
+
+decomp=0
+res=0
+test "$x" = "ungzexe" && decomp=1
+if test "x$1" = "x-d"; then
+  decomp=1
+  shift
+fi
+
+tail=""
+IFS="${IFS= 	}"; saveifs="$IFS"; IFS="${IFS}:"
+for dir in $PATH; do
+  test -z "$dir" && dir=.
+  if test -f $dir/tail; then
+    tail="$dir/tail"
+    break
+  fi
+done
+IFS="$saveifs"
+if test -z "$tail"; then
+  echo cannot find tail
+  exit 1
+fi
+
+for i do
+  if test ! -f "$i" ; then
+    echo ${x}: $i not a file
+    res=1
+    continue
+  fi
+  if test $decomp -eq 0; then
+    if sed -e 1d -e 2q "$i" | grep "^skip=[0-9]*$" >/dev/null; then
+      echo "${x}: $i is already gzexe'd"
+      continue
+    fi
+  fi
+  if ls -l "$i" | grep '^...[sS]' > /dev/null; then
+    echo "${x}: $i has setuid permission, unchanged"
+    continue
+  fi
+  if ls -l "$i" | grep '^......[sS]' > /dev/null; then
+    echo "${x}: $i has setgid permission, unchanged"
+    continue
+  fi
+  case "`basename $i`" in
+  sh | gzip | tail | chmod | ln | sleep | rm | sed | mktemp)
+	echo "${x}: $i would depend on itself"; continue ;;
+  esac
+
+  tmp=`/usr/bin/mktemp gzXXXXXXXXXX` || exit 1
+  trap "rm -f $tmp; exit 1" 1 2 3 5 10 13 15
+
+  cp -p "$i" $tmp 2>/dev/null || cp "$i" $tmp
+  if test -w $tmp 2>/dev/null; then
+    writable=1
+  else
+    writable=0
+    chmod u+w $tmp 2>/dev/null
+  fi
+  if test $decomp -eq 0; then
+    sed 1q "$0" > $tmp
+    sed "s|^if tail|if $tail|" >> $tmp <<'EOF'
+skip=14
+tmpdir=`/usr/bin/mktemp -d /tmp/gzexeXXXXXXXXXX` || {
+	rm -f ${tmp}
+	exit 1
+}
+prog="${tmpdir}/`echo \"$0\" | sed 's|^.*/||'`"
+if tail +$skip "$0" | gzip -cd > "$prog"; then
+  chmod 700 "$prog"
+  trap '/bin/rm -rf $tmpdir exit $res' 0
+  "$prog" ${1+"$@@"}; res=$?
+else
+  echo Cannot decompress $0
+  rm -rf $tmpdir
+  exit 1
+fi; exit $res
+EOF
+    gzip -cv9 "$i" >> $tmp || {
+      /bin/rm -f $tmp
+      echo ${x}: compression not possible for $i, file unchanged.
+      res=1
+      continue
+    }
+
+  else
+    # decompression
+    skip=18
+    if sed -e 1d -e 2q "$i" | grep "^skip=[0-9]*$" >/dev/null; then
+      eval `sed -e 1d -e 2q "$i"`
+    fi
+    if tail +$skip "$i" | gzip -cd > $tmp; then
+      :
+    else
+      echo ${x}: $i probably not in gzexe format, file unchanged.
+      /bin/rm -f $tmp
+      res=1
+      continue
+    fi
+  fi
+  rm -f "$i~"
+  mv "$i" "$i~" || {
+    echo ${x}: cannot backup $i as $i~
+    /bin/rm -f $tmp
+    res=1
+    continue
+  }
+  mv $tmp "$i" || cp -p $tmp "$i" 2>/dev/null || cp $tmp "$i" || {
+    echo ${x}: cannot create $i
+    /bin/rm -f $tmp
+    res=1
+    continue
+  }
+  /bin/rm -f $tmp
+  if test $writable -eq 0; then
+    chmod u-w $i 2>/dev/null
+  fi
+done
+exit $res
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

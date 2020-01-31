@@ -1,0 +1,1519 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.9
+	tg-mergefixes-1-branch:1.1.1.9.0.4
+	tg-mergefixes-1-base:1.1.1.9
+	MIROS_X:1.1.1.9.0.2
+	MIROS_X_BASE:1.1.1.9
+	tg-mergetmp-3:1.1.1.9
+	cvs-200411210200:1.1.1.9
+	MIRBSD_XP_MIRPPC:1.1.1.8.0.4
+	cvs-200411031540:1.1.1.9
+	MIRBSD_XP_SPARC_BASE:1.1.1.8
+	MIRBSD_XP_SPARC:1.1.1.8.0.2
+	MIRBSD_7quater:1.1.1.7
+	cvs-200405160640:1.1.1.8
+	cvs-200401271800:1.1.1.8
+	cvs-200401261630:1.1.1.8
+	cvs-200401021645:1.1.1.8
+	MIRBSD_7_ALPHA:1.1.1.7.0.6
+	MIRBSD_7:1.1.1.7.0.4
+	cvs-200312222040:1.1.1.8
+	MIRBSD_7ter:1.1.1.7
+	MIRBSD_7_DEV:1.1.1.7.0.2
+	cvs-200310020700:1.1.1.7
+	cvs-200309271030:1.1.1.6
+	cvs-200309251530:1.1.1.6
+	cvs-200308302005:1.1.1.6
+	cvs-200308171200:1.1.1.6
+	ctm-3496:1.1.1.5
+	ctm-3449:1.1.1.4
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.11;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.11;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.07.18.13.52.53;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.07.22.15.02.40;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.07.26.13.24.19;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2003.08.11.18.45.26;	author tg;	state Exp;
+branches;
+next	1.1.1.6;
+
+1.1.1.6
+date	2003.08.17.14.45.41;	author tg;	state Exp;
+branches;
+next	1.1.1.7;
+
+1.1.1.7
+date	2003.10.02.07.50.19;	author tg;	state Exp;
+branches;
+next	1.1.1.8;
+
+1.1.1.8
+date	2003.12.22.21.13.53;	author tg;	state Stab;
+branches;
+next	1.1.1.9;
+
+1.1.1.9
+date	2004.11.03.15.45.17;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: inp.c,v 1.9 2002/07/04 04:22:48 deraadt Exp $	*/
+
+#ifndef lint
+static char rcsid[] = "$OpenBSD: inp.c,v 1.9 2002/07/04 04:22:48 deraadt Exp $";
+#endif /* not lint */
+
+#include "EXTERN.h"
+#include "common.h"
+#include "util.h"
+#include "pch.h"
+#include "INTERN.h"
+#include "inp.h"
+
+extern bool check_only;
+
+/* Input-file-with-indexable-lines abstract type */
+
+static off_t i_size;			/* size of the input file */
+static char *i_womp;			/* plan a buffer for entire file */
+static char **i_ptr;			/* pointers to lines in i_womp */
+
+static int tifd = -1;			/* plan b virtual string array */
+static char *tibuf[2];			/* plan b buffers */
+static LINENUM tiline[2] = {-1, -1};	/* 1st line in each buffer */
+static LINENUM lines_per_buf;		/* how many lines per buffer */
+static int tireclen;			/* length of records in tmp file */
+
+/* New patch--prepare to edit another file. */
+
+void
+re_input()
+{
+    if (using_plan_a) {
+	i_size = 0;
+#ifndef lint
+	if (i_ptr != Null(char**))
+	    free((char *)i_ptr);
+#endif
+	if (i_womp != Nullch)
+	    free(i_womp);
+	i_womp = Nullch;
+	i_ptr = Null(char **);
+    }
+    else {
+	using_plan_a = TRUE;		/* maybe the next one is smaller */
+	Close(tifd);
+	tifd = -1;
+	free(tibuf[0]);
+	free(tibuf[1]);
+	tibuf[0] = tibuf[1] = Nullch;
+	tiline[0] = tiline[1] = -1;
+	tireclen = 0;
+    }
+}
+
+/* Constuct the line index, somehow or other. */
+
+void
+scan_input(filename)
+char *filename;
+{
+    if (!plan_a(filename))
+	plan_b(filename);
+    if (verbose) {
+	say3("Patching file %s using Plan %s...\n", filename,
+	  (using_plan_a ? "A" : "B") );
+    }
+}
+
+/* Try keeping everything in memory. */
+
+bool
+plan_a(filename)
+char *filename;
+{
+    int ifd, statfailed;
+    Reg1 char *s;
+    Reg2 LINENUM iline;
+    char lbuf[MAXLINELEN];
+
+    if (!filename || *filename == '\0')
+	return FALSE;
+
+    statfailed = stat(filename, &filestat);
+    if (statfailed && ok_to_create_file) {
+	if (verbose)
+	    say2("(Creating file %s...)\n",filename);
+	    /* in check_patch case, we still display `Creating file' even
+	       though we're not. The rule is that -C should be as similar
+	       to normal patch behavior as possible
+	     */
+	if (check_only) 
+	    return TRUE;
+	makedirs(filename, TRUE);
+	close(creat(filename, 0666));
+	statfailed = stat(filename, &filestat);
+    }
+    if (statfailed && check_only)
+        fatal2("%s not found, -C mode, can't probe further\n", filename);
+    /* For nonexistent or read-only files, look for RCS or SCCS versions.  */
+    if (statfailed
+	/* No one can write to it.  */
+	|| (filestat.st_mode & 0222) == 0
+	/* I can't write to it.  */
+	|| ((filestat.st_mode & 0022) == 0 && filestat.st_uid != myuid)) {
+	struct stat cstat;
+	char *cs = Nullch;
+	char *filebase, *filedir;
+
+	filebase = basename(filename);
+	filedir = dirname(filename);
+
+	/* Leave room in lbuf for the diff command.  */
+	s = lbuf + 20;
+
+#define try(f, a1, a2, a3) (Snprintf(s, sizeof lbuf - 20, f, a1, a2, a3), stat(s, &cstat) == 0)
+	if (   try("%s/RCS/%s%s", filedir, filebase, RCSSUFFIX)
+	    || try("%s/RCS/%s%s", filedir, filebase,         "")
+	    || try(    "%s/%s%s", filedir, filebase, RCSSUFFIX)) {
+	    Snprintf(buf, sizeof buf, CHECKOUT, filename);
+	    Snprintf(lbuf, sizeof lbuf, RCSDIFF, filename);
+	    cs = "RCS";
+	} else if (   try("%s/SCCS/%s%s", filedir, SCCSPREFIX, filebase)
+		   || try(     "%s/%s%s", filedir, SCCSPREFIX, filebase)) {
+	    Snprintf(buf, sizeof buf, GET, s);
+	    Snprintf(lbuf, sizeof lbuf, SCCSDIFF, s, filename);
+	    cs = "SCCS";
+	} else if (statfailed)
+	    fatal2("can't find %s\n", filename);
+	/* else we can't write to it but it's not under a version
+	   control system, so just proceed.  */
+	if (cs) {
+	    if (!statfailed) {
+		if ((filestat.st_mode & 0222) != 0)
+		    /* The owner can write to it.  */
+		    fatal3("file %s seems to be locked by somebody else under %s\n",
+			   filename, cs);
+		/* It might be checked out unlocked.  See if it's safe to
+		   check out the default version locked.  */
+		if (verbose)
+		    say3("Comparing file %s to default %s version...\n",
+			 filename, cs);
+		if (system(lbuf))
+		    fatal3("can't check out file %s: differs from default %s version\n",
+			   filename, cs);
+	    }
+	    if (verbose)
+		say3("Checking out file %s from %s...\n", filename, cs);
+	    if (system(buf) || stat(filename, &filestat))
+		fatal3("can't check out file %s from %s\n", filename, cs);
+	}
+    }
+    filemode = filestat.st_mode;
+    if (!S_ISREG(filemode))
+	fatal2("%s is not a normal file--can't patch\n", filename);
+    i_size = filestat.st_size;
+    if (out_of_mem) {
+	set_hunkmax();		/* make sure dynamic arrays are allocated */
+	out_of_mem = FALSE;
+	return FALSE;			/* force plan b because plan a bombed */
+    }
+#ifdef lint
+    i_womp = Nullch;
+#else
+    i_womp = malloc((MEM)(i_size+2));	/* lint says this may alloc less than */
+					/* i_size, but that's okay, I think. */
+#endif
+    if (i_womp == Nullch)
+	return FALSE;
+    if ((ifd = open(filename, O_RDONLY)) < 0)
+	pfatal2("can't open file %s", filename);
+#ifndef lint
+    if (read(ifd, i_womp, (size_t)i_size) != i_size) {
+	Close(ifd);	/* probably means i_size > 15 or 16 bits worth */
+	free(i_womp);	/* at this point it doesn't matter if i_womp was */
+	return FALSE;	/*   undersized. */
+    }
+#endif
+    Close(ifd);
+    if (i_size && i_womp[i_size-1] != '\n')
+	i_womp[i_size++] = '\n';
+    i_womp[i_size] = '\0';
+
+    /* count the lines in the buffer so we know how many pointers we need */
+
+    iline = 0;
+    for (s=i_womp; *s; s++) {
+	if (*s == '\n')
+	    iline++;
+    }
+#ifdef lint
+    i_ptr = Null(char**);
+#else
+    i_ptr = (char **)malloc((MEM)((iline + 2) * sizeof(char *)));
+#endif
+    if (i_ptr == Null(char **)) {	/* shucks, it was a near thing */
+	free((char *)i_womp);
+	return FALSE;
+    }
+    
+    /* now scan the buffer and build pointer array */
+
+    iline = 1;
+    i_ptr[iline] = i_womp;
+    for (s=i_womp; *s; s++) {
+	if (*s == '\n')
+	    i_ptr[++iline] = s+1;	/* these are NOT null terminated */
+    }
+    input_lines = iline - 1;
+
+    /* now check for revision, if any */
+
+    if (revision != Nullch) { 
+	if (!rev_in_string(i_womp)) {
+	    if (force) {
+		if (verbose)
+		    say2(
+"Warning: this file doesn't appear to be the %s version--patching anyway.\n",
+			revision);
+	    }
+	    else if (batch) {
+		fatal2(
+"this file doesn't appear to be the %s version--aborting.\n", revision);
+	    }
+	    else {
+		ask2(
+"This file doesn't appear to be the %s version--patch anyway? [n] ",
+		    revision);
+	    if (*buf != 'y')
+		fatal1("aborted\n");
+	    }
+	}
+	else if (verbose)
+	    say2("Good.  This file appears to be the %s version.\n",
+		revision);
+    }
+    return TRUE;			/* plan a will work */
+}
+
+/* Keep (virtually) nothing in memory. */
+
+void
+plan_b(filename)
+char *filename;
+{
+    Reg3 FILE *ifp;
+    Reg1 int i = 0;
+    Reg2 int maxlen = 1;
+    Reg4 bool found_revision = (revision == Nullch);
+
+    using_plan_a = FALSE;
+    if ((ifp = fopen(filename, "r")) == Nullfp)
+	pfatal2("can't open file %s", filename);
+    (void) unlink(TMPINNAME);
+    if ((tifd = open(TMPINNAME, O_EXCL|O_CREAT|O_WRONLY, 0666)) < 0)
+	pfatal2("can't open file %s", TMPINNAME);
+    while (fgets(buf, sizeof buf, ifp) != Nullch) {
+	if (revision != Nullch && !found_revision && rev_in_string(buf))
+	    found_revision = TRUE;
+	if ((i = strlen(buf)) > maxlen)
+	    maxlen = i;			/* find longest line */
+    }
+    if (revision != Nullch) {
+	if (!found_revision) {
+	    if (force) {
+		if (verbose)
+		    say2(
+"Warning: this file doesn't appear to be the %s version--patching anyway.\n",
+			revision);
+	    }
+	    else if (batch) {
+		fatal2(
+"this file doesn't appear to be the %s version--aborting.\n", revision);
+	    }
+	    else {
+		ask2(
+"This file doesn't appear to be the %s version--patch anyway? [n] ",
+		    revision);
+		if (*buf != 'y')
+		    fatal1("aborted\n");
+	    }
+	}
+	else if (verbose)
+	    say2("Good.  This file appears to be the %s version.\n",
+		revision);
+    }
+    Fseek(ifp, 0L, 0);		/* rewind file */
+    lines_per_buf = BUFFERSIZE / maxlen;
+    tireclen = maxlen;
+    tibuf[0] = malloc((MEM)(BUFFERSIZE + 1));
+    if (tibuf[0] == Nullch)
+	fatal1("out of memory\n");
+    tibuf[1] = malloc((MEM)(BUFFERSIZE + 1));
+    if (tibuf[1] == Nullch)
+	fatal1("out of memory\n");
+    for (i=1; ; i++) {
+	if (! (i % lines_per_buf))	/* new block */
+	    if (write(tifd, tibuf[0], BUFFERSIZE) < BUFFERSIZE)
+		pfatal1("can't write temp file");
+	if (fgets(tibuf[0] + maxlen * (i%lines_per_buf), maxlen + 1, ifp)
+	  == Nullch) {
+	    input_lines = i - 1;
+	    if (i % lines_per_buf)
+		if (write(tifd, tibuf[0], BUFFERSIZE) < BUFFERSIZE)
+		    pfatal1("can't write temp file");
+	    break;
+	}
+    }
+    Fclose(ifp);
+    Close(tifd);
+    if ((tifd = open(TMPINNAME, O_RDONLY)) < 0) {
+	pfatal2("can't reopen file %s", TMPINNAME);
+    }
+}
+
+/* Fetch a line from the input file, \n terminated, not necessarily \0. */
+
+char *
+ifetch(line,whichbuf)
+Reg1 LINENUM line;
+int whichbuf;				/* ignored when file in memory */
+{
+    if (line < 1 || line > input_lines)
+	return "";
+    if (using_plan_a)
+	return i_ptr[line];
+    else {
+	LINENUM offline = line % lines_per_buf;
+	LINENUM baseline = line - offline;
+
+	if (tiline[0] == baseline)
+	    whichbuf = 0;
+	else if (tiline[1] == baseline)
+	    whichbuf = 1;
+	else {
+	    tiline[whichbuf] = baseline;
+#ifndef lint		/* complains of long accuracy */
+	    Lseek(tifd, (off_t)(baseline / lines_per_buf * BUFFERSIZE), 0);
+#endif
+	    if (read(tifd, tibuf[whichbuf], BUFFERSIZE) < 0)
+		pfatal2("error reading tmp file %s", TMPINNAME);
+	}
+	return tibuf[whichbuf] + (tireclen*offline);
+    }
+}
+
+/* True if the string argument contains the revision number we want. */
+
+bool
+rev_in_string(string)
+char *string;
+{
+    Reg1 char *s;
+    Reg2 int patlen;
+
+    if (revision == Nullch)
+	return TRUE;
+    patlen = strlen(revision);
+    if (strnEQ(string,revision,patlen) && isspace(string[patlen]))
+	return TRUE;
+    for (s = string; *s; s++) {
+	if (isspace(*s) && strnEQ(s+1, revision, patlen) && 
+		isspace(s[patlen+1] )) {
+	    return TRUE;
+	}
+    }
+    return FALSE;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Synchronize source tree with OpenBSD
+note: due to recent changes in the codebase of OpenBSD,
+out libcom_err will be incompatible with theirs...
+but this is no issue because we don't provide a dynamically
+linked one, and theirs won't be provided longer any more anyways.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: inp.c,v 1.11 2003/07/18 02:00:09 deraadt Exp $	*/
+d4 1
+a4 1
+static char rcsid[] = "$OpenBSD: inp.c,v 1.11 2003/07/18 02:00:09 deraadt Exp $";
+a27 2
+void re_input(void);
+
+d31 1
+a31 1
+re_input(void)
+d46 1
+a46 1
+	close(tifd);
+d65 1
+a65 1
+	say("Patching file %s using Plan %s...\n", filename,
+d77 2
+a78 2
+    char *s;
+    LINENUM iline;
+d87 1
+a87 1
+	    say("(Creating file %s...)\n",filename);
+d92 1
+a92 1
+	if (check_only)
+d99 1
+a99 1
+        fatal("%s not found, -C mode, can't probe further\n", filename);
+d116 1
+a116 1
+#define try(f, a1, a2, a3) (snprintf(s, sizeof lbuf - 20, f, a1, a2, a3), stat(s, &cstat) == 0)
+d120 2
+a121 2
+	    snprintf(buf, sizeof buf, CHECKOUT, filename);
+	    snprintf(lbuf, sizeof lbuf, RCSDIFF, filename);
+d125 2
+a126 2
+	    snprintf(buf, sizeof buf, GET, s);
+	    snprintf(lbuf, sizeof lbuf, SCCSDIFF, s, filename);
+d129 1
+a129 1
+	    fatal("can't find %s\n", filename);
+d136 1
+a136 1
+		    fatal("file %s seems to be locked by somebody else under %s\n",
+d141 1
+a141 1
+		    say("Comparing file %s to default %s version...\n",
+d144 1
+a144 1
+		    fatal("can't check out file %s: differs from default %s version\n",
+d148 1
+a148 1
+		say("Checking out file %s from %s...\n", filename, cs);
+d150 1
+a150 1
+		fatal("can't check out file %s from %s\n", filename, cs);
+d155 1
+a155 1
+	fatal("%s is not a normal file--can't patch\n", filename);
+d171 1
+a171 1
+	pfatal("can't open file %s", filename);
+d174 1
+a174 1
+	close(ifd);	/* probably means i_size > 15 or 16 bits worth */
+d179 1
+a179 1
+    close(ifd);
+d200 1
+a200 1
+
+d213 1
+a213 1
+    if (revision != Nullch) {
+d217 1
+a217 1
+		    say(
+d222 1
+a222 1
+		fatal(
+d226 1
+a226 1
+		ask(
+d230 1
+a230 1
+		fatal("aborted\n");
+d234 1
+a234 1
+	    say("Good.  This file appears to be the %s version.\n",
+d246 4
+a249 4
+    FILE *ifp;
+    int i = 0;
+    int maxlen = 1;
+    bool found_revision = (revision == Nullch);
+d253 1
+a253 1
+	pfatal("can't open file %s", filename);
+d256 1
+a256 1
+	pfatal("can't open file %s", TMPINNAME);
+d267 1
+a267 1
+		    say(
+d272 1
+a272 1
+		fatal(
+d276 1
+a276 1
+		ask(
+d280 1
+a280 1
+		    fatal("aborted\n");
+d284 1
+a284 1
+	    say("Good.  This file appears to be the %s version.\n",
+d287 1
+a287 1
+    fseek(ifp, 0L, 0);		/* rewind file */
+d292 1
+a292 1
+	fatal("out of memory\n");
+d295 1
+a295 1
+	fatal("out of memory\n");
+d299 1
+a299 1
+		pfatal("can't write temp file");
+d305 1
+a305 1
+		    pfatal("can't write temp file");
+d309 2
+a310 2
+    fclose(ifp);
+    close(tifd);
+d312 1
+a312 1
+	pfatal("can't reopen file %s", TMPINNAME);
+d320 1
+a320 1
+LINENUM line;
+d323 2
+a324 4
+    if (line < 1 || line > input_lines) {
+	say("No such line %ld in input file, ignoring\n", line);
+	return NULL;
+    }
+d338 1
+a338 1
+	    lseek(tifd, (off_t)(baseline / lines_per_buf * BUFFERSIZE), 0);
+d341 1
+a341 1
+		pfatal("error reading tmp file %s", TMPINNAME);
+d353 2
+a354 2
+    char *s;
+    int patlen;
+d362 1
+a362 1
+	if (isspace(*s) && strnEQ(s+1, revision, patlen) &&
+@
+
+
+1.1.1.3
+log
+@Sync to OpenBSD 3.3-current
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: inp.c,v 1.15 2003/07/21 21:01:45 otto Exp $	*/
+d4 2
+a5 2
+static char     rcsid[] = "$OpenBSD: inp.c,v 1.15 2003/07/21 21:01:45 otto Exp $";
+#endif				/* not lint */
+d14 1
+a14 1
+extern bool     check_only;
+d18 9
+a26 9
+static off_t	i_size;		/* size of the input file */
+static char	*i_womp;	/* plan a buffer for entire file */
+static char	**i_ptr;	/* pointers to lines in i_womp */
+
+static int	tifd = -1;	/* plan b virtual string array */
+static char	*tibuf[2];	/* plan b buffers */
+static LINENUM	tiline[2] = {-1, -1};	/* 1st line in each buffer */
+static LINENUM	lines_per_buf;	/* how many lines per buffer */
+static int	tireclen;	/* length of records in tmp file */
+d28 1
+a28 1
+void		re_input(void);
+d35 2
+a36 2
+	if (using_plan_a) {
+		i_size = 0;
+d38 2
+a39 2
+		if (i_ptr != Null(char **))
+			free((char *) i_ptr);
+d41 15
+a55 14
+		if (i_womp != Nullch)
+			free(i_womp);
+		i_womp = Nullch;
+		i_ptr = Null(char **);
+	} else {
+		using_plan_a = TRUE;	/* maybe the next one is smaller */
+		close(tifd);
+		tifd = -1;
+		free(tibuf[0]);
+		free(tibuf[1]);
+		tibuf[0] = tibuf[1] = Nullch;
+		tiline[0] = tiline[1] = -1;
+		tireclen = 0;
+	}
+d61 2
+a62 1
+scan_input(char *filename)
+d64 6
+a69 6
+	if (!plan_a(filename))
+		plan_b(filename);
+	if (verbose) {
+		say("Patching file %s using Plan %s...\n", filename,
+		    (using_plan_a ? "A" : "B"));
+	}
+d75 2
+a76 1
+plan_a(char *filename)
+d78 4
+a81 3
+	int	ifd, statfailed;
+	char	*s, lbuf[MAXLINELEN];
+	LINENUM	iline;
+d83 2
+a84 2
+	if (!filename || *filename == '\0')
+		return FALSE;
+d86 12
+d99 43
+a141 1
+	if (statfailed && ok_to_create_file) {
+d143 31
+a173 93
+			say("(Creating file %s...)\n", filename);
+
+		/*
+		 * in check_patch case, we still display `Creating file' even
+		 * though we're not. The rule is that -C should be as similar
+		 * to normal patch behavior as possible
+		 */
+		if (check_only)
+			return TRUE;
+		makedirs(filename, TRUE);
+		close(creat(filename, 0666));
+		statfailed = stat(filename, &filestat);
+	}
+	if (statfailed && check_only)
+		fatal("%s not found, -C mode, can't probe further\n", filename);
+	/* For nonexistent or read-only files, look for RCS or SCCS versions.  */
+	if (statfailed ||
+	    /* No one can write to it.  */
+	    (filestat.st_mode & 0222) == 0 ||
+	    /* I can't write to it.  */
+	    ((filestat.st_mode & 0022) == 0 && filestat.st_uid != myuid)) {
+		char	*cs = Nullch, *filebase, *filedir;
+		struct stat	cstat;
+
+		filebase = basename(filename);
+		filedir = dirname(filename);
+
+		/* Leave room in lbuf for the diff command.  */
+		s = lbuf + 20;
+
+#define try(f, a1, a2, a3) \
+	(snprintf(s, sizeof lbuf - 20, f, a1, a2, a3), stat(s, &cstat) == 0)
+
+		if (try("%s/RCS/%s%s", filedir, filebase, RCSSUFFIX) ||
+		    try("%s/RCS/%s%s", filedir, filebase, "") ||
+		    try("%s/%s%s", filedir, filebase, RCSSUFFIX)) {
+			snprintf(buf, sizeof buf, CHECKOUT, filename);
+			snprintf(lbuf, sizeof lbuf, RCSDIFF, filename);
+			cs = "RCS";
+		} else if (try("%s/SCCS/%s%s", filedir, SCCSPREFIX, filebase) ||
+		    try("%s/%s%s", filedir, SCCSPREFIX, filebase)) {
+			snprintf(buf, sizeof buf, GET, s);
+			snprintf(lbuf, sizeof lbuf, SCCSDIFF, s, filename);
+			cs = "SCCS";
+		} else if (statfailed)
+			fatal("can't find %s\n", filename);
+		/*
+		 * else we can't write to it but it's not under a version
+		 * control system, so just proceed.
+		 */
+		if (cs) {
+			if (!statfailed) {
+				if ((filestat.st_mode & 0222) != 0)
+					/* The owner can write to it.  */
+					fatal("file %s seems to be locked "
+					    "by somebody else under %s\n",
+					    filename, cs);
+				/*
+				 * It might be checked out unlocked.  See if
+				 * it's safe to check out the default version
+				 * locked.
+				 */
+				if (verbose)
+					say("Comparing file %s to default "
+					    "%s version...\n",
+					    filename, cs);
+				if (system(lbuf))
+					fatal("can't check out file %s: "
+					    "differs from default %s version\n",
+					    filename, cs);
+			}
+			if (verbose)
+				say("Checking out file %s from %s...\n",
+				    filename, cs);
+			if (system(buf) || stat(filename, &filestat))
+				fatal("can't check out file %s from %s\n",
+				    filename, cs);
+		}
+	}
+	filemode = filestat.st_mode;
+	if (!S_ISREG(filemode))
+		fatal("%s is not a normal file--can't patch\n", filename);
+	i_size = filestat.st_size;
+	if (out_of_mem) {
+		set_hunkmax();	/* make sure dynamic arrays are allocated */
+		out_of_mem = FALSE;
+		return FALSE;	/* force plan b because plan a bombed */
+	}
+	i_womp = malloc(i_size + 2);
+	if (i_womp == Nullch)
+		return FALSE;
+	if ((ifd = open(filename, O_RDONLY)) < 0)
+		pfatal("can't open file %s", filename);
+d175 5
+a179 5
+	if (read(ifd, i_womp, (size_t) i_size) != i_size) {
+		close(ifd);	/* probably means i_size > 15 or 16 bits worth */
+		free(i_womp);	/* at this point it doesn't matter if i_womp was */
+		return FALSE;	/* undersized. */
+	}
+d181 12
+a192 12
+	close(ifd);
+	if (i_size && i_womp[i_size - 1] != '\n')
+		i_womp[i_size++] = '\n';
+	i_womp[i_size] = '\0';
+
+	/* count the lines in the buffer so we know how many pointers we need */
+
+	iline = 0;
+	for (s = i_womp; *s; s++) {
+		if (*s == '\n')
+			iline++;
+	}
+d194 1
+a194 1
+	i_ptr = Null(char **);
+d196 1
+a196 1
+	i_ptr = (char **) malloc((iline + 2) * sizeof(char *));
+d198 4
+a201 5
+	if (i_ptr == Null(char **)) {	/* shucks, it was a near thing */
+		free((char *) i_womp);
+		return FALSE;
+	}
+	/* now scan the buffer and build pointer array */
+d203 1
+a203 8
+	iline = 1;
+	i_ptr[iline] = i_womp;
+	for (s = i_womp; *s; s++) {
+		if (*s == '\n')
+			i_ptr[++iline] = s + 1;	/* these are NOT null
+						 * terminated */
+	}
+	input_lines = iline - 1;
+d205 35
+a239 25
+	/* now check for revision, if any */
+
+	if (revision != Nullch) {
+		if (!rev_in_string(i_womp)) {
+			if (force) {
+				if (verbose)
+					say("Warning: this file doesn't appear "
+					    "to be the %s version--patching anyway.\n",
+					    revision);
+			} else if (batch) {
+				fatal("this file doesn't appear to be the "
+				    "%s version--aborting.\n",
+				    revision);
+			} else {
+				ask("This file doesn't appear to be the "
+				    "%s version--patch anyway? [n] ",
+				    revision);
+				if (*buf != 'y')
+					fatal("aborted\n");
+			}
+		} else if (verbose)
+			say("Good.  This file appears to be the %s version.\n",
+			    revision);
+	}
+	return TRUE;		/* plan a will work */
+d245 2
+a246 1
+plan_b(char *filename)
+d248 68
+a315 64
+	FILE	*ifp;
+	int	i = 0, maxlen = 1;
+	bool	found_revision = (revision == Nullch);
+
+	using_plan_a = FALSE;
+	if ((ifp = fopen(filename, "r")) == Nullfp)
+		pfatal("can't open file %s", filename);
+	(void) unlink(TMPINNAME);
+	if ((tifd = open(TMPINNAME, O_EXCL | O_CREAT | O_WRONLY, 0666)) < 0)
+		pfatal("can't open file %s", TMPINNAME);
+	while (fgets(buf, sizeof buf, ifp) != Nullch) {
+		if (revision != Nullch && !found_revision && rev_in_string(buf))
+			found_revision = TRUE;
+		if ((i = strlen(buf)) > maxlen)
+			maxlen = i;	/* find longest line */
+	}
+	if (revision != Nullch) {
+		if (!found_revision) {
+			if (force) {
+				if (verbose)
+					say("Warning: this file doesn't appear "
+					    "to be the %s version--patching anyway.\n",
+					    revision);
+			} else if (batch) {
+				fatal("this file doesn't appear to be the "
+				    "%s version--aborting.\n",
+				    revision);
+			} else {
+				ask("This file doesn't appear to be the %s "
+				    "version--patch anyway? [n] ",
+				    revision);
+				if (*buf != 'y')
+					fatal("aborted\n");
+			}
+		} else if (verbose)
+			say("Good.  This file appears to be the %s version.\n",
+			    revision);
+	}
+	fseek(ifp, 0L, 0);	/* rewind file */
+	lines_per_buf = BUFFERSIZE / maxlen;
+	tireclen = maxlen;
+	tibuf[0] = malloc(BUFFERSIZE + 1);
+	if (tibuf[0] == Nullch)
+		fatal("out of memory\n");
+	tibuf[1] = malloc(BUFFERSIZE + 1);
+	if (tibuf[1] == Nullch)
+		fatal("out of memory\n");
+	for (i = 1;; i++) {
+		if (!(i % lines_per_buf))	/* new block */
+			if (write(tifd, tibuf[0], BUFFERSIZE) < BUFFERSIZE)
+				pfatal("can't write temp file");
+		if (fgets(tibuf[0] + maxlen * (i % lines_per_buf),
+		    maxlen + 1, ifp) == Nullch) {
+			input_lines = i - 1;
+			if (i % lines_per_buf)
+				if (write(tifd, tibuf[0], BUFFERSIZE) < BUFFERSIZE)
+					pfatal("can't write temp file");
+			break;
+		}
+	}
+	fclose(ifp);
+	close(tifd);
+	if ((tifd = open(TMPINNAME, O_RDONLY)) < 0)
+		pfatal("can't reopen file %s", TMPINNAME);
+d318 2
+a319 3
+/*
+ * Fetch a line from the input file, \n terminated, not necessarily \0.
+ */
+d321 3
+a323 1
+ifetch(LINENUM line, int whichbuf)
+d325 14
+a338 6
+	if (line < 1 || line > input_lines) {
+		say("No such line %ld in input file, ignoring\n", line);
+		return "";
+	}
+	if (using_plan_a)
+		return i_ptr[line];
+d340 3
+a342 12
+		LINENUM	offline = line % lines_per_buf;
+		LINENUM	baseline = line - offline;
+
+		if (tiline[0] == baseline)
+			whichbuf = 0;
+		else if (tiline[1] == baseline)
+			whichbuf = 1;
+		else {
+			tiline[whichbuf] = baseline;
+#ifndef lint			/* complains of long accuracy */
+			lseek(tifd, (off_t) (baseline / lines_per_buf *
+			    BUFFERSIZE), 0);
+d344 2
+a345 4
+			if (read(tifd, tibuf[whichbuf], BUFFERSIZE) < 0)
+				pfatal("error reading tmp file %s", TMPINNAME);
+		}
+		return tibuf[whichbuf] + (tireclen * offline);
+d347 2
+d351 2
+a352 3
+/*
+ * True if the string argument contains the revision number we want.
+ */
+d354 2
+a355 1
+rev_in_string(char *string)
+d357 2
+a358 2
+	char	*s;
+	int	patlen;
+d360 9
+a368 10
+	if (revision == Nullch)
+		return TRUE;
+	patlen = strlen(revision);
+	if (strnEQ(string, revision, patlen) && isspace(string[patlen]))
+		return TRUE;
+	for (s = string; *s; s++) {
+		if (isspace(*s) && strnEQ(s + 1, revision, patlen) &&
+		    isspace(s[patlen + 1])) {
+			return TRUE;
+		}
+d370 2
+a371 1
+	return FALSE;
+@
+
+
+1.1.1.4
+log
+@Import latest OpenBSD ports, XFree and source in sync
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: inp.c,v 1.18 2003/07/23 07:31:21 otto Exp $	*/
+d4 2
+a5 13
+static const char     rcsid[] = "$OpenBSD: inp.c,v 1.18 2003/07/23 07:31:21 otto Exp $";
+#endif /* not lint */
+
+#include <sys/types.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+
+#include <ctype.h>
+#include <libgen.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+d14 1
+d28 1
+a28 3
+static bool	rev_in_string(char *);
+static bool	plan_a(char *);	/* returns false if insufficient memory */
+static void	plan_b(char *);
+d37 8
+a44 4
+		free(i_ptr);
+		free(i_womp);
+		i_womp = NULL;
+		i_ptr = NULL;
+d51 1
+a51 1
+		tibuf[0] = tibuf[1] = NULL;
+d72 1
+a72 1
+static bool
+d106 1
+a106 1
+		char	*cs = NULL, *filebase, *filedir;
+d173 2
+a174 4
+	if (i_size > SIZE_MAX - 2)
+		fatal("block too large to allocate");
+	i_womp = malloc((size_t)(i_size + 2));
+	if (i_womp == NULL)
+d178 1
+a178 1
+
+d184 1
+a184 1
+
+d197 3
+a199 1
+
+d201 2
+a202 2
+
+	if (i_ptr == NULL) {	/* shucks, it was a near thing */
+d219 1
+a219 1
+	if (revision != NULL) {
+d246 1
+a246 1
+static void
+d251 1
+a251 1
+	bool	found_revision = (revision == NULL);
+d254 1
+a254 1
+	if ((ifp = fopen(filename, "r")) == NULL)
+d259 2
+a260 2
+	while (fgets(buf, sizeof buf, ifp) != NULL) {
+		if (revision != NULL && !found_revision && rev_in_string(buf))
+d265 1
+a265 1
+	if (revision != NULL) {
+d287 1
+a287 1
+	fseek(ifp, 0L, SEEK_SET);	/* rewind file */
+d291 1
+a291 1
+	if (tibuf[0] == NULL)
+d294 1
+a294 1
+	if (tibuf[1] == NULL)
+d301 1
+a301 1
+		    maxlen + 1, ifp) == NULL) {
+d323 1
+a323 1
+		return NULL;
+d337 1
+a337 1
+
+d339 2
+a340 2
+			    BUFFERSIZE), SEEK_SET);
+
+d351 1
+a351 1
+static bool
+d357 1
+a357 1
+	if (revision == NULL)
+@
+
+
+1.1.1.5
+log
+@Import the complete OpenBSD source tree (base system)
+as of CTM delta 3496 (roughly 1200 UTC today) into the
+vendor branch.
+Attention: this is a big update. Don't even try to
+build this system, OpenBSD 3.4-beta, yet on your own.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: inp.c,v 1.26 2003/08/10 21:28:48 otto Exp $	*/
+d4 1
+a4 1
+static const char     rcsid[] = "$OpenBSD: inp.c,v 1.26 2003/08/10 21:28:48 otto Exp $";
+a9 1
+#include <sys/mman.h>
+a13 2
+#include <stddef.h>
+#include <stdio.h>
+d18 1
+d22 1
+d38 3
+a40 7
+static bool	rev_in_string(const char *);
+static bool	reallocate_lines(size_t *);
+
+/* returns false if insufficient memory */
+static bool	plan_a(const char *);
+
+static void	plan_b(const char *);
+d50 2
+a52 4
+		if (i_womp != NULL) {
+			munmap(i_womp, i_size);
+			i_womp = NULL;
+		}
+d54 1
+a54 1
+		using_plan_a = true;	/* maybe the next one is smaller */
+d68 1
+a68 1
+scan_input(const char *filename)
+a77 18
+static bool
+reallocate_lines(size_t *lines_allocated)
+{
+	char **p;
+
+	*lines_allocated = *lines_allocated * 3 / 2;
+	p = realloc(i_ptr, (*lines_allocated + 2) * sizeof(char *));
+	if (p == NULL) {	/* shucks, it was a near thing */
+		munmap(i_womp, i_size);
+		i_womp = NULL;
+		free(i_ptr);
+		i_ptr = NULL;
+		return false;
+	}
+	i_ptr = p;
+	return true;
+}
+
+d81 1
+a81 1
+plan_a(const char *filename)
+d83 3
+a85 12
+	int		ifd, statfailed;
+	char		*p, *s, lbuf[MAXLINELEN];
+	LINENUM		iline;
+	struct stat	filestat;
+	off_t		i;
+	ptrdiff_t	sz;
+	size_t		lines_allocated;
+
+#ifdef DEBUGGING
+	if (debug & 8)
+		return false;
+#endif
+d87 2
+a88 2
+	if (filename == NULL || *filename == '\0')
+		return false;
+d101 2
+a102 2
+			return true;
+		makedirs(filename, true);
+d113 1
+a113 1
+	    ((filestat.st_mode & 0022) == 0 && filestat.st_uid != getuid())) {
+d178 2
+a179 6
+		out_of_mem = false;
+		return false;	/* force plan b because plan a bombed */
+	}
+	if (i_size > SIZE_MAX) {
+		say("block too large to mmap\n");
+		return false;
+d181 5
+d189 4
+a192 5
+	i_womp = mmap(NULL, i_size, PROT_READ, MAP_FILE, ifd, 0);
+	if (i_womp == MAP_FAILED) {
+		perror("mmap failed");
+		i_womp = NULL;
+		return false;
+d196 5
+d202 5
+a206 4
+	/* estimate the number of lines */
+	lines_allocated = i_size / 25;
+	if (lines_allocated < 100)
+		lines_allocated = 100;
+d208 1
+a208 2
+	if (!reallocate_lines(&lines_allocated)) 
+		return false;
+d210 4
+d215 1
+d218 4
+a221 10
+	/* test for NUL too, to maintain the behavior of the original code */
+	for (s = i_womp, i = 0; i < i_size && *s != '\0'; s++, i++) {
+		if (*s == '\n') {
+			if (iline == lines_allocated) {
+				if (!reallocate_lines(&lines_allocated))
+					return false;
+			}
+			/* these are NOT NUL terminated */
+			i_ptr[++iline] = s + 1;
+		}
+a222 22
+	/* if the last line contains no EOL, append one */
+	if (i_size > 0 && i_womp[i_size - 1] != '\n') {
+		last_line_missing_eol = true;
+		/* fix last line */
+		sz = s - i_ptr[iline];
+		p = malloc(sz + 1);
+		if (p == NULL) {
+			free(i_ptr);
+			i_ptr = NULL;
+			munmap(i_womp, i_size);
+			i_womp = NULL;
+			return false;
+		}
+
+		memcpy(p, i_ptr[iline], sz);
+		p[sz] = '\n';
+		i_ptr[iline] = p;
+		/* count the extra line and make it point to some valid mem */
+		i_ptr[++iline] = "";
+	} else
+		last_line_missing_eol = false;
+
+d249 1
+a249 1
+	return true;		/* plan a will work */
+d255 1
+a255 1
+plan_b(const char *filename)
+d261 1
+a261 1
+	using_plan_a = false;
+d269 1
+a269 1
+			found_revision = true;
+d330 1
+a330 4
+		if (warn_on_invalid_line) {
+			say("No such line %ld in input file, ignoring\n", line);
+			warn_on_invalid_line = false;
+		}
+d360 1
+a360 1
+rev_in_string(const char *string)
+d362 2
+a363 2
+	const char	*s;
+	int		patlen;
+d366 1
+a366 1
+		return true;
+d369 1
+a369 1
+		return true;
+d373 1
+a373 1
+			return true;
+d376 1
+a376 1
+	return false;
+@
+
+
+1.1.1.6
+log
+@Import OpenBSD source tree from CVS (anoncvs canada)
+of roughly 12:00 UTC today. Bumps us to OpenBSD 3.4
+and makes source/ports in sync. Hopefully.
+@
+text
+@d1 1
+a1 27
+/*	$OpenBSD: inp.c,v 1.28 2003/08/15 08:00:51 otto Exp $	*/
+
+/*
+ * patch - a program to apply diffs to original files
+ * 
+ * Copyright 1986, Larry Wall
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following condition is met:
+ * 1. Redistributions of source code must retain the above copyright notice,
+ * this condition and the following disclaimer.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ * 
+ * -C option added in 1998, original code by Marc Espie, based on FreeBSD
+ * behaviour
+ */
+d4 1
+a4 1
+static const char     rcsid[] = "$OpenBSD: inp.c,v 1.28 2003/08/15 08:00:51 otto Exp $";
+d310 1
+a310 2
+	int	i = 0, j, maxlen = 1;
+	char	*p;
+a324 4
+	last_line_missing_eol = i > 0 && buf[i - 1] != '\n';
+	if (last_line_missing_eol && maxlen == i)
+		maxlen++;
+		
+d357 1
+a357 2
+		p = tibuf[0] + maxlen * (i % lines_per_buf);
+		if (i % lines_per_buf == 0)	/* new block */
+d360 2
+a361 1
+		if (fgets(p, maxlen + 1, ifp) == NULL) {
+d363 1
+a363 1
+			if (i % lines_per_buf != 0)
+a367 4
+		j = strlen(p);
+		/* These are '\n' terminated strings, so no need to add a NUL */
+		if (j == 0 || p[j - 1] != '\n')
+			p[j] = '\n';
+@
+
+
+1.1.1.7
+log
+@Import OpenBSD source tree again, with critical bug fixes
+(OpenSSL, bc, dc, sensorsd, pf, ...)
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: inp.c,v 1.29 2003/09/28 07:55:19 otto Exp $	*/
+d30 1
+a30 1
+static const char     rcsid[] = "$OpenBSD: inp.c,v 1.29 2003/09/28 07:55:19 otto Exp $";
+d114 1
+a114 2
+	char	**p;
+	size_t	new_size;
+d116 2
+a117 2
+	new_size = *lines_allocated * 3 / 2;
+	p = realloc(i_ptr, (new_size + 2) * sizeof(char *));
+a122 1
+		*lines_allocated = 0;
+a124 1
+	*lines_allocated = new_size;
+@
+
+
+1.1.1.8
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: inp.c,v 1.31 2003/12/08 22:44:18 mickey Exp $	*/
+d30 1
+a30 1
+static const char     rcsid[] = "$OpenBSD: inp.c,v 1.31 2003/12/08 22:44:18 mickey Exp $";
+d251 1
+a251 1
+	i_womp = mmap(NULL, i_size, PROT_READ, MAP_PRIVATE, ifd, 0);
+a254 1
+		close(ifd);
+a258 2
+	if (i_size)
+		madvise(i_womp, i_size, MADV_SEQUENTIAL);
+@
+
+
+1.1.1.9
+log
+@better patch(1) fixes from obsd
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: inp.c,v 1.32 2004/08/05 21:47:24 deraadt Exp $	*/
+d30 1
+a30 1
+static const char rcsid[] = "$OpenBSD: inp.c,v 1.32 2004/08/05 21:47:24 deraadt Exp $";
+d268 1
+a268 1
+	if (!reallocate_lines(&lines_allocated))
+d361 1
+a361 1
+
+@
+
+

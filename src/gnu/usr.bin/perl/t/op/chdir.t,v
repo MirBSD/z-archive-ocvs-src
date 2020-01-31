@@ -1,0 +1,270 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.57;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.57;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.57.46;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl -w
+
+BEGIN {
+    # We're not going to chdir() into 't' because we don't know if
+    # chdir() works!  Instead, we'll hedge our bets and put both
+    # possibilities into @@INC.
+    @@INC = qw(t . lib ../lib);
+}
+
+use Config;
+require "test.pl";
+plan(tests => 31);
+
+my $IsVMS   = $^O eq 'VMS';
+my $IsMacOS = $^O eq 'MacOS';
+
+# Might be a little early in the testing process to start using these,
+# but I can't think of a way to write this test without them.
+use File::Spec::Functions qw(:DEFAULT splitdir rel2abs splitpath);
+
+# Can't use Cwd::abs_path() because it has different ideas about
+# path separators than File::Spec.
+sub abs_path {
+    $IsVMS ? uc(rel2abs(curdir)) : rel2abs(curdir);
+}
+
+my $Cwd = abs_path;
+
+# Let's get to a known position
+SKIP: {
+    my ($vol,$dir) = splitpath(abs_path,1);
+    my $test_dir = $IsVMS ? 'T' : 't';
+    skip("Already in t/", 2) if (splitdir($dir))[-1] eq $test_dir;
+
+    ok( chdir($test_dir),     'chdir($test_dir)');
+    is( abs_path, catdir($Cwd, $test_dir),    '  abs_path() agrees' );
+}
+
+$Cwd = abs_path;
+
+# The environment variables chdir() pays attention to.
+my @@magic_envs = qw(HOME LOGDIR SYS$LOGIN);
+
+sub check_env {
+    my($key) = @@_;
+
+    # Make sure $ENV{'SYS$LOGIN'} is only honored on VMS.
+    if( $key eq 'SYS$LOGIN' && !$IsVMS && !$IsMacOS ) {
+        ok( !chdir(),         "chdir() on $^O ignores only \$ENV{$key} set" );
+        is( abs_path, $Cwd,   '  abs_path() did not change' );
+        pass( "  no need to test SYS\$LOGIN on $^O" ) for 1..7;
+    }
+    else {
+        ok( chdir(),              "chdir() w/ only \$ENV{$key} set" );
+        is( abs_path, $ENV{$key}, '  abs_path() agrees' );
+        chdir($Cwd);
+        is( abs_path, $Cwd,       '  and back again' );
+
+        my $warning = '';
+        local $SIG{__WARN__} = sub { $warning .= join '', @@_ };
+
+
+        # Check the deprecated chdir(undef) feature.
+#line 64
+        ok( chdir(undef),           "chdir(undef) w/ only \$ENV{$key} set" );
+        is( abs_path, $ENV{$key},   '  abs_path() agrees' );
+        is( $warning,  <<WARNING,   '  got uninit & deprecation warning' );
+Use of uninitialized value in chdir at $0 line 64.
+Use of chdir('') or chdir(undef) as chdir() is deprecated at $0 line 64.
+WARNING
+
+        chdir($Cwd);
+
+        # Ditto chdir('').
+        $warning = '';
+#line 76
+        ok( chdir(''),              "chdir('') w/ only \$ENV{$key} set" );
+        is( abs_path, $ENV{$key},   '  abs_path() agrees' );
+        is( $warning,  <<WARNING,   '  got deprecation warning' );
+Use of chdir('') or chdir(undef) as chdir() is deprecated at $0 line 76.
+WARNING
+
+        chdir($Cwd);
+    }
+}
+
+my %Saved_Env = ();
+sub clean_env {
+    foreach my $env (@@magic_envs) {
+        $Saved_Env{$env} = $ENV{$env};
+
+        # Can't actually delete SYS$ stuff on VMS.
+        next if $IsVMS && $env eq 'SYS$LOGIN';
+        next if $IsVMS && $env eq 'HOME' && !$Config{'d_setenv'};
+
+        unless ($IsMacOS) { # ENV on MacOS is "special" :-)
+            # On VMS, %ENV is many layered.
+            delete $ENV{$env} while exists $ENV{$env};
+        }
+    }
+
+    # The following means we won't really be testing for non-existence,
+    # but in Perl we can only delete from the process table, not the job 
+    # table.
+    $ENV{'SYS$LOGIN'} = '' if $IsVMS;
+}
+
+END {
+    no warnings 'uninitialized';
+
+    # Restore the environment for VMS (and doesn't hurt for anyone else)
+    @@ENV{@@magic_envs} = @@Saved_Env{@@magic_envs};
+}
+
+
+foreach my $key (@@magic_envs) {
+    # We're going to be using undefs a lot here.
+    no warnings 'uninitialized';
+
+    clean_env;
+    $ENV{$key} = catdir $Cwd, ($IsVMS ? 'OP' : 'op');
+
+    check_env($key);
+}
+
+{
+    clean_env;
+    if (($IsVMS || $IsMacOS) && !$Config{'d_setenv'}) {
+        pass("Can't reset HOME, so chdir() test meaningless");
+    } else {
+        ok( !chdir(),                   'chdir() w/o any ENV set' );
+    }
+    is( abs_path, $Cwd,             '  abs_path() agrees' );
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d24 1
+a24 5
+    my $d = rel2abs(curdir);
+
+    $d = uc($d) if $IsVMS;
+    $d = lc($d) if $^O =~ /^uwin/;
+    $d;
+@
+

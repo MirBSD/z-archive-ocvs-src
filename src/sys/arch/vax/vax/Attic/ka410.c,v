@@ -1,0 +1,288 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.30.35;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.34;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.34;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: ka410.c,v 1.9 2002/03/14 01:26:48 millert Exp $ */
+/*	$NetBSD: ka410.c,v 1.21 1999/09/06 19:52:53 ragge Exp $ */
+/*
+ * Copyright (c) 1996 Ludd, University of Lule}, Sweden.
+ * All rights reserved.
+ *
+ * This code is derived from software contributed to Ludd by Bertram Barth.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed at Ludd, University of 
+ *	Lule}, Sweden and its contributors.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/types.h>
+#include <sys/device.h>
+#include <sys/kernel.h>
+#include <sys/systm.h>
+
+#include <uvm/uvm_extern.h>
+
+#include <machine/pte.h>
+#include <machine/cpu.h>
+#include <machine/mtpr.h>
+#include <machine/sid.h>
+#include <machine/pmap.h>
+#include <machine/nexus.h>
+#include <machine/uvax.h>
+#include <machine/ka410.h>
+#include <machine/ka420.h>
+#include <machine/clock.h>
+#include <machine/vsbus.h>
+
+static	void	ka410_conf(void);
+static	void	ka410_memerr(void);
+static	int	ka410_mchk(caddr_t);
+static	void	ka410_halt(void);
+static	void	ka410_reboot(int);
+static	void	ka41_cache_enable(void);
+static	void	ka410_clrf(void);
+
+static	caddr_t	l2cache;	/* mapped in address */
+static	long 	*cacr;		/* l2csche ctlr reg */
+
+/* 
+ * Declaration of 410-specific calls.
+ */
+struct	cpu_dep ka410_calls = {
+	0,
+	ka410_mchk,
+	ka410_memerr, 
+	ka410_conf,
+	chip_clkread,
+	chip_clkwrite,
+	1,      /* ~VUPS */
+	2,	/* SCB pages */
+	ka410_halt,
+	ka410_reboot,
+	ka410_clrf,
+};
+
+
+void
+ka410_conf()
+{
+	struct vs_cpu *ka410_cpu;
+
+	ka410_cpu = (struct vs_cpu *)vax_map_physmem(VS_REGS, 1);
+
+	switch (vax_cputype) {
+	case VAX_TYP_UV2:
+		ka410_cpu->vc_410mser = 1;
+		printf("cpu: KA410\n");
+		break;
+
+	case VAX_TYP_CVAX:
+		printf("cpu: KA41/42\n");
+		ka410_cpu->vc_vdcorg = 0; /* XXX */
+		ka410_cpu->vc_parctl = PARCTL_CPEN | PARCTL_DPEN ;
+		printf("cpu: Enabling primary cache, ");
+		mtpr(KA420_CADR_S2E|KA420_CADR_S1E|KA420_CADR_ISE|KA420_CADR_DSE, 
+			PR_CADR);
+		if (vax_confdata & KA420_CFG_CACHPR) {
+			l2cache = (void *)vax_map_physmem(KA420_CH2_BASE,
+			    (KA420_CH2_SIZE / VAX_NBPG));
+			cacr = (void *)vax_map_physmem(KA420_CACR, 1);
+			printf("secondary cache\n");
+			ka41_cache_enable();
+		} else
+			printf("no secondary cache present\n");
+	}
+	/* Done with ka410_cpu - release it */
+	vax_unmap_physmem((vaddr_t)ka410_cpu, 1);
+	/*
+	 * Setup parameters necessary to read time from clock chip.
+	 */
+	clk_adrshift = 1;       /* Addressed at long's... */
+	clk_tweak = 2;          /* ...and shift two */
+	clk_page = (short *)vax_map_physmem(KA420_WAT_BASE, 1);
+}
+
+void
+ka41_cache_enable()
+{
+	*cacr = KA420_CACR_TPE; 	/* Clear any error, disable cache */
+	bzero(l2cache, KA420_CH2_SIZE); /* Clear whole cache */
+	*cacr = KA420_CACR_CEN;		/* Enable cache */
+}
+
+void
+ka410_memerr()
+{
+	printf("Memory err!\n");
+}
+
+int
+ka410_mchk(addr)
+	caddr_t addr;
+{
+	panic("Machine check");
+	return 0;
+}
+
+static void
+ka410_halt()
+{
+	asm("movl $0xc, (%0)"::"r"((int)clk_page + 0x38)); /* Don't ask */
+	asm("halt");
+}
+
+static void
+ka410_reboot(arg)
+	int arg;
+{
+	asm("movl $0xc, (%0)"::"r"((int)clk_page + 0x38)); /* Don't ask */
+	asm("halt");
+}
+
+static void
+ka410_clrf()
+{
+	struct ka410_clock *clk = (void *)clk_page;
+
+	/*
+	 * Clear restart and boot in progress flags
+	 * in the CPMBX. (ie. clear bits 4 and 5)
+	 */
+	clk->cpmbx = (clk->cpmbx & ~0x30);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

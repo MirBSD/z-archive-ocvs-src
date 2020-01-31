@@ -1,0 +1,257 @@
+head	1.4;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.4
+	tg-mergefixes-1-branch:1.4.0.4
+	tg-mergefixes-1-base:1.4
+	MIROS_X:1.4.0.2
+	MIROS_X_BASE:1.4
+	gcc-3_2_3:1.1.2.1
+	FSF:1.1.2;
+locks; strict;
+comment	@# @;
+
+
+1.4
+date	2004.02.28.23.40.05;	author tg;	state Stab;
+branches;
+next	1.3;
+
+1.3
+date	2004.02.28.23.31.21;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.28.22.49.25;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.10.27.19.22.41;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2003.10.27.19.22.41;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@it rather requires BSD make
+(and is still untested)
+@
+text
+@# $MirBSD: Makefile.adalib,v 1.3 2004/02/28 23:31:21 tg Exp $
+#
+# This is the Unix/NT makefile used to build an alternate GNAT run-time.
+# Note that no files in the original GNAT library dirctory will be
+# modified by this procedure
+#
+# This Makefile requires BSD make.
+# Here is how to use this Makefile
+#
+# 1. Create a new directory (say adalib)
+#    e.g.  $ mkdir adalib
+#          $ cd adalib
+#
+# 2. Copy this Makefile from the standard Adalib directory, e.g.
+#    $ cp /usr/local/gnat/lib/gcc-lib/<target>/2.8.1/adalib/Makefile.adalib .
+#
+# 3. If needed (e.g for pragma Normalize_Scalars), create a gnat.adc
+#    containing the configuration pragmas you want to use to build the library
+#    e.g. $ echo pragma Normalize_Scalars; > gnat.adc
+#    Note that this step is usually not needed, and most pragmas are not
+#    relevant to the GNAT run time.
+#
+# 4. Determine the values of the following MACROS
+#      ROOT   (location of GNAT installation, e.g /usr/local)
+#    and optionnally
+#      CFLAGS (back end compilation flags such as -g -O2)
+#      ADAFLAGS (front end compilation flags such as -gnatpgn)
+#                *beware* the minimum value for this MACRO is -gnatpg
+#                for proper compilation of the GNAT library
+# 5a. If you are using a native compile, call make
+#   e.g.  $ make -f Makefile.adalib ROOT=/usr/local CFLAGS="-g -O0"
+#
+# 5b. If you are using a cross compiler, you need to define two additional
+#     MACROS:
+#       CC    (name of the cross compiler)
+#       AR    (name of the cross ar)
+#
+#   e.g.  $ make -f Makefile.adalib ROOT=/opt/gnu/gnat \
+#     CFLAGS="-O2 -g -I/usr/wind/target/h" CC=powerpc-wrs-vxworks-gcc \
+#     AR=arppc
+#
+# 6. put this new library on your Object PATH where you want to use it
+# in place of the original one. This can be achieved for instance by
+# updating the value of the environment variable ADA_OBJECTS_PATH
+
+SHELL?=sh
+
+CC ?= gcc
+AR = ar
+GNAT_ROOT != echo "$$(cd $(ROOT);pwd)/"
+target != $(CC) -dumpmachine
+version != $(CC) -dumpversion
+ADA_INCLUDE_PATH = $(GNAT_ROOT)lib/gcc-lib/$(target)/$(version)/adainclude/
+ADA_OBJECTS_PATH = $(GNAT_ROOT)lib/gcc-lib/$(target)/$(version)/adalib/
+
+.PATH: $(ADA_INCLUDE_PATH)
+
+CFLAGS ?= -O2
+ADAFLAGS ?= -gnatpgn
+ALL_ADAFLAGS = $(CFLAGS) $(ADA_CFLAGS) $(ADAFLAGS) -I.
+FORCE_DEBUG_ADAFLAGS = -g
+INCLUDES = -I$(ADA_INCLUDE_PATH)
+
+# Say how to compile Ada programs.
+.SUFFIXES: .ada .adb .ads
+
+.c.o:
+	$(CC) -c $(CFLAGS) $(ADA_CFLAGS) $(INCLUDES) $<
+.adb.o:
+	$(CC) -c $(ALL_ADAFLAGS) $<
+.ads.o:
+	$(CC) -c $(ALL_ADAFLAGS) $<
+
+GNAT_OBJS != $(AR) t $(ADA_OBJECTS_PATH)libgnat.a \
+		| grep -v -e '^prefix.o$$' -e '^__'
+GNARL_OBJS != $(AR) t $(ADA_OBJECTS_PATH)libgnarl.a | grep -v '^__'
+OBJS := $(GNAT_OBJS) $(GNARL_OBJS)
+
+all: libgnat.a libgnarl.a
+	chmod 0444 *.ali *.a
+	rm *.o
+
+libgnat.a: $(GNAT_OBJS)
+	$(AR) r libgnat.a $(GNAT_OBJS)
+
+libgnarl.a: $(GNARL_OBJS)
+	$(AR) r libgnarl.a $(GNARL_OBJS)
+
+a-except.o: a-except.adb a-except.ads
+	$(CC) -c $(FORCE_DEBUG_ADAFLAGS) $(ALL_ADAFLAGS) -O0 -fno-inline $<
+
+s-assert.o: s-assert.adb s-assert.ads a-except.ads
+	$(CC) -c $(FORCE_DEBUG_ADAFLAGS) $(ALL_ADAFLAGS) $<
+
+s-tasdeb.o: s-tasdeb.adb
+	$(CC) -c $(FORCE_DEBUG_ADAFLAGS) $(ALL_ADAFLAGS) $<
+
+s-vaflop.o: s-vaflop.adb
+	$(CC) -c $(FORCE_DEBUG_ADAFLAGS) -O $(ALL_ADAFLAGS) $<
+
+s-memory.o: s-memory.adb s-memory.ads
+	$(CC) -c $(ALL_ADAFLAGS) $(FORCE_DEBUG_ADAFLAGS) -O0 $(ADA_INCLUDES) $<
+
+a-init.o: a-init.c a-ada.h a-types.h a-raise.h
+	$(CC) -c $(CFLAGS) $(ADA_CFLAGS) \
+		$(ALL_CPPFLAGS) $(INCLUDES) -fexceptions $<
+
+a-traceb.o: a-traceb.c
+	$(CC) -c $(CFLAGS) $(ADA_CFLAGS) \
+		$(ALL_CPPFLAGS) $(INCLUDES) -fno-omit-frame-pointer $<
+
+prefix.o: prefix.c gansidecl.h
+	$(CC) -c $(CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
+		-DPREFIX=\"$(GNAT_ROOT)\" $<
+@
+
+
+1.3
+log
+@bsdmakefy
+@
+text
+@d1 1
+a1 1
+# $MirBSD$
+d7 1
+a7 1
+# This Makefile requires Gnu make.
+@
+
+
+1.2
+log
+@                           To Raffzahn
+             A better bath companion than CowboyNeal
+                      At http://symlink.lu/
+
+Enable building (bootstrapping, rather) the GNAT (Ada backend to GCC)
+compiler. This is not meant to be invoked by a mere user; an update
+will be issued shortly.
+Btw: GNU make sucks die-hard!
+@
+text
+@d1 2
+d46 1
+a46 1
+SHELL=sh
+d48 1
+a48 1
+CC = gcc
+d50 3
+a52 3
+GNAT_ROOT = $(shell cd $(ROOT);pwd)/
+target = $(shell $(CC) -dumpmachine)
+version = $(shell $(CC) -dumpversion)
+d56 1
+a56 4
+vpath %.adb $(ADA_INCLUDE_PATH)
+vpath %.ads $(ADA_INCLUDE_PATH)
+vpath %.c $(ADA_INCLUDE_PATH)
+vpath %.h $(ADA_INCLUDE_PATH)
+d58 2
+a59 2
+CFLAGS = -O2
+ADAFLAGS = -gnatpgn
+d74 3
+a76 2
+GNAT_OBJS :=$(filter-out prefix.o __%,$(shell $(AR) t $(ADA_OBJECTS_PATH)libgnat.a))
+GNARL_OBJS:=$(filter-out __%,$(shell $(AR) t $(ADA_OBJECTS_PATH)libgnarl.a))
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d10 1
+a10 1
+#          $ cd adalib           
+d19 2
+a20 2
+#    relevant to the GNAT run time. 
+#          
+d26 1
+a26 1
+#                *beware* the minimum value for this MACRO is -gnatpg 
+d61 1
+a61 1
+ALL_ADAFLAGS = $(CFLAGS) $(ADA_CFLAGS) $(ADAFLAGS) -I. 
+@
+
+
+1.1.2.1
+log
+@tg@@odem:/home/tg $ bzip2 -dc /data/gcc-3.2.3.tar.bz2 | tar xf -
+tg@@odem:/home/tg $ cd gcc-3.2.3/
+tg@@odem:/home/tg/gcc-3.2.3 $ find . -name .cvsignore | xargs rm
+tg@@odem:/home/tg/gcc-3.2.3 $ rm -rf libjava gcc/java
+tg@@odem:/home/tg/gcc-3.2.3 $ rm -rf boehm-gc fastjar libffi libiberty zlib
+tg@@odem:/home/tg/gcc-3.2.3 $ cvs -qz6 -d tg@@herc:/cvs import -I ! -I CVS -b 1.1.2 src/gnu/gcc FSF gcc-3_2_3
+
+We'll try it again. Not gcc 3.3 this time.
+@
+text
+@@

@@ -1,0 +1,374 @@
+head	1.1;
+access;
+symbols
+	MIRBSD_7_DEV:1.1.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2004.01.02.01.35.50;	author wbx;	state dead;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.02.01.35.52;	author wbx;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@file vexec.c was initially added on branch MIRBSD_7_DEV.
+@
+text
+@@
+
+
+1.1.2.1
+log
+@missing file for verified exec.
+@
+text
+@a0 334
+/* $MirBSD: vexec.c,v 1.1.2.1 2003/11/30 22:50:29 wbx Exp $ */
+
+/*
+ * Verified exec port for MirBSD extracted from Stephanie for OpenBSD 3.4
+ * Waldemar Brodkorb <miros@@thinknow.de>
+*/
+
+/* $Id: vexec.c,v 1.1.2.1 2003/11/30 22:50:29 wbx Exp $ */
+/*
+ * Stephanie for OpenBSD 3.4
+ */
+
+/*	$NetBSD: verified_exec.c,v 1.1 2002/10/29 12:31:22 blymn Exp $	*/
+
+/*-
+ * Copyright (c) 1998-1999 Brett Lymn
+ *                         (blymn@@baea.com.au, brett_lymn@@yahoo.com.au)
+ * All rights reserved.
+ *
+ * This code has been donated to The NetBSD Foundation by the Author.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. The name of the author may not be used to endorse or promote products
+ *    derived from this software withough specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR "AS IS" AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/proc.h>
+#include <sys/errno.h>
+#include <sys/buf.h>
+#include <sys/malloc.h>
+#include <sys/ioctl.h>
+#include <sys/device.h>
+#include <sys/conf.h>
+#include <sys/lock.h>
+#include <sys/queue.h>
+#include <sys/vnode.h>
+#include <sys/fcntl.h>
+#include <sys/namei.h>
+#include <sys/vexec.h>
+
+/*
+ * Attach for autoconfig to find. Initialize the lists and return.
+ */
+void vexecattach(struct device *parent, struct device *self, void *aux) {
+	LIST_INIT(&vexec_exec_dev_head);
+	LIST_INIT(&vexec_file_dev_head);
+
+	vexec_dprintf(("vexecattach: vexec pseudo-device attached.\n"));
+}
+
+/* Pseudo-open routine. */
+int vexecopen(dev_t dev, int flags, int fmt, struct proc *p) {
+	if (security_vexec_verbose)
+		printf("vexecopen: vexec load device opened by uid=%u, "
+		    "pid=%u. (dev=%d)\n", p->p_ucred->cr_uid, p->p_pid, dev);
+
+	return (0);
+}
+
+/* Pseudo-close routine. */
+int vexecclose(dev_t dev, int flags, int fmt, struct proc *p) {
+	if (security_vexec_verbose) {
+		struct vexec_dev_list *lp;
+		struct vexec_inode_list *ip;
+
+		printf("vexec_close: Loaded exec fingerprint list is:\n");
+		for (lp = LIST_FIRST(&vexec_exec_dev_head); lp != NULL;
+		     lp = LIST_NEXT(lp, vxd_entries)) {
+			for (ip = LIST_FIRST(&(lp->vxd_inode_head)); ip != NULL;
+			     ip = LIST_NEXT(ip, vxi_entries)) {
+				printf("dev=%lu, inode=%lu, type=%d\n",
+				    lp->vxd_dev, ip->vxi_inode, ip->vxi_type);
+			}
+		}
+
+		printf("\nvexec_close: Loaded file fingerprint list is:\n");
+		for (lp = LIST_FIRST(&vexec_file_dev_head); lp != NULL;
+		     lp = LIST_NEXT(lp, vxd_entries)) {
+			for (ip = LIST_FIRST(&(lp->vxd_inode_head)); ip != NULL;
+			     ip = LIST_NEXT(ip, vxi_entries)) {
+				printf("dev=%lu, inode=%lu, type=%d\n",
+				    lp->vxd_dev, ip->vxi_inode, ip->vxi_type);
+			}
+		}
+	}
+
+	return (0);
+}
+
+/*
+ * Handle ioctls for the device.
+ */
+int vexecioctl(dev_t dev, u_long cmd, caddr_t data, int flags, struct proc *p) {
+	struct vexec_params *params;
+	struct nameidata nid;
+	struct vattr va;
+	struct vexec_dev_list *dlp;
+	int error = 0;
+
+	params = (struct vexec_params *) data;
+
+	vexec_dprintf(("vexec_ioctl: cmd=0x%lx, file=%s\n", cmd,
+	    params->vxp_file));
+	
+	switch (cmd) {
+	case VEXEC_LOAD:
+		/*
+		 * Don't allow updates in multi-user mode. Give a hint to
+		 * the user. ;)
+		 */
+		if (securelevel >= 1) {
+			printf("vexecioctl: Can't load in multi-user mode! "
+			    "Try \"kill 1\"...\n");
+
+			error = EPERM;
+		} else {
+			NDINIT(&nid, LOOKUP, FOLLOW, UIO_SYSSPACE,
+			    params->vxp_file, p);
+			error = namei(&nid);
+			if (error)
+				return (error);
+
+			/*
+			 * Don't add directories... (XXX?)
+			 */
+			if (nid.ni_vp->v_type == VDIR) {
+				printf("vexecioctl: Not adding \"%s\": A "
+				    "directory.\n", params->vxp_file);
+				vrele(nid.ni_vp);
+				return (EINVAL);
+			}
+
+			/*
+			 * Invalidate fingerprint status so we evaluate it
+			 * in the first access.
+			 */
+			nid.ni_vp->v_fpstatus = FP_INVALID;
+
+			/*
+			 * Get file attributes for inode number, device,
+			 * and size.
+			 */
+			error = VOP_GETATTR(nid.ni_vp, &va, p->p_ucred, p);
+			if (error)
+				return (error);
+
+			/* Release our reference to the vnode. (namei) */
+			vrele(nid.ni_vp);
+
+			/*
+			 * Get the device entry in the appropriate device
+			 * list. vexec_finddev() will create a new entry
+			 * if one does not exist yet.
+			 */
+			if (params->vxp_type == VEXEC_FILE) {
+				dlp = vexec_finddev(va.va_fsid,
+				    &vexec_file_dev_head);
+			} else {
+				dlp = vexec_finddev(va.va_fsid,
+				    &vexec_exec_dev_head);
+			}
+
+			/*
+			 * Add the new information to the inode list of
+			 * the device. If this function fails, we don't
+			 * free "dlp" because it either points to a device
+			 * already holding entries, or a newly created
+			 * (empty) device entry that will save us time
+			 * later.
+			 */
+			error = vexec_inodeadd(dlp, p, nid.ni_vp, params, va);
+		}
+
+		break;
+
+	default:
+		/* Invalid operation. */
+		error = ENODEV;
+
+		break;
+	}
+
+	return (error);
+}
+
+/*
+ * Search the device list for the specified device. If it's not there, add
+ * a new entry for it.
+ */
+struct vexec_dev_list *vexec_finddev(dev_t dev, struct vexec_devhead *head) {
+	struct vexec_dev_list *lp;
+
+	/* See if it's already in our list. */
+	for (lp = LIST_FIRST(head); lp != NULL;
+	     lp = LIST_NEXT(lp, vxd_entries))
+		if (lp->vxd_dev == dev)
+			return (lp);
+
+	/* Allocate a new entry for the device if it's not. */
+	if (lp == NULL) {
+		MALLOC(lp, struct vexec_dev_list *, sizeof(*lp),
+		    M_TEMP, M_WAITOK);
+
+		/* Set the device-id. */
+		lp->vxd_dev = dev;
+
+		/* Initialize an inode list for the new device entry. */
+		LIST_INIT(&(lp->vxd_inode_head));
+
+		/* Insert the new device entry to the device list. */
+		LIST_INSERT_HEAD(head, lp, vxd_entries);
+	}
+
+	return (lp);
+}
+
+/*
+ * Add a file's inode and fingerprint to the list of inodes attached
+ * to the device-id. Avoid duplicate entries.
+ */
+int vexec_inodeadd(struct vexec_dev_list *list, struct proc *p, struct 
+    vnode *vp, struct vexec_params *params, struct vattr va) {
+	struct vexec_inode_list *ip;
+	int error;
+
+	/*
+	 * Search the list to see if we already have an entry for the
+	 * given inode. If we do, modify it -- but always enforce the
+	 * "VEXEC_INDIRECT" type if specified in either entries to avoid
+	 * possible race conditions.
+ 	 */
+	for (ip = LIST_FIRST(&(list->vxd_inode_head)); ip != NULL;
+	     ip = LIST_NEXT(ip, vxi_entries)) {
+		if (ip->vxi_inode == va.va_fileid) {
+			struct nameidata nid;
+			char newfp[FPLEN_MAX];
+
+			/*
+			 * Got a matching inode. First, we enforce
+			 * the "VEXEC_INDIRECT" type.
+			 */
+			if ((params->vxp_type == VEXEC_INDIRECT) &&
+			    (ip->vxi_type != VEXEC_INDIRECT)) {
+				/*
+				 * Tell the user about changing the type,
+				 * just in case it may be a mistake.
+				 */
+				printf("vexecioctl: Entry type changed from "
+				    "%s to indirect. (dev=%lu, inode=%lu)\n",
+				    ((ip->vxi_type == VEXEC_DIRECT) ? "direct" :
+				    "file"), list->vxd_dev, ip->vxi_inode);
+
+				ip->vxi_type = params->vxp_type;
+			}
+
+			/*
+			 * Because we are overwriting an existing entry,
+			 * we need to make sure the fingerprint we are
+			 * about to use is really the fingerprint for the
+			 * file. "Just in case".
+			 */
+			NDINIT(&nid, LOOKUP, FOLLOW, UIO_SYSSPACE,
+			    params->vxp_file, p);
+			error = namei(&nid);
+			if (error) {
+				printf("vexec_inodeadd: Couldn't verify "
+				    "new fingerprint: namei() failed "
+				    "[error=%d]\n", error);
+				return (error);
+			}
+
+			/*
+			 * vexec_fp_calc() should take care of locking for
+			 * us. Just pass the parameters to it.
+			 */
+			error = vexec_fp_calc(p, nid.ni_vp, ip,
+			    va.va_size, newfp);
+			vrele(nid.ni_vp);
+			if (error)
+				return (error);
+
+			/*
+			 * Then, we place new information in the entry.
+			 *
+			 * We don't waste time comparing the fingerprints
+			 * because it'll take the same amount of time to
+			 * copy the new one over the old one.
+			 */
+			ip->vxi_fptype = params->vxp_fptype;
+			memcpy(ip->vxi_fp, params->vxp_fp, sizeof(ip->vxi_fp));
+			memcpy(params->vxp_file, nid.ni_cnd.cn_pnbuf,
+			    sizeof(params->vxp_file));
+
+			return (0);
+		}
+	}
+
+	MALLOC(ip, struct vexec_inode_list *, sizeof(*ip),
+	    M_TEMP, M_WAITOK);
+
+	/*
+	 * Set the entry type, fingerprint type, inode number, and
+	 * the fingerprint for the newly allocated entry.
+	 */
+	ip->vxi_type = params->vxp_type;
+	ip->vxi_fptype = params->vxp_fptype;
+	ip->vxi_inode = va.va_fileid;
+	memcpy(ip->vxi_fp, params->vxp_fp, sizeof(ip->vxi_fp));
+
+	/* Insert newly created entry to the inode list. */
+	LIST_INSERT_HEAD(&(list->vxd_inode_head), ip, vxi_entries);
+
+	vexec_dprintf(("Vexec: New entry (file=%s, inode=%u, dev=%u)\n",
+	    params->vxp_file, va.va_fileid, va.va_fsid));
+
+	return (0);
+}
+@
+

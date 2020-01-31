@@ -1,0 +1,623 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.4
+	tg-mergefixes-1-branch:1.1.1.4.0.8
+	tg-mergefixes-1-base:1.1.1.4
+	MIROS_X:1.1.1.4.0.6
+	MIROS_X_BASE:1.1.1.4
+	tg-mergetmp-3:1.1.1.4
+	MIRBSD_XP_MIRPPC:1.1.1.4.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.4
+	MIRBSD_XP_SPARC:1.1.1.4.0.2
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.12.22.21.20.12;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.12.22.21.20.12;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.01.02.18.12.25;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.01.26.19.05.54;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.05.16.07.19.24;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: rde.h,v 1.5 2003/12/21 22:16:53 henning Exp $ */
+
+/*
+ * Copyright (c) 2003 Claudio Jeker <cjeker@@diehard.n-r-g.com> and
+ *                    Andre Oppermann <oppermann@@pipeline.ch>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#ifndef __RDE_H__
+#define __RDE_H__
+
+#include <sys/types.h>
+#include <sys/queue.h>
+
+#include "bgpd.h"
+
+/* XXX generic stuff, should be somewhere else */
+/* Address Family Numbers as per rfc1700 */
+#define AFI_IPv4	1
+#define AFI_IPv6	2
+
+/* Subsequent Address Family Identifier as per rfc2858 */
+#define SAFI_UNICAST	1
+#define SAFI_MULTICAST	2
+#define SAFI_BOTH	3
+
+/* rde internal structures */
+
+enum peer_state {
+	PEER_NONE,
+	PEER_DOWN,
+	PEER_UP
+};
+
+/*
+ * How do we identify peers between the session handler and the rde?
+ * Currently I assume that we can do that with the neighbor_ip...
+ */
+LIST_HEAD(rde_peer_head, rde_peer);
+LIST_HEAD(aspath_head, rde_aspath);
+
+struct rde_peer {
+	LIST_ENTRY(rde_peer)		hash_l;	/* hash list over all peers */
+	LIST_ENTRY(rde_peer)		peer_l; /* list of all peers */
+	struct aspath_head		path_h; /* list of all as pathes */
+	struct peer_config		conf;
+	u_int32_t			remote_bgpid;
+	enum peer_state			state;
+};
+
+#define AS_SET			1
+#define AS_SEQUENCE		2
+#define ASPATH_HEADER_SIZE	sizeof(struct aspath_hdr)
+
+struct aspath_hdr {
+	u_int16_t			len;	/* total length of aspath
+						   in octets */
+	u_int16_t			as_cnt;	/* total number of AS's */
+	/* probably we should switch these to int or something similar */
+	/* char	*str; string representation of aspath for regex search. */
+};
+
+struct aspath {
+	struct aspath_hdr		hdr;
+	u_char				data[1];
+	/*
+	 * data consists of multiple struct aspath_segment with a length of
+	 * len octets. In zebra data is a pointer to some memory location with
+	 * the aspath segments. We could do it like this but then we should
+	 * remove the pointer from rde_aspath and store the aspath header
+	 * directly there.
+	 */
+};
+
+struct astags {
+	u_int16_t			len;
+	u_int16_t			size;
+	struct community {
+		u_int16_t		as_num;
+		u_int16_t		value;
+	}				astag[1];
+	/* this beast is variable sized */
+	/*
+	 * XXX does not work. Because of possible unalignd access to
+	 * u_int16_t. This needs to be solved somewhat differently.
+	 */
+};
+
+enum attrtypes {
+	ATTR_UNDEF,
+	ATTR_ORIGIN,
+	ATTR_ASPATH,
+	ATTR_NEXTHOP,
+	ATTR_MED,
+	ATTR_LOCALPREF,
+	ATTR_ATOMIC_AGGREGATE,
+	ATTR_AGGREGATOR
+};
+
+/* attribute flags. 4 low order bits reserved */
+#define	ATTR_EXTLEN		0x10
+#define ATTR_PARTIAL		0x20
+#define ATTR_TRANSITIVE		0x40
+#define ATTR_OPTIONAL		0x80
+
+/* default attribute flags for well known attributes */
+#define ATTR_ORIGIN_FLAGS	ATTR_TRANSITIVE
+#define ATTR_NEXTHOP_FLAGS	ATTR_TRANSITIVE
+#define ATTR_MED_FLAGS		ATTR_OPTIONAL
+#define ATTR_LOCALPREF_FLAGS	ATTR_TRANSITIVE
+#define ATTR_ATOMIC_AGGREGATE_FLAGS	ATTR_TRANSITIVE
+#define ATTR_AGGREGATOR_FLAGS	(ATTR_OPTIONAL | ATTR_TRANSITIVE)
+
+enum origins {
+	ORIGIN_IGP,
+	ORIGIN_EGP,
+	ORIGIN_INCOMPLETE
+};
+
+struct attr_flags {
+	enum origins			 origin;
+	struct aspath			*aspath;
+	struct astags			*astags;
+	struct in_addr			 nexthop;
+	u_int32_t			 med;		/* multi exit disc */
+	u_int32_t			 lpref;		/* local pref */
+	u_int8_t			 aggr_atm;	/* atomic aggregate */
+	u_int16_t			 aggr_as;	/* aggregator as */
+	struct in_addr			 aggr_ip;	/* aggregator ip */
+};
+
+enum nexthop_state {
+	NEXTHOP_UNREACH,
+	NEXTHOP_REACH
+};
+
+struct nexthop;
+
+LIST_HEAD(prefix_head, prefix);
+
+struct rde_aspath {
+	LIST_ENTRY(rde_aspath)		 peer_l, path_l, nexthop_l;
+	struct prefix_head		 prefix_h;
+	struct rde_peer			*peer;
+	struct nexthop			*nexthop;
+	u_int16_t			 prefix_cnt; /* # of prefixes */
+	u_int16_t			 active_cnt; /* # of active prefixes */
+	/*
+	 * currently we use the boolean nexthop state, this could be exchanged
+	 * with a variable coast with a max for unreachable.
+	 */
+	enum nexthop_state		 state;
+#if 0
+	u_int32_t			 nexthop_costs;
+#endif
+	struct attr_flags		 flags;
+};
+
+struct pt_entry {
+	LIST_ENTRY(pt_entry)		 pt_l;	/* currently we are using a
+						   hash list for prefixes */
+	struct in_addr			 prefix;
+	int				 prefixlen;
+	struct prefix_head		 prefix_h;
+	struct prefix			*active; /* for fast access */
+	/*
+	 * Route Flap Damping structures
+	 * Currently I think they belong into the prefix but for the moment
+	 * we just ignore the dumpening at all.
+	 */
+};
+
+struct prefix {
+	LIST_ENTRY(prefix)		 prefix_l, path_l;
+	struct rde_aspath		*aspath;
+	struct pt_entry			*prefix;
+	struct rde_peer			*peer;
+	time_t				 lastchange;
+/* currently I can't think of additional prefix flags.
+ * NOTE: the selected route is stored in prefix->active */
+};
+
+/* prototypes */
+/* rde_rib.c */
+int		 attr_equal(struct attr_flags *, struct attr_flags *);
+void		 attr_copy(struct attr_flags *, struct attr_flags *);
+u_int16_t	 attr_length(struct attr_flags *);
+int		 attr_dump(void *, u_int16_t, struct attr_flags *);
+
+int		 aspath_verify(void *, u_int16_t, u_int16_t);
+#define		 AS_ERR_LEN	-1
+#define		 AS_ERR_TYPE	-2
+#define		 AS_ERR_LOOP	-3
+struct aspath	*aspath_create(void *, u_int16_t);
+void		 aspath_destroy(struct aspath *);
+u_char		*aspath_dump(struct aspath *);
+u_int16_t	 aspath_length(struct aspath *);
+u_int16_t	 aspath_count(struct aspath *);
+u_int16_t	 aspath_neighbour(struct aspath *);
+u_long		 aspath_hash(struct aspath *);
+int		 aspath_equal(struct aspath *, struct aspath *);
+
+void		 path_init(u_long);
+void		 path_update(struct rde_peer *, struct attr_flags *,
+			    struct in_addr , int);
+struct rde_aspath *path_get(struct aspath *, struct rde_peer *);
+struct rde_aspath *path_add(struct rde_peer *, struct attr_flags *);
+void		 path_remove(struct rde_aspath *);
+void		 path_updateall(struct rde_aspath *, enum nexthop_state);
+void		 path_destroy(struct rde_aspath *);
+int		 path_empty(struct rde_aspath *);
+
+struct prefix	*prefix_get(struct rde_aspath *, struct in_addr, int);
+struct pt_entry	*prefix_add(struct rde_aspath *, struct in_addr, int);
+struct pt_entry	*prefix_move(struct rde_aspath *, struct prefix *);
+void		 prefix_remove(struct rde_peer *, struct in_addr, int);
+struct prefix	*prefix_bypeer(struct pt_entry *, struct rde_peer *);
+void		 prefix_updateall(struct rde_aspath *, enum nexthop_state);
+void		 prefix_destroy(struct prefix *);
+
+void		 nexthop_init(u_long);
+void		 nexthop_add(struct rde_aspath *);
+void		 nexthop_remove(struct rde_aspath *);
+void		 nexthop_invalidate(struct in_addr, int);
+void		 nexthop_validate(struct in_addr, int);
+
+/* rde_de.c */
+void		 prefix_evaluate(struct prefix *, struct pt_entry *);
+
+/* rde_pt.c */
+void		 pt_init(void);
+int		 pt_empty(struct pt_entry *);
+struct pt_entry	*pt_get(struct in_addr, int);
+struct pt_entry *pt_add(struct in_addr, int);
+void		 pt_remove(struct pt_entry *);
+struct pt_entry	*pt_lookup(struct in_addr);
+void		 pt_dump(void (*)(struct pt_entry *, void *), void *);
+
+
+#endif /* __RDE_H__ */
+@
+
+
+1.1.1.1
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD again, for various reasons.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: rde.h,v 1.10 2003/12/30 13:03:27 henning Exp $ */
+d4 1
+a4 1
+ * Copyright (c) 2003 Claudio Jeker <claudio@@openbsd.org> and
+d55 1
+a55 1
+	struct aspath_head		path_h; /* list of all as paths */
+d94 1
+a94 1
+	 * XXX does not work. Because of possible unaligned access to
+d134 1
+a134 1
+	struct in_addr			 nexthop;	/* exit nexthop */
+a142 1
+	NEXTHOP_LOOKUP,
+d147 1
+a147 11
+struct nexthop {
+	LIST_ENTRY(nexthop)	nexthop_l;
+	enum nexthop_state	state;
+#if 0
+	u_int32_t		costs;
+#endif
+	struct aspath_head	path_h;
+	struct in_addr		exit_nexthop;
+	struct in_addr		true_nexthop;
+	u_int8_t		connected;
+};
+d162 1
+d179 1
+a179 1
+	 * we just ignore the dampening at all.
+a193 4
+/* rde.c */
+void		 rde_send_kroute(struct prefix *, struct prefix *);
+void		 rde_send_nexthop(in_addr_t, int);
+
+d234 2
+a235 1
+void		 nexthop_update(struct kroute_nexthop *);
+d237 1
+a237 1
+/* rde_decide.c */
+d240 1
+a240 1
+/* rde_prefix.c */
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: rde.h,v 1.21 2004/01/17 19:35:36 claudio Exp $ */
+d4 2
+a5 2
+ * Copyright (c) 2003, 2004 Claudio Jeker <claudio@@openbsd.org> and
+ *                          Andre Oppermann <oppermann@@pipeline.ch>
+a23 1
+#include <sys/tree.h>
+d42 1
+a42 2
+	PEER_UP,
+	PEER_ERR	/* error occured going to PEER_DOWN state */
+a50 4
+RB_HEAD(uptree_prefix, update_prefix);
+RB_HEAD(uptree_attr, update_attr);
+TAILQ_HEAD(uplist_prefix, update_prefix);
+TAILQ_HEAD(uplist_attr, update_attr);
+d53 6
+a58 17
+	LIST_ENTRY(rde_peer)		 hash_l; /* hash list over all peers */
+	LIST_ENTRY(rde_peer)		 peer_l; /* list of all peers */
+	struct aspath_head		 path_h; /* list of all as paths */
+	struct peer_config		 conf;
+	enum peer_state			 state;
+	u_long				 prefix_cnt;
+	u_int32_t			 remote_bgpid;
+	struct bgpd_addr		 remote_addr;
+	struct bgpd_addr		 local_addr;
+	u_int32_t			 up_pcnt;
+	u_int32_t			 up_acnt;
+	u_int32_t			 up_nlricnt;
+	u_int32_t			 up_wcnt;
+	struct uptree_prefix		 up_prefix;
+	struct uptree_attr		 up_attrs;
+	struct uplist_attr		 updates;
+	struct uplist_prefix		 withdraws;
+d85 14
+d117 11
+a127 8
+#define ATTR_WELL_KNOWN		ATTR_TRANSITIVE
+
+struct attr {
+	u_int8_t			 flags;
+	u_int8_t			 type;
+	u_int16_t			 len;
+	u_char				*data;
+	TAILQ_ENTRY(attr)		 attr_l;
+a129 6
+TAILQ_HEAD(attr_list, attr);
+
+#define ORIGIN_IGP		0
+#define ORIGIN_EGP		1
+#define ORIGIN_INCOMPLETE	2
+
+d131 1
+d133 2
+a134 1
+	in_addr_t			 nexthop;	/* exit nexthop */
+d137 3
+a139 2
+	u_int8_t			 origin;
+	struct attr_list		 others;
+a151 4
+	/*
+	 * currently we use the boolean nexthop state, this could be exchanged
+	 * with a variable coast with a max for unreachable.
+	 */
+d155 3
+a157 7
+	struct bgpd_addr	exit_nexthop;
+	struct bgpd_addr	true_nexthop;
+	struct bgpd_addr	nexthop_net;
+	u_int8_t		nexthop_netlen;
+	u_int8_t		flags;
+#define NEXTHOP_CONNECTED	0x1
+#define NEXTHOP_ANNOUNCE	0x2
+d169 7
+d182 1
+a182 1
+	struct bgpd_addr		 prefix;
+d206 1
+a206 3
+void		 rde_send_nexthop(struct bgpd_addr *, int);
+void		 rde_generate_updates(struct prefix *, struct prefix *);
+u_int16_t	 rde_local_as(void);
+d209 1
+a209 1
+int		 attr_compare(struct attr_flags *, struct attr_flags *);
+d211 2
+a212 4
+int		 attr_write(void *, u_int16_t, u_int8_t, u_int8_t, void *,
+		     u_int16_t);
+void		 attr_optadd(struct attr_flags *, u_int8_t, u_int8_t,
+		     u_char *, u_int16_t);
+d215 3
+a217 4
+#define		 AS_ERR_LOOP	-1
+#define		 AS_ERR_LEN	-2
+#define		 AS_ERR_TYPE	-3
+#define		 AS_ERR_BAD	-4
+a219 2
+int		 aspath_write(void *, u_int16_t, struct aspath *, u_int16_t,
+		     int);
+d225 1
+a225 1
+int		 aspath_compare(struct aspath *, struct aspath *);
+d229 1
+a229 1
+		     struct bgpd_addr *, int);
+d237 2
+a238 2
+struct prefix	*prefix_get(struct rde_aspath *, struct bgpd_addr *, int);
+struct pt_entry	*prefix_add(struct rde_aspath *, struct bgpd_addr *, int);
+d240 1
+a240 1
+void		 prefix_remove(struct rde_peer *, struct bgpd_addr *, int);
+a243 1
+void		 prefix_network_clean(struct rde_peer *, time_t);
+a251 8
+void		 up_init(struct rde_peer *);
+void		 up_down(struct rde_peer *);
+void		 up_generate_updates(struct rde_peer *,
+		     struct prefix *, struct prefix *);
+int		 up_dump_prefix(u_char *, int, struct uplist_prefix *,
+		     struct rde_peer *);
+int		 up_dump_attrnlri(u_char *, int, struct rde_peer *);
+void		 up_dump_upcall(struct pt_entry *, void *);
+d256 2
+a257 2
+struct pt_entry	*pt_get(struct bgpd_addr *, int);
+struct pt_entry *pt_add(struct bgpd_addr *, int);
+d259 1
+a259 1
+struct pt_entry	*pt_lookup(struct bgpd_addr *);
+@
+
+
+1.1.1.4
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: rde.h,v 1.38 2004/05/07 10:06:15 djm Exp $ */
+d28 10
+d64 1
+a64 1
+	u_int32_t			 prefix_cnt;
+d85 3
+a87 2
+	u_int16_t			as_cnt;	/* number of AS's in data */
+	u_int16_t			prepend;
+d110 1
+a110 2
+	ATTR_AGGREGATOR,
+	ATTR_COMMUNITIES
+d138 1
+a138 2
+	struct in_addr			 nexthop;	/* exit nexthop */
+	char				 pftable[PFTABLE_LEN];
+a141 1
+	u_int8_t			 wflags;	/* internally used */
+a170 5
+struct path_table {
+	struct aspath_head	*path_hashtbl;
+	u_int32_t		 path_hashmask;
+};
+
+d187 1
+a187 1
+	u_int8_t			 prefixlen;
+a210 4
+void		 rde_send_pftable(const char *, struct bgpd_addr *,
+		     u_int8_t, int);
+void		 rde_send_pftable_commit(void);
+
+a212 1
+int		 rde_noevaluate(void);
+d214 1
+a214 7
+/* rde_attr.c */
+void		 attr_init(struct attr_flags *);
+int		 attr_parse(u_char *, u_int16_t, struct attr_flags *, int,
+		     enum enforce_as, u_int16_t);
+u_char		*attr_error(u_char *, u_int16_t, struct attr_flags *,
+		     u_int8_t *, u_int16_t *);
+u_int8_t	 attr_missing(struct attr_flags *, int);
+a216 2
+void		 attr_move(struct attr_flags *, struct attr_flags *);
+void		 attr_free(struct attr_flags *);
+d219 1
+a219 1
+int		 attr_optadd(struct attr_flags *, u_int8_t, u_int8_t,
+a220 2
+struct attr	*attr_optget(struct attr_flags *, u_int8_t);
+void		 attr_optfree(struct attr_flags *);
+d222 5
+a226 4
+int		 aspath_verify(void *, u_int16_t);
+#define		 AS_ERR_LEN	-1
+#define		 AS_ERR_TYPE	-2
+#define		 AS_ERR_BAD	-3
+d234 2
+a235 3
+u_int16_t	 aspath_neighbor(struct aspath *);
+u_int32_t	 aspath_hash(struct aspath *);
+int		 aspath_loopfree(struct aspath *, u_int16_t);
+a236 5
+int		 aspath_snprint(char *, size_t, void *, u_int16_t);
+int		 aspath_asprint(char **, void *, u_int16_t);
+size_t		 aspath_strlen(void *, u_int16_t);
+int		 aspath_match(struct aspath *, enum as_spec, u_int16_t);
+int		 community_match(void *, u_int16_t, int, int);
+d238 1
+a238 3
+/* rde_rib.c */
+void		 path_init(u_int32_t);
+void		 path_shutdown(void);
+d257 1
+a257 2
+void		 nexthop_init(u_int32_t);
+void		 nexthop_shutdown(void);
+a274 1
+void		 pt_shutdown(void);
+a281 5
+/* rde_filter.c */
+enum filter_actions rde_filter(struct rde_peer *, struct attr_flags *,
+    struct bgpd_addr *, u_int8_t, enum directions);
+void		 rde_apply_set(struct attr_flags *, struct filter_set *);
+int		 rde_filter_community(struct attr_flags *, int, int);
+@
+
+

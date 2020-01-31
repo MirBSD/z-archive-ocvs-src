@@ -1,0 +1,434 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.12.53;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.21;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.21;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.28.50;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Host-dependent code for Sun-3 for GDB, the GNU debugger.
+   Copyright 1986, 1987, 1989, 1991, 1992 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "defs.h"
+#include "inferior.h"
+#include "gdbcore.h"
+
+#include <sys/ptrace.h>
+#define KERNEL		/* To get floating point reg definitions */
+#include <machine/reg.h>
+
+static void fetch_core_registers PARAMS ((char *, unsigned, int, CORE_ADDR));
+
+void
+fetch_inferior_registers (regno)
+     int regno;
+{
+  struct regs inferior_registers;
+#ifdef FP0_REGNUM
+  struct fp_status inferior_fp_registers;
+#endif
+  extern char registers[];
+
+  registers_fetched ();
+  
+  ptrace (PTRACE_GETREGS, inferior_pid,
+	  (PTRACE_ARG3_TYPE) &inferior_registers);
+#ifdef FP0_REGNUM
+  ptrace (PTRACE_GETFPREGS, inferior_pid,
+	  (PTRACE_ARG3_TYPE) &inferior_fp_registers);
+#endif 
+  
+  memcpy (registers, &inferior_registers, 16 * 4);
+#ifdef FP0_REGNUM
+  memcpy (&registers[REGISTER_BYTE (FP0_REGNUM)], &inferior_fp_registers,
+	 sizeof inferior_fp_registers.fps_regs);
+#endif 
+  *(int *)&registers[REGISTER_BYTE (PS_REGNUM)] = inferior_registers.r_ps;
+  *(int *)&registers[REGISTER_BYTE (PC_REGNUM)] = inferior_registers.r_pc;
+#ifdef FP0_REGNUM
+  memcpy (&registers[REGISTER_BYTE (FPC_REGNUM)],
+	 &inferior_fp_registers.fps_control,
+	 sizeof inferior_fp_registers - sizeof inferior_fp_registers.fps_regs);
+#endif 
+}
+
+/* Store our register values back into the inferior.
+   If REGNO is -1, do this for all registers.
+   Otherwise, REGNO specifies which register (so we can save time).  */
+
+void
+store_inferior_registers (regno)
+     int regno;
+{
+  struct regs inferior_registers;
+#ifdef FP0_REGNUM
+  struct fp_status inferior_fp_registers;
+#endif
+  extern char registers[];
+
+  memcpy (&inferior_registers, registers, 16 * 4);
+#ifdef FP0_REGNUM
+  memcpy (&inferior_fp_registers, &registers[REGISTER_BYTE (FP0_REGNUM)],
+	 sizeof inferior_fp_registers.fps_regs);
+#endif
+  inferior_registers.r_ps = *(int *)&registers[REGISTER_BYTE (PS_REGNUM)];
+  inferior_registers.r_pc = *(int *)&registers[REGISTER_BYTE (PC_REGNUM)];
+
+#ifdef FP0_REGNUM
+  memcpy (&inferior_fp_registers.fps_control,
+	 &registers[REGISTER_BYTE (FPC_REGNUM)],
+	 sizeof inferior_fp_registers - sizeof inferior_fp_registers.fps_regs);
+#endif
+
+  ptrace (PTRACE_SETREGS, inferior_pid,
+	  (PTRACE_ARG3_TYPE) &inferior_registers);
+#if FP0_REGNUM
+  ptrace (PTRACE_SETFPREGS, inferior_pid,
+	  (PTRACE_ARG3_TYPE) &inferior_fp_registers);
+#endif
+}
+
+
+/* All of this stuff is only relevant if both host and target are sun3.  */
+/* Machine-dependent code for pulling registers out of a Sun-3 core file. */
+
+static void
+fetch_core_registers (core_reg_sect, core_reg_size, which, reg_addr)
+     char *core_reg_sect;
+     unsigned core_reg_size;
+     int which;
+     CORE_ADDR reg_addr;	/* Unused in this version */
+{
+  extern char registers[];
+  struct regs *regs = (struct regs *) core_reg_sect;
+
+  if (which == 0) {
+    if (core_reg_size < sizeof (struct regs))
+      error ("Can't find registers in core file");
+
+    memcpy (registers, (char *)regs, 16 * 4);
+    supply_register (PS_REGNUM, (char *)&regs->r_ps);
+    supply_register (PC_REGNUM, (char *)&regs->r_pc);
+
+  } else if (which == 2) {
+
+#define fpustruct  ((struct fpu *) core_reg_sect)
+
+    if (core_reg_size >= sizeof (struct fpu))
+      {
+#ifdef FP0_REGNUM
+	memcpy (&registers[REGISTER_BYTE (FP0_REGNUM)],
+	      fpustruct->f_fpstatus.fps_regs,
+	      sizeof fpustruct->f_fpstatus.fps_regs);
+	memcpy (&registers[REGISTER_BYTE (FPC_REGNUM)],
+	      &fpustruct->f_fpstatus.fps_control,
+	      sizeof fpustruct->f_fpstatus - 
+		sizeof fpustruct->f_fpstatus.fps_regs);
+#endif
+      }
+    else
+      fprintf_unfiltered (gdb_stderr, "Couldn't read float regs from core file\n");
+  }
+}
+
+
+/* Register that we are able to handle sun3 core file formats.
+   FIXME: is this really bfd_target_unknown_flavour? */
+
+static struct core_fns sun3_core_fns =
+{
+  bfd_target_unknown_flavour,
+  fetch_core_registers,
+  NULL
+};
+
+void
+_initialize_core_sun3 ()
+{
+  add_core_fns (&sun3_core_fns);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 2
+   Copyright 1986, 1987, 1989, 1991, 1992, 1993, 1996, 1999, 2000, 2001
+   Free Software Foundation, Inc.
+d4 1
+a4 1
+   This file is part of GDB.
+d6 13
+a18 14
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a22 1
+#include "regcache.h"
+d25 1
+a25 1
+#define KERNEL			/* To get floating point reg definitions */
+d28 1
+a28 1
+static void fetch_core_registers (char *, unsigned, int, CORE_ADDR);
+d31 2
+a32 1
+fetch_inferior_registers (int regno)
+d35 1
+d37 2
+d40 21
+a60 21
+  deprecated_registers_fetched ();
+
+  ptrace (PTRACE_GETREGS, PIDGET (inferior_ptid),
+	  (PTRACE_ARG3_TYPE) & inferior_registers);
+
+  if (FP0_REGNUM >= 0)
+    ptrace (PTRACE_GETFPREGS, PIDGET (inferior_ptid),
+	    (PTRACE_ARG3_TYPE) & inferior_fp_registers);
+
+  memcpy (deprecated_registers, &inferior_registers, 16 * 4);
+  if (FP0_REGNUM >= 0)
+    memcpy (&deprecated_registers[DEPRECATED_REGISTER_BYTE (FP0_REGNUM)],
+	    &inferior_fp_registers, sizeof inferior_fp_registers.fps_regs);
+
+  *(int *) &deprecated_registers[DEPRECATED_REGISTER_BYTE (PS_REGNUM)] = inferior_registers.r_ps;
+  *(int *) &deprecated_registers[DEPRECATED_REGISTER_BYTE (PC_REGNUM)] = inferior_registers.r_pc;
+  if (FP0_REGNUM >= 0)
+    memcpy (&deprecated_registers[DEPRECATED_REGISTER_BYTE (FPC_REGNUM)],
+	    &inferior_fp_registers.fps_control,
+	    sizeof inferior_fp_registers - 
+	    sizeof inferior_fp_registers.fps_regs);
+d68 2
+a69 1
+store_inferior_registers (int regno)
+d72 1
+d74 2
+d77 20
+a96 20
+  memcpy (&inferior_registers, deprecated_registers, 16 * 4);
+  if (FP0_REGNUM >= 0)
+    memcpy (&inferior_fp_registers,
+	    &deprecated_registers[DEPRECATED_REGISTER_BYTE (FP0_REGNUM)],
+	    sizeof inferior_fp_registers.fps_regs);
+
+  inferior_registers.r_ps = *(int *) &&deprecated_registers[DEPRECATED_REGISTER_BYTE (PS_REGNUM)];
+  inferior_registers.r_pc = *(int *) &&deprecated_registers[DEPRECATED_REGISTER_BYTE (PC_REGNUM)];
+
+  if (FP0_REGNUM >= 0)
+    memcpy (&inferior_fp_registers.fps_control,
+	    &&deprecated_registers[DEPRECATED_REGISTER_BYTE (FPC_REGNUM)],
+	    sizeof inferior_fp_registers - 
+	    sizeof inferior_fp_registers.fps_regs);
+
+  ptrace (PTRACE_SETREGS, PIDGET (inferior_ptid),
+	  (PTRACE_ARG3_TYPE) & inferior_registers);
+  if (FP0_REGNUM >= 0)
+    ptrace (PTRACE_SETFPREGS, PIDGET (inferior_ptid),
+	    (PTRACE_ARG3_TYPE) & inferior_fp_registers);
+d101 1
+a101 12
+
+/* Provide registers to GDB from a core file.
+
+   CORE_REG_SECT points to an array of bytes, which were obtained from
+   a core file which BFD thinks might contain register contents. 
+   CORE_REG_SIZE is its size.
+
+   WHICH says which register set corelow suspects this is:
+     0 --- the general-purpose register set
+     2 --- the floating-point register set
+
+   REG_ADDR isn't used.  */
+d104 5
+a108 2
+fetch_core_registers (char *core_reg_sect, unsigned core_reg_size,
+		      int which, CORE_ADDR reg_addr)
+d110 1
+d113 9
+a121 12
+  if (which == 0)
+    {
+      if (core_reg_size < sizeof (struct regs))
+	  error ("Can't find registers in core file");
+
+      memcpy (&deprecated_registers, (char *) regs, 16 * 4);
+      supply_register (PS_REGNUM, (char *) &regs->r_ps);
+      supply_register (PC_REGNUM, (char *) &regs->r_pc);
+
+    }
+  else if (which == 2)
+    {
+d125 15
+a139 17
+      if (core_reg_size >= sizeof (struct fpu))
+	{
+	  if (FP0_REGNUM >= 0)
+	    {
+	      memcpy (&&deprecated_registers[DEPRECATED_REGISTER_BYTE (FP0_REGNUM)],
+		      fpustruct->f_fpstatus.fps_regs,
+		      sizeof fpustruct->f_fpstatus.fps_regs);
+	      memcpy (&&deprecated_registers[DEPRECATED_REGISTER_BYTE (FPC_REGNUM)],
+		      &fpustruct->f_fpstatus.fps_control,
+		      sizeof fpustruct->f_fpstatus -
+		      sizeof fpustruct->f_fpstatus.fps_regs);
+	    }
+	}
+      else
+	fprintf_unfiltered (gdb_stderr, 
+			    "Couldn't read float regs from core file\n");
+    }
+d141 1
+a142 1
+
+d148 3
+a150 5
+  bfd_target_unknown_flavour,		/* core_flavour */
+  default_check_format,			/* check_format */
+  default_core_sniffer,			/* core_sniffer */
+  fetch_core_registers,			/* core_read_registers */
+  NULL					/* next */
+d154 1
+a154 1
+_initialize_core_sun3 (void)
+@
+

@@ -1,0 +1,331 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.25;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.25;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.56.08;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package Term::Complete;
+require 5.000;
+require Exporter;
+
+use strict;
+our @@ISA = qw(Exporter);
+our @@EXPORT = qw(Complete);
+our $VERSION = '1.4';
+
+#      @@(#)complete.pl,v1.2            (me@@anywhere.EBay.Sun.COM) 09/23/91
+
+=head1 NAME
+
+Term::Complete - Perl word completion module
+
+=head1 SYNOPSIS
+
+    $input = Complete('prompt_string', \@@completion_list);
+    $input = Complete('prompt_string', @@completion_list);
+
+=head1 DESCRIPTION
+
+This routine provides word completion on the list of words in
+the array (or array ref).
+
+The tty driver is put into raw mode and restored using an operating
+system specific command, in UNIX-like environments C<stty>.
+
+The following command characters are defined:
+
+=over 4
+
+=item E<lt>tabE<gt>
+
+Attempts word completion.
+Cannot be changed.
+
+=item ^D
+
+Prints completion list.
+Defined by I<$Term::Complete::complete>.
+
+=item ^U
+
+Erases the current input.
+Defined by I<$Term::Complete::kill>.
+
+=item E<lt>delE<gt>, E<lt>bsE<gt>
+
+Erases one character.
+Defined by I<$Term::Complete::erase1> and I<$Term::Complete::erase2>.
+
+=back
+
+=head1 DIAGNOSTICS
+
+Bell sounds when word completion fails.
+
+=head1 BUGS
+
+The completion character E<lt>tabE<gt> cannot be changed.
+
+=head1 AUTHOR
+
+Wayne Thompson
+
+=cut
+
+our($complete, $kill, $erase1, $erase2, $tty_raw_noecho, $tty_restore, $stty);
+our($tty_saved_state) = '';
+CONFIG: {
+    $complete = "\004";
+    $kill     = "\025";
+    $erase1 =   "\177";
+    $erase2 =   "\010";
+    foreach my $s (qw(/bin/stty /usr/bin/stty)) {
+	if (-x $s) {
+	    $tty_raw_noecho = "$s raw -echo";
+	    $tty_restore    = "$s -raw echo";
+	    $stty = $s;
+	    last;
+	}
+    }
+}
+
+sub Complete {
+    my($prompt, @@cmp_lst, $cmp, $test, $l, @@match);
+    my ($return, $r) = ("", 0);
+
+    $return = "";
+    $r      = 0;
+
+    $prompt = shift;
+    if (ref $_[0] || $_[0] =~ /^\*/) {
+	@@cmp_lst = sort @@{$_[0]};
+    }
+    else {
+	@@cmp_lst = sort(@@_);
+    }
+
+    # Attempt to save the current stty state, to be restored later
+    if (defined $stty && defined $tty_saved_state && $tty_saved_state eq '') {
+	$tty_saved_state = qx($stty -g 2>/dev/null);
+	if ($?) {
+	    # stty -g not supported
+	    $tty_saved_state = undef;
+	}
+	else {
+	    $tty_restore = qq($stty "$tty_saved_state");
+	}
+    }
+    system $tty_raw_noecho if defined $tty_raw_noecho;
+    LOOP: {
+        print($prompt, $return);
+        while (($_ = getc(STDIN)) ne "\r") {
+            CASE: {
+                # (TAB) attempt completion
+                $_ eq "\t" && do {
+                    @@match = grep(/^\Q$return/, @@cmp_lst);
+                    unless ($#match < 0) {
+                        $l = length($test = shift(@@match));
+                        foreach $cmp (@@match) {
+                            until (substr($cmp, 0, $l) eq substr($test, 0, $l)) {
+                                $l--;
+                            }
+                        }
+                        print("\a");
+                        print($test = substr($test, $r, $l - $r));
+                        $r = length($return .= $test);
+                    }
+                    last CASE;
+                };
+
+                # (^D) completion list
+                $_ eq $complete && do {
+                    print(join("\r\n", '', grep(/^\Q$return/, @@cmp_lst)), "\r\n");
+                    redo LOOP;
+                };
+
+                # (^U) kill
+                $_ eq $kill && do {
+                    if ($r) {
+                        $r	= 0;
+			$return	= "";
+                        print("\r\n");
+                        redo LOOP;
+                    }
+                    last CASE;
+                };
+
+                # (DEL) || (BS) erase
+                ($_ eq $erase1 || $_ eq $erase2) && do {
+                    if($r) {
+                        print("\b \b");
+                        chop($return);
+                        $r--;
+                    }
+                    last CASE;
+                };
+
+                # printable char
+                ord >= 32 && do {
+                    $return .= $_;
+                    $r++;
+                    print;
+                    last CASE;
+                };
+            }
+        }
+    }
+    system $tty_restore if defined $tty_restore;
+    print("\n");
+    $return;
+}
+
+1;
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d8 1
+a8 1
+our $VERSION = '1.401';
+d69 1
+a69 1
+our($complete, $kill, $erase1, $erase2, $tty_raw_noecho, $tty_restore, $stty, $tty_safe_restore);
+a79 1
+	    $tty_safe_restore = $tty_restore;
+d109 1
+a109 2
+	    $tty_saved_state =~ s/\s+$//g;
+	    $tty_restore = qq($stty "$tty_saved_state" 2>/dev/null);
+d171 1
+a171 10
+
+    # system $tty_restore if defined $tty_restore;
+    if (defined $tty_saved_state && defined $tty_restore && defined $tty_safe_restore)
+    {
+	system $tty_restore;
+	if ($?) {
+	    # tty_restore caused error
+	    system $tty_safe_restore;
+	}
+    }
+d177 1
+@
+

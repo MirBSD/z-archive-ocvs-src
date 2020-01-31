@@ -1,0 +1,270 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307030815:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.05.23.20.16.11;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.42;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.42;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.05.16.08.53.47;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@* first futile attempt to merge OpenBSD 3.5-current
+* damn! they got pxeboot! -> disable for now
+  (there's still ports/sysutils/pxegrub; we'll have pxeboot later)
+* I don't know if that ... bootloader still works
+* nuke netbsd emul (was unused anyways)
+* nuke a plethora of syscalls not being used, and mark
+  the other two (COMPAT_35) for deletion RSN
+* merge new MI-GENERIC into i386 GENERIC
+* resolve numeric conflicts for
+  - syscalls
+  - sysctls
+  - device majors
+  - pcidevs
+* (c) cleanup - no need to add a bsd-like licence when
+  there's already one; just add my name
+* and much more
+@
+text
+@/*	$OpenBSD: netbsd_exec.c,v 1.10 2001/11/06 19:53:17 miod Exp $	 */
+/*	$NetBSD: svr4_exec.c,v 1.16 1995/10/14 20:24:20 christos Exp $	 */
+
+/*
+ * Copyright (c) 1994 Christos Zoulas
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/proc.h>
+#include <sys/signalvar.h>
+#include <sys/malloc.h>
+#include <sys/exec.h>
+#include <sys/exec_elf.h>
+#include <sys/exec_olf.h>
+
+#include <sys/mman.h>
+#include <uvm/uvm_extern.h>
+
+#include <machine/cpu.h>
+#include <machine/reg.h>
+
+#include <compat/netbsd/netbsd_util.h>
+#include <compat/netbsd/netbsd_syscall.h>
+#include <compat/netbsd/netbsd_exec.h>
+#include <compat/netbsd/netbsd_signal.h>
+
+#include <machine/netbsd_machdep.h>
+
+#ifdef _KERN_DO_ELF64
+
+extern char netbsd_sigcode[], netbsd_esigcode[];
+extern struct sysent netbsd_sysent[];
+#ifdef SYSCALL_DEBUG
+extern char *netbsd_syscallnames[];
+#endif
+
+struct emul emul_elf64_netbsd = {
+	"netbsd",
+	NULL,
+	netbsd_sendsig,
+	NETBSD_SYS_syscall,
+	NETBSD_SYS_MAXSYSCALL,
+	netbsd_sysent,
+#ifdef SYSCALL_DEBUG
+	netbsd_syscallnames,
+#else
+	NULL,
+#endif
+	ELF_AUX_ENTRIES * sizeof(Aux64Info),
+	elf64_copyargs,
+	setregs,
+	exec_elf64_fixup,
+	netbsd_sigcode,
+	netbsd_esigcode,
+};
+
+int
+netbsd_elf64_probe(p, epp, itp, pos, os)
+	struct proc *p;
+	struct exec_package *epp;
+	char *itp;
+	u_long *pos;
+	u_int8_t *os;
+{
+	Elf64_Ehdr *eh = epp->ep_hdr;
+	char *bp;
+	int error;
+	size_t len;
+
+	if (elf64_os_pt_note(p, epp, eh, "NetBSD\0", 7, 4))
+		return (EINVAL);
+
+	if (itp[0]) {
+		if ((error = emul_find(p, NULL, netbsd_emul_path, itp, &bp, 0)))
+			return (error);
+		if ((error = copystr(bp, itp, MAXPATHLEN, &len)))
+			return (error);
+		free(bp, M_TEMP);
+	}
+	epp->ep_emul = &emul_elf64_netbsd;
+	*pos = ELF64_NO_ADDR;
+	if (*os == OOS_NULL)
+		*os = OOS_NETBSD;
+	return (0);
+}
+
+#endif /* _KERN_DO_ELF64 */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: netbsd_exec.c,v 1.11 2004/04/15 00:22:42 tedu Exp $	 */
+d61 1
+a61 1
+struct emul emul_netbsd_elf64 = {
+d104 1
+a104 1
+	epp->ep_emul = &emul_netbsd_elf64;
+@
+

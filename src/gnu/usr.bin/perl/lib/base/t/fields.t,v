@@ -1,0 +1,173 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.8
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.6
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.4
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.2
+	cvs-200406091940:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.12.03.17.56.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.12.03.17.56.18;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/usr/bin/perl -w
+
+my $Has_PH;
+BEGIN {
+    $Has_PH = $] < 5.009;
+}
+
+use strict;
+use Test::More tests => 16;
+
+BEGIN { use_ok('fields'); }
+
+
+package Foo;
+
+use fields qw(_no Pants who _up_yours);
+use fields qw(what);
+
+sub new { fields::new(shift) }
+sub magic_new { bless [] }  # Doesn't 100% work, perl's problem.
+
+package main;
+
+is_deeply( [sort keys %Foo::FIELDS], 
+           [sort qw(_no Pants who _up_yours what)]
+);
+
+sub show_fields {
+    my($base, $mask) = @@_;
+    no strict 'refs';
+    my $fields = \%{$base.'::FIELDS'};
+    return grep { ($fields::attr{$base}[$fields->{$_}] & $mask) == $mask} 
+                keys %$fields;
+}
+
+is_deeply( [sort &show_fields('Foo', fields::PUBLIC)],
+           [sort qw(Pants who what)]);
+is_deeply( [sort &show_fields('Foo', fields::PRIVATE)],
+           [sort qw(_no _up_yours)]);
+
+# We should get compile time failures field name typos
+eval q(my Foo $obj = Foo->new; $obj->{notthere} = "");
+
+my $error = $Has_PH ? 'No such(?: [\w-]+)? field "notthere"'
+                    : q[Attempt to access disallowed key 'notthere' in a ].
+                      q[restricted hash at ];
+ok( $@@ && $@@ =~ /^$error/i );
+
+
+foreach (Foo->new) {
+    my Foo $obj = $_;
+    my %test = ( Pants => 'Whatever', _no => 'Yeah',
+                 what  => 'Ahh',      who => 'Moo',
+                 _up_yours => 'Yip' );
+
+    $obj->{Pants} = 'Whatever';
+    $obj->{_no}   = 'Yeah';
+    @@{$obj}{qw(what who _up_yours)} = ('Ahh', 'Moo', 'Yip');
+
+    while(my($k,$v) = each %test) {
+        ok($obj->{$k} eq $v);
+    }
+}
+
+{
+    local $SIG{__WARN__} = sub {
+        return if $_[0] =~ /^Pseudo-hashes are deprecated/ 
+    };
+    my $phash;
+    eval { $phash = fields::phash(name => "Joe", rank => "Captain") };
+    if( $Has_PH ) {
+        is( $phash->{rank}, "Captain" );
+    }
+    else {
+        like $@@, qr/^Pseudo-hashes have been removed from Perl/;
+    }
+}
+
+
+# check if fields autovivify
+{
+    package Foo::Autoviv;
+    use fields qw(foo bar);
+    sub new { fields::new($_[0]) }
+
+    package main;
+    my Foo::Autoviv $a = Foo::Autoviv->new();
+    $a->{foo} = ['a', 'ok', 'c'];
+    $a->{bar} = { A => 'ok' };
+    is( $a->{foo}[1],    'ok' );
+    is( $a->{bar}->{A},, 'ok' );
+}
+
+package Test::FooBar;
+
+use fields qw(a b c);
+
+sub new {
+    my $self = fields::new(shift);
+    %$self = @@_ if @@_;
+    $self;
+}
+
+package main;
+
+{
+    my $x = Test::FooBar->new( a => 1, b => 2);
+
+    is(ref $x, 'Test::FooBar', 'x is a Test::FooBar');
+    ok(exists $x->{a}, 'x has a');
+    ok(exists $x->{b}, 'x has b');
+}
+@
+
+
+1.1.1.1
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@@

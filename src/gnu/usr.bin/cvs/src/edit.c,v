@@ -1,0 +1,2468 @@
+head	1.4;
+access;
+symbols
+	cvs-1_12_11:1.1.2.1
+	tg-mergetmp-mirosx-1:1.4
+	tg-mergefixes-1-branch:1.4.0.4
+	tg-mergefixes-1-base:1.4
+	MIROS_X:1.4.0.2
+	MIROS_X_BASE:1.4
+	cvs-1_12_10:1.1.2.1
+	FSF:1.1.2
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200404170130:1.1.1.1
+	cvs-1_11_12:1.1.3.2
+	cvs-1_11_1p1:1.1.3.1
+	tg:1.1.3
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2004.12.02.12.40.13;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.02.22.13.49.14;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.12.21.16.13;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.28;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.28;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2004.12.02.11.58.52;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.02.12.19.18.38;	author tg;	state Exp;
+branches;
+next	1.1.3.2;
+
+1.1.3.2
+date	2004.02.12.19.39.06;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@update to cvs 1.12.10-MirOS except automatically
+generated files
+XXX this installs as /usr/bin/ncvs yet, so no
+XXX conflicts during the test phase.
+XXX I suggest to _not_ update.
+
+XXX *** IMPORTANT *** DO NOT ACCESS CVS 1.11 REPOSITORIES
+XXX *** IMPORTANT *** WITH CVS 1.12 OR VICE VERSA!
+@
+text
+@/* Implementation for "cvs edit", "cvs watch on", and related commands
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.  */
+
+#include "cvs.h"
+#include "getline.h"
+#include "yesno.h"
+#include "watch.h"
+#include "edit.h"
+#include "fileattr.h"
+
+static int watch_onoff (int, char **);
+
+static bool check_edited = false;
+static int setting_default;
+static int turning_on;
+
+static bool setting_tedit;
+static bool setting_tunedit;
+static bool setting_tcommit;
+
+
+
+static int
+onoff_fileproc (void *callerdat, struct file_info *finfo)
+{
+    fileattr_set (finfo->file, "_watched", turning_on ? "" : NULL);
+    return 0;
+}
+
+
+
+static int
+onoff_filesdoneproc (void *callerdat, int err, const char *repository,
+                     const char *update_dir, List *entries)
+{
+    if (setting_default)
+	fileattr_set (NULL, "_watched", turning_on ? "" : NULL);
+    return err;
+}
+
+
+
+static int
+watch_onoff (int argc, char **argv)
+{
+    int c;
+    int local = 0;
+    int err;
+
+    optind = 0;
+    while ((c = getopt (argc, argv, "+lR")) != -1)
+    {
+	switch (c)
+	{
+	    case 'l':
+		local = 1;
+		break;
+	    case 'R':
+		local = 0;
+		break;
+	    case '?':
+	    default:
+		usage (watch_usage);
+		break;
+	}
+    }
+    argc -= optind;
+    argv += optind;
+
+#ifdef CLIENT_SUPPORT
+    if (current_parsed_root->isremote)
+    {
+	start_server ();
+
+	ign_setup ();
+
+	if (local)
+	    send_arg ("-l");
+	send_arg ("--");
+	send_files (argc, argv, local, 0, SEND_NO_CONTENTS);
+	send_file_names (argc, argv, SEND_EXPAND_WILD);
+	send_to_server (turning_on ? "watch-on\012" : "watch-off\012", 0);
+	return get_responses_and_close ();
+    }
+#endif /* CLIENT_SUPPORT */
+
+    setting_default = (argc <= 0);
+
+    lock_tree_promotably (argc, argv, local, W_LOCAL, 0);
+
+    err = start_recursion (onoff_fileproc, onoff_filesdoneproc, NULL, NULL,
+			   NULL, argc, argv, local, W_LOCAL, 0, CVS_LOCK_WRITE,
+			   NULL, 0, NULL);
+
+    Lock_Cleanup ();
+    return err;
+}
+
+int
+watch_on (int argc, char **argv)
+{
+    turning_on = 1;
+    return watch_onoff (argc, argv);
+}
+
+int
+watch_off (int argc, char **argv)
+{
+    turning_on = 0;
+    return watch_onoff (argc, argv);
+}
+
+
+
+static int
+dummy_fileproc (void *callerdat, struct file_info *finfo)
+{
+    /* This is a pretty hideous hack, but the gist of it is that recurse.c
+       won't call notify_check unless there is a fileproc, so we can't just
+       pass NULL for fileproc.  */
+    return 0;
+}
+
+
+
+/* Check for and process notifications.  Local only.  I think that doing
+   this as a fileproc is the only way to catch all the
+   cases (e.g. foo/bar.c), even though that means checking over and over
+   for the same CVSADM_NOTIFY file which we removed the first time we
+   processed the directory.  */
+static int
+ncheck_fileproc (void *callerdat, struct file_info *finfo)
+{
+    int notif_type;
+    char *filename;
+    char *val;
+    char *cp;
+    char *watches;
+
+    FILE *fp;
+    char *line = NULL;
+    size_t line_len = 0;
+
+    /* We send notifications even if noexec.  I'm not sure which behavior
+       is most sensible.  */
+
+    fp = CVS_FOPEN (CVSADM_NOTIFY, "r");
+    if (fp == NULL)
+    {
+	if (!existence_error (errno))
+	    error (0, errno, "cannot open %s", CVSADM_NOTIFY);
+	return 0;
+    }
+
+    while (getline (&line, &line_len, fp) > 0)
+    {
+	notif_type = line[0];
+	if (notif_type == '\0')
+	    continue;
+	filename = line + 1;
+	cp = strchr (filename, '\t');
+	if (cp == NULL)
+	    continue;
+	*cp++ = '\0';
+	val = cp;
+	cp = strchr (val, '\t');
+	if (cp == NULL)
+	    continue;
+	*cp++ = '+';
+	cp = strchr (cp, '\t');
+	if (cp == NULL)
+	    continue;
+	*cp++ = '+';
+	cp = strchr (cp, '\t');
+	if (cp == NULL)
+	    continue;
+	*cp++ = '\0';
+	watches = cp;
+	cp = strchr (cp, '\n');
+	if (cp == NULL)
+	    continue;
+	*cp = '\0';
+
+	notify_do (notif_type, filename, finfo->update_dir, getcaller (), val,
+		   watches, finfo->repository);
+    }
+    free (line);
+
+    if (ferror (fp))
+	error (0, errno, "cannot read %s", CVSADM_NOTIFY);
+    if (fclose (fp) < 0)
+	error (0, errno, "cannot close %s", CVSADM_NOTIFY);
+
+    if ( CVS_UNLINK (CVSADM_NOTIFY) < 0)
+	error (0, errno, "cannot remove %s", CVSADM_NOTIFY);
+
+    return 0;
+}
+
+
+
+/* Look through the CVSADM_NOTIFY file and process each item there
+   accordingly.  */
+static int
+send_notifications (int argc, char **argv, int local)
+{
+    int err = 0;
+
+#ifdef CLIENT_SUPPORT
+    /* OK, we've done everything which needs to happen on the client side.
+       Now we can try to contact the server; if we fail, then the
+       notifications stay in CVSADM_NOTIFY to be sent next time.  */
+    if (current_parsed_root->isremote)
+    {
+	if (strcmp (cvs_cmd_name, "release") != 0)
+	{
+	    start_server ();
+	    ign_setup ();
+	}
+
+	err += start_recursion (dummy_fileproc, NULL, NULL, NULL, NULL, argc,
+				argv, local, W_LOCAL, 0, 0, NULL, 0, NULL);
+
+	send_to_server ("noop\012", 0);
+	if (strcmp (cvs_cmd_name, "release") == 0)
+	    err += get_server_responses ();
+	else
+	    err += get_responses_and_close ();
+    }
+    else
+#endif
+    {
+	/* Local.  */
+
+	err += start_recursion (ncheck_fileproc, NULL, NULL, NULL, NULL, argc,
+				argv, local, W_LOCAL, 0, CVS_LOCK_WRITE, NULL,
+				0, NULL);
+	Lock_Cleanup ();
+    }
+    return err;
+}
+
+
+
+void editors_output (const char *fullname, const char *p)
+{
+    cvs_output (fullname, 0);
+
+    while (1)
+    {
+        cvs_output ("\t", 1);
+        while (*p != '>' && *p != '\0')
+            cvs_output (p++, 1);
+        if (*p == '\0')
+        {
+            /* Only happens if attribute is misformed.  */
+            cvs_output ("\n", 1);
+            break;
+        }
+        ++p;
+        cvs_output ("\t", 1);
+        while (1)
+        {
+            while (*p != '+' && *p != ',' && *p != '\0')
+                cvs_output (p++, 1);
+            if (*p == '\0')
+            {
+                cvs_output ("\n", 1);
+                return;
+            }
+            if (*p == ',')
+            {
+                ++p;
+                break;
+            }
+            ++p;
+            cvs_output ("\t", 1);
+        }
+        cvs_output ("\n", 1);
+    }
+}
+
+
+
+static int find_editors_and_output (struct file_info *finfo)
+{
+    char *them;
+
+    them = fileattr_get0 (finfo->file, "_editors");
+    if (them == NULL)
+        return 0;
+
+    editors_output (finfo->fullname, them);
+
+    return 0;
+}
+
+
+
+/* Handle the client-side details of editing a file.
+ *
+ * These args could be const but this needs to fit the call_in_directory API.
+ */
+void
+edit_file (void *data, List *ent_list, const char *short_pathname,
+	   const char *filename)
+{
+    Node *node;
+    struct file_info finfo;
+    char *basefilename;
+
+    xchmod (filename, 1);
+
+    mkdir_if_needed (CVSADM_BASE);
+    basefilename = Xasprintf ("%s/%s", CVSADM_BASE, filename);
+    copy_file (filename, basefilename);
+    free (basefilename);
+
+    node = findnode_fn (ent_list, filename);
+    if (node != NULL)
+    {
+	finfo.file = filename;
+	finfo.fullname = short_pathname;
+	finfo.update_dir = dir_name (short_pathname);
+	base_register (&finfo, ((Entnode *) node->data)->version);
+	free ((char *)finfo.update_dir);
+    }
+}
+
+
+
+static int
+edit_fileproc (void *callerdat, struct file_info *finfo)
+{
+    FILE *fp;
+    time_t now;
+    char *ascnow;
+    Vers_TS *vers;
+
+#if defined (CLIENT_SUPPORT) || defined (SERVER_SUPPORT)
+    assert (!(current_parsed_root->isremote && check_edited));
+#else
+    assert (!check_edited);
+#endif /* defined (CLIENT_SUPPORT) || defined (SERVER_SUPPORT) */
+
+    if (noexec)
+	return 0;
+
+    vers = Version_TS (finfo, NULL, NULL, NULL, 1, 0);
+
+    if (!vers->vn_user)
+    {
+	error (0, 0, "no such file %s; ignored", finfo->fullname);
+	return 1;
+    }
+
+#ifdef CLIENT_SUPPORT
+    if (!current_parsed_root->isremote)
+#endif /* CLIENT_SUPPORT */
+    {
+        char *editors = fileattr_get0 (finfo->file, "_editors");
+        if (editors)
+        {
+	    if (check_edited)
+	    {
+		/* In the !CHECK_EDIT case, this message is printed by
+		 * server_notify.
+		 */
+		if (!quiet)
+		    editors_output (finfo->fullname, editors);
+		 /* Now warn the user if we skip the file, then return.  */
+		if (!really_quiet)
+		    error (0, 0, "Skipping file `%s' due to existing editors.",
+			   finfo->fullname);
+		return 1;
+	    }
+            free (editors);
+        }
+    }
+
+    fp = open_file (CVSADM_NOTIFY, "a");
+
+    (void) time (&now);
+    ascnow = asctime (gmtime (&now));
+    ascnow[24] = '\0';
+    /* Fix non-standard format.  */
+    if (ascnow[8] == '0') ascnow[8] = ' ';
+    fprintf (fp, "E%s\t%s GMT\t%s\t%s\t", finfo->file,
+	     ascnow, hostname, CurDir);
+    if (setting_tedit)
+	fprintf (fp, "E");
+    if (setting_tunedit)
+	fprintf (fp, "U");
+    if (setting_tcommit)
+	fprintf (fp, "C");
+    fprintf (fp, "\n");
+
+    if (fclose (fp) < 0)
+    {
+	if (finfo->update_dir[0] == '\0')
+	    error (0, errno, "cannot close %s", CVSADM_NOTIFY);
+	else
+	    error (0, errno, "cannot close %s/%s", finfo->update_dir,
+		   CVSADM_NOTIFY);
+    }
+
+    /* Now stash the file away in CVSADM so that unedit can revert even if
+       it can't communicate with the server.  We stash away a writable
+       copy so that if the user removes the working file, then restores it
+       with "cvs update" (which clears _editors but does not update
+       CVSADM_BASE), then a future "cvs edit" can still win.  */
+    /* Could save a system call by only calling mkdir_if_needed if
+       trying to create the output file fails.  But copy_file isn't
+       set up to facilitate that.  */
+#ifdef SERVER_SUPPORT
+    if (server_active)
+	server_edit_file (finfo);
+    else
+#endif /* SERVER_SUPPORT */
+	edit_file (NULL, finfo->entries, finfo->fullname, finfo->file);
+
+    return 0;
+}
+
+static const char *const edit_usage[] =
+{
+    "Usage: %s %s [-cflR] [files...]\n",
+    "-c: Check that working files are unedited\n",
+    "-f: Force edit if working files are edited (default)\n",
+    "-l: Local directory only, not recursive\n",
+    "-R: Process directories recursively\n",
+    "-a: Specify what actions for temporary watch, one of\n",
+    "    edit,unedit,commit,all,none\n",
+    "(Specify the --help global option for a list of other help options)\n",
+    NULL
+};
+
+int
+edit (int argc, char **argv)
+{
+    int local = 0;
+    int c;
+    int err = 0;
+    bool a_omitted, a_all, a_none;
+
+    if (argc == -1)
+	usage (edit_usage);
+
+    a_omitted = true;
+    a_all = false;
+    a_none = false;
+    setting_tedit = false;
+    setting_tunedit = false;
+    setting_tcommit = false;
+    optind = 0;
+    while ((c = getopt (argc, argv, "+cflRa:")) != -1)
+    {
+	switch (c)
+	{
+            case 'c':
+                check_edited = true;
+                break;
+            case 'f':
+                check_edited = false;
+                break;
+	    case 'l':
+		local = 1;
+		break;
+	    case 'R':
+		local = 0;
+		break;
+	    case 'a':
+		a_omitted = false;
+		if (strcmp (optarg, "edit") == 0)
+		    setting_tedit = true;
+		else if (strcmp (optarg, "unedit") == 0)
+		    setting_tunedit = true;
+		else if (strcmp (optarg, "commit") == 0)
+		    setting_tcommit = true;
+		else if (strcmp (optarg, "all") == 0)
+		{
+		    a_all = true;
+		    a_none = false;
+		    setting_tedit = true;
+		    setting_tunedit = true;
+		    setting_tcommit = true;
+		}
+		else if (strcmp (optarg, "none") == 0)
+		{
+		    a_none = true;
+		    a_all = false;
+		    setting_tedit = false;
+		    setting_tunedit = false;
+		    setting_tcommit = false;
+		}
+		else
+		    usage (edit_usage);
+		break;
+	    case '?':
+	    default:
+		usage (edit_usage);
+		break;
+	}
+    }
+    argc -= optind;
+    argv += optind;
+
+    if (strpbrk (hostname, "+,>;=\t\n") != NULL)
+	error (1, 0,
+	       "host name (%s) contains an invalid character (+,>;=\\t\\n)",
+	       hostname);
+    if (strpbrk (CurDir, "+,>;=\t\n") != NULL)
+	error (1, 0,
+"current directory (%s) contains an invalid character (+,>;=\\t\\n)",
+	       CurDir);
+
+#ifdef CLIENT_SUPPORT
+    if (check_edited && current_parsed_root->isremote)
+    {
+	/* When CHECK_EDITED, we might as well contact the server and let it do
+	 * the work since we don't want an edit unless we know it is safe.
+	 *
+	 * When !CHECK_EDITED, we set up notifications and then attempt to
+	 * contact the server in order to allow disconnected edits.
+	 */
+	start_server();
+
+	if (!supported_request ("edit"))
+	    error (1, 0, "Server does not support enforced advisory locks.");
+
+	ign_setup();
+
+	send_to_server ("Hostname ", 0);
+	send_to_server (hostname, 0);
+	send_to_server ("\012", 1);
+	send_to_server ("LocalDir ", 0);
+	send_to_server (CurDir, 0);
+	send_to_server ("\012", 1);
+
+	if (local)
+	    send_arg ("-l");
+	send_arg ("-c");
+	if (!a_omitted)
+	{
+	    if (a_all)
+		option_with_arg ("-a", "all");
+	    else if (a_none)
+		option_with_arg ("-a", "none");
+	    else
+	    {
+		if (setting_tedit)
+		    option_with_arg ("-a", "edit");
+		if (setting_tunedit)
+		    option_with_arg ("-a", "unedit");
+		if (setting_tcommit)
+		    option_with_arg ("-a", "commit");
+	    }
+	}
+	send_arg ("--");
+	send_files (argc, argv, local, 0, SEND_NO_CONTENTS);
+	send_file_names (argc, argv, SEND_EXPAND_WILD);
+	send_to_server ("edit\012", 0);
+	return get_responses_and_close ();
+    }
+#endif /* CLIENT_SUPPORT */
+
+    /* Now, either SERVER_ACTIVE, local mode, or !CHECK_EDITED.  */
+
+    if (a_omitted)
+    {
+	setting_tedit = true;
+	setting_tunedit = true;
+	setting_tcommit = true;
+    }
+
+    TRACE (TRACE_DATA, "edit(): EUC: %d%d%d edit-check: %d",
+	   setting_tedit, setting_tunedit, setting_tcommit, check_edited);
+
+    err = start_recursion (edit_fileproc, NULL, NULL, NULL, NULL, argc, argv,
+			   local, W_LOCAL, 0, 0, NULL, 0, NULL);
+
+    err += send_notifications (argc, argv, local);
+
+    return err;
+}
+
+static int unedit_fileproc (void *callerdat, struct file_info *finfo);
+
+static int
+unedit_fileproc (void *callerdat, struct file_info *finfo)
+{
+    FILE *fp;
+    time_t now;
+    char *ascnow;
+    char *basefilename;
+
+    if (noexec)
+	return 0;
+
+    basefilename = xmalloc (10 + sizeof CVSADM_BASE + strlen (finfo->file));
+    strcpy (basefilename, CVSADM_BASE);
+    strcat (basefilename, "/");
+    strcat (basefilename, finfo->file);
+    if (!isfile (basefilename))
+    {
+	/* This file apparently was never cvs edit'd (e.g. we are uneditting
+	   a directory where only some of the files were cvs edit'd.  */
+	free (basefilename);
+	return 0;
+    }
+
+    if (xcmp (finfo->file, basefilename) != 0)
+    {
+	printf ("%s has been modified; revert changes? ", finfo->fullname);
+	fflush (stderr);
+	fflush (stdout);
+	if (!yesno ())
+	{
+	    /* "no".  */
+	    free (basefilename);
+	    return 0;
+	}
+    }
+    rename_file (basefilename, finfo->file);
+    free (basefilename);
+
+    fp = open_file (CVSADM_NOTIFY, "a");
+
+    (void) time (&now);
+    ascnow = asctime (gmtime (&now));
+    ascnow[24] = '\0';
+    /* Fix non-standard format.  */
+    if (ascnow[8] == '0') ascnow[8] = ' ';
+    fprintf (fp, "U%s\t%s GMT\t%s\t%s\t\n", finfo->file,
+	     ascnow, hostname, CurDir);
+
+    if (fclose (fp) < 0)
+    {
+	if (finfo->update_dir[0] == '\0')
+	    error (0, errno, "cannot close %s", CVSADM_NOTIFY);
+	else
+	    error (0, errno, "cannot close %s/%s", finfo->update_dir,
+		   CVSADM_NOTIFY);
+    }
+
+    /* Now update the revision number in CVS/Entries from CVS/Baserev.
+       The basic idea here is that we are reverting to the revision
+       that the user edited.  If we wanted "cvs update" to update
+       CVS/Base as we go along (so that an unedit could revert to the
+       current repository revision), we would need:
+
+       update (or all send_files?) (client) needs to send revision in
+       new Entry-base request.  update (server/local) needs to check
+       revision against repository and send new Update-base response
+       (like Update-existing in that the file already exists.  While
+       we are at it, might try to clean up the syntax by having the
+       mode only in a "Mode" response, not in the Update-base itself).  */
+    {
+	char *baserev;
+	Node *node;
+	Entnode *entdata;
+
+	baserev = base_get (finfo);
+	node = findnode_fn (finfo->entries, finfo->file);
+	/* The case where node is NULL probably should be an error or
+	   something, but I don't want to think about it too hard right
+	   now.  */
+	if (node != NULL)
+	{
+	    entdata = node->data;
+	    if (baserev == NULL)
+	    {
+		/* This can only happen if the CVS/Baserev file got
+		   corrupted.  We suspect it might be possible if the
+		   user interrupts CVS, although I haven't verified
+		   that.  */
+		error (0, 0, "%s not mentioned in %s", finfo->fullname,
+		       CVSADM_BASEREV);
+
+		/* Since we don't know what revision the file derives from,
+		   keeping it around would be asking for trouble.  */
+		if (unlink_file (finfo->file) < 0)
+		    error (0, errno, "cannot remove %s", finfo->fullname);
+
+		/* This is cheesy, in a sense; why shouldn't we do the
+		   update for the user?  However, doing that would require
+		   contacting the server, so maybe this is OK.  */
+		error (0, 0, "run update to complete the unedit");
+		return 0;
+	    }
+	    Register (finfo->entries, finfo->file, baserev, entdata->timestamp,
+		      entdata->options, entdata->tag, entdata->date,
+		      entdata->conflict);
+	}
+	free (baserev);
+	base_deregister (finfo);
+    }
+
+    xchmod (finfo->file, 0);
+    return 0;
+}
+
+static const char *const unedit_usage[] =
+{
+    "Usage: %s %s [-lR] [files...]\n",
+    "-l: Local directory only, not recursive\n",
+    "-R: Process directories recursively\n",
+    "(Specify the --help global option for a list of other help options)\n",
+    NULL
+};
+
+int
+unedit (int argc, char **argv)
+{
+    int local = 0;
+    int c;
+    int err;
+
+    if (argc == -1)
+	usage (unedit_usage);
+
+    optind = 0;
+    while ((c = getopt (argc, argv, "+lR")) != -1)
+    {
+	switch (c)
+	{
+	    case 'l':
+		local = 1;
+		break;
+	    case 'R':
+		local = 0;
+		break;
+	    case '?':
+	    default:
+		usage (unedit_usage);
+		break;
+	}
+    }
+    argc -= optind;
+    argv += optind;
+
+    /* No need to readlock since we aren't doing anything to the
+       repository.  */
+    err = start_recursion (unedit_fileproc, NULL, NULL, NULL, NULL, argc, argv,
+			   local, W_LOCAL, 0, 0, NULL, 0, NULL);
+
+    err += send_notifications (argc, argv, local);
+
+    return err;
+}
+
+
+
+void
+mark_up_to_date (const char *file)
+{
+    char *base;
+
+    /* The file is up to date, so we better get rid of an out of
+       date file in CVSADM_BASE.  */
+    base = xmalloc (strlen (file) + 80);
+    strcpy (base, CVSADM_BASE);
+    strcat (base, "/");
+    strcat (base, file);
+    if (unlink_file (base) < 0 && ! existence_error (errno))
+	error (0, errno, "cannot remove %s", file);
+    free (base);
+}
+
+
+
+void
+editor_set (const char *filename, const char *editor, const char *val)
+{
+    char *edlist;
+    char *newlist;
+
+    edlist = fileattr_get0 (filename, "_editors");
+    newlist = fileattr_modify (edlist, editor, val, '>', ',');
+    /* If the attributes is unchanged, don't rewrite the attribute file.  */
+    if (!((edlist == NULL && newlist == NULL)
+	  || (edlist != NULL
+	      && newlist != NULL
+	      && strcmp (edlist, newlist) == 0)))
+	fileattr_set (filename, "_editors", newlist);
+    if (edlist != NULL)
+	free (edlist);
+    if (newlist != NULL)
+	free (newlist);
+}
+
+struct notify_proc_args {
+    /* What kind of notification, "edit", "tedit", etc.  */
+    const char *type;
+    /* User who is running the command which causes notification.  */
+    const char *who;
+    /* User to be notified.  */
+    const char *notifyee;
+    /* File.  */
+    const char *file;
+};
+
+
+
+static int
+notify_proc (const char *repository, const char *filter, void *closure)
+{
+    char *cmdline;
+    FILE *pipefp;
+    const char *srepos = Short_Repository (repository);
+    struct notify_proc_args *args = closure;
+
+    cmdline = format_cmdline (
+#ifdef SUPPORT_OLD_INFO_FMT_STRINGS
+	false, srepos,
+#endif /* SUPPORT_OLD_INFO_FMT_STRINGS */
+	filter,
+	"c", "s", cvs_cmd_name,
+#ifdef SERVER_SUPPORT
+        "R", "s", referrer ? referrer->original : "NONE",
+#endif /* SERVER_SUPPORT */
+    	"p", "s", srepos,
+	"r", "s", current_parsed_root->directory,
+	"s", "s", args->notifyee,
+	NULL
+	);
+    if (!cmdline || !strlen(cmdline))
+    {
+	if (cmdline) free (cmdline);
+	error(0, 0, "pretag proc resolved to the empty string!");
+	return 1;
+    }
+
+    pipefp = run_popen (cmdline, "w");
+    if (pipefp == NULL)
+    {
+	error (0, errno, "cannot write entry to notify filter: %s", cmdline);
+	free(cmdline);
+	return 1;
+    }
+
+    fprintf (pipefp, "%s %s\n---\n", srepos, args->file);
+    fprintf (pipefp, "Triggered %s watch on %s\n", args->type, repository);
+    fprintf (pipefp, "By %s\n", args->who);
+
+    /* Lots more potentially useful information we could add here; see
+       logfile_write for inspiration.  */
+
+    free(cmdline);
+    return pclose (pipefp);
+}
+
+
+
+/* FIXME: this function should have a way to report whether there was
+   an error so that server.c can know whether to report Notified back
+   to the client.  */
+void
+notify_do (int type, const char *filename, const char *update_dir,
+	   const char *who, const char *val, const char *watches,
+	   const char *repository)
+{
+    static struct addremove_args blank;
+    struct addremove_args args;
+    char *watchers;
+    char *p;
+    char *endp;
+    char *nextp;
+
+    /* Print out information on current editors if we were called during an
+     * edit.
+     */
+    if (type == 'E' && !check_edited && !quiet)
+    {
+	char *editors = fileattr_get0 (filename, "_editors");
+	if (editors)
+	{
+	    /* In the CHECK_EDIT case, this message is printed by
+	     * edit_check.  It needs to be done here too since files
+	     * which are found to be edited when CHECK_EDIT are not
+	     * added to the notify list.
+	     */
+	    const char *tmp;
+	    if (update_dir && *update_dir)
+		tmp  = Xasprintf ("%s/%s", update_dir, filename);
+	    else
+		tmp = filename;
+
+	    editors_output (tmp, editors);
+
+	    if (update_dir && *update_dir) free ((char *)tmp);
+	    free (editors);
+	}
+    }
+
+    /* Initialize fields to 0, NULL, or 0.0.  */
+    args = blank;
+    switch (type)
+    {
+	case 'E':
+	    if (strpbrk (val, ",>;=\n") != NULL)
+	    {
+		error (0, 0, "invalid character in editor value");
+		return;
+	    }
+	    editor_set (filename, who, val);
+	    break;
+	case 'U':
+	case 'C':
+	    editor_set (filename, who, NULL);
+	    break;
+	default:
+	    return;
+    }
+
+    watchers = fileattr_get0 (filename, "_watchers");
+    p = watchers;
+    while (p != NULL)
+    {
+	char *q;
+	char *endq;
+	char *nextq;
+	char *notif;
+
+	endp = strchr (p, '>');
+	if (endp == NULL)
+	    break;
+	nextp = strchr (p, ',');
+
+	if ((size_t)(endp - p) == strlen (who) && strncmp (who, p, endp - p) == 0)
+	{
+	    /* Don't notify user of their own changes.  Would perhaps
+	       be better to check whether it is the same working
+	       directory, not the same user, but that is hairy.  */
+	    p = nextp == NULL ? nextp : nextp + 1;
+	    continue;
+	}
+
+	/* Now we point q at a string which looks like
+	   "edit+unedit+commit,"... and walk down it.  */
+	q = endp + 1;
+	notif = NULL;
+	while (q != NULL)
+	{
+	    endq = strchr (q, '+');
+	    if (endq == NULL || (nextp != NULL && endq > nextp))
+	    {
+		if (nextp == NULL)
+		    endq = q + strlen (q);
+		else
+		    endq = nextp;
+		nextq = NULL;
+	    }
+	    else
+		nextq = endq + 1;
+
+	    /* If there is a temporary and a regular watch, send a single
+	       notification, for the regular watch.  */
+	    if (type == 'E' && endq - q == 4 && strncmp ("edit", q, 4) == 0)
+	    {
+		notif = "edit";
+	    }
+	    else if (type == 'U'
+		     && endq - q == 6 && strncmp ("unedit", q, 6) == 0)
+	    {
+		notif = "unedit";
+	    }
+	    else if (type == 'C'
+		     && endq - q == 6 && strncmp ("commit", q, 6) == 0)
+	    {
+		notif = "commit";
+	    }
+	    else if (type == 'E'
+		     && endq - q == 5 && strncmp ("tedit", q, 5) == 0)
+	    {
+		if (notif == NULL)
+		    notif = "temporary edit";
+	    }
+	    else if (type == 'U'
+		     && endq - q == 7 && strncmp ("tunedit", q, 7) == 0)
+	    {
+		if (notif == NULL)
+		    notif = "temporary unedit";
+	    }
+	    else if (type == 'C'
+		     && endq - q == 7 && strncmp ("tcommit", q, 7) == 0)
+	    {
+		if (notif == NULL)
+		    notif = "temporary commit";
+	    }
+	    q = nextq;
+	}
+	if (nextp != NULL)
+	    ++nextp;
+
+	if (notif != NULL)
+	{
+	    struct notify_proc_args args;
+	    size_t len = endp - p;
+	    FILE *fp;
+	    char *usersname;
+	    char *line = NULL;
+	    size_t line_len = 0;
+
+	    args.notifyee = NULL;
+	    usersname = xmalloc (strlen (current_parsed_root->directory)
+				 + sizeof CVSROOTADM
+				 + sizeof CVSROOTADM_USERS
+				 + 20);
+	    strcpy (usersname, current_parsed_root->directory);
+	    strcat (usersname, "/");
+	    strcat (usersname, CVSROOTADM);
+	    strcat (usersname, "/");
+	    strcat (usersname, CVSROOTADM_USERS);
+	    fp = CVS_FOPEN (usersname, "r");
+	    if (fp == NULL && !existence_error (errno))
+		error (0, errno, "cannot read %s", usersname);
+	    if (fp != NULL)
+	    {
+		while (getline (&line, &line_len, fp) >= 0)
+		{
+		    if (strncmp (line, p, len) == 0
+			&& line[len] == ':')
+		    {
+			char *cp;
+			args.notifyee = xstrdup (line + len + 1);
+
+                        /* There may or may not be more
+                           colon-separated fields added to this in the
+                           future; in any case, we ignore them right
+                           now, and if there are none we make sure to
+                           chop off the final newline, if any. */
+			cp = strpbrk (args.notifyee, ":\n");
+
+			if (cp != NULL)
+			    *cp = '\0';
+			break;
+		    }
+		}
+		if (ferror (fp))
+		    error (0, errno, "cannot read %s", usersname);
+		if (fclose (fp) < 0)
+		    error (0, errno, "cannot close %s", usersname);
+	    }
+	    free (usersname);
+	    if (line != NULL)
+		free (line);
+
+	    if (args.notifyee == NULL)
+	    {
+		char *tmp;
+		tmp = xmalloc (endp - p + 1);
+		strncpy (tmp, p, endp - p);
+		tmp[endp - p] = '\0';
+		args.notifyee = tmp;
+	    }
+
+	    args.type = notif;
+	    args.who = who;
+	    args.file = filename;
+
+	    (void) Parse_Info (CVSROOTADM_NOTIFY, repository, notify_proc,
+			       PIOPT_ALL, &args);
+            /* It's okay to cast out the const for the free() below since we
+             * just allocated this a few lines above.  The const was for
+             * everybody else.
+             */
+	    free ((char *)args.notifyee);
+	}
+
+	p = nextp;
+    }
+    if (watchers != NULL)
+	free (watchers);
+
+    switch (type)
+    {
+	case 'E':
+	    if (*watches == 'E')
+	    {
+		args.add_tedit = 1;
+		++watches;
+	    }
+	    if (*watches == 'U')
+	    {
+		args.add_tunedit = 1;
+		++watches;
+	    }
+	    if (*watches == 'C')
+	    {
+		args.add_tcommit = 1;
+	    }
+	    watch_modify_watchers (filename, &args);
+	    break;
+	case 'U':
+	case 'C':
+	    args.remove_temp = 1;
+	    watch_modify_watchers (filename, &args);
+	    break;
+    }
+}
+
+
+
+#ifdef CLIENT_SUPPORT
+/* Check and send notifications.  This is only for the client.  */
+void
+notify_check (const char *repository, const char *update_dir)
+{
+    FILE *fp;
+    char *line = NULL;
+    size_t line_len = 0;
+
+    if (!server_started)
+	/* We are in the midst of a command which is not to talk to
+	   the server (e.g. the first phase of a cvs edit).  Just chill
+	   out, we'll catch the notifications on the flip side.  */
+	return;
+
+    /* We send notifications even if noexec.  I'm not sure which behavior
+       is most sensible.  */
+
+    fp = CVS_FOPEN (CVSADM_NOTIFY, "r");
+    if (fp == NULL)
+    {
+	if (!existence_error (errno))
+	    error (0, errno, "cannot open %s", CVSADM_NOTIFY);
+	return;
+    }
+    while (getline (&line, &line_len, fp) > 0)
+    {
+	int notif_type;
+	char *filename;
+	char *val;
+	char *cp;
+
+	notif_type = line[0];
+	if (notif_type == '\0')
+	    continue;
+	filename = line + 1;
+	cp = strchr (filename, '\t');
+	if (cp == NULL)
+	    continue;
+	*cp++ = '\0';
+	val = cp;
+
+	client_notify (repository, update_dir, filename, notif_type, val);
+    }
+    if (line)
+	free (line);
+    if (ferror (fp))
+	error (0, errno, "cannot read %s", CVSADM_NOTIFY);
+    if (fclose (fp) < 0)
+	error (0, errno, "cannot close %s", CVSADM_NOTIFY);
+
+    /* Leave the CVSADM_NOTIFY file there, until the server tells us it
+       has dealt with it.  */
+}
+#endif /* CLIENT_SUPPORT */
+
+
+static const char *const editors_usage[] =
+{
+    "Usage: %s %s [-lR] [files...]\n",
+    "\t-l\tProcess this directory only (not recursive).\n",
+    "\t-R\tProcess directories recursively.\n",
+    "(Specify the --help global option for a list of other help options)\n",
+    NULL
+};
+
+
+
+static int
+editors_fileproc (void *callerdat, struct file_info *finfo)
+{
+    return find_editors_and_output (finfo);
+}
+
+
+
+int
+editors (int argc, char **argv)
+{
+    int local = 0;
+    int c;
+
+    if (argc == -1)
+	usage (editors_usage);
+
+    optind = 0;
+    while ((c = getopt (argc, argv, "+lR")) != -1)
+    {
+	switch (c)
+	{
+	    case 'l':
+		local = 1;
+		break;
+	    case 'R':
+		local = 0;
+		break;
+	    case '?':
+	    default:
+		usage (editors_usage);
+		break;
+	}
+    }
+    argc -= optind;
+    argv += optind;
+
+#ifdef CLIENT_SUPPORT
+    if (current_parsed_root->isremote)
+    {
+	start_server ();
+	ign_setup ();
+
+	if (local)
+	    send_arg ("-l");
+	send_arg ("--");
+	send_files (argc, argv, local, 0, SEND_NO_CONTENTS);
+	send_file_names (argc, argv, SEND_EXPAND_WILD);
+	send_to_server ("editors\012", 0);
+	return get_responses_and_close ();
+    }
+#endif /* CLIENT_SUPPORT */
+
+    return start_recursion (editors_fileproc, NULL, NULL, NULL, NULL,
+			    argc, argv, local, W_LOCAL, 0, CVS_LOCK_READ, NULL,
+			    0, NULL);
+}
+@
+
+
+1.3
+log
+@cvs-1.11.12 doesn't do the joints correctly (what were the
+FSF people smoking?), it memory faults.
+thusly revert to 1.11.1p1
+
+tested.
+agreed bsiegert@@
+@
+text
+@d15 1
+d20 1
+a20 1
+static int watch_onoff PROTO ((int, char **));
+d22 1
+d26 4
+a29 3
+static int setting_tedit;
+static int setting_tunedit;
+static int setting_tcommit;
+a30 1
+static int onoff_fileproc PROTO ((void *callerdat, struct file_info *finfo));
+d33 1
+a33 3
+onoff_fileproc (callerdat, finfo)
+    void *callerdat;
+    struct file_info *finfo;
+d39 1
+a39 1
+static int onoff_filesdoneproc PROTO ((void *, int, char *, char *, List *));
+d42 2
+a43 6
+onoff_filesdoneproc (callerdat, err, repository, update_dir, entries)
+    void *callerdat;
+    int err;
+    char *repository;
+    char *update_dir;
+    List *entries;
+d50 2
+d53 1
+a53 3
+watch_onoff (argc, argv)
+    int argc;
+    char **argv;
+d88 1
+d98 1
+a98 1
+    lock_tree_for_write (argc, argv, local, W_LOCAL, 0);
+d100 3
+a102 4
+    err = start_recursion (onoff_fileproc, onoff_filesdoneproc,
+			   (DIRENTPROC) NULL, (DIRLEAVEPROC) NULL, NULL,
+			   argc, argv, local, W_LOCAL, 0, 0, (char *)NULL,
+			   0);
+d109 1
+a109 3
+watch_on (argc, argv)
+    int argc;
+    char **argv;
+d116 1
+a116 3
+watch_off (argc, argv)
+    int argc;
+    char **argv;
+d121 2
+a122 2
+
+static int dummy_fileproc PROTO ((void *callerdat, struct file_info *finfo));
+d125 1
+a125 3
+dummy_fileproc (callerdat, finfo)
+    void *callerdat;
+    struct file_info *finfo;
+d133 1
+a133 1
+static int ncheck_fileproc PROTO ((void *callerdat, struct file_info *finfo));
+a139 1
+
+d141 1
+a141 3
+ncheck_fileproc (callerdat, finfo)
+    void *callerdat;
+    struct file_info *finfo;
+d193 2
+a194 2
+	notify_do (notif_type, filename, getcaller (), val, watches,
+		   finfo->repository);
+d209 1
+a209 1
+static int send_notifications PROTO ((int, char **, int));
+d214 1
+a214 4
+send_notifications (argc, argv, local)
+    int argc;
+    char **argv;
+    int local;
+d224 1
+a224 1
+	if (strcmp (command_name, "release") != 0)
+d230 2
+a231 4
+	err += start_recursion (dummy_fileproc, (FILESDONEPROC) NULL,
+				(DIRENTPROC) NULL, (DIRLEAVEPROC) NULL, NULL,
+				argc, argv, local, W_LOCAL, 0, 0, (char *)NULL,
+				0);
+d234 1
+a234 1
+	if (strcmp (command_name, "release") == 0)
+d244 3
+a246 5
+	lock_tree_for_write (argc, argv, local, W_LOCAL, 0);
+	err += start_recursion (ncheck_fileproc, (FILESDONEPROC) NULL,
+				(DIRENTPROC) NULL, (DIRLEAVEPROC) NULL, NULL,
+				argc, argv, local, W_LOCAL, 0, 0, (char *)NULL,
+				0);
+d251 89
+a339 2
+
+static int edit_fileproc PROTO ((void *callerdat, struct file_info *finfo));
+d342 1
+a342 3
+edit_fileproc (callerdat, finfo)
+    void *callerdat;
+    struct file_info *finfo;
+d347 7
+a353 1
+    char *basefilename;
+d358 3
+a360 7
+    /* This is a somewhat screwy way to check for this, because it
+       doesn't help errors other than the nonexistence of the file
+       (e.g. permissions problems).  It might be better to rearrange
+       the code so that CVSADM_NOTIFY gets written only after the
+       various actions succeed (but what if only some of them
+       succeed).  */
+    if (!isfile (finfo->file))
+d363 25
+a387 1
+	return 0;
+a415 2
+    xchmod (finfo->file, 1);
+
+d424 6
+a429 15
+    mkdir_if_needed (CVSADM_BASE);
+    basefilename = xmalloc (10 + sizeof CVSADM_BASE + strlen (finfo->file));
+    strcpy (basefilename, CVSADM_BASE);
+    strcat (basefilename, "/");
+    strcat (basefilename, finfo->file);
+    copy_file (finfo->file, basefilename);
+    free (basefilename);
+
+    {
+	Node *node;
+
+	node = findnode_fn (finfo->entries, finfo->file);
+	if (node != NULL)
+	    base_register (finfo, ((Entnode *) node->data)->version);
+    }
+d436 3
+a438 1
+    "Usage: %s %s [-lR] [files...]\n",
+d448 1
+a448 3
+edit (argc, argv)
+    int argc;
+    char **argv;
+d452 2
+a453 2
+    int err;
+    int a_omitted;
+d458 6
+a463 4
+    a_omitted = 1;
+    setting_tedit = 0;
+    setting_tunedit = 0;
+    setting_tcommit = 0;
+d465 1
+a465 1
+    while ((c = getopt (argc, argv, "+lRa:")) != -1)
+d469 6
+d482 1
+a482 1
+		a_omitted = 0;
+d484 1
+a484 1
+		    setting_tedit = 1;
+d486 1
+a486 1
+		    setting_tunedit = 1;
+d488 1
+a488 1
+		    setting_tcommit = 1;
+d491 5
+a495 3
+		    setting_tedit = 1;
+		    setting_tunedit = 1;
+		    setting_tcommit = 1;
+d499 5
+a503 3
+		    setting_tedit = 0;
+		    setting_tunedit = 0;
+		    setting_tcommit = 0;
+a516 7
+    if (a_omitted)
+    {
+	setting_tedit = 1;
+	setting_tunedit = 1;
+	setting_tcommit = 1;
+    }
+
+d526 64
+a589 6
+    /* No need to readlock since we aren't doing anything to the
+       repository.  */
+    err = start_recursion (edit_fileproc, (FILESDONEPROC) NULL,
+			   (DIRENTPROC) NULL, (DIRLEAVEPROC) NULL, NULL,
+			   argc, argv, local, W_LOCAL, 0, 0, (char *)NULL,
+			   0);
+d596 1
+a596 1
+static int unedit_fileproc PROTO ((void *callerdat, struct file_info *finfo));
+d599 1
+a599 3
+unedit_fileproc (callerdat, finfo)
+    void *callerdat;
+    struct file_info *finfo;
+d624 2
+d679 1
+a679 1
+	    entdata = (Entnode *) node->data;
+d722 1
+a722 3
+unedit (argc, argv)
+    int argc;
+    char **argv;
+d753 2
+a754 4
+    err = start_recursion (unedit_fileproc, (FILESDONEPROC) NULL,
+			   (DIRENTPROC) NULL, (DIRLEAVEPROC) NULL, NULL,
+			   argc, argv, local, W_LOCAL, 0, 0, (char *)NULL,
+			   0);
+d761 2
+d764 1
+a764 2
+mark_up_to_date (file)
+    char *file;
+d779 2
+a780 1
+
+d782 1
+a782 4
+editor_set (filename, editor, val)
+    char *filename;
+    char *editor;
+    char *val;
+d803 1
+a803 1
+    char *type;
+d805 1
+a805 1
+    char *who;
+d807 1
+a807 1
+    char *notifyee;
+d809 1
+a809 1
+    char *file;
+a811 3
+/* Pass as a static until we get around to fixing Parse_Info to pass along
+   a void * where we can stash it.  */
+static struct notify_proc_args *notify_args;
+a812 1
+static int notify_proc PROTO ((char *repository, char *filter));
+d815 1
+a815 3
+notify_proc (repository, filter)
+    char *repository;
+    char *filter;
+d817 1
+d819 2
+a820 30
+    char *prog;
+    char *expanded_prog;
+    char *p;
+    char *q;
+    char *srepos;
+    struct notify_proc_args *args = notify_args;
+
+    srepos = Short_Repository (repository);
+    prog = xmalloc (strlen (filter) + strlen (args->notifyee) + 1);
+    /* Copy FILTER to PROG, replacing the first occurrence of %s with
+       the notifyee.  We only allocated enough memory for one %s, and I doubt
+       there is a need for more.  */
+    for (p = filter, q = prog; *p != '\0'; ++p)
+    {
+	if (p[0] == '%')
+	{
+	    if (p[1] == 's')
+	    {
+		strcpy (q, args->notifyee);
+		q += strlen (q);
+		strcpy (q, p + 2);
+		q += strlen (q);
+		break;
+	    }
+	    else
+		continue;
+	}
+	*q++ = *p;
+    }
+    *q = '\0';
+d822 15
+a836 4
+    /* FIXME: why are we calling expand_proc?  Didn't we already
+       expand it in Parse_Info, before passing it to notify_proc?  */
+    expanded_prog = expand_path (prog, "notify", 0);
+    if (!expanded_prog)
+d838 2
+a839 1
+	free (prog);
+d843 1
+a843 1
+    pipefp = run_popen (expanded_prog, "w");
+d846 2
+a847 3
+	error (0, errno, "cannot write entry to notify filter: %s", prog);
+	free (prog);
+	free (expanded_prog);
+d858 2
+a859 3
+    free (prog);
+    free (expanded_prog);
+    return (pclose (pipefp));
+d862 2
+d868 3
+a870 7
+notify_do (type, filename, who, val, watches, repository)
+    int type;
+    char *filename;
+    char *who;
+    char *val;
+    char *watches;
+    char *repository;
+d879 26
+d1060 5
+a1064 3
+		args.notifyee = xmalloc (endp - p + 1);
+		strncpy (args.notifyee, p, endp - p);
+		args.notifyee[endp - p] = '\0';
+a1066 1
+	    notify_args = &args;
+d1071 7
+a1077 2
+	    (void) Parse_Info (CVSROOTADM_NOTIFY, repository, notify_proc, 1);
+	    free (args.notifyee);
+d1112 2
+d1117 1
+a1117 3
+notify_check (repository, update_dir)
+    char *repository;
+    char *update_dir;
+d1123 1
+a1123 1
+    if (! server_started)
+d1180 1
+a1180 1
+static int editors_fileproc PROTO ((void *callerdat, struct file_info *finfo));
+d1183 1
+a1183 3
+editors_fileproc (callerdat, finfo)
+    void *callerdat;
+    struct file_info *finfo;
+d1185 2
+a1186 2
+    char *them;
+    char *p;
+a1187 3
+    them = fileattr_get0 (finfo->file, "_editors");
+    if (them == NULL)
+	return 0;
+a1188 39
+    cvs_output (finfo->fullname, 0);
+
+    p = them;
+    while (1)
+    {
+	cvs_output ("\t", 1);
+	while (*p != '>' && *p != '\0')
+	    cvs_output (p++, 1);
+	if (*p == '\0')
+	{
+	    /* Only happens if attribute is misformed.  */
+	    cvs_output ("\n", 1);
+	    break;
+	}
+	++p;
+	cvs_output ("\t", 1);
+	while (1)
+	{
+	    while (*p != '+' && *p != ',' && *p != '\0')
+		cvs_output (p++, 1);
+	    if (*p == '\0')
+	    {
+		cvs_output ("\n", 1);
+		goto out;
+	    }
+	    if (*p == ',')
+	    {
+		++p;
+		break;
+	    }
+	    ++p;
+	    cvs_output ("\t", 1);
+	}
+	cvs_output ("\n", 1);
+    }
+  out:;
+    free (them);
+    return 0;
+}
+d1191 1
+a1191 3
+editors (argc, argv)
+    int argc;
+    char **argv;
+d1227 1
+d1235 3
+a1237 4
+    return start_recursion (editors_fileproc, (FILESDONEPROC) NULL,
+			    (DIRENTPROC) NULL, (DIRLEAVEPROC) NULL, NULL,
+			    argc, argv, local, W_LOCAL, 0, 1, (char *)NULL,
+			    0);
+@
+
+
+1.2
+log
+@first step of merging new cvs
+XXX might not compile
+XXX might not work
+XXX might contain bugs
+XXX definitively needs autoconf 2.58 first
+@
+text
+@a91 1
+	send_arg ("--");
+d105 2
+a106 2
+			   argc, argv, local, W_LOCAL, 0, CVS_LOCK_NONE,
+			   (char *) NULL, 0, (char *) NULL);
+d249 1
+a249 1
+				0, (char *) NULL);
+d266 1
+a266 1
+				0, (char *) NULL);
+d445 2
+a446 2
+			   argc, argv, local, W_LOCAL, 0, 0, (char *) NULL,
+			   0, (char *) NULL);
+d615 1
+a615 1
+			   0,  (char *) NULL);
+a1127 1
+	send_arg ("--");
+d1137 2
+a1138 2
+			    argc, argv, local, W_LOCAL, 0, 1, (char *) NULL,
+			    0,  (char *) NULL);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d92 1
+d106 2
+a107 2
+			   argc, argv, local, W_LOCAL, 0, 0, (char *)NULL,
+			   0);
+d250 1
+a250 1
+				0);
+d267 1
+a267 1
+				0);
+d446 2
+a447 2
+			   argc, argv, local, W_LOCAL, 0, 0, (char *)NULL,
+			   0);
+d616 1
+a616 1
+			   0);
+d1129 1
+d1139 2
+a1140 2
+			    argc, argv, local, W_LOCAL, 0, 1, (char *)NULL,
+			    0);
+@
+
+
+1.1.2.1
+log
+@vendor-branch-ify new cvs 1.12
+@
+text
+@a14 1
+#include "yesno.h"
+d19 1
+a19 1
+static int watch_onoff (int, char **);
+a20 1
+static bool check_edited = false;
+d24 3
+a26 4
+static bool setting_tedit;
+static bool setting_tunedit;
+static bool setting_tcommit;
+
+d28 1
+d31 3
+a33 1
+onoff_fileproc (void *callerdat, struct file_info *finfo)
+d39 1
+a39 1
+
+d42 6
+a47 2
+onoff_filesdoneproc (void *callerdat, int err, const char *repository,
+                     const char *update_dir, List *entries)
+a53 2
+
+
+d55 3
+a57 1
+watch_onoff (int argc, char **argv)
+a91 1
+	send_arg ("--");
+d101 1
+a101 1
+    lock_tree_promotably (argc, argv, local, W_LOCAL, 0);
+d103 4
+a106 3
+    err = start_recursion (onoff_fileproc, onoff_filesdoneproc, NULL, NULL,
+			   NULL, argc, argv, local, W_LOCAL, 0, CVS_LOCK_WRITE,
+			   NULL, 0, NULL);
+d113 3
+a115 1
+watch_on (int argc, char **argv)
+d122 3
+a124 1
+watch_off (int argc, char **argv)
+d129 2
+a130 2
+
+
+d133 3
+a135 1
+dummy_fileproc (void *callerdat, struct file_info *finfo)
+d143 1
+a143 1
+
+d150 1
+d152 3
+a154 1
+ncheck_fileproc (void *callerdat, struct file_info *finfo)
+d206 2
+a207 2
+	notify_do (notif_type, filename, finfo->update_dir, getcaller (), val,
+		   watches, finfo->repository);
+d222 1
+a222 1
+
+d227 4
+a230 1
+send_notifications (int argc, char **argv, int local)
+d240 1
+a240 1
+	if (strcmp (cvs_cmd_name, "release") != 0)
+d246 4
+a249 2
+	err += start_recursion (dummy_fileproc, NULL, NULL, NULL, NULL, argc,
+				argv, local, W_LOCAL, 0, 0, NULL, 0, NULL);
+d252 1
+a252 1
+	if (strcmp (cvs_cmd_name, "release") == 0)
+d262 5
+a266 3
+	err += start_recursion (ncheck_fileproc, NULL, NULL, NULL, NULL, argc,
+				argv, local, W_LOCAL, 0, CVS_LOCK_WRITE, NULL,
+				0, NULL);
+d271 2
+a272 89
+
+
+
+void editors_output (const char *fullname, const char *p)
+{
+    cvs_output (fullname, 0);
+
+    while (1)
+    {
+        cvs_output ("\t", 1);
+        while (*p != '>' && *p != '\0')
+            cvs_output (p++, 1);
+        if (*p == '\0')
+        {
+            /* Only happens if attribute is misformed.  */
+            cvs_output ("\n", 1);
+            break;
+        }
+        ++p;
+        cvs_output ("\t", 1);
+        while (1)
+        {
+            while (*p != '+' && *p != ',' && *p != '\0')
+                cvs_output (p++, 1);
+            if (*p == '\0')
+            {
+                cvs_output ("\n", 1);
+                return;
+            }
+            if (*p == ',')
+            {
+                ++p;
+                break;
+            }
+            ++p;
+            cvs_output ("\t", 1);
+        }
+        cvs_output ("\n", 1);
+    }
+}
+
+
+
+static int find_editors_and_output (struct file_info *finfo)
+{
+    char *them;
+
+    them = fileattr_get0 (finfo->file, "_editors");
+    if (them == NULL)
+        return 0;
+
+    editors_output (finfo->fullname, them);
+
+    return 0;
+}
+
+
+
+/* Handle the client-side details of editing a file.
+ *
+ * These args could be const but this needs to fit the call_in_directory API.
+ */
+void
+edit_file (void *data, List *ent_list, const char *short_pathname,
+	   const char *filename)
+{
+    Node *node;
+    struct file_info finfo;
+    char *basefilename;
+
+    xchmod (filename, 1);
+
+    mkdir_if_needed (CVSADM_BASE);
+    basefilename = Xasprintf ("%s/%s", CVSADM_BASE, filename);
+    copy_file (filename, basefilename);
+    free (basefilename);
+
+    node = findnode_fn (ent_list, filename);
+    if (node != NULL)
+    {
+	finfo.file = filename;
+	finfo.fullname = short_pathname;
+	finfo.update_dir = dir_name (short_pathname);
+	base_register (&finfo, ((Entnode *) node->data)->version);
+	free ((char *)finfo.update_dir);
+    }
+}
+
+
+d275 3
+a277 1
+edit_fileproc (void *callerdat, struct file_info *finfo)
+d282 1
+a282 7
+    Vers_TS *vers;
+
+#if defined (CLIENT_SUPPORT) || defined (SERVER_SUPPORT)
+    assert (!(current_parsed_root->isremote && check_edited));
+#else
+    assert (!check_edited);
+#endif /* defined (CLIENT_SUPPORT) || defined (SERVER_SUPPORT) */
+d287 7
+a293 3
+    vers = Version_TS (finfo, NULL, NULL, NULL, 1, 0);
+
+    if (!vers->vn_user)
+d296 1
+a296 25
+	return 1;
+    }
+
+#ifdef CLIENT_SUPPORT
+    if (!current_parsed_root->isremote)
+#endif /* CLIENT_SUPPORT */
+    {
+        char *editors = fileattr_get0 (finfo->file, "_editors");
+        if (editors)
+        {
+	    if (check_edited)
+	    {
+		/* In the !CHECK_EDIT case, this message is printed by
+		 * server_notify.
+		 */
+		if (!quiet)
+		    editors_output (finfo->fullname, editors);
+		 /* Now warn the user if we skip the file, then return.  */
+		if (!really_quiet)
+		    error (0, 0, "Skipping file `%s' due to existing editors.",
+			   finfo->fullname);
+		return 1;
+	    }
+            free (editors);
+        }
+d325 2
+d335 15
+a349 6
+#ifdef SERVER_SUPPORT
+    if (server_active)
+	server_edit_file (finfo);
+    else
+#endif /* SERVER_SUPPORT */
+	edit_file (NULL, finfo->entries, finfo->fullname, finfo->file);
+d356 1
+a356 3
+    "Usage: %s %s [-cflR] [files...]\n",
+    "-c: Check that working files are unedited\n",
+    "-f: Force edit if working files are edited (default)\n",
+d366 3
+a368 1
+edit (int argc, char **argv)
+d372 2
+a373 2
+    int err = 0;
+    bool a_omitted, a_all, a_none;
+d378 4
+a381 6
+    a_omitted = true;
+    a_all = false;
+    a_none = false;
+    setting_tedit = false;
+    setting_tunedit = false;
+    setting_tcommit = false;
+d383 1
+a383 1
+    while ((c = getopt (argc, argv, "+cflRa:")) != -1)
+a386 6
+            case 'c':
+                check_edited = true;
+                break;
+            case 'f':
+                check_edited = false;
+                break;
+d394 1
+a394 1
+		a_omitted = false;
+d396 1
+a396 1
+		    setting_tedit = true;
+d398 1
+a398 1
+		    setting_tunedit = true;
+d400 1
+a400 1
+		    setting_tcommit = true;
+d403 3
+a405 5
+		    a_all = true;
+		    a_none = false;
+		    setting_tedit = true;
+		    setting_tunedit = true;
+		    setting_tcommit = true;
+d409 3
+a411 5
+		    a_none = true;
+		    a_all = false;
+		    setting_tedit = false;
+		    setting_tunedit = false;
+		    setting_tcommit = false;
+d425 7
+d441 6
+a446 64
+#ifdef CLIENT_SUPPORT
+    if (check_edited && current_parsed_root->isremote)
+    {
+	/* When CHECK_EDITED, we might as well contact the server and let it do
+	 * the work since we don't want an edit unless we know it is safe.
+	 *
+	 * When !CHECK_EDITED, we set up notifications and then attempt to
+	 * contact the server in order to allow disconnected edits.
+	 */
+	start_server();
+
+	if (!supported_request ("edit"))
+	    error (1, 0, "Server does not support enforced advisory locks.");
+
+	ign_setup();
+
+	send_to_server ("Hostname ", 0);
+	send_to_server (hostname, 0);
+	send_to_server ("\012", 1);
+	send_to_server ("LocalDir ", 0);
+	send_to_server (CurDir, 0);
+	send_to_server ("\012", 1);
+
+	if (local)
+	    send_arg ("-l");
+	send_arg ("-c");
+	if (!a_omitted)
+	{
+	    if (a_all)
+		option_with_arg ("-a", "all");
+	    else if (a_none)
+		option_with_arg ("-a", "none");
+	    else
+	    {
+		if (setting_tedit)
+		    option_with_arg ("-a", "edit");
+		if (setting_tunedit)
+		    option_with_arg ("-a", "unedit");
+		if (setting_tcommit)
+		    option_with_arg ("-a", "commit");
+	    }
+	}
+	send_arg ("--");
+	send_files (argc, argv, local, 0, SEND_NO_CONTENTS);
+	send_file_names (argc, argv, SEND_EXPAND_WILD);
+	send_to_server ("edit\012", 0);
+	return get_responses_and_close ();
+    }
+#endif /* CLIENT_SUPPORT */
+
+    /* Now, either SERVER_ACTIVE, local mode, or !CHECK_EDITED.  */
+
+    if (a_omitted)
+    {
+	setting_tedit = true;
+	setting_tunedit = true;
+	setting_tcommit = true;
+    }
+
+    TRACE (TRACE_DATA, "edit(): EUC: %d%d%d edit-check: %d",
+	   setting_tedit, setting_tunedit, setting_tcommit, check_edited);
+
+    err = start_recursion (edit_fileproc, NULL, NULL, NULL, NULL, argc, argv,
+			   local, W_LOCAL, 0, 0, NULL, 0, NULL);
+d453 1
+a453 1
+static int unedit_fileproc (void *callerdat, struct file_info *finfo);
+d456 3
+a458 1
+unedit_fileproc (void *callerdat, struct file_info *finfo)
+a482 2
+	fflush (stderr);
+	fflush (stdout);
+d536 1
+a536 1
+	    entdata = node->data;
+d579 3
+a581 1
+unedit (int argc, char **argv)
+d612 4
+a615 2
+    err = start_recursion (unedit_fileproc, NULL, NULL, NULL, NULL, argc, argv,
+			   local, W_LOCAL, 0, 0, NULL, 0, NULL);
+a621 2
+
+
+d623 2
+a624 1
+mark_up_to_date (const char *file)
+d639 1
+a639 2
+
+
+d641 4
+a644 1
+editor_set (const char *filename, const char *editor, const char *val)
+d665 1
+a665 1
+    const char *type;
+d667 1
+a667 1
+    const char *who;
+d669 1
+a669 1
+    const char *notifyee;
+d671 1
+a671 1
+    const char *file;
+d674 3
+d678 1
+d681 3
+a683 1
+notify_proc (const char *repository, const char *filter, void *closure)
+a684 1
+    char *cmdline;
+d686 30
+a715 2
+    const char *srepos = Short_Repository (repository);
+    struct notify_proc_args *args = closure;
+d717 4
+a720 15
+    cmdline = format_cmdline (
+#ifdef SUPPORT_OLD_INFO_FMT_STRINGS
+	false, srepos,
+#endif /* SUPPORT_OLD_INFO_FMT_STRINGS */
+	filter,
+	"c", "s", cvs_cmd_name,
+#ifdef SERVER_SUPPORT
+        "R", "s", referrer ? referrer->original : "NONE",
+#endif /* SERVER_SUPPORT */
+    	"p", "s", srepos,
+	"r", "s", current_parsed_root->directory,
+	"s", "s", args->notifyee,
+	NULL
+	);
+    if (!cmdline || !strlen(cmdline))
+d722 1
+a722 2
+	if (cmdline) free (cmdline);
+	error(0, 0, "pretag proc resolved to the empty string!");
+d726 1
+a726 1
+    pipefp = run_popen (cmdline, "w");
+d729 3
+a731 2
+	error (0, errno, "cannot write entry to notify filter: %s", cmdline);
+	free(cmdline);
+d742 3
+a744 2
+    free(cmdline);
+    return pclose (pipefp);
+a746 2
+
+
+d751 7
+a757 3
+notify_do (int type, const char *filename, const char *update_dir,
+	   const char *who, const char *val, const char *watches,
+	   const char *repository)
+a765 26
+    /* Print out information on current editors if we were called during an
+     * edit.
+     */
+    if (type == 'E' && !check_edited && !quiet)
+    {
+	char *editors = fileattr_get0 (filename, "_editors");
+	if (editors)
+	{
+	    /* In the CHECK_EDIT case, this message is printed by
+	     * edit_check.  It needs to be done here too since files
+	     * which are found to be edited when CHECK_EDIT are not
+	     * added to the notify list.
+	     */
+	    const char *tmp;
+	    if (update_dir && *update_dir)
+		tmp  = Xasprintf ("%s/%s", update_dir, filename);
+	    else
+		tmp = filename;
+
+	    editors_output (tmp, editors);
+
+	    if (update_dir && *update_dir) free ((char *)tmp);
+	    free (editors);
+	}
+    }
+
+d921 3
+a923 5
+		char *tmp;
+		tmp = xmalloc (endp - p + 1);
+		strncpy (tmp, p, endp - p);
+		tmp[endp - p] = '\0';
+		args.notifyee = tmp;
+d926 1
+d931 2
+a932 7
+	    (void) Parse_Info (CVSROOTADM_NOTIFY, repository, notify_proc,
+			       PIOPT_ALL, &args);
+            /* It's okay to cast out the const for the free() below since we
+             * just allocated this a few lines above.  The const was for
+             * everybody else.
+             */
+	    free ((char *)args.notifyee);
+a966 2
+
+
+d970 3
+a972 1
+notify_check (const char *repository, const char *update_dir)
+d978 1
+a978 1
+    if (!server_started)
+d1035 1
+a1035 1
+
+d1038 3
+a1040 1
+editors_fileproc (void *callerdat, struct file_info *finfo)
+d1042 6
+a1047 2
+    return find_editors_and_output (finfo);
+}
+d1049 1
+d1051 37
+d1090 3
+a1092 1
+editors (int argc, char **argv)
+a1127 1
+	send_arg ("--");
+d1135 4
+a1138 3
+    return start_recursion (editors_fileproc, NULL, NULL, NULL, NULL,
+			    argc, argv, local, W_LOCAL, 0, CVS_LOCK_READ, NULL,
+			    0, NULL);
+@
+
+
+1.1.3.1
+log
+@our CVS is currently at 1.11.1p1, thus import that version into vendor branch
+@
+text
+@@
+
+
+1.1.3.2
+log
+@CVS 1.11.12 is the latest stable version of CVS,
+released 06.02.2004, with a huge lot of bug fixes.
+
+/me hopes this will pay off...
+@
+text
+@a91 1
+	send_arg ("--");
+d105 2
+a106 2
+			   argc, argv, local, W_LOCAL, 0, CVS_LOCK_NONE,
+			   (char *) NULL, 0, (char *) NULL);
+d249 1
+a249 1
+				0, (char *) NULL);
+d266 1
+a266 1
+				0, (char *) NULL);
+d445 2
+a446 2
+			   argc, argv, local, W_LOCAL, 0, 0, (char *) NULL,
+			   0, (char *) NULL);
+d615 1
+a615 1
+			   0,  (char *) NULL);
+a1127 1
+	send_arg ("--");
+d1137 2
+a1138 2
+			    argc, argv, local, W_LOCAL, 0, 1, (char *) NULL,
+			    0,  (char *) NULL);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,966 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2
+	tg-mergefixes-1-branch:1.2.0.14
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.12
+	MIROS_X_BASE:1.2
+	tg-mergetmp-3:1.2
+	MIRBSD_XP_MIRPPC:1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.8
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.4
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.4
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.4
+	cvs-200309271030:1.1.1.4
+	cvs-200309261655:1.1.1.4
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.4
+	cvs-200308171200:1.1.1.4
+	ctm-3496:1.1.1.4
+	ctm-3449:1.1.1.4
+	ctm-3437:1.1.1.4
+	cvs-200307191805:1.1.1.4
+	ctm-3425:1.1.1.4
+	cvs-200307091500:1.1.1.4
+	ctm-3389:1.1.1.4
+	cvs-200306291430:1.1.1.4
+	ctm-3341:1.1.1.4
+	MIRBSD_5:1.2
+	cvs-200306082100:1.1.1.4
+	ctm-3316:1.1.1.4
+	ctm-3272:1.1.1.3
+	ctm-3264:1.1.1.3
+	cvs-200305071630:1.1.1.3
+	MIRBSD_4:1.1.1.3
+	ctm-3203:1.1.1.3
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.06.06.20.36.02;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.52.57;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.57;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.14.54.48;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.04.15.17.47.04;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.06.05.17.43.18;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@make more(1) behave like BSD more again
+@
+text
+@/*
+ * Copyright (C) 1984-2002  Mark Nudelman
+ *
+ * You may distribute under the terms of either the GNU General Public
+ * License or the Less License, as specified in the README file.
+ *
+ * For more information about less, or for information on how to 
+ * contact the author, see the README file.
+ */
+
+
+/*
+ * Entry point, initialization, miscellaneous routines.
+ */
+
+#include "less.h"
+#if MSDOS_COMPILER==WIN32C
+#include <windows.h>
+#endif
+
+public char *	every_first_cmd = NULL;
+public int	new_file;
+public int	is_tty;
+public IFILE	curr_ifile = NULL_IFILE;
+public IFILE	old_ifile = NULL_IFILE;
+public struct scrpos initial_scrpos;
+public int	any_display = FALSE;
+public POSITION	start_attnpos = NULL_POSITION;
+public POSITION	end_attnpos = NULL_POSITION;
+public int	wscroll;
+public char *	progname;
+public int	quitting;
+public int	secure;
+public int	ismore;
+
+#if LOGFILE
+public int	logfile = -1;
+public int	force_logfile = FALSE;
+public char *	namelogfile = NULL;
+#endif
+
+#if EDITOR
+public char *	editor;
+public char *	editproto;
+#endif
+
+#if TAGS
+extern char *	tags;
+extern char *	tagoption;
+extern int	jump_sline;
+#endif
+
+#ifdef WIN32
+static char consoleTitle[256];
+#endif
+
+extern int	missing_cap;
+extern int	know_dumb;
+
+extern char *	__progname;
+
+/*
+ * Entry point.
+ */
+int
+main(argc, argv)
+	int argc;
+	char *argv[];
+{
+	IFILE ifile;
+	char *s;
+
+#ifdef __EMX__
+	_response(&argc, &argv);
+	_wildcard(&argc, &argv);
+#endif
+
+	progname = *argv++;
+	argc--;
+
+	secure = 0;
+	s = lgetenv("LESSSECURE");
+	if (s != NULL && *s != '\0')
+		secure = 1;
+
+#ifdef WIN32
+	if (getenv("HOME") == NULL)
+	{
+		/*
+		 * If there is no HOME environment variable,
+		 * try the concatenation of HOMEDRIVE + HOMEPATH.
+		 */
+		char *drive = getenv("HOMEDRIVE");
+		char *path  = getenv("HOMEPATH");
+		if (drive != NULL && path != NULL)
+		{
+			size_t len = strlen(drive) + strlen(path) + 6;
+			char *env = (char *) ecalloc(len, sizeof(char));
+			strlcpy(env, "HOME=", len);
+			strlcat(env, drive, len);
+			strlcat(env, path, len);
+			putenv(env);
+		}
+	}
+	GetConsoleTitle(consoleTitle, sizeof(consoleTitle)/sizeof(char));
+#endif /* WIN32 */
+
+	/*
+	 * Process command line arguments and LESS environment arguments.
+	 * Command line arguments override environment arguments.
+	 */
+	ismore = !strcmp(__progname, "more");
+	is_tty = isatty(1);
+	get_term();
+	init_cmds();
+	init_prompt();
+	init_charset();
+	init_line();
+	init_option();
+	if (ismore) {
+		scan_option("-E");
+		scan_option("-G");
+		scan_option("-L");
+		s = lgetenv("MORE");
+	} else
+		s = lgetenv("LESS");
+	if (s != NULL)
+		scan_option(save(s));
+
+#define	isoptstring(s)	(((s)[0] == '-' || (s)[0] == '+') && (s)[1] != '\0')
+	while (argc > 0 && (isoptstring(*argv) || isoptpending()))
+	{
+		s = *argv++;
+		argc--;
+		if (strcmp(s, "--") == 0)
+			break;
+		scan_option(s);
+	}
+#undef isoptstring
+
+	if (isoptpending())
+	{
+		/*
+		 * Last command line option was a flag requiring a
+		 * following string, but there was no following string.
+		 */
+		nopendopt();
+		quit(QUIT_OK);
+	}
+
+#if EDITOR
+	editor = lgetenv("VISUAL");
+	if (editor == NULL || *editor == '\0')
+	{
+		editor = lgetenv("EDITOR");
+		if (editor == NULL || *editor == '\0')
+			editor = EDIT_PGM;
+	}
+	editproto = lgetenv("LESSEDIT");
+	if (editproto == NULL || *editproto == '\0')
+		editproto = "%E ?lm+%lm. %f";
+#endif
+
+	/*
+	 * Call get_ifile with all the command line filenames
+	 * to "register" them with the ifile system.
+	 */
+	ifile = NULL_IFILE;
+	while (argc-- > 0)
+	{
+		char *filename;
+#if (MSDOS_COMPILER && MSDOS_COMPILER != DJGPPC)
+		/*
+		 * Because the "shell" doesn't expand filename patterns,
+		 * treat each argument as a filename pattern rather than
+		 * a single filename.  
+		 * Expand the pattern and iterate over the expanded list.
+		 */
+		struct textlist tlist;
+		char *gfilename;
+		
+		gfilename = lglob(*argv++);
+		init_textlist(&tlist, gfilename);
+		filename = NULL;
+		while ((filename = forw_textlist(&tlist, filename)) != NULL)
+		{
+			(void) get_ifile(filename, ifile);
+			ifile = prev_ifile(NULL_IFILE);
+		}
+		free(gfilename);
+#else
+		filename = shell_quote(*argv);
+		if (filename == NULL)
+			filename = *argv;
+		argv++;
+		(void) get_ifile(filename, ifile);
+		ifile = prev_ifile(NULL_IFILE);
+#endif
+	}
+	/*
+	 * Set up terminal, etc.
+	 */
+	if (!is_tty)
+	{
+		/*
+		 * Output is not a tty.
+		 * Just copy the input file(s) to output.
+		 */
+		SET_BINARY(1);
+		if (nifile() == 0)
+		{
+			if (edit_stdin() == 0)
+				cat_file();
+		} else if (edit_first() == 0)
+		{
+			do {
+				cat_file();
+			} while (edit_next(1) == 0);
+		}
+		quit(QUIT_OK);
+	}
+
+	if (missing_cap && !know_dumb && !ismore)
+		error("WARNING: terminal is not fully functional", NULL_PARG);
+	init_mark();
+	open_getchr();
+	raw_mode(1);
+	init_signals(1);
+
+	/*
+	 * Select the first file to examine.
+	 */
+#if TAGS
+	if (tagoption != NULL || strcmp(tags, "-") == 0)
+	{
+		/*
+		 * A -t option was given.
+		 * Verify that no filenames were also given.
+		 * Edit the file selected by the "tags" search,
+		 * and search for the proper line in the file.
+		 */
+		if (nifile() > 0)
+		{
+			error("No filenames allowed with -t option", NULL_PARG);
+			quit(QUIT_ERROR);
+		}
+		findtag(tagoption);
+		if (edit_tagfile())  /* Edit file which contains the tag */
+			quit(QUIT_ERROR);
+		/*
+		 * Search for the line which contains the tag.
+		 * Set up initial_scrpos so we display that line.
+		 */
+		initial_scrpos.pos = tagsearch();
+		if (initial_scrpos.pos == NULL_POSITION)
+			quit(QUIT_ERROR);
+		initial_scrpos.ln = jump_sline;
+	} else
+#endif
+	if (nifile() == 0)
+	{
+		if (edit_stdin())  /* Edit standard input */
+			quit(QUIT_ERROR);
+	} else 
+	{
+		if (edit_first())  /* Edit first valid file in cmd line */
+			quit(QUIT_ERROR);
+	}
+
+	init();
+	commands();
+	quit(QUIT_OK);
+	/*NOTREACHED*/
+	return (0);
+}
+
+/*
+ * Copy a string to a "safe" place
+ * (that is, to a buffer allocated by calloc).
+ */
+	public char *
+save(s)
+	char *s;
+{
+	register char *p;
+	size_t len;
+
+	len = strlen(s)+1, sizeof(char);
+	p = (char *) ecalloc(len, sizeof(char));
+	strlcpy(p, s, len);
+	return (p);
+}
+
+/*
+ * Allocate memory.
+ * Like calloc(), but never returns an error (NULL).
+ */
+	public VOID_POINTER
+ecalloc(count, size)
+	int count;
+	unsigned int size;
+{
+	register VOID_POINTER p;
+
+	p = (VOID_POINTER) calloc(count, size);
+	if (p != NULL)
+		return (p);
+	error("Cannot allocate memory", NULL_PARG);
+	quit(QUIT_ERROR);
+	/*NOTREACHED*/
+	return (NULL);
+}
+
+/*
+ * Skip leading spaces in a string.
+ */
+	public char *
+skipsp(s)
+	register char *s;
+{
+	while (*s == ' ' || *s == '\t')	
+		s++;
+	return (s);
+}
+
+/*
+ * See how many characters of two strings are identical.
+ * If uppercase is true, the first string must begin with an uppercase
+ * character; the remainder of the first string may be either case.
+ */
+	public int
+sprefix(ps, s, uppercase)
+	char *ps;
+	char *s;
+	int uppercase;
+{
+	register int c;
+	register int sc;
+	register int len = 0;
+
+	for ( ;  *s != '\0';  s++, ps++)
+	{
+		c = *ps;
+		if (uppercase)
+		{
+			if (len == 0 && SIMPLE_IS_LOWER(c))
+				return (-1);
+			if (SIMPLE_IS_UPPER(c))
+				c = SIMPLE_TO_LOWER(c);
+		}
+		sc = *s;
+		if (len > 0 && SIMPLE_IS_UPPER(sc))
+			sc = SIMPLE_TO_LOWER(sc);
+		if (c != sc)
+			break;
+		len++;
+	}
+	return (len);
+}
+
+/*
+ * Exit the program.
+ */
+	public void
+quit(status)
+	int status;
+{
+	static int save_status;
+
+	/*
+	 * Put cursor at bottom left corner, clear the line,
+	 * reset the terminal modes, and exit.
+	 */
+	if (status < 0)
+		status = save_status;
+	else
+		save_status = status;
+	quitting = 1;
+	edit((char*)NULL);
+	if (any_display && is_tty)
+		clear_bot();
+	deinit();
+	flush();
+	raw_mode(0);
+#if MSDOS_COMPILER && MSDOS_COMPILER != DJGPPC
+	/* 
+	 * If we don't close 2, we get some garbage from
+	 * 2's buffer when it flushes automatically.
+	 * I cannot track this one down  RB
+	 * The same bug shows up if we use ^C^C to abort.
+	 */
+	close(2);
+#endif
+#if WIN32
+	SetConsoleTitle(consoleTitle);
+#endif
+	close_getchr();
+	exit(status);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@a0 2
+/*	$OpenBSD: main.c,v 1.5 2001/11/19 19:02:14 mpech Exp $	*/
+
+d2 1
+a2 2
+ * Copyright (c) 1984,1985,1989,1994,1995  Mark Nudelman
+ * All rights reserved.
+d4 2
+a5 8
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice in the documentation and/or other materials provided with 
+ *    the distribution.
+d7 2
+a8 11
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR 
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT 
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN 
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+d17 3
+a19 1
+#include "position.h"
+d28 2
+d33 2
+a34 7
+public int	more_mode = 0;
+
+extern int	quit_at_eof;
+extern int	cbufs;
+extern int	errmsgs;
+extern int	screen_trashed;
+extern int	force_open;
+d48 1
+a48 1
+extern char *	tagfile;
+d53 3
+d57 4
+d71 1
+a71 1
+	extern char *__progname;
+d79 28
+d112 2
+a113 3
+	if (strcmp(__progname, "more") == 0)
+		more_mode = 1;
+
+d118 1
+d120 1
+a120 2
+
+	if (more_mode) {
+a121 1
+		scan_option("-m");
+d123 2
+a124 1
+		scan_option(getenv("MORE"));
+d126 3
+a128 1
+		scan_option(getenv("LESS"));
+d130 2
+a131 5
+#if GNU_OPTIONS
+	/*
+	 * Special case for "less --help" and "less --version".
+	 */
+	if (argc == 2)
+d133 3
+a135 11
+		if (strcmp(argv[0], "--help") == 0)
+			scan_option("-?");
+		if (strcmp(argv[0], "--version") == 0)
+			scan_option("-V");
+	}
+#endif
+#define	isoptstring(s)	(((s)[0] == '-' || (s)[0] == '+') && (s)[1] != '\0')
+	while (--argc > 0 && (isoptstring(argv[0]) || isoptpending())) {
+		if (strcmp(argv[0], "--") == 0) {
+			argv++;
+			argc--;
+d137 1
+a137 2
+		}
+		scan_option(*argv++);
+d152 1
+a152 1
+	editor = getenv("VISUAL");
+d155 1
+a155 1
+		editor = getenv("EDITOR");
+d159 1
+a159 1
+	editproto = getenv("LESSEDIT");
+d169 1
+a169 1
+	while (--argc >= 0)
+d171 2
+a172 1
+#if MSOFTC || OS2
+a180 1
+		char *filename;
+d182 1
+a182 1
+		gfilename = glob(*argv++);
+d186 4
+a189 1
+			ifile = get_ifile(filename, ifile);
+d192 6
+a197 1
+		ifile = get_ifile(*argv++, ifile);
+a202 1
+	is_tty = isatty(1);
+d209 1
+d223 2
+d226 1
+a227 1
+	open_getchr();
+d234 1
+a234 1
+	if (tagoption != NULL)
+d248 1
+a248 3
+		if (tagfile == NULL)
+			quit(QUIT_ERROR);
+		if (edit(tagfile))  /* Edit file which contains the tag */
+d274 1
+a274 14
+}
+
+/*
+ * Copy a string, truncating to the specified length if necessary.
+ * Unlike strncpy(), the resulting string is guaranteed to be null-terminated.
+ */
+	public void
+strtcpy(to, from, len)
+	char *to;
+	char *from;
+	unsigned int len;
+{
+	strncpy(to, from, len);
+	to[len-1] = '\0';
+d285 2
+a286 1
+	char *p;
+d288 3
+a290 2
+	p = (char *) ecalloc(strlen(s)+1, sizeof(char));
+	strcpy(p, s);
+d303 1
+a303 1
+	VOID_POINTER p;
+d311 1
+d319 1
+a319 1
+	char *s;
+d327 35
+d380 1
+a380 1
+	if (is_tty && any_display)
+d385 1
+a385 1
+#if MSOFTC
+d394 4
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: main.c,v 1.6 2003/04/05 01:03:35 deraadt Exp $	*/
+a285 1
+	size_t len;
+d287 2
+a288 3
+	len = strlen(s)+1;
+	p = (char *) ecalloc(len, sizeof(char));
+	strlcpy(p, s, len);
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD source with the "new" command line as well,
+in order to be able to provide a MirBSD release which bases
+upon a fairly current OpenBSD base source code tree deemed
+stable enough.
+@
+text
+@d1 2
+d4 2
+a5 1
+ * Copyright (C) 1984-2002  Mark Nudelman
+d7 8
+a14 2
+ * You may distribute under the terms of either the GNU General Public
+ * License or the Less License, as specified in the README file.
+d16 11
+a26 2
+ * For more information about less, or for information on how to 
+ * contact the author, see the README file.
+d35 1
+a35 3
+#if MSDOS_COMPILER==WIN32C
+#include <windows.h>
+#endif
+a43 2
+public POSITION	start_attnpos = NULL_POSITION;
+public POSITION	end_attnpos = NULL_POSITION;
+d47 7
+a53 2
+public int	secure;
+public int	ismore;
+d67 1
+a67 1
+extern char *	tags;
+a71 3
+#ifdef WIN32
+static char consoleTitle[256];
+#endif
+a72 4
+extern int	missing_cap;
+extern int	know_dumb;
+
+extern char *	__progname;
+d83 1
+a83 1
+	char *s;
+a90 28
+	argc--;
+
+	secure = 0;
+	s = lgetenv("LESSSECURE");
+	if (s != NULL && *s != '\0')
+		secure = 1;
+
+#ifdef WIN32
+	if (getenv("HOME") == NULL)
+	{
+		/*
+		 * If there is no HOME environment variable,
+		 * try the concatenation of HOMEDRIVE + HOMEPATH.
+		 */
+		char *drive = getenv("HOMEDRIVE");
+		char *path  = getenv("HOMEPATH");
+		if (drive != NULL && path != NULL)
+		{
+			size_t len = strlen(drive) + strlen(path) + 6;
+			char *env = (char *) ecalloc(len, sizeof(char));
+			strlcpy(env, "HOME=", len);
+			strlcat(env, drive, len);
+			strlcat(env, path, len);
+			putenv(env);
+		}
+	}
+	GetConsoleTitle(consoleTitle, sizeof(consoleTitle)/sizeof(char));
+#endif /* WIN32 */
+d96 3
+a98 2
+	ismore = !strcmp(__progname, "more");
+	is_tty = isatty(1);
+a102 1
+	init_line();
+d104 2
+a105 1
+	if (ismore) {
+d107 1
+d109 1
+a109 2
+		scan_option("-L");
+		s = lgetenv("MORE");
+d111 1
+a111 3
+		s = lgetenv("LESS");
+	if (s != NULL)
+		scan_option(save(s));
+d113 12
+d126 4
+a129 5
+	while (argc > 0 && (isoptstring(*argv) || isoptpending()))
+	{
+		s = *argv++;
+		argc--;
+		if (strcmp(s, "--") == 0)
+d131 2
+a132 1
+		scan_option(s);
+d147 1
+a147 1
+	editor = lgetenv("VISUAL");
+d150 1
+a150 1
+		editor = lgetenv("EDITOR");
+d154 1
+a154 1
+	editproto = lgetenv("LESSEDIT");
+d164 1
+a164 1
+	while (argc-- > 0)
+d166 1
+a166 2
+		char *filename;
+#if (MSDOS_COMPILER && MSDOS_COMPILER != DJGPPC)
+d175 1
+d177 1
+a177 1
+		gfilename = lglob(*argv++);
+d181 1
+a181 4
+		{
+			(void) get_ifile(filename, ifile);
+			ifile = prev_ifile(NULL_IFILE);
+		}
+d184 1
+a184 6
+		filename = shell_quote(*argv);
+		if (filename == NULL)
+			filename = *argv;
+		argv++;
+		(void) get_ifile(filename, ifile);
+		ifile = prev_ifile(NULL_IFILE);
+d190 1
+a196 1
+		SET_BINARY(1);
+a209 2
+	if (missing_cap && !know_dumb && !ismore)
+		error("WARNING: terminal is not fully functional", NULL_PARG);
+d211 1
+a212 1
+	raw_mode(1);
+d219 1
+a219 1
+	if (tagoption != NULL || strcmp(tags, "-") == 0)
+d233 3
+a235 1
+		if (edit_tagfile())  /* Edit file which contains the tag */
+d261 14
+a274 1
+	return (0);
+d285 1
+a285 1
+	register char *p;
+d288 1
+a288 1
+	len = strlen(s)+1, sizeof(char);
+d303 1
+a303 1
+	register VOID_POINTER p;
+a310 1
+	return (NULL);
+d318 1
+a318 1
+	register char *s;
+a325 35
+ * See how many characters of two strings are identical.
+ * If uppercase is true, the first string must begin with an uppercase
+ * character; the remainder of the first string may be either case.
+ */
+	public int
+sprefix(ps, s, uppercase)
+	char *ps;
+	char *s;
+	int uppercase;
+{
+	register int c;
+	register int sc;
+	register int len = 0;
+
+	for ( ;  *s != '\0';  s++, ps++)
+	{
+		c = *ps;
+		if (uppercase)
+		{
+			if (len == 0 && SIMPLE_IS_LOWER(c))
+				return (-1);
+			if (SIMPLE_IS_UPPER(c))
+				c = SIMPLE_TO_LOWER(c);
+		}
+		sc = *s;
+		if (len > 0 && SIMPLE_IS_UPPER(sc))
+			sc = SIMPLE_TO_LOWER(sc);
+		if (c != sc)
+			break;
+		len++;
+	}
+	return (len);
+}
+
+/*
+d344 1
+a344 1
+	if (any_display && is_tty)
+d349 1
+a349 1
+#if MSDOS_COMPILER && MSDOS_COMPILER != DJGPPC
+a357 4
+#if WIN32
+	SetConsoleTitle(consoleTitle);
+#endif
+	close_getchr();
+@
+
+
+1.1.1.4
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@a123 1
+		scan_option("-m");
+@
+
+

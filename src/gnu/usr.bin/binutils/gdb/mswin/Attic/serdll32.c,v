@@ -1,0 +1,376 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.06.10.19.02.00;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.39;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.39;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@#define W32SUT_32
+
+#include "windefs.h"
+#include "w32sut.h"
+#include "serdll32.h"
+#include "serdll.h"
+
+typedef BOOL (APIENTRY * PUTREGISTER) (HANDLE hModule,
+				       LPCSTR lpsz16BitDLL,
+				       LPCSTR lpszInitName,
+				       LPCSTR lpszProcName,
+				       UT32PROC * ppfn32Thunk,
+				       FARPROC pfnUT32Callback,
+				       LPVOID lpBuff
+);
+
+
+typedef VOID (APIENTRY * PUTUNREGISTER) (HANDLE hModule);
+
+UT32PROC pfnUTProc = NULL;
+PUTREGISTER pUTRegister = NULL;
+PUTUNREGISTER pUTUnRegister = NULL;
+int cProcessesAttached = 0;
+BOOL fWin32s = FALSE;
+HANDLE hKernel32 = 0;
+
+
+BOOL APIENTRY 
+DllInit (HANDLE hInst, DWORD fdwReason, LPVOID lpReserved)
+{
+  if (fdwReason == DLL_PROCESS_ATTACH)
+    {
+      if (cProcessesAttached++)
+	{
+	  return (TRUE);
+	}
+
+      fWin32s = (BOOL) (GetVersion () & 0x80000000);
+
+      if (!fWin32s)
+	return (TRUE);
+
+      hKernel32 = LoadLibrary ("Kernel32.Dll");
+
+      pUTRegister = (PUTREGISTER) GetProcAddress (hKernel32, "UTRegister");
+
+      if (!pUTRegister)
+	return (FALSE);
+
+      pUTUnRegister = (PUTUNREGISTER) GetProcAddress (hKernel32, "UTUnRegister");
+
+      if (!pUTUnRegister)
+	return (FALSE);
+
+      return (*pUTRegister)
+	(hInst,
+	 "serdll16.DLL",
+	 NULL,			// no init routine
+	  "UTProc",		// name of 16bit dispatch routine
+	  &pfnUTProc,		// Global variable to receive thunk address
+	  NULL,			// no callback function
+	  NULL);		// no shared memroy
+
+    }
+  else if ((fdwReason == DLL_PROCESS_DETACH)
+	   && (0 == --cProcessesAttached)
+	   && fWin32s)
+    {
+      (*pUTUnRegister) (hInst);
+      FreeLibrary (hKernel32);
+    }
+
+}
+
+int APIENTRY 
+BuildCommDCB16 (LPCSTR lpszDef, DCB16 * lpdcb)
+{
+
+  DWORD Args[2];
+  PVOID TransList[3];
+
+  Args[0] = (DWORD) lpszDef;
+  Args[1] = (DWORD) lpdcb;
+
+  TransList[0] = &Args[0];
+  TransList[1] = &Args[1];
+  TransList[2] = NULL;
+
+
+  return ((*pfnUTProc) (Args, BUILDCOMMDCB, TransList));
+}
+
+int APIENTRY 
+OpenComm16 (LPCSTR lpszDevControl,
+	    USHORT cbInQueue,
+	    USHORT cbOutQueue,
+	    LPCSTR dcb)
+{
+  DWORD Args[4];
+  PVOID TransList[3];
+
+  Args[0] = (DWORD) lpszDevControl;
+  Args[1] = (DWORD) cbInQueue;
+  Args[2] = (DWORD) cbOutQueue;
+  Args[3] = (DWORD) dcb;
+
+  TransList[0] = &Args[0];
+  TransList[1] = &Args[3];
+  TransList[2] = NULL;
+
+
+  return ((*pfnUTProc) (Args, OPENCOMM, TransList));
+}
+
+int APIENTRY 
+CloseComm16 (int idComDev)
+{
+  DWORD Args[1];
+
+  Args[0] = idComDev;
+
+  return ((*pfnUTProc) (Args, CLOSECOMM, NULL));
+}
+
+int APIENTRY 
+ReadComm16 (INT idComDev, LPVOID lpBuf, INT cbRead)
+{
+  DWORD Args[3];
+  PVOID TransList[2];
+
+  Args[0] = (DWORD) idComDev;
+  Args[1] = (DWORD) lpBuf;
+  Args[2] = (DWORD) cbRead;
+
+  TransList[0] = &Args[1];
+  TransList[1] = NULL;
+
+
+  return ((*pfnUTProc) (Args, READCOMM, TransList));
+}
+
+
+int APIENTRY 
+WriteComm16 (INT idComDev, LPCSTR lpBuf, INT cbWrite)
+{
+  DWORD Args[3];
+  PVOID TransList[2];
+
+  Args[0] = (DWORD) idComDev;
+  Args[1] = (DWORD) lpBuf;
+  Args[2] = (DWORD) cbWrite;
+
+  TransList[0] = &Args[1];
+  TransList[1] = NULL;
+
+
+  return ((*pfnUTProc) (Args, WRITECOMM, TransList));
+}
+
+
+int APIENTRY 
+FlushComm16 (INT idComDev, INT fnQueue)
+{
+  DWORD Args[2];
+
+  Args[0] = (DWORD) idComDev;
+  Args[1] = (DWORD) fnQueue;
+
+  return ((*pfnUTProc) (Args, FLUSHCOMM, NULL));
+}
+
+int APIENTRY 
+TransmitCommChar16 (INT idComDev, char chTransmit)
+{
+  DWORD Args[2];
+
+  Args[0] = (DWORD) idComDev;
+  Args[1] = (DWORD) chTransmit;
+
+  return ((*pfnUTProc) (Args, TRANSMITCOMMCHAR, NULL));
+}
+
+int APIENTRY 
+SetCommState16 (DCB16 * lpdcb)
+{
+  DWORD Args[1];
+
+  PVOID TransList[2];
+
+  Args[0] = (DWORD) lpdcb;
+
+  TransList[0] = &Args[0];
+  TransList[1] = NULL;
+
+  return ((*pfnUTProc) (Args, SETCOMMSTATE, TransList));
+}
+
+int APIENTRY 
+GetCommState16 (INT idComDev, DCB16 * lpdcb)
+{
+  DWORD Args[1];
+
+  PVOID TransList[2];
+
+  Args[0] = (DWORD) lpdcb;
+
+  TransList[0] = &Args[0];
+  TransList[1] = NULL;
+
+  return ((*pfnUTProc) (Args, GETCOMMSTATE, TransList));
+}
+int APIENTRY 
+GetCommReady16 (INT idComDev, char *ptr)
+{
+  DWORD Args[2];
+
+  PVOID tlist[2];
+
+  Args[0] = (DWORD) idComDev;
+  Args[1] = (DWORD) ptr;
+  tlist[0] = &Args[1];
+  tlist[1] = 0;
+
+
+
+  return ((*pfnUTProc) (Args, GETCOMMREADY, tlist));
+}
+int APIENTRY 
+GetCommError16 (INT idComDev, COMSTAT16 * lpComStat)
+{
+  DWORD Args[2];
+
+  PVOID TransList[2];
+
+  Args[0] = (DWORD) idComDev;
+  Args[1] = (DWORD) lpComStat;
+
+  TransList[0] = &Args[1];
+  TransList[1] = NULL;
+
+  return ((*pfnUTProc) (Args, GETCOMMERROR, TransList));
+}
+
+int APIENTRY 
+SetCommBreak16 (INT idComDev)
+{
+  DWORD Args[1];
+
+  Args[0] = (DWORD) idComDev;
+
+  return ((*pfnUTProc) (Args, SETCOMMBREAK, NULL));
+}
+
+
+int APIENTRY 
+ClearCommBreak16 (INT idComDev)
+{
+  DWORD Args[1];
+
+  Args[0] = (DWORD) idComDev;
+
+  return ((*pfnUTProc) (Args, CLEARCOMMBREAK, NULL));
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

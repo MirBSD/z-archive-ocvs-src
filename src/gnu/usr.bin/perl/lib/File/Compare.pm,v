@@ -1,0 +1,288 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.14;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.14;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package File::Compare;
+
+use 5.006;
+use strict;
+use warnings;
+our($VERSION, @@ISA, @@EXPORT, @@EXPORT_OK, $Too_Big);
+
+require Exporter;
+use Carp;
+
+$VERSION = '1.1003';
+@@ISA = qw(Exporter);
+@@EXPORT = qw(compare);
+@@EXPORT_OK = qw(cmp compare_text);
+
+$Too_Big = 1024 * 1024 * 2;
+
+sub compare {
+    croak("Usage: compare( file1, file2 [, buffersize]) ")
+      unless(@@_ == 2 || @@_ == 3);
+
+    my ($from,$to,$size) = @@_;
+    my $text_mode = defined($size) && (ref($size) eq 'CODE' || $size < 0);
+
+    my ($fromsize,$closefrom,$closeto);
+    local (*FROM, *TO);
+
+    croak("from undefined") unless (defined $from);
+    croak("to undefined") unless (defined $to);
+
+    if (ref($from) && 
+        (UNIVERSAL::isa($from,'GLOB') || UNIVERSAL::isa($from,'IO::Handle'))) {
+	*FROM = *$from;
+    } elsif (ref(\$from) eq 'GLOB') {
+	*FROM = $from;
+    } else {
+	open(FROM,"<$from") or goto fail_open1;
+	unless ($text_mode) {
+	    binmode FROM;
+	    $fromsize = -s FROM;
+	}
+	$closefrom = 1;
+    }
+
+    if (ref($to) &&
+        (UNIVERSAL::isa($to,'GLOB') || UNIVERSAL::isa($to,'IO::Handle'))) {
+	*TO = *$to;
+    } elsif (ref(\$to) eq 'GLOB') {
+	*TO = $to;
+    } else {
+	open(TO,"<$to") or goto fail_open2;
+	binmode TO unless $text_mode;
+	$closeto = 1;
+    }
+
+    if (!$text_mode && $closefrom && $closeto) {
+	# If both are opened files we know they differ if their size differ
+	goto fail_inner if $fromsize != -s TO;
+    }
+
+    if ($text_mode) {
+	local $/ = "\n";
+	my ($fline,$tline);
+	while (defined($fline = <FROM>)) {
+	    goto fail_inner unless defined($tline = <TO>);
+	    if (ref $size) {
+		# $size contains ref to comparison function
+		goto fail_inner if &$size($fline, $tline);
+	    } else {
+		goto fail_inner if $fline ne $tline;
+	    }
+	}
+	goto fail_inner if defined($tline = <TO>);
+    }
+    else {
+	unless (defined($size) && $size > 0) {
+	    $size = $fromsize || -s TO || 0;
+	    $size = 1024 if $size < 512;
+	    $size = $Too_Big if $size > $Too_Big;
+	}
+
+	my ($fr,$tr,$fbuf,$tbuf);
+	$fbuf = $tbuf = '';
+	while(defined($fr = read(FROM,$fbuf,$size)) && $fr > 0) {
+	    unless (defined($tr = read(TO,$tbuf,$fr)) && $tbuf eq $fbuf) {
+		goto fail_inner;
+	    }
+	}
+	goto fail_inner if defined($tr = read(TO,$tbuf,$size)) && $tr > 0;
+    }
+
+    close(TO) || goto fail_open2 if $closeto;
+    close(FROM) || goto fail_open1 if $closefrom;
+
+    return 0;
+    
+  # All of these contortions try to preserve error messages...
+  fail_inner:
+    close(TO) || goto fail_open2 if $closeto;
+    close(FROM) || goto fail_open1 if $closefrom;
+
+    return 1;
+
+  fail_open2:
+    if ($closefrom) {
+	my $status = $!;
+	$! = 0;
+	close FROM;
+	$! = $status unless $!;
+    }
+  fail_open1:
+    return -1;
+}
+
+sub cmp;
+*cmp = \&compare;
+
+sub compare_text {
+    my ($from,$to,$cmp) = @@_;
+    croak("Usage: compare_text( file1, file2 [, cmp-function])")
+	unless @@_ == 2 || @@_ == 3;
+    croak("Third arg to compare_text() function must be a code reference")
+	if @@_ == 3 && ref($cmp) ne 'CODE';
+
+    # Using a negative buffer size puts compare into text_mode too
+    $cmp = -1 unless defined $cmp;
+    compare($from, $to, $cmp);
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+File::Compare - Compare files or filehandles
+
+=head1 SYNOPSIS
+
+  	use File::Compare;
+
+	if (compare("file1","file2") == 0) {
+	    print "They're equal\n";
+	}
+
+=head1 DESCRIPTION
+
+The File::Compare::compare function compares the contents of two
+sources, each of which can be a file or a file handle.  It is exported
+from File::Compare by default.
+
+File::Compare::cmp is a synonym for File::Compare::compare.  It is
+exported from File::Compare only by request.
+
+File::Compare::compare_text does a line by line comparison of the two
+files. It stops as soon as a difference is detected. compare_text()
+accepts an optional third argument: This must be a CODE reference to
+a line comparison function, which returns 0 when both lines are considered
+equal. For example:
+
+    compare_text($file1, $file2)
+
+is basically equivalent to
+
+    compare_text($file1, $file2, sub {$_[0] ne $_[1]} )
+
+=head1 RETURN
+
+File::Compare::compare and its sibling functions return 0 if the files
+are equal, 1 if the files are unequal, or -1 if an error was encountered.
+
+=head1 AUTHOR
+
+File::Compare was written by Nick Ing-Simmons.
+Its original documentation was written by Chip Salzenberg.
+
+=cut
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

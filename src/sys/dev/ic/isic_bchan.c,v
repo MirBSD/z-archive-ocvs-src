@@ -1,0 +1,639 @@
+head	1.3;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.3
+	tg-mergefixes-1-branch:1.3.0.8
+	tg-mergefixes-1-base:1.3
+	MIROS_X:1.3.0.6
+	MIROS_X_BASE:1.3
+	tg-mergetmp-3:1.3
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	MIRBSD_7quater:1.2
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	MIRBSD_5:1.2
+	MIRBSD_4:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.01.28.20.42.49;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2003.05.14.19.55.03;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.04.06.04.37.26;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@* use dkcsum data to increase randomness :)
+* it seems to just have been a problem with libgcc.so,
+  so un-do last commit wrt the comma in toplev.c
+* use -nostdlib when linking libgcc.so
+* compile fixes in kernel land
+* nuke wt, it doesn't compile (poll changes, at least)
+@
+text
+@/*
+ * Copyright (c) 1997, 2000 Hellmuth Michaelis. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *---------------------------------------------------------------------------
+ *
+ *	i4b_bchan.c - B channel handling L1 procedures
+ *
+ *---------------------------------------------------------------------------*/
+
+#include <sys/cdefs.h>
+__KERNEL_RCSID(0, "$MirBSD: isic_bchan.c,v 1.9 2002/05/21 10:31:12 martin Exp $");
+
+#include <sys/param.h>
+#if defined(__FreeBSD__) && __FreeBSD__ >= 3
+#include <sys/ioccom.h>
+#else
+#include <sys/ioctl.h>
+#endif
+#include <sys/kernel.h>
+#include <sys/systm.h>
+#include <sys/mbuf.h>
+#include <sys/stdarg.h>
+
+#ifdef __FreeBSD__
+#include <machine/clock.h>
+#include <i386/isa/isa_device.h>
+#else
+#ifndef __bsdi__
+#include <machine/bus.h>
+#endif
+#include <sys/device.h>
+#endif
+
+#include <sys/socket.h>
+#include <net/if.h>
+
+#include <sys/timeout.h>
+
+#include <netisdn/i4b_debug.h>
+#include <netisdn/i4b_ioctl.h>
+#include <netisdn/i4b_trace.h>
+
+#include <netisdn/i4b_l2.h>
+#include <netisdn/i4b_l1l2.h>
+#include <netisdn/i4b_mbuf.h>
+#include <netisdn/i4b_global.h>
+
+#include <dev/ic/isic_l1.h>
+#include <dev/ic/isac.h>
+#include <dev/ic/hscx.h>
+
+static void isic_bchannel_start(isdn_layer1token, int h_chan);
+static void isic_bchannel_stat(isdn_layer1token, int h_chan, bchan_statistics_t *bsp);
+
+void isic_set_link(void*, int channel, const struct isdn_l4_driver_functions *l4_driver, void *l4_driver_softc);
+isdn_link_t *isic_ret_linktab(void*, int channel);
+
+/*---------------------------------------------------------------------------*
+ *	initialize one B channels rx/tx data structures and init/deinit HSCX
+ *---------------------------------------------------------------------------*/
+void
+isic_bchannel_setup(isdn_layer1token t, int h_chan, int bprot, int activate)
+{
+	struct isic_softc *sc = (struct isic_softc*)t;
+	l1_bchan_state_t *chan = &sc->sc_chan[h_chan];
+
+	int s = splnet();
+
+	if(activate == 0)
+	{
+		/* deactivation */
+		isic_hscx_init(sc, h_chan, activate);
+	}
+
+	NDBGL1(L1_BCHAN, "%s, channel=%d, %s",
+		sc->sc_dev.dv_xname, h_chan, activate ? "activate" : "deactivate");
+
+	/* general part */
+
+	chan->channel = h_chan;		/* B channel */
+	chan->bprot = bprot;		/* B channel protocol */
+	chan->state = HSCX_IDLE;	/* B channel state */
+
+	/* receiver part */
+
+	i4b_Bcleanifq(&chan->rx_queue);	/* clean rx queue */
+
+	chan->rx_queue.ifq_maxlen = IFQ_MAXLEN;
+
+	chan->rxcount = 0;		/* reset rx counter */
+
+	i4b_Bfreembuf(chan->in_mbuf);	/* clean rx mbuf */
+
+	chan->in_mbuf = NULL;		/* reset mbuf ptr */
+	chan->in_cbptr = NULL;		/* reset mbuf curr ptr */
+	chan->in_len = 0;		/* reset mbuf data len */
+
+	/* transmitter part */
+
+	i4b_Bcleanifq(&chan->tx_queue);	/* clean tx queue */
+
+	chan->tx_queue.ifq_maxlen = IFQ_MAXLEN;
+
+	chan->txcount = 0;		/* reset tx counter */
+
+	i4b_Bfreembuf(chan->out_mbuf_head);	/* clean tx mbuf */
+
+	chan->out_mbuf_head = NULL;	/* reset head mbuf ptr */
+	chan->out_mbuf_cur = NULL;	/* reset current mbuf ptr */
+	chan->out_mbuf_cur_ptr = NULL;	/* reset current mbuf data ptr */
+	chan->out_mbuf_cur_len = 0;	/* reset current mbuf data cnt */
+
+	if(activate != 0)
+	{
+		/* activation */
+		isic_hscx_init(sc, h_chan, activate);
+	}
+
+	splx(s);
+}
+
+/*---------------------------------------------------------------------------*
+ *	start transmission on a b channel
+ *---------------------------------------------------------------------------*/
+static void
+isic_bchannel_start(isdn_layer1token t, int h_chan)
+{
+	struct isic_softc *sc = (struct isic_softc*)t;
+
+	register l1_bchan_state_t *chan = &sc->sc_chan[h_chan];
+	register int next_len;
+	register int len;
+
+	int s;
+	int activity = -1;
+	int cmd = 0;
+
+	s = splnet();				/* enter critical section */
+	if(chan->state & HSCX_TX_ACTIVE)	/* already running ? */
+	{
+		splx(s);
+		return;				/* yes, leave */
+	}
+
+	/* get next mbuf from queue */
+
+	IF_DEQUEUE(&chan->tx_queue, chan->out_mbuf_head);
+
+	if(chan->out_mbuf_head == NULL)		/* queue empty ? */
+	{
+		splx(s);			/* leave critical section */
+		return;				/* yes, exit */
+	}
+
+	/* init current mbuf values */
+
+	chan->out_mbuf_cur = chan->out_mbuf_head;
+	chan->out_mbuf_cur_len = chan->out_mbuf_cur->m_len;
+	chan->out_mbuf_cur_ptr = chan->out_mbuf_cur->m_data;
+
+	/* activity indicator for timeout handling */
+
+	if(chan->bprot == BPROT_NONE)
+	{
+		if(!(isdn_bchan_silence(chan->out_mbuf_cur->m_data,
+		    chan->out_mbuf_cur->m_len)))
+			activity = ACT_TX;
+	}
+	else
+	{
+		activity = ACT_TX;
+	}
+
+	chan->state |= HSCX_TX_ACTIVE;	/* we start transmitting */
+
+	if(sc->sc_trace & TRACE_B_TX)	/* if trace, send mbuf to trace dev */
+	{
+		i4b_trace_hdr hdr;
+		hdr.type = (h_chan == HSCX_CH_A ? TRC_CH_B1 : TRC_CH_B2);
+		hdr.dir = FROM_TE;
+		hdr.count = ++sc->sc_trace_bcount;
+		isdn_layer2_trace_ind(&sc->sc_l2, sc->sc_l3token, &hdr,
+			chan->out_mbuf_cur->m_len, chan->out_mbuf_cur->m_data);
+	}
+
+	len = 0;	/* # of chars put into HSCX tx fifo this time */
+
+	/*
+	 * fill the HSCX tx fifo with data from the current mbuf. if
+	 * current mbuf holds less data than HSCX fifo length, try to
+	 * get the next mbuf from (a possible) mbuf chain. if there is
+	 * not enough data in a single mbuf or in a chain, then this
+	 * is the last mbuf and we tell the HSCX that it has to send
+	 * CRC and closing flag
+	 */
+
+	while((len < sc->sc_bfifolen) && chan->out_mbuf_cur)
+	{
+		/*
+		 * put as much data into the HSCX fifo as is
+		 * available from the current mbuf
+		 */
+
+		if((len + chan->out_mbuf_cur_len) >= sc->sc_bfifolen)
+			next_len = sc->sc_bfifolen - len;
+		else
+			next_len = chan->out_mbuf_cur_len;
+
+#ifdef NOTDEF
+		printf("b:mh=%x, mc=%x, mcp=%x, mcl=%d l=%d nl=%d # ",
+			chan->out_mbuf_head,
+			chan->out_mbuf_cur,
+			chan->out_mbuf_cur_ptr,
+			chan->out_mbuf_cur_len,
+			len,
+			next_len);
+#endif
+
+		/* wait for tx fifo write enabled */
+
+		isic_hscx_waitxfw(sc, h_chan);
+
+		/* write what we have from current mbuf to HSCX fifo */
+
+		HSCX_WRFIFO(h_chan, chan->out_mbuf_cur_ptr, next_len);
+
+		len += next_len;		/* update # of bytes written */
+		chan->txcount += next_len;	/* statistics */
+		chan->out_mbuf_cur_ptr += next_len;	/* data ptr */
+		chan->out_mbuf_cur_len -= next_len;	/* data len */
+
+		/*
+		 * in case the current mbuf (of a possible chain) data
+		 * has been put into the fifo, check if there is a next
+		 * mbuf in the chain. If there is one, get ptr to it
+		 * and update the data ptr and the length
+		 */
+
+		if((chan->out_mbuf_cur_len <= 0)	&&
+		  ((chan->out_mbuf_cur = chan->out_mbuf_cur->m_next) != NULL))
+		{
+			chan->out_mbuf_cur_ptr = chan->out_mbuf_cur->m_data;
+			chan->out_mbuf_cur_len = chan->out_mbuf_cur->m_len;
+
+			if(sc->sc_trace & TRACE_B_TX)
+			{
+				i4b_trace_hdr hdr;
+				hdr.type = (h_chan == HSCX_CH_A ?
+					TRC_CH_B1 : TRC_CH_B2);
+				hdr.dir = FROM_TE;
+				hdr.count = ++sc->sc_trace_bcount;
+				isdn_layer2_trace_ind(&sc->sc_l2, sc->sc_l3token,
+					&hdr,
+					chan->out_mbuf_cur->m_len,
+					chan->out_mbuf_cur->m_data);
+			}
+		}
+	}
+
+	/*
+	 * if there is either still data in the current mbuf and/or
+	 * there is a successor on the chain available issue just
+	 * a XTF (transmit) command to HSCX. if ther is no more
+	 * data available from the current mbuf (-chain), issue
+	 * an XTF and an XME (message end) command which will then
+	 * send the CRC and the closing HDLC flag sequence
+	 */
+
+	if(chan->out_mbuf_cur && (chan->out_mbuf_cur_len > 0))
+	{
+		/*
+		 * more data available, send current fifo out.
+		 * next xfer to HSCX tx fifo is done in the
+		 * HSCX interrupt routine.
+		 */
+
+		cmd |= HSCX_CMDR_XTF;
+	}
+	else
+	{
+		/* end of mbuf chain */
+
+		if(chan->bprot == BPROT_NONE)
+			cmd |= HSCX_CMDR_XTF;
+		else
+			cmd |= HSCX_CMDR_XTF | HSCX_CMDR_XME;
+
+		i4b_Bfreembuf(chan->out_mbuf_head);	/* free mbuf chain */
+
+		chan->out_mbuf_head = NULL;
+		chan->out_mbuf_cur = NULL;
+		chan->out_mbuf_cur_ptr = NULL;
+		chan->out_mbuf_cur_len = 0;
+	}
+
+	/* call timeout handling routine */
+
+	if(activity == ACT_RX || activity == ACT_TX)
+		(*chan->l4_driver->bch_activity)(
+		    chan->l4_driver_softc, activity);
+
+	if(cmd)
+		isic_hscx_cmd(sc, h_chan, cmd);
+
+	splx(s);
+}
+
+/*---------------------------------------------------------------------------*
+ *	fill statistics struct
+ *---------------------------------------------------------------------------*/
+static void
+isic_bchannel_stat(isdn_layer1token t, int h_chan, bchan_statistics_t *bsp)
+{
+	struct isic_softc *sc = (struct isic_softc*)t;
+	l1_bchan_state_t *chan = &sc->sc_chan[h_chan];
+	int s;
+
+	s = splnet();
+
+	bsp->outbytes = chan->txcount;
+	bsp->inbytes = chan->rxcount;
+
+	chan->txcount = 0;
+	chan->rxcount = 0;
+
+	splx(s);
+}
+
+/*---------------------------------------------------------------------------*
+ *	return the address of isic drivers linktab
+ *---------------------------------------------------------------------------*/
+isdn_link_t *
+isic_ret_linktab(void *token, int channel)
+{
+	struct l2_softc *l2sc = token;
+	struct isic_softc *sc = l2sc->l1_token;
+	l1_bchan_state_t *chan = &sc->sc_chan[channel];
+
+	return(&chan->isdn_linktab);
+}
+
+/*---------------------------------------------------------------------------*
+ *	set the driver linktab in the b channel softc
+ *---------------------------------------------------------------------------*/
+void
+isic_set_link(void *token, int channel, const struct isdn_l4_driver_functions *l4_driver, void *l4_driver_softc)
+{
+	struct l2_softc *l2sc = token;
+	struct isic_softc *sc = l2sc->l1_token;
+	l1_bchan_state_t *chan = &sc->sc_chan[channel];
+
+	chan->l4_driver = l4_driver;
+	chan->l4_driver_softc = l4_driver_softc;
+}
+
+static const struct isdn_l4_bchannel_functions
+isic_l4_bchannel_functions = {
+	isic_bchannel_setup,
+	isic_bchannel_start,
+	isic_bchannel_stat
+};
+
+/*---------------------------------------------------------------------------*
+ *	initialize our local linktab
+ *---------------------------------------------------------------------------*/
+void
+isic_init_linktab(struct isic_softc *sc)
+{
+	l1_bchan_state_t *chan = &sc->sc_chan[HSCX_CH_A];
+	isdn_link_t *lt = &chan->isdn_linktab;
+
+	/* local setup */
+	lt->l1token = sc;
+	lt->channel = HSCX_CH_A;
+	lt->bchannel_driver = &isic_l4_bchannel_functions;
+	lt->tx_queue = &chan->tx_queue;
+
+	/* used by non-HDLC data transfers, i.e. telephony drivers */
+	lt->rx_queue = &chan->rx_queue;
+
+	/* used by HDLC data transfers, i.e. ipr and isp drivers */
+	lt->rx_mbuf = &chan->in_mbuf;
+
+	chan = &sc->sc_chan[HSCX_CH_B];
+	lt = &chan->isdn_linktab;
+
+	lt->l1token = sc;
+	lt->channel = HSCX_CH_B;
+	lt->bchannel_driver = &isic_l4_bchannel_functions;
+	lt->tx_queue = &chan->tx_queue;
+
+	/* used by non-HDLC data transfers, i.e. telephony drivers */
+	lt->rx_queue = &chan->rx_queue;
+
+	/* used by HDLC data transfers, i.e. ipr and isp drivers */
+	lt->rx_mbuf = &chan->in_mbuf;
+}
+@
+
+
+1.2
+log
+@kill the NetBSD callout timeout-API, which was cloned
+from ours and introduced for I4B only anyways.
+
+feature: callout_init() translates to a NOP, because
+it just zeroed out the structure. This even saves us
+a couple of bytes and cycles.
+@
+text
+@a27 5
+ *	----------------------------------------------
+ *
+ *	$Id: isic_bchan.c,v 1.1 2003/04/06 04:37:26 tg Exp $
+ *
+ *      last edit-date: [Fri Jan  5 11:36:11 2001]
+d32 1
+a32 1
+__KERNEL_RCSID(0, "$NetBSD: isic_bchan.c,v 1.9 2002/05/21 10:31:12 martin Exp $");
+d43 1
+a43 1
+#include <machine/stdarg.h>
+d89 1
+a89 1
+	
+d95 1
+a95 1
+		
+d112 1
+a112 1
+	
+d118 1
+a118 1
+	
+d124 1
+a124 1
+	
+d126 1
+a126 1
+	
+d130 1
+a130 1
+	chan->out_mbuf_cur = NULL;	/* reset current mbuf ptr */	
+d133 1
+a133 1
+	
+d167 1
+a167 1
+	
+d169 1
+a169 1
+	
+d177 1
+a177 1
+	
+d180 2
+a181 2
+	chan->out_mbuf_cur_ptr = chan->out_mbuf_cur->m_data;	
+	
+d196 1
+a196 1
+	
+d205 1
+a205 1
+	}			
+d217 1
+a217 1
+	 
+d224 1
+a224 1
+		 
+d230 1
+a230 1
+#ifdef NOTDEF		
+d233 1
+a233 1
+			chan->out_mbuf_cur,			
+d259 1
+a259 1
+		 
+d273 1
+a273 1
+				isdn_layer2_trace_ind(&sc->sc_l2, sc->sc_l3token, 
+d277 1
+a277 1
+			}			
+d289 1
+a289 1
+	 
+d297 1
+a297 1
+		 
+d303 1
+a303 1
+	
+d308 1
+a308 1
+		
+d310 1
+a310 1
+		
+d312 1
+a312 1
+		chan->out_mbuf_cur = NULL;			
+d318 1
+a318 1
+	
+d325 2
+a326 2
+		
+	splx(s);	
+d340 1
+a340 1
+	
+d351 1
+a351 1
+ *	return the address of isic drivers linktab	
+d362 1
+a362 1
+ 
+d402 3
+a404 3
+	/* used by HDLC data transfers, i.e. ipr and isp drivers */	
+	lt->rx_mbuf = &chan->in_mbuf;	
+                                                
+d416 2
+a417 2
+	/* used by HDLC data transfers, i.e. ipr and isp drivers */	
+	lt->rx_mbuf = &chan->in_mbuf;	
+@
+
+
+1.1
+log
+@Pull in ISDN support from NetBSD, push out the old
+one with the "I require you to send me a postcard"
+licence.
+
+This enables building a kernel with ISDN support
+(it's just slower and like 200 KiB bigger), but
+disables isdnd from userland and needs different
+manpages and other fixes from NetBSD.
+
+Also added:
+ - support for the callout API from NetBSD, which
+   is in fact our stolen new-style timeout API,
+   just with a bit more overhead and different names
+   for the structure
+ - some includes sync with NBSD
+ - a shitload of kludges to make ISDN build
+
+This needs security, style and bloat audits fast.
+And testing.
+@
+text
+@d30 1
+a30 1
+ *	$Id: isic_bchan.c,v 1.9 2002/05/21 10:31:12 martin Exp $
+d63 1
+a63 3
+#if defined(__NetBSD__) && __NetBSD_Version__ >= 104230000
+#include <sys/callout.h>
+#endif
+@
+

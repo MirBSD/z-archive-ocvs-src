@@ -1,0 +1,3132 @@
+head	1.7;
+access;
+symbols
+	cvs-1_12_11:1.1.2.2
+	tg-mergetmp-mirosx-1:1.6
+	tg-mergefixes-1-branch:1.6.0.4
+	tg-mergefixes-1-base:1.6
+	MIROS_X:1.6.0.2
+	MIROS_X_BASE:1.6
+	cvs-1_12_10:1.1.2.1
+	FSF:1.1.2
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200404170130:1.1.1.1
+	cvs-1_11_12:1.1.3.2
+	cvs-1_11_1p1:1.1.3.1
+	tg:1.1.3
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.7
+date	2005.01.08.21.31.32;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2004.12.04.21.39.57;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2004.12.04.21.35.31;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.12.02.12.40.24;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.02.22.13.49.17;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.12.21.16.21;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.32;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.32;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2004.12.02.11.59.01;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2005.01.08.21.14.05;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.02.12.19.19.42;	author tg;	state Exp;
+branches;
+next	1.1.3.2;
+
+1.1.3.2
+date	2004.02.12.19.40.11;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.7
+log
+@fastmerge
+@
+text
+@/* $MirBSD: src/gnu/usr.bin/cvs/src/root.c,v 1.6 2004/12/04 21:39:57 tg Exp $ */
+
+/*
+ * Copyright (c) 1992, Mark D. Baushke
+ * Copyright (c) 2002, Derek R. Price
+ *
+ * You may distribute under the terms of the GNU General Public License as
+ * specified in the README file that comes with the CVS source distribution.
+ *
+ * Name of Root
+ *
+ * Determine the path to the CVSROOT and set "Root" accordingly.
+ */
+
+#include "cvs.h"
+#include "getline.h"
+
+__RCSID("$MirBSD: src/gnu/usr.bin/cvs/src/root.c,v 1.6 2004/12/04 21:39:57 tg Exp $");
+
+/* Printable names for things in the current_parsed_root->method enum variable.
+   Watch out if the enum is changed in cvs.h! */
+
+const char method_names[][16] = {
+    "undefined", "local", "server (rsh)", "pserver",
+    "kserver", "gserver", "ext", "fork"
+};
+
+#ifndef DEBUG
+
+cvsroot_t *
+Name_Root (const char *dir, const char *update_dir)
+{
+    FILE *fpin;
+    cvsroot_t *ret;
+    const char *xupdate_dir;
+    char *root = NULL;
+    size_t root_allocated = 0;
+    char *tmp;
+    char *cvsadm;
+    char *cp;
+    int len;
+
+    TRACE (TRACE_FLOW, "Name_Root (%s, %s)",
+	   dir ? dir : "(null)",
+	   update_dir ? update_dir : "(null)");
+
+    if (update_dir && *update_dir)
+	xupdate_dir = update_dir;
+    else
+	xupdate_dir = ".";
+
+    if (dir != NULL)
+    {
+	cvsadm = xmalloc (strlen (dir) + sizeof (CVSADM) + 10);
+	(void) sprintf (cvsadm, "%s/%s", dir, CVSADM);
+	tmp = xmalloc (strlen (dir) + sizeof (CVSADM_ROOT) + 10);
+	(void) sprintf (tmp, "%s/%s", dir, CVSADM_ROOT);
+    }
+    else
+    {
+	cvsadm = xstrdup (CVSADM);
+	tmp = xstrdup (CVSADM_ROOT);
+    }
+
+    /*
+     * Do not bother looking for a readable file if there is no cvsadm
+     * directory present.
+     *
+     * It is possible that not all repositories will have a CVS/Root
+     * file. This is ok, but the user will need to specify -d
+     * /path/name or have the environment variable CVSROOT set in
+     * order to continue.  */
+    if ((!isdir (cvsadm)) || (!isreadable (tmp)))
+    {
+	ret = NULL;
+	goto out;
+    }
+
+    /*
+     * The assumption here is that the CVS Root is always contained in the
+     * first line of the "Root" file.
+     */
+    fpin = open_file (tmp, "r");
+
+    if ((len = getline (&root, &root_allocated, fpin)) < 0)
+    {
+	int saved_errno = errno;
+	/* FIXME: should be checking for end of file separately; errno
+	   is not set in that case.  */
+	error (0, 0, "in directory %s:", xupdate_dir);
+	error (0, saved_errno, "cannot read %s", CVSADM_ROOT);
+	error (0, 0, "please correct this problem");
+	ret = NULL;
+	goto out;
+    }
+    fclose (fpin);
+    cp = root + len - 1;
+    if (*cp == '\n')
+	*cp = '\0';			/* strip the newline */
+
+    /*
+     * root now contains a candidate for CVSroot. It must be an
+     * absolute pathname or specify a remote server.
+     */
+
+    ret = parse_cvsroot (root);
+    if (ret == NULL)
+    {
+	error (0, 0, "in directory %s:", xupdate_dir);
+	error (0, 0,
+	       "ignoring %s because it does not contain a valid root.",
+	       CVSADM_ROOT);
+	goto out;
+    }
+
+    if (
+#ifdef CLIENT_SUPPORT
+        !ret->isremote &&
+#endif
+        !isdir (ret->directory))
+    {
+	error (0, 0, "in directory %s:", xupdate_dir);
+	error (0, 0,
+	       "ignoring %s because it specifies a non-existent repository %s",
+	       CVSADM_ROOT, root);
+	ret = NULL;
+	goto out;
+    }
+
+
+ out:
+    free (cvsadm);
+    free (tmp);
+    if (root != NULL)
+	free (root);
+    return ret;
+}
+
+
+
+/*
+ * Write the CVS/Root file so that the environment variable CVSROOT
+ * and/or the -d option to cvs will be validated or not necessary for
+ * future work.
+ */
+void
+Create_Root (const char *dir, const char *rootdir)
+{
+    FILE *fout;
+    char *tmp;
+
+    if (noexec)
+	return;
+
+    /* record the current cvs root */
+
+    if (rootdir != NULL)
+    {
+        if (dir != NULL)
+	{
+	    tmp = xmalloc (strlen (dir) + sizeof (CVSADM_ROOT) + 10);
+	    (void) sprintf (tmp, "%s/%s", dir, CVSADM_ROOT);
+	}
+        else
+	    tmp = xstrdup (CVSADM_ROOT);
+
+        fout = open_file (tmp, "w+");
+        if (fprintf (fout, "%s\n", rootdir) < 0)
+	    error (1, errno, "write to %s failed", tmp);
+        if (fclose (fout) == EOF)
+	    error (1, errno, "cannot close %s", tmp);
+	free (tmp);
+    }
+}
+
+#endif /* ! DEBUG */
+
+
+
+/* Translate an absolute repository string for a primary server and return it.
+ *
+ * INPUTS
+ *   root_in	The root to be translated.
+ *
+ * RETURNS
+ *   A translated string this function owns, or a pointer to the original
+ *   string passed in if no translation was necessary.
+ *
+ *   If the returned string is the translated one, it may be overwritten
+ *   by the next call to this function.
+ */
+const char *
+primary_root_translate (const char *root_in)
+{
+    char *translated;
+    static char *previous = NULL;
+    static size_t len;
+
+#ifdef PROXY_SUPPORT
+    /* This can happen, for instance, during `cvs init'.  */
+    if (!config) return root_in;
+
+    if (config->PrimaryServer
+        && !strncmp (root_in, config->PrimaryServer->directory,
+		     strlen (config->PrimaryServer->directory))
+        && (ISSLASH (root_in[strlen (config->PrimaryServer->directory)])
+            || root_in[strlen (config->PrimaryServer->directory)] == '\0')
+       )
+    {
+	translated =
+	    Xasnprintf (previous, &len,
+		        "%s%s", current_parsed_root->directory,
+	                root_in + strlen (config->PrimaryServer->directory));
+	if (previous && previous != translated)
+	    free (previous);
+	return previous = translated;
+    }
+#endif
+
+    /* There is no primary root configured or it didn't match.  */
+    return root_in;
+}
+
+
+
+/* Translate a primary root in reverse for PATHNAMEs in responses.
+ *
+ * INPUTS
+ *   root_in	The root to be translated.
+ *
+ * RETURNS
+ *   A translated string this function owns, or a pointer to the original
+ *   string passed in if no translation was necessary.
+ *
+ *   If the returned string is the translated one, it may be overwritten
+ *   by the next call to this function.
+ */
+const char *
+primary_root_inverse_translate (const char *root_in)
+{
+    char *translated;
+    static char *previous = NULL;
+    static size_t len;
+
+#ifdef PROXY_SUPPORT
+    /* This can happen, for instance, during `cvs init'.  */
+    if (!config) return root_in;
+
+    if (config->PrimaryServer
+        && !strncmp (root_in, current_parsed_root->directory,
+		     strlen (current_parsed_root->directory))
+        && (ISSLASH (root_in[strlen (current_parsed_root->directory)])
+            || root_in[strlen (current_parsed_root->directory)] == '\0')
+       )
+    {
+	translated =
+	    Xasnprintf (previous, &len,
+		        "%s%s", config->PrimaryServer->directory,
+	                root_in + strlen (current_parsed_root->directory));
+	if (previous && previous != translated)
+	    free (previous);
+	return previous = translated;
+    }
+#endif
+
+    /* There is no primary root configured or it didn't match.  */
+    return root_in;
+}
+
+
+
+/* The root_allow_* stuff maintains a list of valid CVSROOT
+   directories.  Then we can check against them when a remote user
+   hands us a CVSROOT directory.  */
+static List *root_allow;
+
+static void
+delconfig (Node *n)
+{
+    if (n->data) free_config (n->data);
+}
+
+
+
+void
+root_allow_add (const char *arg)
+{
+    Node *n;
+
+    if (!root_allow) root_allow = getlist();
+    n = getnode();
+    n->key = xstrdup (arg);
+    n->data = parse_config (arg);
+    n->delproc = delconfig;
+    addnode (root_allow, n);
+}
+
+void
+root_allow_free (void)
+{
+    dellist (&root_allow);
+}
+
+bool
+root_allow_ok (const char *arg)
+{
+    if (!root_allow)
+    {
+	/* Probably someone upgraded from CVS before 1.9.10 to 1.9.10
+	   or later without reading the documentation about
+	   --allow-root.  Printing an error here doesn't disclose any
+	   particularly useful information to an attacker because a
+	   CVS server configured in this way won't let *anyone* in.  */
+
+	/* Note that we are called from a context where we can spit
+	   back "error" rather than waiting for the next request which
+	   expects responses.  */
+	printf ("\
+error 0 Server configuration missing --allow-root in inetd.conf\n");
+	exit (EXIT_FAILURE);
+    }
+
+    if (findnode (root_allow, arg))
+	return true;
+    return false;
+}
+
+
+
+/* Get a config we stored in response to root_allow.
+ *
+ * RETURNS
+ *   The config associated with ARG.
+ */
+struct config *
+get_root_allow_config (const char *arg)
+{
+    Node *n;
+
+    TRACE (TRACE_FUNCTION, "get_root_allow_config (%s)", arg);
+
+    if (root_allow)
+	n = findnode (root_allow, arg);
+    else
+	n = NULL;
+
+    if (n) return n->data;
+    return parse_config (arg);
+}
+
+
+
+/* This global variable holds the global -d option.  It is NULL if -d
+   was not used, which means that we must get the CVSroot information
+   from the CVSROOT environment variable or from a CVS/Root file.  */
+char *CVSroot_cmdline;
+
+
+
+/* FIXME - Deglobalize this. */
+cvsroot_t *current_parsed_root = NULL;
+/* Used to save the original root being processed so that we can still find it
+ * in lists and the like after a `Redirect' response.  Also set to mirror
+ * current_parsed_root in server mode so that code which runs on both the
+ * client and server but which wants to use original data on the client can
+ * just always reference the original_parsed_root.
+ */
+const cvsroot_t *original_parsed_root;
+
+
+/* allocate and initialize a cvsroot_t
+ *
+ * We must initialize the strings to NULL so we know later what we should
+ * free
+ *
+ * Some of the other zeroes remain meaningful as, "never set, use default",
+ * or the like
+ */
+/* Functions which allocate memory are not pure.  */
+static cvsroot_t *new_cvsroot_t(void)
+    __attribute__( (__malloc__) );
+static cvsroot_t *
+new_cvsroot_t (void)
+{
+    cvsroot_t *newroot;
+
+    /* gotta store it somewhere */
+    newroot = xmalloc(sizeof(cvsroot_t));
+
+    newroot->original = NULL;
+    newroot->method = null_method;
+#ifdef CLIENT_SUPPORT
+    newroot->username = NULL;
+    newroot->password = NULL;
+    newroot->hostname = NULL;
+    newroot->cvs_rsh = NULL;
+    newroot->cvs_server = NULL;
+    newroot->port = 0;
+    newroot->directory = NULL;
+    newroot->proxy_hostname = NULL;
+    newroot->proxy_port = 0;
+    newroot->isremote = 0;
+    newroot->redirect = true;	/* Advertise Redirect support */
+#endif /* CLIENT_SUPPORT */
+
+    return newroot;
+}
+
+
+
+/* Dispose of a cvsroot_t and its component parts */
+void
+free_cvsroot_t (cvsroot_t *root)
+{
+    if (root->original != NULL)
+	free (root->original);
+    if (root->directory != NULL)
+	free (root->directory);
+#ifdef CLIENT_SUPPORT
+    if (root->username != NULL)
+	free (root->username);
+    if (root->password != NULL)
+    {
+	/* I like to be paranoid */
+	memset (root->password, 0, strlen (root->password));
+	free (root->password);
+    }
+    if (root->hostname != NULL)
+	free (root->hostname);
+    if (root->cvs_rsh != NULL)
+	free (root->cvs_rsh);
+    if (root->cvs_server != NULL)
+	free (root->cvs_server);
+    if (root->proxy_hostname != NULL)
+	free (root->proxy_hostname);
+#endif /* CLIENT_SUPPORT */
+    free (root);
+}
+
+
+
+/*
+ * Parse a CVSROOT string to allocate and return a new cvsroot_t structure.
+ * Valid specifications are:
+ *
+ *	:(gserver|kserver|pserver):[[user][:password]@@]host[:[port]]/path
+ *	[:(ext|server):][[user]@@]host[:]/path
+ *	[:local:[e:]]/path
+ *	:fork:/path
+ *
+ * INPUTS
+ *	root_in		C String containing the CVSROOT to be parsed.
+ *
+ * RETURNS
+ *	A pointer to a newly allocated cvsroot_t structure upon success and
+ *	NULL upon failure.  The caller should never dispose of this structure,
+ *	as it is stored in a cache, but the caller may rely on it not to
+ *	change.
+ *
+ * NOTES
+ * 	This would have been a lot easier to write in Perl.
+ *
+ *	Would it make sense to reimplement the root and config file parsing
+ *	gunk in Lex/Yacc?
+ *
+ * SEE ALSO
+ * 	free_cvsroot_t()
+ */
+cvsroot_t *
+parse_cvsroot (const char *root_in)
+{
+    cvsroot_t *newroot;			/* the new root to be returned */
+    char *cvsroot_save;			/* what we allocated so we can dispose
+					 * it when finished */
+    char *firstslash;			/* save where the path spec starts
+					 * while we parse
+					 * [[user][:password]@@]host[:[port]]
+					 */
+    char *cvsroot_copy, *p, *q;		/* temporary pointers for parsing */
+#ifdef CLIENT_SUPPORT
+    int check_hostname, no_port, no_password, no_proxy;
+#endif /* CLIENT_SUPPORT */
+    static List *cache = NULL;
+    Node *node;
+
+    assert (root_in != NULL);
+
+    /* This message is TRACE_FLOW since this function is called repeatedly by
+     * the recursion routines.
+     */
+    TRACE (TRACE_FLOW, "parse_cvsroot (%s)", root_in);
+
+    if ((node = findnode (cache, root_in)))
+	return node->data;
+
+    /* allocate some space */
+    newroot = new_cvsroot_t();
+
+    /* save the original string */
+    newroot->original = xstrdup (root_in);
+
+    /* and another copy we can munge while parsing */
+    cvsroot_save = cvsroot_copy = xstrdup (root_in);
+
+    if (*cvsroot_copy == ':')
+    {
+	char *method = ++cvsroot_copy;
+
+	/* Access method specified, as in
+	 * "cvs -d :(gserver|kserver|pserver):[[user][:password]@@]host[:[port]]/path",
+	 * "cvs -d [:(ext|server):][[user]@@]host[:]/path",
+	 * "cvs -d :local:e:\path",
+	 * "cvs -d :fork:/path".
+	 * We need to get past that part of CVSroot before parsing the
+	 * rest of it.
+	 */
+
+	if (! (p = strchr (method, ':')))
+	{
+	    error (0, 0, "No closing `:' on method in CVSROOT.");
+	    goto error_exit;
+	}
+	*p = '\0';
+	cvsroot_copy = ++p;
+
+#ifdef CLIENT_SUPPORT
+	/* Look for method options, for instance, proxy, proxyport.
+	 * Calling strtok again is saved until after parsing the method.
+	 */
+	method = strtok (method, ";");
+#endif /* CLIENT_SUPPORT */
+
+	/* Now we have an access method -- see if it's valid. */
+
+	if (!strcasecmp (method, "local"))
+	    newroot->method = local_method;
+	else if (!strcasecmp (method, "pserver"))
+	    newroot->method = pserver_method;
+	else if (!strcasecmp (method, "kserver"))
+	    newroot->method = kserver_method;
+	else if (!strcasecmp (method, "gserver"))
+	    newroot->method = gserver_method;
+	else if (!strcasecmp (method, "server"))
+	    newroot->method = server_method;
+	else if (!strcasecmp (method, "ext"))
+	    newroot->method = ext_method;
+	else if (!strcasecmp (method, "fork"))
+	    newroot->method = fork_method;
+	else
+	{
+	    error (0, 0, "Unknown method (`%s') in CVSROOT.", method);
+	    goto error_exit;
+	}
+
+#ifdef CLIENT_SUPPORT
+	/* Parse the method options, for instance, proxy, proxyport */
+	while ((p = strtok (NULL, ";")))
+	{
+	    char *q = strchr (p, '=');
+	    if (q == NULL)
+	    {
+	        error (0, 0, "Option (`%s') has no argument in CVSROOT.",
+                       p);
+	        goto error_exit;
+	    }
+
+	    *q++ = '\0';
+	    TRACE (TRACE_DATA, "CVSROOT option=`%s' value=`%s'", p, q);
+	    if (!strcasecmp (p, "proxy"))
+	    {
+		newroot->proxy_hostname = xstrdup (q);
+	    }
+	    else if (!strcasecmp (p, "proxyport"))
+	    {
+		char *r = q;
+		if (*r == '-') r++;
+		while (*r)
+		{
+		    if (!isdigit(*r++))
+		    {
+			error (0, 0,
+"CVSROOT may only specify a positive, non-zero, integer proxy port (not `%s').",
+			       q);
+			goto error_exit;
+		    }
+		}
+		if ((newroot->proxy_port = atoi (q)) <= 0)
+		    error (0, 0,
+"CVSROOT may only specify a positive, non-zero, integer proxy port (not `%s').",
+			   q);
+	    }
+	    else if (!strcasecmp (p, "CVS_RSH"))
+	    {
+		/* override CVS_RSH environment variable */
+		if (newroot->method == ext_method)
+		    newroot->cvs_rsh = xstrdup (q);
+	    }
+	    else if (!strcasecmp (p, "CVS_SERVER"))
+	    {
+		/* override CVS_SERVER environment variable */
+		if (newroot->method == ext_method
+		    || newroot->method == fork_method)
+		    newroot->cvs_server = xstrdup (q);
+	    }
+	    else if (!strcasecmp (p, "Redirect"))
+		readBool ("CVSROOT", "Redirect", q, &newroot->redirect);
+	    else
+	    {
+	        error (0, 0, "Unknown option (`%s') in CVSROOT.", p);
+	        goto error_exit;
+	    }
+	}
+#endif /* CLIENT_SUPPORT */
+    }
+    else
+    {
+	/* If the method isn't specified, assume EXT_METHOD if the string looks
+	   like a relative path and LOCAL_METHOD otherwise.  */
+
+	newroot->method = ((*cvsroot_copy != '/' && strchr (cvsroot_copy, '/'))
+			  ? ext_method
+			  : local_method);
+    }
+
+    /*
+     * There are a few sanity checks we can do now, only knowing the
+     * method of this root.
+     */
+#ifndef DEBUG
+    /* Why do we avoid these checks when DEBUG is set?  How is this used?  */
+# ifndef CLIENT_SUPPORT
+    if (newroot->method != local_method)
+    {
+	error (0, 0, "CVSROOT is set for a remote access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+	goto error_exit;
+    }
+# endif
+#endif /* ! DEBUG */
+
+#ifdef CLIENT_SUPPORT
+    newroot->isremote = (newroot->method != local_method);
+
+    if (readonlyfs && newroot->isremote && !quiet)
+	error (1, 0,
+"Read-only repository feature unavailable with remote roots (cvsroot = %s)",
+	       cvsroot_copy);
+
+    if ((newroot->method != local_method)
+#ifdef CLIENT_SUPPORT
+	&& (newroot->method != fork_method)
+#endif /* SERVER_SUPPORT */
+       )
+    {
+	/* split the string into [[user][:password]@@]host[:[port]] & /path
+	 *
+	 * this will allow some characters such as '@@' & ':' to remain unquoted
+	 * in the path portion of the spec
+	 */
+	if ((p = strchr (cvsroot_copy, '/')) == NULL)
+	{
+	    error (0, 0, "CVSROOT requires a path spec:");
+	    error (0, 0,
+":(gserver|kserver|pserver):[[user][:password]@@]host[:[port]]/path");
+	    error (0, 0, "[:(ext|server):][[user]@@]host[:]/path");
+	    goto error_exit;
+	}
+	firstslash = p;		/* == NULL if '/' not in string */
+	*p = '\0';
+
+	/* Check to see if there is a username[:password] in the string. */
+	if ((p = strchr (cvsroot_copy, '@@')) != NULL)
+	{
+	    *p = '\0';
+	    /* check for a password */
+	    if ((q = strchr (cvsroot_copy, ':')) != NULL)
+	    {
+		*q = '\0';
+		newroot->password = xstrdup (++q);
+		/* Don't check for *newroot->password == '\0' since
+		 * a user could conceivably wish to specify a blank password
+		 *
+		 * (newroot->password == NULL means to use the
+		 * password from .cvspass)
+		 */
+	    }
+
+	    /* copy the username */
+	    if (*cvsroot_copy != '\0')
+		/* a blank username is impossible, so leave it NULL in that
+		 * case so we know to use the default username
+		 */
+		newroot->username = xstrdup (cvsroot_copy);
+
+	    cvsroot_copy = ++p;
+	}
+
+	/* now deal with host[:[port]] */
+
+	/* the port */
+	if ((p = strchr (cvsroot_copy, ':')) != NULL)
+	{
+	    *p++ = '\0';
+	    if (strlen(p))
+	    {
+		q = p;
+		if (*q == '-') q++;
+		while (*q)
+		{
+		    if (!isdigit(*q++))
+		    {
+			error (0, 0,
+"CVSROOT may only specify a positive, non-zero, integer port (not `%s').",
+				p);
+			error (0, 0,
+                               "Perhaps you entered a relative pathname?");
+			goto error_exit;
+		    }
+		}
+		if ((newroot->port = atoi (p)) <= 0)
+		{
+		    error (0, 0,
+"CVSROOT may only specify a positive, non-zero, integer port (not `%s').",
+			    p);
+		    error (0, 0, "Perhaps you entered a relative pathname?");
+		    goto error_exit;
+		}
+	    }
+	}
+
+	/* copy host */
+	if (*cvsroot_copy != '\0')
+	    /* blank hostnames are invalid, but for now leave the field NULL
+	     * and catch the error during the sanity checks later
+	     */
+	    newroot->hostname = xstrdup (cvsroot_copy);
+
+	/* restore the '/' */
+	cvsroot_copy = firstslash;
+	*cvsroot_copy = '/';
+    }
+#endif /* CLIENT_SUPPORT */
+
+    /*
+     * Parse the path for all methods.
+     */
+    /* Here & local_cvsroot() should be the only places this needs to be
+     * called on a CVSROOT now.  cvsroot->original is saved for error messages
+     * and, otherwise, we want no trailing slashes.
+     */
+    Sanitize_Repository_Name (cvsroot_copy);
+    newroot->directory = xstrdup (cvsroot_copy);
+
+    /*
+     * Do various sanity checks.
+     */
+
+#ifdef CLIENT_SUPPORT
+    if (newroot->username && ! newroot->hostname)
+    {
+	error (0, 0, "Missing hostname in CVSROOT.");
+	goto error_exit;
+    }
+
+    /* We won't have attempted to parse these without CLIENT_SUPPORT */
+    check_hostname = 0;
+    no_password = 1;
+    no_proxy = 1;
+    no_port = 0;
+#endif /* CLIENT_SUPPORT */
+    switch (newroot->method)
+    {
+    case local_method:
+#ifdef CLIENT_SUPPORT
+	if (newroot->username || newroot->hostname)
+	{
+	    error (0, 0, "Can't specify hostname and username in CVSROOT");
+	    error (0, 0, "when using local access method.");
+	    goto error_exit;
+	}
+#endif /* CLIENT_SUPPORT */
+	/* cvs.texinfo has always told people that CVSROOT must be an
+	   absolute pathname.  Furthermore, attempts to use a relative
+	   pathname produced various errors (I couldn't get it to work),
+	   so there would seem to be little risk in making this a fatal
+	   error.  */
+	if (!isabsolute (newroot->directory))
+	{
+	    error (0, 0, "CVSROOT must be an absolute pathname (not `%s')",
+		   newroot->directory);
+	    error (0, 0, "when using local access method.");
+	    goto error_exit;
+	}
+#ifdef CLIENT_SUPPORT
+	/* We don't need to check for these in :local: mode, really, since
+	 * we shouldn't be able to hit the code above which parses them, but
+	 * I'm leaving them here in lieu of assertions.
+	 */
+	no_port = 1;
+	/* no_password already set */
+#endif /* CLIENT_SUPPORT */
+	break;
+#ifdef CLIENT_SUPPORT
+    case fork_method:
+	/* We want :fork: to behave the same as other remote access
+           methods.  Therefore, don't check to see that the repository
+           name is absolute -- let the server do it.  */
+	if (newroot->username || newroot->hostname)
+	{
+	    error (0, 0, "Can't specify hostname and username in CVSROOT");
+	    error (0, 0, "when using fork access method.");
+	    goto error_exit;
+	}
+	newroot->hostname = xstrdup("server");  /* for error messages */
+	if (!isabsolute (newroot->directory))
+	{
+	    error (0, 0, "CVSROOT must be an absolute pathname (not `%s')",
+		   newroot->directory);
+	    error (0, 0, "when using fork access method.");
+	    goto error_exit;
+	}
+	no_port = 1;
+	/* no_password already set */
+	break;
+    case kserver_method:
+# ifndef HAVE_KERBEROS
+       	error (0, 0, "CVSROOT is set for a kerberos access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+	goto error_exit;
+# else
+	check_hostname = 1;
+	/* no_password already set */
+	break;
+# endif
+    case gserver_method:
+# ifndef HAVE_GSSAPI
+	error (0, 0, "CVSROOT is set for a GSSAPI access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+	goto error_exit;
+# else
+	check_hostname = 1;
+	no_proxy = 0;
+	/* no_password already set */
+	break;
+# endif
+    case server_method:
+    case ext_method:
+	no_port = 1;
+	/* no_password already set */
+	check_hostname = 1;
+	break;
+    case pserver_method:
+	no_password = 0;
+	no_proxy = 0;
+	check_hostname = 1;
+	break;
+#endif /* CLIENT_SUPPORT */
+    default:
+	error (1, 0, "Invalid method found in parse_cvsroot");
+    }
+
+#ifdef CLIENT_SUPPORT
+    if (no_password && newroot->password)
+    {
+	error (0, 0, "CVSROOT password specification is only valid for");
+	error (0, 0, "pserver connection method.");
+	goto error_exit;
+    }
+    if (no_proxy && (newroot->proxy_hostname || newroot->proxy_port))
+    {
+	error (0, 0,
+"CVSROOT proxy specification is only valid for gserver and");
+	error (0, 0, "pserver connection methods.");
+	goto error_exit;
+    }
+
+    if (!newroot->proxy_hostname && newroot->proxy_port)
+    {
+	error (0, 0, "Proxy port specified in CVSROOT without proxy host.");
+	goto error_exit;
+    }
+
+    if (check_hostname && !newroot->hostname)
+    {
+	error (0, 0, "Didn't specify hostname in CVSROOT.");
+	goto error_exit;
+    }
+
+    if (no_port && newroot->port)
+    {
+        error (0, 0,
+"CVSROOT port specification is only valid for gserver, kserver,");
+        error (0, 0, "and pserver connection methods.");
+        goto error_exit;
+    }
+#endif /*CLIENT_SUPPORT */
+
+    if (*newroot->directory == '\0')
+    {
+	error (0, 0, "Missing directory in CVSROOT.");
+	goto error_exit;
+    }
+
+    /* Hooray!  We finally parsed it! */
+    free (cvsroot_save);
+
+    if (!cache) cache = getlist();
+    node = getnode();
+    node->key = xstrdup (newroot->original);
+    node->data = newroot;
+    addnode (cache, node);
+    return newroot;
+
+error_exit:
+    free (cvsroot_save);
+    free_cvsroot_t (newroot);
+    return NULL;
+}
+
+
+
+#ifdef AUTH_CLIENT_SUPPORT
+/* Use root->username, root->hostname, root->port, and root->directory
+ * to create a normalized CVSROOT fit for the .cvspass file
+ *
+ * username defaults to the result of getcaller()
+ * port defaults to the result of get_cvs_port_number()
+ *
+ * FIXME - we could cache the canonicalized version of a root inside the
+ * cvsroot_t, but we'd have to un'const the input here and stop expecting the
+ * caller to be responsible for our return value
+ *
+ * ASSUMPTIONS
+ *   ROOT->method == pserver_method
+ */
+char *
+normalize_cvsroot (const cvsroot_t *root)
+{
+    char *cvsroot_canonical;
+    char *p, *hostname;
+
+    /* use a lower case hostname since we know hostnames are case insensitive */
+    /* Some logic says we should be tacking our domain name on too if it isn't
+     * there already, but for now this works.  Reverse->Forward lookups are
+     * almost certainly too much since that would make CVS immune to some of
+     * the DNS trickery that makes life easier for sysadmins when they want to
+     * move a repository or the like
+     */
+    p = hostname = xstrdup (root->hostname);
+    while (*p)
+    {
+	*p = tolower (*p);
+	p++;
+    }
+
+    cvsroot_canonical = Xasprintf (":pserver:%s@@%s:%d%s",
+                                   root->username ? root->username
+                                                  : getcaller(),
+                                   hostname, get_cvs_port_number (root),
+                                   root->directory);
+
+    free (hostname);
+    return cvsroot_canonical;
+}
+#endif /* AUTH_CLIENT_SUPPORT */
+
+
+
+#ifdef PROXY_SUPPORT
+/* A walklist() function to walk the root_allow list looking for a PrimaryServer
+ * configuration with a directory matching the requested directory.
+ *
+ * If found, replace it.
+ */
+static bool get_local_root_dir_done;
+static int
+get_local_root_dir (Node *p, void *root_in)
+{
+    struct config *c = p->data;
+    char **r = root_in;
+
+    if (get_local_root_dir_done)
+	return 0;
+
+    if (c->PrimaryServer && !strcmp (*r, c->PrimaryServer->directory))
+    {
+	free (*r);
+	*r = xstrdup (p->key);
+	get_local_root_dir_done = true;
+    }
+    return 0;
+}
+#endif /* PROXY_SUPPORT */
+
+
+
+/* allocate and return a cvsroot_t structure set up as if we're using the local
+ * repository DIR.  */
+cvsroot_t *
+local_cvsroot (const char *dir)
+{
+    cvsroot_t *newroot = new_cvsroot_t();
+
+    newroot->original = xstrdup(dir);
+    newroot->method = local_method;
+    newroot->directory = xstrdup(dir);
+    /* Here and parse_cvsroot() should be the only places this needs to be
+     * called on a CVSROOT now.  cvsroot->original is saved for error messages
+     * and, otherwise, we want no trailing slashes.
+     */
+    Sanitize_Repository_Name (newroot->directory);
+
+#ifdef PROXY_SUPPORT
+    /* Translate the directory to a local one in the case that we are
+     * configured as a secondary.  If root_allow has not been initialized,
+     * nothing happens.
+     */
+    get_local_root_dir_done = false;
+    walklist (root_allow, get_local_root_dir, &newroot->directory);
+#endif /* PROXY_SUPPORT */
+
+    return newroot;
+}
+
+
+
+#ifdef DEBUG
+/* This is for testing the parsing function.  Use
+
+     gcc -I. -I.. -I../lib -DDEBUG root.c -o root
+
+   to compile.  */
+
+#include <stdio.h>
+
+char *program_name = "testing";
+char *cvs_cmd_name = "parse_cvsroot";		/* XXX is this used??? */
+
+/* Toy versions of various functions when debugging under unix.  Yes,
+   these make various bad assumptions, but they're pretty easy to
+   debug when something goes wrong.  */
+
+int
+isabsolute( const char *dir )
+{
+    return (dir && (*dir == '/'));
+}
+
+void
+main( int argc, char *argv[] )
+{
+    program_name = argv[0];
+
+    if (argc != 2)
+    {
+	fprintf (stderr, "Usage: %s <CVSROOT>\n", program_name);
+	exit (2);
+    }
+
+    if ((current_parsed_root = parse_cvsroot (argv[1])) == NULL)
+    {
+	fprintf (stderr, "%s: Parsing failed.\n", program_name);
+	exit (1);
+    }
+    printf ("CVSroot: %s\n", argv[1]);
+    printf ("current_parsed_root->method: %s\n", method_names[current_parsed_root->method]);
+    printf ("current_parsed_root->username: %s\n",
+	    current_parsed_root->username ? current_parsed_root->username : "NULL");
+    printf ("current_parsed_root->hostname: %s\n",
+	    current_parsed_root->hostname ? current_parsed_root->hostname : "NULL");
+    printf ("current_parsed_root->directory: %s\n", current_parsed_root->directory);
+
+   exit (0);
+   /* NOTREACHED */
+}
+#endif
+@
+
+
+1.6
+log
+@better: only allow -R and remote if quiet
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/gnu/usr.bin/cvs/src/root.c,v 1.5 2004/12/04 21:35:31 tg Exp $ */
+d18 1
+a18 1
+__RCSID("$MirBSD: src/gnu/usr.bin/cvs/src/root.c,v 1.5 2004/12/04 21:35:31 tg Exp $");
+d43 4
+a125 1
+	free_cvsroot_t (ret);
+d396 2
+d403 1
+d430 4
+d456 3
+a458 2
+ *	NULL upon failure.  The caller is responsible for disposing of
+ *	new structures with a call to free_cvsroot_t().
+d463 3
+d483 2
+d493 3
+d535 1
+a535 1
+	if (strcmp (method, "local") == 0)
+d537 1
+a537 1
+	else if (strcmp (method, "pserver") == 0)
+d539 1
+a539 1
+	else if (strcmp (method, "kserver") == 0)
+d541 1
+a541 1
+	else if (strcmp (method, "gserver") == 0)
+d543 1
+a543 1
+	else if (strcmp (method, "server") == 0)
+d545 1
+a545 1
+	else if (strcmp (method, "ext") == 0)
+d547 1
+a547 1
+	else if (strcmp (method, "fork") == 0)
+d568 2
+a569 1
+	    if (strcmp (p, "proxy") == 0)
+d573 1
+a573 1
+	    else if (strcmp (p, "proxyport") == 0)
+d592 15
+d906 6
+d932 3
+@
+
+
+1.5
+log
+@don't error out if -R and remote root
+after quite some thinking - if user specifies -R, it's
+not a command to do it read-onlily, but merely a recommendation
+@
+text
+@d1 1
+a1 1
+/* $MirBSD$ */
+d18 1
+a18 1
+__RCSID("$MirBSD$");
+d609 2
+a610 2
+    if (readonlyfs && newroot->isremote)
+	error (0, 0,
+@
+
+
+1.4
+log
+@update to cvs 1.12.10-MirOS except automatically
+generated files
+XXX this installs as /usr/bin/ncvs yet, so no
+XXX conflicts during the test phase.
+XXX I suggest to _not_ update.
+
+XXX *** IMPORTANT *** DO NOT ACCESS CVS 1.11 REPOSITORIES
+XXX *** IMPORTANT *** WITH CVS 1.12 OR VICE VERSA!
+@
+text
+@d1 2
+d9 1
+a9 1
+ * 
+d11 1
+a11 1
+ * 
+d18 2
+d610 1
+a610 1
+	error (1, 0,
+d868 1
+a868 1
+    
+d1015 1
+a1015 1
+  
+@
+
+
+1.3
+log
+@cvs-1.11.12 doesn't do the joints correctly (what were the
+FSF people smoking?), it memory faults.
+thusly revert to 1.11.1p1
+
+tested.
+agreed bsiegert@@
+@
+text
+@d3 1
+d19 3
+a21 2
+char *method_names[] = {
+    "undefined", "local", "server (ssh)", "pserver", "kserver", "gserver", "ext", "fork"
+d26 2
+a27 4
+char *
+Name_Root (dir, update_dir)
+    char *dir;
+    char *update_dir;
+d30 2
+a31 1
+    char *ret, *xupdate_dir;
+d37 1
+d77 1
+a77 1
+    if (getline (&root, &root_allocated, fpin) < 0)
+d79 1
+d83 1
+a83 1
+	error (0, errno, "cannot read %s", CVSADM_ROOT);
+d88 3
+a90 2
+    (void) fclose (fpin);
+    if ((cp = strrchr (root, '\n')) != NULL)
+d98 2
+a99 5
+    if (
+#ifdef CLIENT_SUPPORT
+	(strchr (root, ':') == NULL) &&
+#endif
+    	! isabsolute (root))
+d103 1
+a103 1
+	       "ignoring %s because it does not contain an absolute pathname.",
+a104 1
+	ret = NULL;
+d108 1
+d110 3
+a112 4
+    if ((strchr (root, ':') == NULL) && !isdir (root))
+#else /* ! CLIENT_SUPPORT */
+    if (!isdir (root))
+#endif /* CLIENT_SUPPORT */
+d118 1
+d123 1
+a123 3
+    /* allocate space to return and fill it in */
+    strip_trailing_slashes (root);
+    ret = xstrdup (root);
+d129 1
+a129 1
+    return (ret);
+d132 2
+d140 1
+a140 3
+Create_Root (dir, rootdir)
+    char *dir;
+    char *rootdir;
+d172 94
+a265 1
+/* The root_allow_* stuff maintains a list of legal CVSROOT
+d268 8
+a276 3
+static int root_allow_count;
+static char **root_allow_vector;
+static int root_allow_size;
+d279 1
+a279 2
+root_allow_add (arg)
+    char *arg;
+d281 1
+a281 36
+    char *p;
+
+    if (root_allow_size <= root_allow_count)
+    {
+	if (root_allow_size == 0)
+	{
+	    root_allow_size = 1;
+	    root_allow_vector =
+		(char **) malloc (root_allow_size * sizeof (char *));
+	}
+	else
+	{
+	    root_allow_size *= 2;
+	    root_allow_vector =
+		(char **) realloc (root_allow_vector,
+				   root_allow_size * sizeof (char *));
+	}
+
+	if (root_allow_vector == NULL)
+	{
+	no_memory:
+	    /* Strictly speaking, we're not supposed to output anything
+	       now.  But we're about to exit(), give it a try.  */
+	    printf ("E Fatal server error, aborting.\n\
+error ENOMEM Virtual memory exhausted.\n");
+
+	    /* I'm doing this manually rather than via error_exit ()
+	       because I'm not sure whether we want to call server_cleanup.
+	       Needs more investigation....  */
+
+#ifdef SYSTEM_CLEANUP
+	    /* Hook for OS-specific behavior, for example socket
+	       subsystems on NT and OS2 or dealing with windows
+	       and arguments on Mac.  */
+	    SYSTEM_CLEANUP ();
+#endif
+d283 6
+a288 8
+	    exit (EXIT_FAILURE);
+	}
+    }
+    p = malloc (strlen (arg) + 1);
+    if (p == NULL)
+	goto no_memory;
+    strcpy (p, arg);
+    root_allow_vector[root_allow_count++] = p;
+d292 1
+a292 1
+root_allow_free ()
+d294 1
+a294 3
+    if (root_allow_vector != NULL)
+	free_names (&root_allow_count, root_allow_vector);
+    root_allow_size = 0;
+d297 2
+a298 3
+int
+root_allow_ok (arg)
+    char *arg;
+d300 1
+a300 3
+    int i;
+
+    if (root_allow_count == 0)
+d313 1
+a313 1
+	error_exit ();
+d316 26
+a341 4
+    for (i = 0; i < root_allow_count; ++i)
+	if (strcmp (root_allow_vector[i], arg) == 0)
+	    return 1;
+    return 0;
+a348 1
+
+d353 1
+a353 11
+/* Parse a CVSROOT variable into its constituent parts -- method,
+ * username, hostname, directory.  The prototypical CVSROOT variable
+ * looks like:
+ *
+ * :method:user@@host:path
+ *
+ * Some methods may omit fields; local, for example, doesn't need user
+ * and host.
+ *
+ * Returns pointer to new cvsroot_t on success, NULL on failure. */
+
+d355 7
+a361 1
+
+d372 3
+d376 1
+a376 1
+new_cvsroot_t ()
+d385 1
+d391 2
+a392 1
+#ifdef CLIENT_SUPPORT
+d403 1
+a403 2
+free_cvsroot_t (root)
+    cvsroot_t *root;
+d407 3
+d420 3
+a422 2
+    if (root->directory != NULL)
+	free (root->directory);
+d429 21
+a449 1
+ * parse a CVSROOT string to allocate and return a new cvsroot_t structure
+d452 1
+a452 2
+parse_cvsroot (root_in)
+    char *root_in;
+d462 10
+a471 2
+    char *new_hostname;
+    int check_hostname, no_port, no_password;
+d497 1
+a497 2
+	    error (0, 0, "bad CVSroot: %s", root_in);
+	    free (cvsroot_save);
+d503 7
+d528 1
+a528 2
+	    error (0, 0, "unknown method in CVSroot: %s", root_in);
+	    free (cvsroot_save);
+d531 44
+d578 2
+a579 3
+	/* If the method isn't specified, assume
+	   SERVER_METHOD/EXT_METHOD if the string contains a colon or
+	   LOCAL_METHOD otherwise.  */
+a581 3
+/*#ifdef RSH_NOT_TRANSPARENT
+			  ? server_method
+#else*/
+a582 1
+/*#endif*/
+d586 16
+a603 1
+#endif /* CLIENT_SUPPORT */
+d605 4
+d611 4
+a614 1
+	&& (newroot->method != fork_method))
+d623 3
+a625 3
+	    error (0, 0, "CVSROOT (\"%s\")", root_in);
+	    error (0, 0, "requires a path spec");
+	    error (0, 0, ":(gserver|kserver|pserver):[[user][:password]@@]host[:[port]]/path");
+a626 1
+	    free (cvsroot_save);
+d643 1
+a658 14
+	new_hostname = NULL;
+	if (*cvsroot_copy == '[')
+	{
+		p = strchr(cvsroot_copy, ']');
+		if (p != NULL)
+		{
+			*p = '\0';
+			new_hostname = xstrdup (cvsroot_copy+1);
+			*p++ = ']';
+			if (*p == ':')
+				cvsroot_copy = p;
+		}
+	}
+
+d673 2
+a674 2
+			error(0, 0, "CVSROOT (\"%s\")", root_in);
+			error(0, 0, "may only specify a positive, non-zero, integer port (not \"%s\").",
+d676 2
+a677 4
+			error(0, 0, "perhaps you entered a relative pathname?");
+			free (cvsroot_save);
+			if (new_hostname != NULL)
+			    free (new_hostname);
+d683 2
+a684 2
+		    error (0, 0, "CVSROOT (\"%s\")", root_in);
+		    error(0, 0, "may only specify a positive, non-zero, integer port (not \"%s\").",
+d686 1
+a686 4
+		    error(0, 0, "perhaps you entered a relative pathname?");
+		    if (new_hostname != NULL)
+			free (new_hostname);
+		    free (cvsroot_save);
+d693 1
+a693 3
+	if (new_hostname != NULL)
+	    newroot->hostname = new_hostname;
+	else if (*cvsroot_copy != '\0')
+d703 1
+d705 9
+a713 3
+    /* parse the path for all methods */
+    newroot->directory = xstrdup(cvsroot_copy);
+    free (cvsroot_save);
+d719 1
+a719 20
+#if ! defined (CLIENT_SUPPORT) && ! defined (DEBUG)
+    if (newroot->method != local_method)
+    {
+	error (0, 0, "CVSROOT \"%s\"", root_in);
+	error (0, 0, "is set for a remote access method but your");
+	error (0, 0, "CVS executable doesn't support it");
+	goto error_exit;
+    }
+#endif
+
+#if ! defined (SERVER_SUPPORT) && ! defined (DEBUG)
+    if (newroot->method == fork_method)
+    {
+	error (0, 0, "CVSROOT \"%s\"", root_in);
+	error (0, 0, "is set to use the :fork: access method but your");
+	error (0, 0, "CVS executable doesn't support it");
+	goto error_exit;
+     }
+#endif
+
+d722 1
+a722 1
+	error (0, 0, "missing hostname in CVSROOT: \"%s\"", root_in);
+d726 1
+d728 2
+a729 1
+    no_password = 0;
+d731 1
+d735 1
+d738 2
+a739 3
+	    error (0, 0, "can't specify hostname and username in CVSROOT");
+	    error (0, 0, "(\"%s\")", root_in);
+	    error (0, 0, "when using local access method");
+d742 1
+d750 1
+a750 1
+	    error (0, 0, "CVSROOT \"%s\" must be an absolute pathname",
+d752 1
+d755 5
+d761 2
+a762 1
+	no_password = 1;
+d764 1
+d771 2
+a772 3
+	    error (0, 0, "can't specify hostname and username in CVSROOT");
+	    error (0, 0, "(\"%s\")", root_in);
+	    error (0, 0, "when using fork access method");
+d775 1
+d778 1
+a778 1
+	    error (0, 0, "CVSROOT \"%s\" must be an absolute pathname",
+d780 1
+d784 1
+a784 1
+	no_password = 1;
+d787 3
+a789 4
+#ifndef HAVE_KERBEROS
+	error (0, 0, "CVSROOT \"%s\"", root_in);
+       	error (0, 0, "is set for a kerberos access method but your");
+	error (0, 0, "CVS executable doesn't support it");
+d791 1
+a791 1
+#else
+d793 1
+d795 1
+a795 1
+#endif
+d797 3
+a799 4
+#ifndef HAVE_GSSAPI
+	error (0, 0, "CVSROOT \"%s\"", root_in);
+	error (0, 0, "is set for a GSSAPI access method but your");
+	error (0, 0, "CVS executable doesn't support it");
+d801 1
+a801 1
+#else
+d803 2
+d806 1
+a806 1
+#endif
+d810 1
+a810 1
+	no_password = 1;
+d814 2
+d818 3
+d823 1
+d830 13
+d846 1
+a846 1
+	error (0, 0, "didn't specify hostname in CVSROOT: %s", root_in);
+d851 7
+a857 5
+	{
+	    error (0, 0, "CVSROOT port specification is only valid for gserver, kserver,");
+	    error (0, 0, "and pserver connection methods.");
+	    goto error_exit;
+	}
+d861 1
+a861 1
+	error (0, 0, "missing directory in CVSROOT: %s", root_in);
+d866 1
+d870 1
+d889 1
+a889 2
+normalize_cvsroot (root)
+    const cvsroot_t *root;
+d892 1
+a892 5
+    char *p, *hostname, *username;
+    char port_s[64];
+
+    /* get the appropriate port string */
+    sprintf (port_s, "%d", get_cvs_port_number (root));
+d901 1
+a901 1
+    p = hostname = xstrdup(root->hostname);
+d904 1
+a904 1
+	*p = tolower(*p);
+d908 5
+a912 7
+    /* get the username string */
+    username = root->username ? root->username : getcaller();
+    cvsroot_canonical = xmalloc ( strlen(username)
+				+ strlen(hostname) + strlen(port_s)
+				+ strlen(root->directory) + 12);
+    sprintf (cvsroot_canonical, ":pserver:%s@@%s:%s%s",
+	    username, hostname, port_s, root->directory);
+d921 28
+d952 1
+a952 2
+local_cvsroot (dir)
+    char *dir;
+d959 14
+d989 1
+a989 1
+char *command_name = "parse_cvsroot";		/* XXX is this used??? */
+a994 6
+void
+error_exit PROTO ((void))
+{
+    exit (1);
+}
+
+d996 1
+a996 2
+isabsolute (dir)
+    const char *dir;
+d1002 1
+a1002 3
+main (argc, argv)
+    int argc;
+    char *argv[];
+@
+
+
+1.2
+log
+@first step of merging new cvs
+XXX might not compile
+XXX might not work
+XXX might contain bugs
+XXX definitively needs autoconf 2.58 first
+@
+text
+@a2 1
+ * Copyright (c) 2002, Derek R. Price
+d18 2
+a19 3
+const char method_names[][16] = {
+    "undefined", "local", "server (ssh)", "pserver",
+    "kserver", "gserver", "ext", "fork"
+a35 1
+    int len;
+d75 1
+a75 1
+    if ((len = getline (&root, &root_allocated, fpin)) < 0)
+a76 1
+	int saved_errno = errno;
+d80 1
+a80 1
+	error (0, saved_errno, "cannot read %s", CVSADM_ROOT);
+d85 2
+a86 3
+    fclose (fpin);
+    cp = root + (len - 1);
+    if (*cp == '\n')
+d193 1
+a193 1
+		(char **) xmalloc (root_allow_size * sizeof (char *));
+d199 1
+a199 1
+		(char **) xrealloc (root_allow_vector,
+d211 12
+a222 1
+	    error_exit ();
+d225 1
+a225 1
+    p = xmalloc (strlen (arg) + 1);
+d273 1
+d278 11
+a288 1
+/* FIXME - Deglobalize this. */
+d350 1
+a350 21
+ * Parse a CVSROOT string to allocate and return a new cvsroot_t structure.
+ * Valid specifications are:
+ *
+ *	:(gserver|kserver|pserver):[[user][:password]@@]host[:[port]]/path
+ *	[:(ext|server):][[user]@@]host[:]/path
+ *	[:local:[e:]]/path
+ *	:fork:/path
+ *
+ * INPUTS
+ *	root_in		C String containing the CVSROOT to be parsed.
+ *
+ * RETURNS
+ *	A pointer to a newly allocated cvsroot_t structure upon success and
+ *	NULL upon failure.  The caller is responsible for disposing of
+ *	new structures with a call to free_cvsroot_t().
+ *
+ * NOTES
+ * 	This would have been a lot easier to write in Perl.
+ *
+ * SEE ALSO
+ * 	free_cvsroot_t()
+d354 1
+a354 1
+    const char *root_in;
+d391 2
+a392 1
+	    error (0, 0, "No closing `:' on method in CVSROOT.");
+d416 2
+a417 1
+	    error (0, 0, "Unknown method (`%s') in CVSROOT.", method);
+d423 3
+a425 2
+	/* If the method isn't specified, assume EXT_METHOD if the string looks
+	   like a relative path and LOCAL_METHOD otherwise.  */
+d428 3
+d432 1
+d451 2
+a452 1
+	    error (0, 0, "CVSROOT requires a path spec:");
+d455 1
+a471 1
+		 *
+d515 2
+a516 1
+			error (0, 0, "CVSROOT may only specify a positive, non-zero, integer port (not `%s').",
+d518 1
+a518 1
+			error (0, 0, "Perhaps you entered a relative pathname?");
+d527 2
+a528 1
+		    error (0, 0, "CVSROOT may only specify a positive, non-zero, integer port (not `%s').",
+d530 1
+a530 1
+		    error (0, 0, "Perhaps you entered a relative pathname?");
+d553 1
+a553 8
+    /*
+     * Parse the path for all methods.
+     */
+    /* Here & local_cvsroot() should be the only places this needs to be
+     * called on a CVSROOT now.  cvsroot->original is saved for error messages
+     * and, otherwise, we want no trailing slashes.
+     */
+    Sanitize_Repository_Name( cvsroot_copy );
+d555 1
+d564 3
+a566 2
+	error (0, 0, "CVSROOT is set for a remote access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+d574 3
+a576 2
+	error (0, 0, "CVSROOT is set to use the :fork: access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+d583 1
+a583 1
+	error (0, 0, "Missing hostname in CVSROOT.");
+d588 1
+a588 1
+    no_password = 1;
+d595 3
+a597 2
+	    error (0, 0, "Can't specify hostname and username in CVSROOT");
+	    error (0, 0, "when using local access method.");
+d607 1
+a607 1
+	    error (0, 0, "CVSROOT must be an absolute pathname (not `%s')",
+a608 1
+	    error (0, 0, "when using local access method.");
+d612 1
+a612 1
+	/* no_password already set */
+d620 3
+a622 2
+	    error (0, 0, "Can't specify hostname and username in CVSROOT");
+	    error (0, 0, "when using fork access method.");
+d627 1
+a627 1
+	    error (0, 0, "CVSROOT must be an absolute pathname (not `%s')",
+a628 1
+	    error (0, 0, "when using fork access method.");
+d632 1
+a632 1
+	/* no_password already set */
+d636 3
+a638 2
+       	error (0, 0, "CVSROOT is set for a kerberos access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+a641 1
+	/* no_password already set */
+d646 3
+a648 2
+	error (0, 0, "CVSROOT is set for a GSSAPI access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+a651 1
+	/* no_password already set */
+d657 1
+a657 1
+	/* no_password already set */
+a660 1
+	no_password = 0;
+a662 2
+    default:
+	error (1, 0, "Invalid method found in parse_cvsroot");
+d674 1
+a674 1
+	error (0, 0, "Didn't specify hostname in CVSROOT.");
+d687 1
+a687 1
+	error (0, 0, "Missing directory in CVSROOT.");
+a691 1
+    free (cvsroot_save);
+a694 1
+    free (cvsroot_save);
+d756 1
+a756 1
+    const char *dir;
+d763 1
+a763 5
+    /* Here and parse_cvsroot() should be the only places this needs to be
+     * called on a CVSROOT now.  cvsroot->original is saved for error messages
+     * and, otherwise, we want no trailing slashes.
+     */
+    Sanitize_Repository_Name( newroot->directory );
+a827 2
+/* vim:tabstop=8:shiftwidth=4
+ */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d3 1
+d19 3
+a21 2
+char *method_names[] = {
+    "undefined", "local", "server (ssh)", "pserver", "kserver", "gserver", "ext", "fork"
+d38 1
+d78 1
+a78 1
+    if (getline (&root, &root_allocated, fpin) < 0)
+d80 1
+d84 1
+a84 1
+	error (0, errno, "cannot read %s", CVSADM_ROOT);
+d89 3
+a91 2
+    (void) fclose (fpin);
+    if ((cp = strrchr (root, '\n')) != NULL)
+d198 1
+a198 1
+		(char **) malloc (root_allow_size * sizeof (char *));
+d204 1
+a204 1
+		(char **) realloc (root_allow_vector,
+d216 1
+a216 12
+	    /* I'm doing this manually rather than via error_exit ()
+	       because I'm not sure whether we want to call server_cleanup.
+	       Needs more investigation....  */
+
+#ifdef SYSTEM_CLEANUP
+	    /* Hook for OS-specific behavior, for example socket
+	       subsystems on NT and OS2 or dealing with windows
+	       and arguments on Mac.  */
+	    SYSTEM_CLEANUP ();
+#endif
+
+	    exit (EXIT_FAILURE);
+d219 1
+a219 1
+    p = malloc (strlen (arg) + 1);
+a266 1
+
+d271 1
+a271 11
+/* Parse a CVSROOT variable into its constituent parts -- method,
+ * username, hostname, directory.  The prototypical CVSROOT variable
+ * looks like:
+ *
+ * :method:user@@host:path
+ *
+ * Some methods may omit fields; local, for example, doesn't need user
+ * and host.
+ *
+ * Returns pointer to new cvsroot_t on success, NULL on failure. */
+
+d333 21
+a353 1
+ * parse a CVSROOT string to allocate and return a new cvsroot_t structure
+d357 1
+a357 1
+    char *root_in;
+d394 1
+a394 2
+	    error (0, 0, "bad CVSroot: %s", root_in);
+	    free (cvsroot_save);
+d418 1
+a418 2
+	    error (0, 0, "unknown method in CVSroot: %s", root_in);
+	    free (cvsroot_save);
+d424 2
+a425 3
+	/* If the method isn't specified, assume
+	   SERVER_METHOD/EXT_METHOD if the string contains a colon or
+	   LOCAL_METHOD otherwise.  */
+a427 3
+/*#ifdef RSH_NOT_TRANSPARENT
+			  ? server_method
+#else*/
+a428 1
+/*#endif*/
+d447 1
+a447 2
+	    error (0, 0, "CVSROOT (\"%s\")", root_in);
+	    error (0, 0, "requires a path spec");
+a449 1
+	    free (cvsroot_save);
+d466 1
+d510 1
+a510 2
+			error(0, 0, "CVSROOT (\"%s\")", root_in);
+			error(0, 0, "may only specify a positive, non-zero, integer port (not \"%s\").",
+d512 1
+a512 1
+			error(0, 0, "perhaps you entered a relative pathname?");
+d521 1
+a521 2
+		    error (0, 0, "CVSROOT (\"%s\")", root_in);
+		    error(0, 0, "may only specify a positive, non-zero, integer port (not \"%s\").",
+d523 1
+a523 1
+		    error(0, 0, "perhaps you entered a relative pathname?");
+d546 8
+a553 1
+    /* parse the path for all methods */
+a554 1
+    free (cvsroot_save);
+d563 2
+a564 3
+	error (0, 0, "CVSROOT \"%s\"", root_in);
+	error (0, 0, "is set for a remote access method but your");
+	error (0, 0, "CVS executable doesn't support it");
+d572 2
+a573 3
+	error (0, 0, "CVSROOT \"%s\"", root_in);
+	error (0, 0, "is set to use the :fork: access method but your");
+	error (0, 0, "CVS executable doesn't support it");
+d580 1
+a580 1
+	error (0, 0, "missing hostname in CVSROOT: \"%s\"", root_in);
+d585 1
+a585 1
+    no_password = 0;
+d592 2
+a593 3
+	    error (0, 0, "can't specify hostname and username in CVSROOT");
+	    error (0, 0, "(\"%s\")", root_in);
+	    error (0, 0, "when using local access method");
+d603 1
+a603 1
+	    error (0, 0, "CVSROOT \"%s\" must be an absolute pathname",
+d605 1
+d609 1
+a609 1
+	no_password = 1;
+d617 2
+a618 3
+	    error (0, 0, "can't specify hostname and username in CVSROOT");
+	    error (0, 0, "(\"%s\")", root_in);
+	    error (0, 0, "when using fork access method");
+d623 1
+a623 1
+	    error (0, 0, "CVSROOT \"%s\" must be an absolute pathname",
+d625 1
+d629 1
+a629 1
+	no_password = 1;
+d633 2
+a634 3
+	error (0, 0, "CVSROOT \"%s\"", root_in);
+       	error (0, 0, "is set for a kerberos access method but your");
+	error (0, 0, "CVS executable doesn't support it");
+d638 1
+d643 2
+a644 3
+	error (0, 0, "CVSROOT \"%s\"", root_in);
+	error (0, 0, "is set for a GSSAPI access method but your");
+	error (0, 0, "CVS executable doesn't support it");
+d648 1
+d654 1
+a654 1
+	no_password = 1;
+d658 1
+d661 2
+d674 1
+a674 1
+	error (0, 0, "didn't specify hostname in CVSROOT: %s", root_in);
+d687 1
+a687 1
+	error (0, 0, "missing directory in CVSROOT: %s", root_in);
+d692 1
+d696 1
+d758 1
+a758 1
+    char *dir;
+d765 5
+a769 1
+
+d834 2
+@
+
+
+1.1.2.1
+log
+@vendor-branch-ify new cvs 1.12
+@
+text
+@a2 1
+ * Copyright (c) 2002, Derek R. Price
+d18 2
+a19 3
+const char method_names[][16] = {
+    "undefined", "local", "server (rsh)", "pserver",
+    "kserver", "gserver", "ext", "fork"
+d24 4
+a27 2
+cvsroot_t *
+Name_Root (const char *dir, const char *update_dir)
+d30 1
+a30 2
+    cvsroot_t *ret;
+    const char *xupdate_dir;
+a35 1
+    int len;
+d75 1
+a75 1
+    if ((len = getline (&root, &root_allocated, fpin)) < 0)
+a76 1
+	int saved_errno = errno;
+d80 1
+a80 1
+	error (0, saved_errno, "cannot read %s", CVSADM_ROOT);
+d85 2
+a86 3
+    fclose (fpin);
+    cp = root + len - 1;
+    if (*cp == '\n')
+d94 5
+a98 2
+    ret = parse_cvsroot (root);
+    if (ret == NULL)
+d102 1
+a102 1
+	       "ignoring %s because it does not contain a valid root.",
+d104 1
+a107 1
+    if (
+d109 4
+a112 3
+        !ret->isremote &&
+#endif
+        !isdir (ret->directory))
+a117 1
+	free_cvsroot_t (ret);
+d122 3
+a124 1
+
+d130 1
+a130 1
+    return ret;
+a132 2
+
+
+d139 3
+a141 1
+Create_Root (const char *dir, const char *rootdir)
+d173 1
+a173 94
+
+/* Translate an absolute repository string for a primary server and return it.
+ *
+ * INPUTS
+ *   root_in	The root to be translated.
+ *
+ * RETURNS
+ *   A translated string this function owns, or a pointer to the original
+ *   string passed in if no translation was necessary.
+ *
+ *   If the returned string is the translated one, it may be overwritten
+ *   by the next call to this function.
+ */
+const char *
+primary_root_translate (const char *root_in)
+{
+    char *translated;
+    static char *previous = NULL;
+    static size_t len;
+
+#ifdef PROXY_SUPPORT
+    /* This can happen, for instance, during `cvs init'.  */
+    if (!config) return root_in;
+
+    if (config->PrimaryServer
+        && !strncmp (root_in, config->PrimaryServer->directory,
+		     strlen (config->PrimaryServer->directory))
+        && (ISSLASH (root_in[strlen (config->PrimaryServer->directory)])
+            || root_in[strlen (config->PrimaryServer->directory)] == '\0')
+       )
+    {
+	translated =
+	    Xasnprintf (previous, &len,
+		        "%s%s", current_parsed_root->directory,
+	                root_in + strlen (config->PrimaryServer->directory));
+	if (previous && previous != translated)
+	    free (previous);
+	return previous = translated;
+    }
+#endif
+
+    /* There is no primary root configured or it didn't match.  */
+    return root_in;
+}
+
+
+
+/* Translate a primary root in reverse for PATHNAMEs in responses.
+ *
+ * INPUTS
+ *   root_in	The root to be translated.
+ *
+ * RETURNS
+ *   A translated string this function owns, or a pointer to the original
+ *   string passed in if no translation was necessary.
+ *
+ *   If the returned string is the translated one, it may be overwritten
+ *   by the next call to this function.
+ */
+const char *
+primary_root_inverse_translate (const char *root_in)
+{
+    char *translated;
+    static char *previous = NULL;
+    static size_t len;
+
+#ifdef PROXY_SUPPORT
+    /* This can happen, for instance, during `cvs init'.  */
+    if (!config) return root_in;
+
+    if (config->PrimaryServer
+        && !strncmp (root_in, current_parsed_root->directory,
+		     strlen (current_parsed_root->directory))
+        && (ISSLASH (root_in[strlen (current_parsed_root->directory)])
+            || root_in[strlen (current_parsed_root->directory)] == '\0')
+       )
+    {
+	translated =
+	    Xasnprintf (previous, &len,
+		        "%s%s", config->PrimaryServer->directory,
+	                root_in + strlen (current_parsed_root->directory));
+	if (previous && previous != translated)
+	    free (previous);
+	return previous = translated;
+    }
+#endif
+
+    /* There is no primary root configured or it didn't match.  */
+    return root_in;
+}
+
+
+
+/* The root_allow_* stuff maintains a list of valid CVSROOT
+a175 8
+static List *root_allow;
+
+static void
+delconfig (Node *n)
+{
+    if (n->data) free_config (n->data);
+}
+
+d177 3
+d182 2
+a183 1
+root_allow_add (const char *arg)
+d185 36
+a220 1
+    Node *n;
+d222 8
+a229 6
+    if (!root_allow) root_allow = getlist();
+    n = getnode();
+    n->key = xstrdup (arg);
+    n->data = parse_config (arg);
+    n->delproc = delconfig;
+    addnode (root_allow, n);
+d233 1
+a233 1
+root_allow_free (void)
+d235 3
+a237 1
+    dellist (&root_allow);
+d240 3
+a242 2
+bool
+root_allow_ok (const char *arg)
+d244 3
+a246 1
+    if (!root_allow)
+d259 1
+a259 1
+	exit (EXIT_FAILURE);
+d262 4
+a265 26
+    if (findnode (root_allow, arg))
+	return true;
+    return false;
+}
+
+
+
+/* Get a config we stored in response to root_allow.
+ *
+ * RETURNS
+ *   The config associated with ARG.
+ */
+struct config *
+get_root_allow_config (const char *arg)
+{
+    Node *n;
+
+    TRACE (TRACE_FUNCTION, "get_root_allow_config (%s)", arg);
+
+    if (root_allow)
+	n = findnode (root_allow, arg);
+    else
+	n = NULL;
+
+    if (n) return n->data;
+    return parse_config (arg);
+d273 1
+d278 11
+a288 1
+/* FIXME - Deglobalize this. */
+d290 1
+a290 7
+/* Used to save the original root being processed so that we can still find it
+ * in lists and the like after a `Redirect' response.  Also set to mirror
+ * current_parsed_root in server mode so that code which runs on both the
+ * client and server but which wants to use original data on the client can
+ * just always reference the original_parsed_root.
+ */
+const cvsroot_t *original_parsed_root;
+a300 3
+/* Functions which allocate memory are not pure.  */
+static cvsroot_t *new_cvsroot_t(void)
+    __attribute__( (__malloc__) );
+d302 1
+a302 1
+new_cvsroot_t (void)
+a310 1
+#ifdef CLIENT_SUPPORT
+d316 1
+a316 2
+    newroot->proxy_hostname = NULL;
+    newroot->proxy_port = 0;
+d327 2
+a328 1
+free_cvsroot_t (cvsroot_t *root)
+a331 3
+    if (root->directory != NULL)
+	free (root->directory);
+#ifdef CLIENT_SUPPORT
+d342 2
+a343 3
+    if (root->proxy_hostname != NULL)
+	free (root->proxy_hostname);
+#endif /* CLIENT_SUPPORT */
+d350 1
+a350 21
+ * Parse a CVSROOT string to allocate and return a new cvsroot_t structure.
+ * Valid specifications are:
+ *
+ *	:(gserver|kserver|pserver):[[user][:password]@@]host[:[port]]/path
+ *	[:(ext|server):][[user]@@]host[:]/path
+ *	[:local:[e:]]/path
+ *	:fork:/path
+ *
+ * INPUTS
+ *	root_in		C String containing the CVSROOT to be parsed.
+ *
+ * RETURNS
+ *	A pointer to a newly allocated cvsroot_t structure upon success and
+ *	NULL upon failure.  The caller is responsible for disposing of
+ *	new structures with a call to free_cvsroot_t().
+ *
+ * NOTES
+ * 	This would have been a lot easier to write in Perl.
+ *
+ * SEE ALSO
+ * 	free_cvsroot_t()
+d353 2
+a354 1
+parse_cvsroot (const char *root_in)
+d364 2
+a365 10
+#ifdef CLIENT_SUPPORT
+    int check_hostname, no_port, no_password, no_proxy;
+#endif /* CLIENT_SUPPORT */
+
+    assert (root_in != NULL);
+
+    /* This message is TRACE_FLOW since this function is called repeatedly by
+     * the recursion routines.
+     */
+    TRACE (TRACE_FLOW, "parse_cvsroot (%s)", root_in);
+d391 2
+a392 1
+	    error (0, 0, "No closing `:' on method in CVSROOT.");
+a397 7
+#ifdef CLIENT_SUPPORT
+	/* Look for method options, for instance, proxy, proxyport.
+	 * Calling strtok again is saved until after parsing the method.
+	 */
+	method = strtok (method, ";");
+#endif /* CLIENT_SUPPORT */
+
+d416 2
+a417 1
+	    error (0, 0, "Unknown method (`%s') in CVSROOT.", method);
+a419 44
+
+#ifdef CLIENT_SUPPORT
+	/* Parse the method options, for instance, proxy, proxyport */
+	while ((p = strtok (NULL, ";")))
+	{
+	    char *q = strchr (p, '=');
+	    if (q == NULL)
+	    {
+	        error (0, 0, "Option (`%s') has no argument in CVSROOT.",
+                       p);
+	        goto error_exit;
+	    }
+
+	    *q++ = '\0';
+	    if (strcmp (p, "proxy") == 0)
+	    {
+		newroot->proxy_hostname = xstrdup (q);
+	    }
+	    else if (strcmp (p, "proxyport") == 0)
+	    {
+		char *r = q;
+		if (*r == '-') r++;
+		while (*r)
+		{
+		    if (!isdigit(*r++))
+		    {
+			error (0, 0,
+"CVSROOT may only specify a positive, non-zero, integer proxy port (not `%s').",
+			       q);
+			goto error_exit;
+		    }
+		}
+		if ((newroot->proxy_port = atoi (q)) <= 0)
+		    error (0, 0,
+"CVSROOT may only specify a positive, non-zero, integer proxy port (not `%s').",
+			   q);
+	    }
+	    else
+	    {
+	        error (0, 0, "Unknown option (`%s') in CVSROOT.", p);
+	        goto error_exit;
+	    }
+	}
+#endif /* CLIENT_SUPPORT */
+d423 3
+a425 2
+	/* If the method isn't specified, assume EXT_METHOD if the string looks
+	   like a relative path and LOCAL_METHOD otherwise.  */
+d428 3
+d432 1
+a435 16
+    /*
+     * There are a few sanity checks we can do now, only knowing the
+     * method of this root.
+     */
+#ifndef DEBUG
+    /* Why do we avoid these checks when DEBUG is set?  How is this used?  */
+# ifndef CLIENT_SUPPORT
+    if (newroot->method != local_method)
+    {
+	error (0, 0, "CVSROOT is set for a remote access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+	goto error_exit;
+    }
+# endif
+#endif /* ! DEBUG */
+
+d438 1
+a439 4
+    if (readonlyfs && newroot->isremote)
+	error (1, 0,
+"Read-only repository feature unavailable with remote roots (cvsroot = %s)",
+	       cvsroot_copy);
+d442 1
+a442 4
+#ifdef CLIENT_SUPPORT
+	&& (newroot->method != fork_method)
+#endif /* SERVER_SUPPORT */
+       )
+d451 3
+a453 3
+	    error (0, 0, "CVSROOT requires a path spec:");
+	    error (0, 0,
+":(gserver|kserver|pserver):[[user][:password]@@]host[:[port]]/path");
+d455 1
+a471 1
+		 *
+d487 14
+d515 2
+a516 2
+			error (0, 0,
+"CVSROOT may only specify a positive, non-zero, integer port (not `%s').",
+d518 4
+a521 2
+			error (0, 0,
+                               "Perhaps you entered a relative pathname?");
+d527 2
+a528 2
+		    error (0, 0,
+"CVSROOT may only specify a positive, non-zero, integer port (not `%s').",
+d530 4
+a533 1
+		    error (0, 0, "Perhaps you entered a relative pathname?");
+d540 3
+a542 1
+	if (*cvsroot_copy != '\0')
+a551 1
+#endif /* CLIENT_SUPPORT */
+d553 3
+a555 9
+    /*
+     * Parse the path for all methods.
+     */
+    /* Here & local_cvsroot() should be the only places this needs to be
+     * called on a CVSROOT now.  cvsroot->original is saved for error messages
+     * and, otherwise, we want no trailing slashes.
+     */
+    Sanitize_Repository_Name (cvsroot_copy);
+    newroot->directory = xstrdup (cvsroot_copy);
+d561 20
+a580 1
+#ifdef CLIENT_SUPPORT
+d583 1
+a583 1
+	error (0, 0, "Missing hostname in CVSROOT.");
+a586 1
+    /* We won't have attempted to parse these without CLIENT_SUPPORT */
+d588 1
+a588 2
+    no_password = 1;
+    no_proxy = 1;
+a589 1
+#endif /* CLIENT_SUPPORT */
+a592 1
+#ifdef CLIENT_SUPPORT
+d595 3
+a597 2
+	    error (0, 0, "Can't specify hostname and username in CVSROOT");
+	    error (0, 0, "when using local access method.");
+a599 1
+#endif /* CLIENT_SUPPORT */
+d607 1
+a607 1
+	    error (0, 0, "CVSROOT must be an absolute pathname (not `%s')",
+a608 1
+	    error (0, 0, "when using local access method.");
+a610 5
+#ifdef CLIENT_SUPPORT
+	/* We don't need to check for these in :local: mode, really, since
+	 * we shouldn't be able to hit the code above which parses them, but
+	 * I'm leaving them here in lieu of assertions.
+	 */
+d612 1
+a612 2
+	/* no_password already set */
+#endif /* CLIENT_SUPPORT */
+a613 1
+#ifdef CLIENT_SUPPORT
+d620 3
+a622 2
+	    error (0, 0, "Can't specify hostname and username in CVSROOT");
+	    error (0, 0, "when using fork access method.");
+a624 1
+	newroot->hostname = xstrdup("server");  /* for error messages */
+d627 1
+a627 1
+	    error (0, 0, "CVSROOT must be an absolute pathname (not `%s')",
+a628 1
+	    error (0, 0, "when using fork access method.");
+d632 1
+a632 1
+	/* no_password already set */
+d635 4
+a638 3
+# ifndef HAVE_KERBEROS
+       	error (0, 0, "CVSROOT is set for a kerberos access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+d640 1
+a640 1
+# else
+a641 1
+	/* no_password already set */
+d643 1
+a643 1
+# endif
+d645 4
+a648 3
+# ifndef HAVE_GSSAPI
+	error (0, 0, "CVSROOT is set for a GSSAPI access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+d650 1
+a650 1
+# else
+a651 2
+	no_proxy = 0;
+	/* no_password already set */
+d653 1
+a653 1
+# endif
+d657 1
+a657 1
+	/* no_password already set */
+a660 2
+	no_password = 0;
+	no_proxy = 0;
+a662 3
+#endif /* CLIENT_SUPPORT */
+    default:
+	error (1, 0, "Invalid method found in parse_cvsroot");
+a664 1
+#ifdef CLIENT_SUPPORT
+a670 13
+    if (no_proxy && (newroot->proxy_hostname || newroot->proxy_port))
+    {
+	error (0, 0,
+"CVSROOT proxy specification is only valid for gserver and");
+	error (0, 0, "pserver connection methods.");
+	goto error_exit;
+    }
+
+    if (!newroot->proxy_hostname && newroot->proxy_port)
+    {
+	error (0, 0, "Proxy port specified in CVSROOT without proxy host.");
+	goto error_exit;
+    }
+d674 1
+a674 1
+	error (0, 0, "Didn't specify hostname in CVSROOT.");
+d679 5
+a683 7
+    {
+        error (0, 0,
+"CVSROOT port specification is only valid for gserver, kserver,");
+        error (0, 0, "and pserver connection methods.");
+        goto error_exit;
+    }
+#endif /*CLIENT_SUPPORT */
+d687 1
+a687 1
+	error (0, 0, "Missing directory in CVSROOT.");
+a691 1
+    free (cvsroot_save);
+a694 1
+    free (cvsroot_save);
+d713 2
+a714 1
+normalize_cvsroot (const cvsroot_t *root)
+d717 5
+a721 1
+    char *p, *hostname;
+d730 1
+a730 1
+    p = hostname = xstrdup (root->hostname);
+d733 1
+a733 1
+	*p = tolower (*p);
+d737 7
+a743 5
+    cvsroot_canonical = Xasprintf (":pserver:%s@@%s:%d%s",
+                                   root->username ? root->username
+                                                  : getcaller(),
+                                   hostname, get_cvs_port_number (root),
+                                   root->directory);
+a751 28
+#ifdef PROXY_SUPPORT
+/* A walklist() function to walk the root_allow list looking for a PrimaryServer
+ * configuration with a directory matching the requested directory.
+ *
+ * If found, replace it.
+ */
+static bool get_local_root_dir_done;
+static int
+get_local_root_dir (Node *p, void *root_in)
+{
+    struct config *c = p->data;
+    char **r = root_in;
+
+    if (get_local_root_dir_done)
+	return 0;
+
+    if (c->PrimaryServer && !strcmp (*r, c->PrimaryServer->directory))
+    {
+	free (*r);
+	*r = xstrdup (p->key);
+	get_local_root_dir_done = true;
+    }
+    return 0;
+}
+#endif /* PROXY_SUPPORT */
+
+
+
+d755 2
+a756 1
+local_cvsroot (const char *dir)
+a762 14
+    /* Here and parse_cvsroot() should be the only places this needs to be
+     * called on a CVSROOT now.  cvsroot->original is saved for error messages
+     * and, otherwise, we want no trailing slashes.
+     */
+    Sanitize_Repository_Name (newroot->directory);
+
+#ifdef PROXY_SUPPORT
+    /* Translate the directory to a local one in the case that we are
+     * configured as a secondary.  If root_allow has not been initialized,
+     * nothing happens.
+     */
+    get_local_root_dir_done = false;
+    walklist (root_allow, get_local_root_dir, &newroot->directory);
+#endif /* PROXY_SUPPORT */
+d779 1
+a779 1
+char *cvs_cmd_name = "parse_cvsroot";		/* XXX is this used??? */
+d785 6
+d792 2
+a793 1
+isabsolute( const char *dir )
+d799 3
+a801 1
+main( int argc, char *argv[] )
+@
+
+
+1.1.2.2
+log
+@GNU CVS 1.12.11
+@
+text
+@a38 4
+    TRACE (TRACE_FLOW, "Name_Root (%s, %s)",
+	   dir ? dir : "(null)",
+	   update_dir ? update_dir : "(null)");
+
+d118 1
+a388 2
+    newroot->cvs_rsh = NULL;
+    newroot->cvs_server = NULL;
+a393 1
+    newroot->redirect = true;	/* Advertise Redirect support */
+a419 4
+    if (root->cvs_rsh != NULL)
+	free (root->cvs_rsh);
+    if (root->cvs_server != NULL)
+	free (root->cvs_server);
+d442 2
+a443 3
+ *	NULL upon failure.  The caller should never dispose of this structure,
+ *	as it is stored in a cache, but the caller may rely on it not to
+ *	change.
+a447 3
+ *	Would it make sense to reimplement the root and config file parsing
+ *	gunk in Lex/Yacc?
+ *
+a464 2
+    static List *cache = NULL;
+    Node *node;
+a472 3
+    if ((node = findnode (cache, root_in)))
+	return node->data;
+
+d512 1
+a512 1
+	if (!strcasecmp (method, "local"))
+d514 1
+a514 1
+	else if (!strcasecmp (method, "pserver"))
+d516 1
+a516 1
+	else if (!strcasecmp (method, "kserver"))
+d518 1
+a518 1
+	else if (!strcasecmp (method, "gserver"))
+d520 1
+a520 1
+	else if (!strcasecmp (method, "server"))
+d522 1
+a522 1
+	else if (!strcasecmp (method, "ext"))
+d524 1
+a524 1
+	else if (!strcasecmp (method, "fork"))
+d545 1
+a545 2
+	    TRACE (TRACE_DATA, "CVSROOT option=`%s' value=`%s'", p, q);
+	    if (!strcasecmp (p, "proxy"))
+d549 1
+a549 1
+	    else if (!strcasecmp (p, "proxyport"))
+a567 15
+	    else if (!strcasecmp (p, "CVS_RSH"))
+	    {
+		/* override CVS_RSH environment variable */
+		if (newroot->method == ext_method)
+		    newroot->cvs_rsh = xstrdup (q);
+	    }
+	    else if (!strcasecmp (p, "CVS_SERVER"))
+	    {
+		/* override CVS_SERVER environment variable */
+		if (newroot->method == ext_method
+		    || newroot->method == fork_method)
+		    newroot->cvs_server = xstrdup (q);
+	    }
+	    else if (!strcasecmp (p, "Redirect"))
+		readBool ("CVSROOT", "Redirect", q, &newroot->redirect);
+a866 6
+
+    if (!cache) cache = getlist();
+    node = getnode();
+    node->key = xstrdup (newroot->original);
+    node->data = newroot;
+    addnode (cache, node);
+a886 3
+ *
+ * ASSUMPTIONS
+ *   ROOT->method == pserver_method
+@
+
+
+1.1.3.1
+log
+@our CVS is currently at 1.11.1p1, thus import that version into vendor branch
+@
+text
+@d19 1
+a19 1
+    "undefined", "local", "server (rsh)", "pserver", "kserver", "gserver", "ext", "fork"
+d364 1
+d487 14
+d520 2
+d531 2
+d540 3
+a542 1
+	if (*cvsroot_copy != '\0')
+@
+
+
+1.1.3.2
+log
+@CVS 1.11.12 is the latest stable version of CVS,
+released 06.02.2004, with a huge lot of bug fixes.
+
+/me hopes this will pay off...
+@
+text
+@a2 1
+ * Copyright (c) 2002, Derek R. Price
+d18 2
+a19 3
+const char method_names[][16] = {
+    "undefined", "local", "server (rsh)", "pserver",
+    "kserver", "gserver", "ext", "fork"
+a35 1
+    int len;
+d75 1
+a75 1
+    if ((len = getline (&root, &root_allocated, fpin)) < 0)
+a76 1
+	int saved_errno = errno;
+d80 1
+a80 1
+	error (0, saved_errno, "cannot read %s", CVSADM_ROOT);
+d85 2
+a86 3
+    fclose (fpin);
+    cp = root + (len - 1);
+    if (*cp == '\n')
+d193 1
+a193 1
+		(char **) xmalloc (root_allow_size * sizeof (char *));
+d199 1
+a199 1
+		(char **) xrealloc (root_allow_vector,
+d211 12
+a222 1
+	    error_exit ();
+d225 1
+a225 1
+    p = xmalloc (strlen (arg) + 1);
+d273 1
+d278 11
+a288 1
+/* FIXME - Deglobalize this. */
+d350 1
+a350 21
+ * Parse a CVSROOT string to allocate and return a new cvsroot_t structure.
+ * Valid specifications are:
+ *
+ *	:(gserver|kserver|pserver):[[user][:password]@@]host[:[port]]/path
+ *	[:(ext|server):][[user]@@]host[:]/path
+ *	[:local:[e:]]/path
+ *	:fork:/path
+ *
+ * INPUTS
+ *	root_in		C String containing the CVSROOT to be parsed.
+ *
+ * RETURNS
+ *	A pointer to a newly allocated cvsroot_t structure upon success and
+ *	NULL upon failure.  The caller is responsible for disposing of
+ *	new structures with a call to free_cvsroot_t().
+ *
+ * NOTES
+ * 	This would have been a lot easier to write in Perl.
+ *
+ * SEE ALSO
+ * 	free_cvsroot_t()
+d354 1
+a354 1
+    const char *root_in;
+d390 2
+a391 1
+	    error (0, 0, "No closing `:' on method in CVSROOT.");
+d415 2
+a416 1
+	    error (0, 0, "Unknown method (`%s') in CVSROOT.", method);
+d422 3
+a424 2
+	/* If the method isn't specified, assume EXT_METHOD if the string looks
+	   like a relative path and LOCAL_METHOD otherwise.  */
+d427 3
+d431 1
+d450 2
+a451 1
+	    error (0, 0, "CVSROOT requires a path spec:");
+d454 1
+a470 1
+		 *
+d500 2
+a501 1
+			error (0, 0, "CVSROOT may only specify a positive, non-zero, integer port (not `%s').",
+d503 2
+a504 1
+			error (0, 0, "Perhaps you entered a relative pathname?");
+d510 2
+a511 1
+		    error (0, 0, "CVSROOT may only specify a positive, non-zero, integer port (not `%s').",
+d513 2
+a514 1
+		    error (0, 0, "Perhaps you entered a relative pathname?");
+d532 1
+a532 8
+    /*
+     * Parse the path for all methods.
+     */
+    /* Here & local_cvsroot() should be the only places this needs to be
+     * called on a CVSROOT now.  cvsroot->original is saved for error messages
+     * and, otherwise, we want no trailing slashes.
+     */
+    Sanitize_Repository_Name( cvsroot_copy );
+d534 1
+d543 3
+a545 2
+	error (0, 0, "CVSROOT is set for a remote access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+d553 3
+a555 2
+	error (0, 0, "CVSROOT is set to use the :fork: access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+d562 1
+a562 1
+	error (0, 0, "Missing hostname in CVSROOT.");
+d567 1
+a567 1
+    no_password = 1;
+d574 3
+a576 2
+	    error (0, 0, "Can't specify hostname and username in CVSROOT");
+	    error (0, 0, "when using local access method.");
+d586 1
+a586 1
+	    error (0, 0, "CVSROOT must be an absolute pathname (not `%s')",
+a587 1
+	    error (0, 0, "when using local access method.");
+d591 1
+a591 1
+	/* no_password already set */
+d599 3
+a601 2
+	    error (0, 0, "Can't specify hostname and username in CVSROOT");
+	    error (0, 0, "when using fork access method.");
+d606 1
+a606 1
+	    error (0, 0, "CVSROOT must be an absolute pathname (not `%s')",
+a607 1
+	    error (0, 0, "when using fork access method.");
+d611 1
+a611 1
+	/* no_password already set */
+d615 3
+a617 2
+       	error (0, 0, "CVSROOT is set for a kerberos access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+a620 1
+	/* no_password already set */
+d625 3
+a627 2
+	error (0, 0, "CVSROOT is set for a GSSAPI access method but your");
+	error (0, 0, "CVS executable doesn't support it.");
+a630 1
+	/* no_password already set */
+d636 1
+a636 1
+	/* no_password already set */
+a639 1
+	no_password = 0;
+a641 2
+    default:
+	error (1, 0, "Invalid method found in parse_cvsroot");
+d653 1
+a653 1
+	error (0, 0, "Didn't specify hostname in CVSROOT.");
+d666 1
+a666 1
+	error (0, 0, "Missing directory in CVSROOT.");
+a670 1
+    free (cvsroot_save);
+a673 1
+    free (cvsroot_save);
+d735 1
+a735 1
+    const char *dir;
+d742 1
+a742 5
+    /* Here and parse_cvsroot() should be the only places this needs to be
+     * called on a CVSROOT now.  cvsroot->original is saved for error messages
+     * and, otherwise, we want no trailing slashes.
+     */
+    Sanitize_Repository_Name( newroot->directory );
+a806 2
+/* vim:tabstop=8:shiftwidth=4
+ */
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

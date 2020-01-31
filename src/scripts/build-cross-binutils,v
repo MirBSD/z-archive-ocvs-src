@@ -1,0 +1,319 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2.6.3
+	tg-mergefixes-1-branch:1.2.0.8
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.6
+	MIROS_X_BASE:1.2
+	MIRBSD_XP_MIRPPC:1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.10.08.23.28.04;	author tg;	state Exp;
+branches
+	1.2.6.1
+	1.2.8.1;
+next	1.1;
+
+1.1
+date	2004.10.08.21.37.53;	author tg;	state Exp;
+branches;
+next	;
+
+1.2.6.1
+date	2004.12.27.18.32.21;	author tg;	state Exp;
+branches;
+next	1.2.6.2;
+
+1.2.6.2
+date	2004.12.28.11.10.34;	author tg;	state Exp;
+branches;
+next	1.2.6.3;
+
+1.2.6.3
+date	2004.12.28.15.50.26;	author tg;	state Exp;
+branches;
+next	;
+
+1.2.8.1
+date	2004.12.28.18.42.16;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@fresh from the irc logs: (long lines wrapped, look tyler@@)
+
+<mira> tg@@odem:/usr/cross/i386-pc-linux-gnu $ file a.out; ./a.out ; uname -a
+<mira> a.out: ELF 32-bit LSB executable, Intel 80386, version 1, for
+	GNU/Linux 2.2.0, statically linked, not stripped
+<mira> Hello, World!
+<mira> MirBSD odem.66h.42h.de 7 Kv#7uC3-20040929 GENERIC#518 i386
+
+<mira> tg@@odem:/usr/cross/i386-pc-linux-gnu $ i386-pc-linux-gnu-gcc hello.o
+	-Wl,-rpath-link,/usr/cross/i386-pc-linux-gnu/usr/lib
+<mira> /usr/cross/i386-pc-linux-gnu/lib/libc.so.6: undefined reference to
+	`__libc_stack_end@@GLIBC_PRIVATE'
+<mira> /usr/cross/i386-pc-linux-gnu/lib/libc.so.6: undefined reference to
+	`_dl_tls_symaddr@@GLIBC_PRIVATE'
+<mira> collect2: ld returned 1 exit status
+<mira> cool, bin runter auf 2 fehler
+
+* mira $ scp linuxsys.de:/lib/ld-linux.so.2 ~
+<mira> tg@@odem:/usr/cross/i386-pc-linux-gnu $ file a.out; ./a.out
+<mira> a.out: ELF 32-bit LSB executable, Intel 80386, version 1, for
+	GNU/Linux 2.2.0, dynamically linked (uses shared libs), not stripped
+<mira> Hello, World!
+
+You need, of course, some special environment setup, so that the as is
+found. (Stripping works, even with the native /usr/bin/strip :)
+____________________________________________________________
+
+special note to wbx@@: no, cross-building the world isn't possible,
+and before gcc 3.4, this is only thought for playing anyway.
+@
+text
+@#!/bin/ksh
+# $MirBSD: src/scripts/build-cross-binutils,v 1.1 2004/10/08 21:37:53 tg Exp $
+#-
+# Copyright (c) 2004
+#	Thorsten "mirabile" Glaser <tg@@66h.42h.de>
+#
+# Licensee is hereby permitted to deal in this work without restric-
+# tion, including unlimited rights to use, publically perform, modi-
+# fy, merge, distribute, sell, give away or sublicence, provided the
+# above copyright notices, these terms and the disclaimer are retai-
+# ned in all redistributions, or reproduced in accompanying documen-
+# tation or other materials provided with binary redistributions.
+#
+# Licensor hereby provides this work "AS IS" and WITHOUT WARRANTY of
+# any kind, expressed or implied, to the maximum extent permitted by
+# applicable law, but with the warranty of being written without ma-
+# licious intent or gross negligence; in no event shall licensor, an
+# author or contributor be held liable for any damage, direct, indi-
+# rect or other, however caused, arising in any way out of the usage
+# of covered work, even if advised of the possibility of such damage.
+#-
+# call this with the canonical target name as parameter
+
+TARGET=$1
+if [[ -z $TARGET ]]; then
+	print No target given.
+	exit 1
+fi
+
+CROSSDIR=${DESTDIR}/usr/cross/${TARGET}
+
+if [[ ! -s $CROSSDIR/T_BASEENV ]]; then
+	print Run build-cross-env first.
+	exit 1
+fi
+
+. $CROSSDIR/T_BASEENV
+
+cp="$SHELL $BSDSRCDIR/gnu/share/move-if-change -c"
+set -e
+set -x
+
+sed -e "s#@@@@TARGET@@@@#${TARGET}#" <$BSDSRCDIR/scripts/cross-binutils.sed \
+    >$CROSSDIR/usr/bin/cross-binutil.sh
+chmod 555 $CROSSDIR/usr/bin/cross-binutil.sh
+
+for binutil in ar ld nm objcopy objdump ranlib size strip; do
+	ln -f $CROSSDIR/usr/bin/cross-binutil.sh $CROSSDIR/usr/bin/$binutil
+done
+rm -f $CROSSDIR/usr/bin/cross-binutil.sh
+
+$cp /usr/include/bfd.h /usr/include/bfdver.h /usr/lib/libbfd.la \
+    $BSDSRCDIR/gnu/usr.bin/binutils/bfd/obj.$MACHINE/
+
+( cd $BSDSRCDIR/gnu/usr.bin/binutils/gas; \
+    BSDSRCDIR=$BSDSRCDIR \
+    BSDOBJDIR=$BSDOBJDIR \
+    OStriplet=$HOST \
+    MACHINE=$MACHINE \
+    MACHINE_ARCH=$MACHINE_ARCH \
+    GCCTARGET=$TARGET \
+    make -f Makefile.bsd-wrapper )
+
+install -c -s -o root -g bin -m 555 \
+    $BSDSRCDIR/gnu/usr.bin/binutils/gas/obj.$MACHINE/as-new \
+    $CROSSDIR/usr/bin/as
+
+for binutil in ar as ld nm objcopy objdump ranlib size strip; do
+	ln -f $CROSSDIR/usr/bin/$binutil $CROSSDIR/usr/$TARGET/bin/$binutil
+	ln -f $CROSSDIR/usr/bin/$binutil $CROSSDIR/usr/bin/$TARGET-$binutil
+done
+
+set +x
+print
+print done.
+@
+
+
+1.2.8.1
+log
+@merge the first bunch of MirOS X (branch MIROS_X tag tg-mergetmp-mirosx-1) into mergefixes branch
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-binutils,v 1.2.6.3 2004/12/28 15:50:26 tg Exp $
+d8 5
+a12 5
+# tion, including unlimited rights to use, publicly perform, modify,
+# merge, distribute, sell, give away or sublicence, provided all co-
+# pyright notices above, these terms and the disclaimer are retained
+# in all redistributions or reproduced in accompanying documentation
+# or other materials provided with binary redistributions.
+d20 1
+a20 1
+# of this work, even if advised of the possibility of such damage.
+a24 2
+EMULATION=$2
+
+a38 13
+if [[ -z $EMULATION ]]; then
+	EMULATION=$( \
+	    targ=$TARGET; \
+	    . $BSDSRCDIR/gnu/usr.bin/binutils/src/ld/configure.tgt; \
+	    print $targ_emul)
+fi
+
+if ! ld -V 2>&1 | fgrep -w $EMULATION >/dev/null 2>&1; then
+	print -- Target emulation \"$EMULATION\" not known.
+	print -- Execute \"ld -V\" to list known targets.
+	exit 1
+fi
+
+d43 1
+a43 3
+sed -e "s#@@@@TARGET@@@@#${TARGET}#" \
+    -e "s#@@@@EMUL@@@@#${EMULATION}#" \
+    <$BSDSRCDIR/scripts/cross-binutils.sed \
+a53 3
+
+$cp /usr/lib/libopcodes.la \
+    $BSDSRCDIR/gnu/usr.bin/binutils/opcodes/obj.$MACHINE/
+@
+
+
+1.2.6.1
+log
+@you'll need libopcodes.la in addition
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-binutils,v 1.2 2004/10/08 23:28:04 tg Exp $
+a53 3
+
+$cp /usr/lib/libopcodes.la \
+    $BSDSRCDIR/gnu/usr.bin/binutils/opcodes/obj.$MACHINE/
+@
+
+
+1.2.6.2
+log
+@first adjustments from stuff I learned during the first build round
+also, add back the RCS ID to crti.o which mirppc still uses, and install
+the *crt*.o from gcc
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/share/misc/licence.template,v 1.20 2004/12/03 16:18:37 tg Rel $
+d8 5
+a12 5
+# tion, including unlimited rights to use, publicly perform, modify,
+# merge, distribute, sell, give away or sublicence, provided all co-
+# pyright notices above, these terms and the disclaimer are retained
+# in all redistributions or reproduced in accompanying documentation
+# or other materials provided with binary redistributions.
+d20 1
+a20 1
+# of this work, even if advised of the possibility of such damage.
+a24 2
+EMULATION=$2
+
+a29 11
+if [[ -z $EMULATION ]]; then
+	print No emulation given.
+	exit 1
+fi
+
+if ! ld -V 2>&1 | fgrep -w $EMULATION >/dev/null 2>&1; then
+	print -- Target emulation \"$EMULATION\" not known.
+	print -- Execute \"ld -V\" to list known targets.
+	exit 1
+fi
+
+d43 1
+a43 3
+sed -e "s#@@@@TARGET@@@@#${TARGET}#" \
+    -e "s#@@@@EMUL@@@@#${EMULATION}#" \
+    <$BSDSRCDIR/scripts/cross-binutils.sed \
+@
+
+
+1.2.6.3
+log
+@autodetect target emulation (still can override)
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/scripts/build-cross-binutils,v 1.2.6.2 2004/12/28 11:10:34 tg Exp $
+d32 11
+a50 13
+
+if [[ -z $EMULATION ]]; then
+	EMULATION=$( \
+	    targ=$TARGET; \
+	    . $BSDSRCDIR/gnu/usr.bin/binutils/src/ld/configure.tgt; \
+	    print $targ_emul)
+fi
+
+if ! ld -V 2>&1 | fgrep -w $EMULATION >/dev/null 2>&1; then
+	print -- Target emulation \"$EMULATION\" not known.
+	print -- Execute \"ld -V\" to list known targets.
+	exit 1
+fi
+@
+
+
+1.1
+log
+@start cross-compiling efforts
+I'm currently playing with this, expect it to change.
+I'll try crossbuilding from i386-ecce-mirbsd7 to i386-pc-linux-gnu
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/share/misc/licence.template,v 1.14 2004/08/15 15:29:11 tg Rel $
+d39 1
+a39 1
+cp="$SHELL $BSDSRCDIR/gnu/share/move-if-change"
+d48 1
+a48 1
+	ln $CROSSDIR/usr/bin/cross-binutil.sh $CROSSDIR/usr/bin/$binutil
+d69 2
+a70 2
+	ln $CROSSDIR/usr/bin/$binutil $CROSSDIR/usr/$TARGET/bin/$binutil
+	ln $CROSSDIR/usr/bin/$binutil $CROSSDIR/usr/bin/$TARGET-$binutil
+d73 1
+a73 1
+@@set +x
+@
+

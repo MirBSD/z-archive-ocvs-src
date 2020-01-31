@@ -1,0 +1,711 @@
+head	1.5;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.5
+	tg-mergefixes-1-branch:1.5.0.14
+	tg-mergefixes-1-base:1.5
+	MIROS_X:1.5.0.12
+	MIROS_X_BASE:1.5
+	MIRBSD_XP_MIRPPC:1.5.0.10
+	MIRBSD_XP_SPARC_BASE:1.5
+	MIRBSD_XP_SPARC:1.5.0.8
+	MIRBSD_7quater:1.5
+	MIRBSD_7_ALPHA:1.5.0.6
+	MIRBSD_7:1.5.0.4
+	MIRBSD_7ter:1.5
+	MIRBSD_7_DEV:1.5.0.2
+	MIRBSD_5:1.2
+	MIRBSD_4:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.5
+date	2003.10.03.19.10.52;	author tg;	state Stab;
+branches;
+next	1.4;
+
+1.4
+date	2003.10.03.17.24.15;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2003.10.03.15.20.49;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.05.14.19.55.16;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.04.06.04.37.48;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@finish release engineering
+you should be able to build the release now
+@
+text
+@/*	$MirBSD: i4b_l3l4.h,v 1.4 2003/10/03 17:24:15 tg Exp $	*/
+/*	$NetBSD: i4b_l3l4.h,v 1.15 2003/10/03 16:38:44 pooka Exp $	*/
+
+/*
+ * Copyright (c) 1997, 1999 Hellmuth Michaelis. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *---------------------------------------------------------------------------
+ *
+ *	i4b_l3l4.h - layer 3 / layer 4 interface
+ *
+ *---------------------------------------------------------------------------*/
+
+#ifndef _I4B_L3L4_H_
+#define _I4B_L3L4_H_
+
+#include <sys/device.h>
+#include <sys/timeout.h>
+#define T303VAL	(hz*4)			/* 4 seconds timeout		*/
+#define T305VAL	(hz*30)			/* 30 seconds timeout		*/
+#define T308VAL	(hz*4)			/* 4 seconds timeout		*/
+#define T309VAL	(hz*90)			/* 90 seconds timeout		*/
+#define T310VAL	(hz*60)			/* 30-120 seconds timeout	*/
+#define T313VAL	(hz*4)			/* 4 seconds timeout		*/
+#define T400DEF	(hz*10)			/* 10 seconds timeout		*/
+
+#define MAX_BCHAN	2
+#define N_CALL_DESC	(20*(MAX_BCHAN))	/* XXX: make resizable */
+
+typedef struct bchan_statistics {
+	int outbytes;
+	int inbytes;
+} bchan_statistics_t;
+
+/*---------------------------------------------------------------------------*
+ * table of things the driver needs to know about the b channel
+ * it is connected to for data transfer
+ *---------------------------------------------------------------------------*/
+typedef struct i4b_isdn_bchan_linktab {
+	void* l1token;
+	int channel;
+	const struct isdn_l4_bchannel_functions *bchannel_driver;
+	struct ifqueue *tx_queue;
+	struct ifqueue *rx_queue;	/* data xfer for NON-HDLC traffic   */
+	struct mbuf **rx_mbuf;		/* data xfer for HDLC based traffic */
+} isdn_link_t;
+
+struct isdn_l4_driver_functions;
+struct isdn_l3_driver;
+
+/*---------------------------------------------------------------------------*
+ *	this structure describes one call/connection on one B-channel
+ *	and all its parameters
+ *---------------------------------------------------------------------------*/
+typedef struct call_desc
+{
+	u_int	cdid;			/* call descriptor id		*/
+	int	isdnif;			/* isdn interface number	*/
+	struct isdn_l3_driver *l3drv;
+	int	cr;			/* call reference value		*/
+
+	int	crflag;			/* call reference flag		*/
+#define CRF_ORIG	0		/* originating side		*/
+#define CRF_DEST	1		/* destinating side		*/
+
+	int	channelid;		/* channel id value		*/
+	int	channelexcl;		/* channel exclusive		*/
+
+	int	bprot;			/* B channel protocol BPROT_XXX */
+
+	int	bchan_driver_index;	/* driver to use for B channel	*/
+	int	bchan_driver_unit;	/* unit for above driver number	*/
+	
+	cause_t	cause_in;		/* cause value from NT	*/
+	cause_t	cause_out;		/* cause value to NT	*/
+
+	int	call_state;		/* from incoming SETUP	*/
+	
+	u_char	dst_telno[TELNO_MAX];	/* destination number	*/
+	u_char	src_telno[TELNO_MAX];	/* source number	*/
+	u_char	src_subaddr[SUBADDR_MAX];
+	u_char	dest_subaddr[SUBADDR_MAX];
+
+	int	scr_ind;		/* screening ind for incoming call */
+	int	prs_ind;		/* presentation ind for incoming call */
+	int	type_plan;		/* type and plan for incoming number */
+	
+	int	Q931state;		/* Q.931 state for call	*/
+	int	event;			/* event to be processed */
+
+	int	response;		/* setup response type	*/
+
+	int	T303;			/* SETUP sent response timeout	*/
+	int	T303_first_to;		/* first timeout flag		*/
+
+	int	T305;			/* DISC without PROG IND	*/
+
+	int	T308;			/* RELEASE sent response timeout*/
+	int	T308_first_to;		/* first timeout flag		*/
+
+	int	T309;			/* data link disconnect timeout	*/
+
+	int	T310;			/* CALL PROC received		*/
+
+	int	T313;			/* CONNECT sent timeout		*/ 
+
+	int	T400;			/* L4 timeout */
+
+	isdn_link_t	*ilt;		/* isdn B channel driver/state	*/
+	const struct isdn_l4_driver_functions *l4_driver;		/* layer 4 driver		*/
+	void	*l4_driver_softc;					/* layer 4 driver instance	*/
+
+	int	dir;			/* outgoing or incoming call	*/
+#define DIR_OUTGOING	0
+#define DIR_INCOMING	1
+
+	int	timeout_active;		/* idle timeout() active flag	*/
+
+	struct	timeout	idle_timeout_handle;
+	struct	timeout	T303_callout;
+	struct	timeout	T305_callout;
+	struct	timeout	T308_callout;
+	struct	timeout	T309_callout;
+	struct	timeout	T310_callout;
+	struct	timeout	T313_callout;
+	struct	timeout	T400_callout;
+	int	callouts_inited;		/* must init before use */
+
+	int	idletime_state;		/* wait for idle_time begin	*/
+#define IST_IDLE	0	/* shorthold mode disabled 	*/
+#define IST_NONCHK	1	/* in non-checked window	*/
+#define IST_CHECK	2	/* in idle check window		*/
+#define IST_SAFE	3	/* in safety zone		*/
+
+	time_t	idletimechk_start;	/* check idletime window start	*/
+	time_t	connect_time;		/* time connect was made	*/
+	time_t	last_active_time;	/* last time with activity	*/
+
+					/* for incoming connections:	*/
+	time_t	max_idle_time;		/* max time without activity	*/
+
+					/* for outgoing connections:	*/	
+	msg_shorthold_t shorthold_data;	/* shorthold data to use */
+
+	int	aocd_flag;		/* AOCD used for unitlength calc*/
+	time_t	last_aocd_time;		/* last time AOCD received	*/
+	int	units;			/* number of AOCD charging units*/
+	int	units_type;		/* units type: AOCD, AOCE	*/
+	int	cunits;			/* calculated units		*/
+
+	int	isdntxdelay;		/* isdn tx delay after connect	*/
+
+	u_char	display[DISPLAY_MAX];	/* display information element	*/
+	char	datetime[DATETIME_MAX];	/* date/time information element*/	
+} call_desc_t;
+
+extern call_desc_t call_desc[];
+extern int num_call_desc;
+
+/*
+ * Set of functions layer 4 drivers calls to manipulate the B channel
+ * they are using.
+ */
+struct isdn_l4_bchannel_functions {
+	void (*bch_config)(void*, int channel, int bprot, int updown);
+	void (*bch_tx_start)(void*, int channel);
+	void (*bch_stat)(void*, int channel, bchan_statistics_t *bsp);	
+};
+
+/*
+ * Functions a layer 4 application driver exports
+ */
+struct isdn_l4_driver_functions {
+	/*
+	 * Functions for use by the B channel driver
+	 */
+	void (*bch_rx_data_ready)(void *softc);
+	void (*bch_tx_queue_empty)(void *softc);
+	void (*bch_activity)(void *softc, int rxtx);
+#define ACT_RX 0
+#define ACT_TX 1
+	void (*line_connected)(void *softc, void *cde);
+	void (*line_disconnected)(void *softc, void *cde);
+	void (*dial_response)(void *softc, int stat, cause_t cause);
+	void (*updown_ind)(void *softc, int updown);
+	/*
+	 * Functions used by the ISDN management system
+	 */
+	void* (*get_softc)(int unit);
+	void (*set_linktab)(void *softc, isdn_link_t *ilt);
+	/*
+	 * Optional accounting function
+	 */
+	time_t (*get_idletime)(void* softc);
+};
+
+/* global registry of layer 4 drivers */
+int isdn_l4_driver_attach(const char *name, int units, const struct isdn_l4_driver_functions *driver);
+int isdn_l4_driver_detatch(const char *name);
+int isdn_l4_find_driverid(const char *name);
+const struct isdn_l4_driver_functions *isdn_l4_find_driver(const char *name, int unit);
+const struct isdn_l4_driver_functions *isdn_l4_get_driver(int driver_id, int unit);
+
+/* forward decl. */
+struct isdn_diagnostic_request;
+struct isdn_dr_prot;
+
+/*
+ * functions exported by a layer 3 driver to layer 4
+ */
+struct isdn_l3_driver_functions {
+	isdn_link_t* (*get_linktab)(void*, int channel);
+	void (*set_l4_driver)(void*, int channel, const struct isdn_l4_driver_functions *l4_driver, void *l4_driver_softc);
+	
+	void	(*N_CONNECT_REQUEST)	(struct call_desc *cd);	
+	void	(*N_CONNECT_RESPONSE)	(struct call_desc *cd, int, int);
+	void	(*N_DISCONNECT_REQUEST)	(struct call_desc *cd, int);
+	void	(*N_ALERT_REQUEST)	(struct call_desc *cd);
+	int     (*N_DOWNLOAD)		(void*, int numprotos, struct isdn_dr_prot *protocols);
+	int     (*N_DIAGNOSTICS)	(void*, struct isdn_diagnostic_request*);
+	void	(*N_MGMT_COMMAND)	(struct isdn_l3_driver *, int cmd, void *);
+};
+
+/*---------------------------------------------------------------------------*
+ *	This structure "describes" one ISDN interface (typically identical
+ * 	to one controller, but when one controller drives multiple ISDN's,
+ *	this is just one of those ISDN's).
+ *
+ *	An ISDN can be either a Basic Rate Interface (BRI, 2 B channels)
+ *	or a Primary Rate Interface (PRI, 30 B channels).
+ *---------------------------------------------------------------------------*/
+struct isdn_l3_driver {
+	SLIST_ENTRY(isdn_l3_driver) l3drvq;
+	void*	l1_token;		/* softc of hardware driver, actually
+					 * this is the l2_softc (!!) for
+					 * passive cards, and something else
+					 * for active cards (maybe actually
+					 * the softc there) */
+	int	isdnif;			/* ISDN id assigned to this */
+	char *devname;			/* pointer to autoconf identifier */
+					/* e.g. "isic0" or "daic0 port 2" */
+	char *card_name;		/* type of card */
+
+	int	protocol;		/* D-channel protocol type */
+
+	int	dl_est;			/* layer 2 established	*/
+#define DL_DOWN	0
+#define DL_UP	1	
+
+	int	nbch;			/* number of B channels */
+	int	*bch_state;		/* states of the nbch B channels */
+#define BCH_ST_FREE	0		/* free to be used, idle */
+#define BCH_ST_RSVD	1		/* reserved, may become free or used */
+#define BCH_ST_USED	2		/* in use for data transfer */
+
+	int	tei;			/* current tei or -1 if invalid */
+
+	/* pointers to functions to be called from L4 */
+	const struct isdn_l3_driver_functions * l3driver;
+};
+
+#define NBCH_BRI 2
+#define NBCH_PRI 30
+
+void i4b_l4_contr_ev_ind(int controller, int attach);
+struct isdn_l3_driver * isdn_attach_isdnif(const char *devname,
+    const char *cardname, void *l1_token, 
+    const struct isdn_l3_driver_functions * l3driver, int nbch);
+int isdn_detach_isdnif(struct isdn_l3_driver *);
+void isdn_isdnif_ready(int isdnif);
+struct isdn_l3_driver *isdn_find_l3_by_isdnif(int isdnif);
+int isdn_count_isdnif(int *max_isdnif);
+
+#endif /* _I4B_Q931_H_ */
+@
+
+
+1.4
+log
+@kernel-side support for ISDN BRI/PRI rate-independent interface
+makes us support, in addition to BRI (basic rate interface,
+ 2x64 kbps B channels, 1x16 kbps D channel, BASIC ACCESS), PRI cards
+(primary rate interface, 30x64 kbps B channels, 1x64 kbps D channel,
+ 1x64 kbps SYNC channel -> 2048 kbps E1 line; PRIMARY MULTIPLEX;
+ as well as its US/japanese equivalent).
+
+This is the theory. This is live code from NetBSD.
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD: i4b_l3l4.h,v 1.3 2003/10/03 15:20:49 tg Exp $	*/
+a276 1
+	int	nbch;			/* number of B channels */
+@
+
+
+1.3
+log
+@Sync with NetBSD
+
+|| Among others, this gives us:
+
+Module Name:    src
+Committed By:   pooka
+Date:           Thu Sep 25 15:34:38 UTC 2003
+
+Added Files:
+        src/sys/netisdn: i4b_capi.h i4b_capi_l4if.c i4b_capi_llif.c
+            i4b_capi_msgs.c i4b_capi_msgs.h
+
+Log Message:
+Add a support layer for the ISDN CAPI (http://www.capi.org/), which should
+make it pretty simple to write drivers for cards which conform to CAPI.
+
+This code was originally written by Juha-Matti Liukkonen <jml@@cubical.fi>
+of Cubical Solutions Ltd. for FreeBSD, and was now adapted to NetBSD
+by myself for the same company.
+
+|| and
+
+Module Name:    src
+Committed By:   pooka
+Date:           Thu Sep 25 15:53:26 UTC 2003
+
+Added Files:
+        src/sys/dev/ic: iavc.c iavcreg.h iavcvar.h
+        src/sys/dev/pci: iavc_pci.c
+
+Log Message:
+Add a driver for the CAPI-compliant AVM B1/T1 cards.
+
+The driver backend is capable of supporting also ISA cards (no DMA)
+and primary rate (PRI) cards in addition to the basic rate ones,
+but I don't any to test on right now, so we don't support those
+currently.
+
+This code was originally written by Juha-Matti Liukkonen <jml@@cubical.fi>
+of Cubical Solutions Ltd. for FreeBSD, and was ported to NetBSD by
+myself for the same company.
+
+==================================================================
+
+The full list of ISDN files is now:
+
+src/etc/MAKEDEV.mi
+src/etc/Makefile
+src/etc/etc.i386/MAKEDEV
+src/etc/etc.i386/MAKEDEV.md
+src/etc/isdnd.rc.sample
+src/etc/isdnd.sppp.sample
+src/etc/mtree/4.4BSD.dist
+src/etc/ppp/ppp.conf.sample
+src/etc/rc
+src/etc/rc.conf
+src/include/Makefile
+src/share/man/man4/Makefile
+src/share/man/man4/daic.4
+src/share/man/man4/iavc.4
+src/share/man/man4/ifpci.4
+src/share/man/man4/ippp.4
+src/share/man/man4/irip.4
+src/share/man/man4/isdn.4
+src/share/man/man4/isdnbchan.4
+src/share/man/man4/isdncapi.4
+src/share/man/man4/isdnctl.4
+src/share/man/man4/isdntel.4
+src/share/man/man4/isdntrc.4
+src/share/man/man4/isic.4
+src/share/man/man4/iwic.4
+src/sys/arch/i386/conf/GENERIC
+src/sys/arch/i386/i386/conf.c
+src/sys/conf/files
+src/sys/dev/ic/daic.c
+src/sys/dev/ic/daicreg.h
+src/sys/dev/ic/daicvar.h
+src/sys/dev/ic/hscx.c
+src/sys/dev/ic/hscx.h
+src/sys/dev/ic/iavc.c
+src/sys/dev/ic/iavcreg.h
+src/sys/dev/ic/iavcvar.h
+src/sys/dev/ic/ipac.h
+src/sys/dev/ic/isac.c
+src/sys/dev/ic/isac.h
+src/sys/dev/ic/isacsx.c
+src/sys/dev/ic/isacsx.h
+src/sys/dev/ic/isic.c
+src/sys/dev/ic/isic_bchan.c
+src/sys/dev/ic/isic_l1.c
+src/sys/dev/ic/isic_l1.h
+src/sys/dev/ic/isic_l1fsm.c
+src/sys/dev/isa/daic_isa.c
+src/sys/dev/isa/files.isa
+src/sys/dev/isa/files.isapnp
+src/sys/dev/isa/isic_isa.c
+src/sys/dev/isa/isic_isa_avm_a1.c
+src/sys/dev/isa/isic_isa_itk_ix1.c
+src/sys/dev/isa/isic_isa_tel_s016.c
+src/sys/dev/isa/isic_isa_tel_s0163.c
+src/sys/dev/isa/isic_isa_tel_s08.c
+src/sys/dev/isa/isic_isa_usr_sti.c
+src/sys/dev/isa/isic_isapnp.c
+src/sys/dev/isa/isic_isapnp_ctx_s0P.c
+src/sys/dev/isa/isic_isapnp_drn_ngo.c
+src/sys/dev/isa/isic_isapnp_dynalink.c
+src/sys/dev/isa/isic_isapnp_elsa_qs1i.c
+src/sys/dev/isa/isic_isapnp_itkix.c
+src/sys/dev/isa/isic_isapnp_siemens_isurf.c
+src/sys/dev/isa/isic_isapnp_sws.c
+src/sys/dev/isa/isic_isapnp_tel_s0P.c
+src/sys/dev/microcode/daic/Makefile
+src/sys/dev/microcode/daic/dnload.h
+src/sys/dev/microcode/daic/dnload.h-dist
+src/sys/dev/microcode/daic/gendnloadh
+src/sys/dev/pci/files.pci
+src/sys/dev/pci/fwlynx_pci.c
+src/sys/dev/pci/iavc_pci.c
+src/sys/dev/pci/ifpci.c
+src/sys/dev/pci/ifpci2.c
+src/sys/dev/pci/isic_pci.c
+src/sys/dev/pci/isic_pci.h
+src/sys/dev/pci/isic_pci_elsa_qs1p.c
+src/sys/dev/pci/iwic_bchan.c
+src/sys/dev/pci/iwic_dchan.c
+src/sys/dev/pci/iwic_fsm.c
+src/sys/dev/pci/iwic_pci.c
+src/sys/dev/pci/iwicreg.h
+src/sys/dev/pci/iwicvar.h
+src/sys/dev/pci/pcidevs
+src/sys/dev/pci/pcidevs.h
+src/sys/dev/pci/pcidevs_data.h
+src/sys/dev/pci/pcireg.h
+src/sys/dev/pcmcia/files.pcmcia
+src/sys/dev/pcmcia/isic_pcmcia.c
+src/sys/dev/pcmcia/isic_pcmcia.h
+src/sys/dev/pcmcia/isic_pcmcia_avm_fritz.c
+src/sys/dev/pcmcia/isic_pcmcia_elsa_isdnmc.c
+src/sys/dev/pcmcia/isic_pcmcia_elsa_mcall.c
+src/sys/dev/pcmcia/isic_pcmcia_sbspeedstar2.c
+src/sys/net/if_sppp.h
+src/sys/netisdn/i4b_capi.h
+src/sys/netisdn/i4b_capi_l4if.c
+src/sys/netisdn/i4b_capi_llif.c
+src/sys/netisdn/i4b_capi_msgs.c
+src/sys/netisdn/i4b_capi_msgs.h
+src/sys/netisdn/i4b_cause.h
+src/sys/netisdn/i4b_ctl.c
+src/sys/netisdn/i4b_debug.h
+src/sys/netisdn/i4b_global.h
+src/sys/netisdn/i4b_i4bdrv.c
+src/sys/netisdn/i4b_iframe.c
+src/sys/netisdn/i4b_ioctl.h
+src/sys/netisdn/i4b_ipr.c
+src/sys/netisdn/i4b_isdnq931.h
+src/sys/netisdn/i4b_isppp.c
+src/sys/netisdn/i4b_isppp.h
+src/sys/netisdn/i4b_l1l2.h
+src/sys/netisdn/i4b_l2.c
+src/sys/netisdn/i4b_l2.h
+src/sys/netisdn/i4b_l2fsm.c
+src/sys/netisdn/i4b_l2fsm.h
+src/sys/netisdn/i4b_l2if.c
+src/sys/netisdn/i4b_l2timer.c
+src/sys/netisdn/i4b_l3.h
+src/sys/netisdn/i4b_l3fsm.c
+src/sys/netisdn/i4b_l3fsm.h
+src/sys/netisdn/i4b_l3l4.h
+src/sys/netisdn/i4b_l3timer.c
+src/sys/netisdn/i4b_l4.c
+src/sys/netisdn/i4b_l4.h
+src/sys/netisdn/i4b_l4if.c
+src/sys/netisdn/i4b_l4mgmt.c
+src/sys/netisdn/i4b_l4timer.c
+src/sys/netisdn/i4b_lme.c
+src/sys/netisdn/i4b_mbuf.c
+src/sys/netisdn/i4b_mbuf.h
+src/sys/netisdn/i4b_q931.c
+src/sys/netisdn/i4b_q931.h
+src/sys/netisdn/i4b_q932fac.c
+src/sys/netisdn/i4b_q932fac.h
+src/sys/netisdn/i4b_rbch.c
+src/sys/netisdn/i4b_rbch_ioctl.h
+src/sys/netisdn/i4b_sframe.c
+src/sys/netisdn/i4b_tei.c
+src/sys/netisdn/i4b_tel.c
+src/sys/netisdn/i4b_tel_ioctl.h
+src/sys/netisdn/i4b_trace.c
+src/sys/netisdn/i4b_trace.h
+src/sys/netisdn/i4b_uframe.c
+src/sys/netisdn/i4b_util.c
+src/sys/sys/cdefs.h
+src/sys/sys/device.h
+src/sys/sys/select.h
+src/usr.sbin/Makefile
+src/usr.sbin/isdnd/Makefile
+src/usr.sbin/isdnd/alias.c
+src/usr.sbin/isdnd/alias.h
+src/usr.sbin/isdnd/config.h
+src/usr.sbin/isdnd/controller.c
+src/usr.sbin/isdnd/curses.c
+src/usr.sbin/isdnd/dial.c
+src/usr.sbin/isdnd/exec.c
+src/usr.sbin/isdnd/fsm.c
+src/usr.sbin/isdnd/holiday.c
+src/usr.sbin/isdnd/isdnd.8
+src/usr.sbin/isdnd/isdnd.acct.5
+src/usr.sbin/isdnd/isdnd.h
+src/usr.sbin/isdnd/isdnd.rates.5
+src/usr.sbin/isdnd/isdnd.rc.5
+src/usr.sbin/isdnd/log.c
+src/usr.sbin/isdnd/main.c
+src/usr.sbin/isdnd/monitor.c
+src/usr.sbin/isdnd/monitor.h
+src/usr.sbin/isdnd/msghdl.c
+src/usr.sbin/isdnd/pathnames.h
+src/usr.sbin/isdnd/pcause.c
+src/usr.sbin/isdnd/process.c
+src/usr.sbin/isdnd/rates.c
+src/usr.sbin/isdnd/rc_config.c
+src/usr.sbin/isdnd/rc_parse.y
+src/usr.sbin/isdnd/rc_scan.l
+src/usr.sbin/isdnd/support.c
+src/usr.sbin/isdnd/timer.c
+src/usr.sbin/ppp/ppp/Makefile
+src/usr.sbin/ppp/ppp/i4b.c
+
+Please correct me if anything should be missing.
+@
+text
+@d1 2
+a2 2
+/*	$MirBSD$	*/
+/*	$NetBSD: i4b_l3l4.h,v 1.14 2003/09/25 15:16:08 pooka Exp $	*/
+d78 1
+a78 1
+	int	bri;			/* isdn controller number	*/
+d245 6
+a250 3
+ *	this structure "describes" one BRI (typically identical to one
+ *	controller, but when one controller drives multiple BRIs, this
+ *	is just one of those BRIs)
+d259 1
+a259 1
+	int	bri;			/* BRI id assigned to this */
+d270 5
+a274 4
+	int	bch_state[MAX_BCHAN];	/* states of the B channels */
+#define BCH_ST_FREE	0	/* free to be used, idle */
+#define BCH_ST_RSVD	1	/* reserved, may become free or used */
+#define BCH_ST_USED	2	/* in use for data transfer */
+d283 3
+d287 1
+a287 1
+struct isdn_l3_driver * isdn_attach_bri(const char *devname,
+d289 5
+a293 5
+    const struct isdn_l3_driver_functions * l3driver);
+int isdn_detach_bri(struct isdn_l3_driver *);
+void isdn_bri_ready(int bri);
+struct isdn_l3_driver *isdn_find_l3_by_bri(int bri);
+int isdn_count_bri(int *maxbri);
+@
+
+
+1.2
+log
+@kill the NetBSD callout timeout-API, which was cloned
+from ours and introduced for I4B only anyways.
+
+feature: callout_init() translates to a NOP, because
+it just zeroed out the structure. This even saves us
+a couple of bytes and cycles.
+@
+text
+@d1 3
+a30 7
+ *	------------------------------------------
+ *
+ *	$Id: i4b_l3l4.h,v 1.1 2003/04/06 04:37:48 tg Exp $
+ *
+ * $FreeBSD$
+ *
+ *	last edit-date: [Fri Jun  2 14:29:35 2000]
+d47 2
+d267 1
+a267 1
+	int	bch_state[2];		/* states of the b channels */
+d273 1
+@
+
+
+1.1
+log
+@Pull in ISDN support from NetBSD, push out the old
+one with the "I require you to send me a postcard"
+licence.
+
+This enables building a kernel with ISDN support
+(it's just slower and like 200 KiB bigger), but
+disables isdnd from userland and needs different
+manpages and other fixes from NetBSD.
+
+Also added:
+ - support for the callout API from NetBSD, which
+   is in fact our stolen new-style timeout API,
+   just with a bit more overhead and different names
+   for the structure
+ - some includes sync with NBSD
+ - a shitload of kludges to make ISDN build
+
+This needs security, style and bloat audits fast.
+And testing.
+@
+text
+@d30 1
+a30 1
+ *	$Id: i4b_l3l4.h,v 1.13 2002/03/30 11:43:33 martin Exp $
+d42 1
+a42 2
+#include <sys/callout.h>
+
+d141 8
+a148 8
+	struct	callout	idle_timeout_handle;
+	struct	callout	T303_callout;
+	struct	callout	T305_callout;
+	struct	callout	T308_callout;
+	struct	callout	T309_callout;
+	struct	callout	T310_callout;
+	struct	callout	T313_callout;
+	struct	callout	T400_callout;
+@
+

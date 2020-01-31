@@ -1,0 +1,357 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.02;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.02;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+#
+#  Copyright (c) 1995-2000, Raphael Manfredi
+#  
+#  You may redistribute only under the same terms as Perl 5, as specified
+#  in the README file that comes with the distribution.
+#
+
+sub BEGIN {
+    if ($ENV{PERL_CORE}){
+	chdir('t') if -d 't';
+	@@INC = ('.', '../lib', '../ext/Storable/t');
+    } else {
+	unshift @@INC, 't';
+    }
+    require Config; import Config;
+    if ($ENV{PERL_CORE} and $Config{'extensions'} !~ /\bStorable\b/) {
+        print "1..0 # Skip: Storable was not built\n";
+        exit 0;
+    }
+    require 'st-dump.pl';
+}
+
+sub ok;
+
+use Storable qw(freeze thaw);
+
+print "1..25\n";
+
+($scalar_fetch, $array_fetch, $hash_fetch) = (0, 0, 0);
+
+package TIED_HASH;
+
+sub TIEHASH {
+	my $self = bless {}, shift;
+	return $self;
+}
+
+sub FETCH {
+	my $self = shift;
+	my ($key) = @@_;
+	$main::hash_fetch++;
+	return $self->{$key};
+}
+
+sub STORE {
+	my $self = shift;
+	my ($key, $value) = @@_;
+	$self->{$key} = $value;
+}
+
+sub FIRSTKEY {
+	my $self = shift;
+	scalar keys %{$self};
+	return each %{$self};
+}
+
+sub NEXTKEY {
+	my $self = shift;
+	return each %{$self};
+}
+
+sub STORABLE_freeze {
+	my $self = shift;
+	$main::hash_hook1++;
+	return join(":", keys %$self) . ";" . join(":", values %$self);
+}
+
+sub STORABLE_thaw {
+	my ($self, $cloning, $frozen) = @@_;
+	my ($keys, $values) = split(/;/, $frozen);
+	my @@keys = split(/:/, $keys);
+	my @@values = split(/:/, $values);
+	for (my $i = 0; $i < @@keys; $i++) {
+		$self->{$keys[$i]} = $values[$i];
+	}
+	$main::hash_hook2++;
+}
+
+package TIED_ARRAY;
+
+sub TIEARRAY {
+	my $self = bless [], shift;
+	return $self;
+}
+
+sub FETCH {
+	my $self = shift;
+	my ($idx) = @@_;
+	$main::array_fetch++;
+	return $self->[$idx];
+}
+
+sub STORE {
+	my $self = shift;
+	my ($idx, $value) = @@_;
+	$self->[$idx] = $value;
+}
+
+sub FETCHSIZE {
+	my $self = shift;
+	return @@{$self};
+}
+
+sub STORABLE_freeze {
+	my $self = shift;
+	$main::array_hook1++;
+	return join(":", @@$self);
+}
+
+sub STORABLE_thaw {
+	my ($self, $cloning, $frozen) = @@_;
+	@@$self = split(/:/, $frozen);
+	$main::array_hook2++;
+}
+
+package TIED_SCALAR;
+
+sub TIESCALAR {
+	my $scalar;
+	my $self = bless \$scalar, shift;
+	return $self;
+}
+
+sub FETCH {
+	my $self = shift;
+	$main::scalar_fetch++;
+	return $$self;
+}
+
+sub STORE {
+	my $self = shift;
+	my ($value) = @@_;
+	$$self = $value;
+}
+
+sub STORABLE_freeze {
+	my $self = shift;
+	$main::scalar_hook1++;
+	return $$self;
+}
+
+sub STORABLE_thaw {
+	my ($self, $cloning, $frozen) = @@_;
+	$$self = $frozen;
+	$main::scalar_hook2++;
+}
+
+package main;
+
+$a = 'toto';
+$b = \$a;
+
+$c = tie %hash, TIED_HASH;
+$d = tie @@array, TIED_ARRAY;
+tie $scalar, TIED_SCALAR;
+
+$scalar = 'foo';
+$hash{'attribute'} = 'plain value';
+$array[0] = \$scalar;
+$array[1] = $c;
+$array[2] = \@@array;
+$array[3] = "plaine scalaire";
+
+@@tied = (\$scalar, \@@array, \%hash);
+%a = ('key', 'value', 1, 0, $a, $b, 'cvar', \$a, 'scalarref', \$scalar);
+@@a = ('first', 3, -4, -3.14159, 456, 4.5, $d, \$d,
+	$b, \$a, $a, $c, \$c, \%a, \@@array, \%hash, \@@tied);
+
+ok 1, defined($f = freeze(\@@a));
+
+$dumped = &dump(\@@a);
+ok 2, 1;
+
+$root = thaw($f);
+ok 3, defined $root;
+
+$got = &dump($root);
+ok 4, 1;
+
+ok 5, $got ne $dumped;		# our hooks did not handle refs in array
+
+$g = freeze($root);
+ok 6, length($f) == length($g);
+
+# Ensure the tied items in the retrieved image work
+@@old = ($scalar_fetch, $array_fetch, $hash_fetch);
+@@tied = ($tscalar, $tarray, $thash) = @@{$root->[$#{$root}]};
+@@type = qw(SCALAR  ARRAY  HASH);
+
+ok 7, tied $$tscalar;
+ok 8, tied @@{$tarray};
+ok 9, tied %{$thash};
+
+@@new = ($$tscalar, $tarray->[0], $thash->{'attribute'});
+@@new = ($scalar_fetch, $array_fetch, $hash_fetch);
+
+# Tests 10..15
+for ($i = 0; $i < @@new; $i++) {
+	ok 10 + 2*$i, $new[$i] == $old[$i] + 1;		# Tests 10,12,14
+	ok 11 + 2*$i, ref $tied[$i] eq $type[$i];	# Tests 11,13,15
+}
+
+ok 16, $$tscalar eq 'foo';
+ok 17, $tarray->[3] eq 'plaine scalaire';
+ok 18, $thash->{'attribute'} eq 'plain value';
+
+# Ensure hooks were called
+ok 19, ($scalar_hook1 && $scalar_hook2);
+ok 20, ($array_hook1 && $array_hook2);
+ok 21, ($hash_hook1 && $hash_hook2);
+
+#
+# And now for the "blessed ref to tied hash" with "store hook" test...
+#
+
+my $bc = bless \%hash, 'FOO';		# FOO does not exist -> no hook
+my $bx = thaw freeze $bc;
+
+ok 22, ref $bx eq 'FOO';
+my $old_hash_fetch = $hash_fetch;
+my $v = $bx->{attribute};
+ok 23, $hash_fetch == $old_hash_fetch + 1;	# Still tied
+
+package TIED_HASH_REF;
+
+
+sub STORABLE_freeze {
+        my ($self, $cloning) = @@_;
+        return if $cloning;
+        return('ref lost');
+}
+
+sub STORABLE_thaw {
+        my ($self, $cloning, $data) = @@_;
+        return if $cloning;
+}
+
+package main;
+
+$bc = bless \%hash, 'TIED_HASH_REF';
+$bx = thaw freeze $bc;
+
+ok 24, ref $bx eq 'TIED_HASH_REF';
+$old_hash_fetch = $hash_fetch;
+$v = $bx->{attribute};
+ok 25, $hash_fetch == $old_hash_fetch + 1;	# Still tied
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,359 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.07.18.13.30.04;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.36.10;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.36.10;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke egcs (pgcc, gcc2) and simplify the system a bit
+also fix placement of GNUSYSTEM_AUX_DIR equation in <bsd.own.mk> while here
+remove some sparc and xc-old/xc-mit remnants
+for now, all distribution lists are mi, since we only have 1 arch
+
+XXX comp is second-largest now (after xfont), need ideas, come to IRC
+
+agreed: <benz|lernen> joa, warum nicht
+@
+text
+@/* Utility functions for scan-decls and fix-header programs.
+   Copyright (C) 1993, 1994, 1998 Free Software Foundation, Inc.
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation; either version 2, or (at your option) any
+later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "hconfig.h"
+#include "system.h"
+#include "scan.h"
+
+int lineno = 1;
+int source_lineno = 1;
+sstring source_filename;
+
+void
+make_sstring_space (str, count)
+     sstring *str;
+     int count;
+{
+  int cur_pos = str->ptr - str->base;
+  int cur_size = str->limit - str->base;
+  int new_size = cur_pos + count + 100;
+
+  if (new_size <= cur_size)
+    return;
+  
+  if (str->base == NULL)
+    str->base = xmalloc (new_size);
+  else
+    str->base = xrealloc (str->base, new_size);
+  str->ptr = str->base + cur_size;
+  str->limit = str->base + new_size;
+}
+
+void
+sstring_append (dst, src)
+     sstring *dst;
+     sstring *src;
+{
+  register char *d, *s;
+  register int count = SSTRING_LENGTH(src);
+  MAKE_SSTRING_SPACE(dst, count + 1);
+  d = dst->ptr;
+  s = src->base;
+  while (--count >= 0) *d++ = *s++;
+  dst->ptr = d;
+  *d = 0;  
+}
+
+int
+scan_ident (fp, s, c)
+     register FILE *fp;
+     register sstring *s;
+     int c;
+{
+  s->ptr = s->base;
+  if (ISALPHA(c) || c == '_')
+    {
+      for (;;)
+	{
+	  SSTRING_PUT(s, c);
+	  c = getc (fp);
+	  if (c == EOF || !(ISALNUM(c) || c == '_'))
+	    break;
+	}
+    }
+  MAKE_SSTRING_SPACE(s, 1);
+  *s->ptr = 0;
+  return c;
+}
+
+int
+scan_string (fp, s, init)
+     register FILE *fp;
+     register sstring *s;
+     int init;
+{
+  int c;
+  for (;;)
+    {
+      c = getc (fp);
+      if (c == EOF || c == '\n')
+	break;
+      if (c == init)
+	{
+	  c = getc (fp);
+	  break;
+	}
+      if (c == '\\')
+	{
+	  c = getc (fp);
+	  if (c == EOF)
+	    break;
+	  if (c == '\n')
+	    continue;
+	}
+      SSTRING_PUT(s, c);
+    }
+  MAKE_SSTRING_SPACE(s, 1);
+  *s->ptr = 0;
+  return c;
+}
+
+/* Skip horizontal white spaces (spaces, tabs, and C-style comments).  */
+
+int
+skip_spaces (fp, c)
+     register FILE *fp;
+     int c;
+{
+  for (;;)
+    {
+      if (c == ' ' || c == '\t')
+	c = getc (fp);
+      else if (c == '/')
+	{
+	  c = getc (fp);
+	  if (c != '*')
+	    {
+	      ungetc (c, fp);
+	      return '/';
+	    }
+	  c = getc (fp);
+	  for (;;)
+	    {
+	      if (c == EOF)
+		return EOF;
+	      else if (c != '*')
+		{
+		  if (c == '\n')
+		    source_lineno++, lineno++;
+		  c = getc (fp);
+		}
+	      else if ((c = getc (fp)) == '/')
+		return getc (fp);
+	    }
+	}
+      else
+	break;
+    }
+  return c;
+}
+
+int
+read_upto (fp, str, delim)
+     FILE *fp;
+     sstring *str;
+     int delim;
+{
+  int ch;
+  for (;;)
+    {
+      ch = getc (fp);
+      if (ch == EOF || ch == delim)
+	break;
+      SSTRING_PUT(str, ch);
+    }
+  MAKE_SSTRING_SPACE(str, 1);
+  *str->ptr = 0;
+  return ch;
+}
+
+int
+get_token (fp, s)
+     register FILE *fp;
+     register sstring *s;
+{
+  int c;
+  s->ptr = s->base;
+ retry:
+  c = ' ';
+  c = skip_spaces (fp, c);
+  if (c == '\n')
+    {
+      source_lineno++;
+      lineno++;
+      goto retry;
+    }
+  if (c == '#')
+    {
+      c = get_token (fp, s);
+      if (c == INT_TOKEN)
+	{
+	  source_lineno = atoi (s->base) - 1; /* '\n' will add 1 */
+	  get_token (fp, &source_filename);
+	}
+      for (;;)
+	{
+	  c = getc (fp);
+	  if (c == EOF)
+	    return EOF;
+	  if (c == '\n')
+	    {
+	    source_lineno++;
+	    lineno++;
+	    goto retry;
+	    }
+	}
+    }
+  if (c == EOF)
+    return EOF;
+  if (ISDIGIT (c))
+    {
+      do
+	{
+	  SSTRING_PUT(s, c);
+	  c = getc (fp);
+	} while (c != EOF && ISDIGIT(c));
+      ungetc (c, fp);
+      c = INT_TOKEN;
+      goto done;
+    }
+  if (ISALPHA (c) || c == '_')
+    {
+      c = scan_ident (fp, s, c);
+      ungetc (c, fp);
+      return IDENTIFIER_TOKEN;
+    }
+  if (c == '\'' || c == '"')
+    {
+      c = scan_string (fp, s, c);
+      ungetc (c, fp);
+      return c == '\'' ? CHAR_TOKEN : STRING_TOKEN;
+    }
+  SSTRING_PUT(s, c);
+ done:
+  MAKE_SSTRING_SPACE(s, 1);
+  *s->ptr = 0;
+  return c;
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

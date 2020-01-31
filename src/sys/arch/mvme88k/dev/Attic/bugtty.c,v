@@ -1,0 +1,858 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.7
+	cvs-200401271800:1.1.1.6
+	cvs-200401261630:1.1.1.6
+	cvs-200401021645:1.1.1.5
+	cvs-200312222040:1.1.1.5
+	cvs-200310020700:1.1.1.4
+	cvs-200309271030:1.1.1.4
+	cvs-200309261655:1.1.1.4
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.29.25;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.01;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.01;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.35.31;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.08.17.14.31.07;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.09.25.16.35.50;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2003.12.22.20.59.53;	author tg;	state Exp;
+branches;
+next	1.1.1.6;
+
+1.1.1.6
+date	2004.01.26.18.42.15;	author tg;	state Exp;
+branches;
+next	1.1.1.7;
+
+1.1.1.7
+date	2004.05.16.08.38.20;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: bugtty.c,v 1.13 2002/06/12 03:49:56 miod Exp $ */
+
+/* Copyright (c) 1998 Steve Murphree, Jr. 
+ * Copyright (c) 1995 Dale Rahn.
+ * All rights reserved.
+ *   
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *   This product includes software developed by Dale Rahn.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */  
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/ioctl.h>
+#include <sys/device.h>
+#include <sys/tty.h>
+#include <sys/proc.h>
+#include <sys/uio.h>
+#include <sys/queue.h>
+#include <dev/cons.h>
+
+#include <machine/autoconf.h>
+#include <machine/bugio.h>
+#include <machine/conf.h>
+#include <machine/cpu.h>
+
+#include <mvme88k/dev/bugttyfunc.h>
+
+#include "bugtty.h"
+
+int bugttymatch(struct device *parent, void *self, void *aux);
+void bugttyattach(struct device *parent, struct device *self, void *aux);
+
+struct cfattach bugtty_ca = {
+        sizeof(struct device), bugttymatch, bugttyattach
+};      
+
+struct cfdriver bugtty_cd = {
+        NULL, "bugtty", DV_TTY, 0
+};
+
+/* prototypes */
+int bugttycnprobe(struct consdev *cp);
+int bugttycninit(struct consdev *cp);
+int bugttycngetc(dev_t dev);
+void bugttycnputc(dev_t dev, char c);
+
+struct tty *bugttytty(dev_t dev);
+int bugttymctl(dev_t dev, int bits, int how);
+int bugttyparam(struct tty *tp, struct termios *tm);
+
+#define DIALOUT(x) ((x) & 0x80)
+#define SWFLAGS(dev) (bugttyswflags | (DIALOUT(dev) ? TIOCFLAG_SOFTCAR : 0))
+
+#define BUGBUF 80
+char bugtty_ibuffer[BUGBUF+1];
+volatile char *pinchar = bugtty_ibuffer;
+char bug_obuffer[BUGBUF+1];
+
+struct tty *bugtty_tty[NBUGTTY];
+int needprom = 1;
+/*
+	int	ca_bustype;
+	void	*ca_vaddr;
+	void	*ca_paddr;
+	int	ca_offset;
+	int	ca_len;
+	int	ca_ipl;
+	int	ca_vec;
+	char	*ca_name;
+	void	*ca_master;	 points to bus-dependent data 
+*/
+
+int
+bugttymatch(parent, self, aux)
+	struct device *parent;
+	void *self;
+	void *aux;
+{
+	struct confargs *ca = aux;
+	
+	if (needprom == 0)
+		return (0);
+	ca->ca_paddr = (void *)0xfff45000;
+	ca->ca_vaddr = (void *)0xfff45000;
+	ca->ca_len = 0x200;
+	ca->ca_ipl = IPL_TTY;
+	ca->ca_name = "bugtty\0";
+	return (1);
+}
+
+void
+bugttyattach(parent, self, aux)
+	struct device *parent;
+	struct device *self;
+	void *aux;
+{
+	printf(": bugtty\n");
+}
+
+#define BUGTTYUNIT(x) ((x) & (0x7f))
+void bugttyoutput(struct tty *tp);
+
+int bugttydefaultrate = TTYDEF_SPEED;
+int bugttyswflags;
+
+struct tty * 
+bugttytty(dev)
+	dev_t dev;
+{
+	int unit;
+	unit = BUGTTYUNIT(dev);
+	if (unit >= 4) {
+		return (NULL);
+	}
+	return bugtty_tty[unit];
+}
+
+int
+bugttymctl(dev, bits, how)
+	dev_t dev;
+	int bits, how;
+{
+	int s;
+
+	/*printf("mctl: dev %x, bits %x, how %x,",dev, bits, how);*/
+
+	/* settings are currently ignored */
+	s = spltty();
+	switch (how) {
+	case DMSET:
+		break;
+	case DMBIC:
+		break;
+	case DMBIS:
+		break;
+	case DMGET:
+		break;
+	}
+	splx(s);
+
+	bits = 0;
+	/* proper defaults? */
+	bits |= TIOCM_DTR;
+	bits |= TIOCM_RTS;
+	bits |= TIOCM_CTS;
+	bits |= TIOCM_CD;
+	/* bits |= TIOCM_RI; */
+	bits |= TIOCM_DSR;
+
+	/* printf("retbits %x\n", bits); */
+	return (bits);
+}
+
+int
+bugttyopen(dev, flag, mode, p)
+	dev_t dev;
+	int flag, mode;
+	struct proc *p;
+{
+	int s, unit = BUGTTYUNIT(dev);
+	struct tty *tp;
+	extern int needprom;
+
+	if (needprom == 0)
+		return (ENODEV);
+
+	s = spltty();
+	if (bugtty_tty[unit]) {
+		tp = bugtty_tty[unit];
+	} else {
+		tp = bugtty_tty[unit] = ttymalloc();
+	}
+	tp->t_oproc = bugttyoutput;
+	tp->t_param = NULL;
+	tp->t_dev = dev;
+
+	if ((tp->t_state & TS_ISOPEN) == 0) {
+		tp->t_state |= TS_WOPEN;
+		ttychars(tp);
+		if (tp->t_ispeed == 0) {
+			/*
+			 * only when cleared do we reset to defaults.
+			 */
+			tp->t_iflag = TTYDEF_IFLAG;
+			tp->t_oflag = TTYDEF_OFLAG;
+			tp->t_cflag = TTYDEF_CFLAG;
+			tp->t_lflag = TTYDEF_LFLAG;
+			tp->t_ispeed = tp->t_ospeed = bugttydefaultrate;
+		}
+		/* bugtty does not have carrier */
+		tp->t_cflag |= CLOCAL;
+		/*
+		 * do these all the time
+		 */
+		if (bugttyswflags & TIOCFLAG_CLOCAL)
+			tp->t_cflag |= CLOCAL;
+		if (bugttyswflags & TIOCFLAG_CRTSCTS)
+			tp->t_cflag |= CRTSCTS;
+		if (bugttyswflags & TIOCFLAG_MDMBUF)
+			tp->t_cflag |= MDMBUF;
+		bugttyparam(tp, &tp->t_termios);
+		ttsetwater(tp);
+
+		(void)bugttymctl(dev, TIOCM_DTR | TIOCM_RTS, DMSET);
+		/*
+		if ((SWFLAGS(dev) & TIOCFLAG_SOFTCAR) ||
+		    (bugttymctl(dev, 0, DMGET) & TIOCM_CD))
+			tp->t_state |= TS_CARR_ON;
+		else
+			tp->t_state &= ~TS_CARR_ON;
+		*/
+		tp->t_state |= TS_CARR_ON;
+	} else if (tp->t_state & TS_XCLUDE && p->p_ucred->cr_uid != 0) {
+		splx(s);
+		return (EBUSY);
+	}
+
+	/*
+	 * if NONBLOCK requested, ignore carrier
+	 */
+/*
+	if (flag & O_NONBLOCK)
+		goto done;
+*/
+
+	splx(s);
+	/*
+	 * Reset the tty pointer, as there could have been a dialout
+	 * use of the tty with a dialin open waiting.
+	 */
+	tp->t_dev = dev;
+	return ((*linesw[tp->t_line].l_open)(dev, tp));
+}
+
+int
+bugttyparam(tp, tm)
+	struct tty *tp;
+	struct termios *tm;
+{
+	return (0);
+}
+
+void
+bugttyoutput(tp)
+	struct tty *tp;
+{
+	int cc, s, cnt;
+
+	/* only supports one unit */
+
+	if ((tp->t_state & TS_ISOPEN) == 0)
+		return;
+
+	s = spltty();
+	cc = tp->t_outq.c_cc;
+	while (cc > 0) {
+		cnt = min(BUGBUF, cc);
+		cnt = q_to_b(&tp->t_outq, bug_obuffer, cnt);
+		bugoutstr(bug_obuffer, &bug_obuffer[cnt]);
+		cc -= cnt;
+	}
+	splx(s);
+}
+
+int
+bugttyclose(dev, flag, mode, p)
+	dev_t dev;
+	int flag, mode;
+	struct proc *p;
+{
+	int unit = BUGTTYUNIT(dev);
+	struct tty *tp = bugtty_tty[unit];
+
+	(*linesw[tp->t_line].l_close)(tp, flag);
+
+	ttyclose(tp);
+#if 0
+	bugtty_tty[unit] = NULL;
+#endif
+	return (0);
+}
+
+int
+bugttyread(dev, uio, flag)
+	dev_t dev;
+	struct uio *uio;
+	int flag;
+{
+	struct tty *tp;
+
+	if ((tp = bugtty_tty[BUGTTYUNIT(dev)]) == NULL)
+		return (ENXIO); 
+	return ((*linesw[tp->t_line].l_read)(tp, uio, flag));
+}
+
+/* only to be called at splclk() */
+void
+bugtty_chkinput()
+{
+	struct tty *tp;
+	int rc = 0;
+	tp = bugtty_tty[0]; /* Kinda ugly hack */
+	if (tp == NULL )
+		return;
+
+	if ((rc = buginstat()) != 0) {
+		while (buginstat() != 0) {
+			u_char c = buginchr() & 0xff;
+			(*linesw[tp->t_line].l_rint)(c, tp);
+		}
+		/*
+		wakeup(tp);
+		*/
+	}
+}
+
+int
+bugttywrite(dev, uio, flag)
+	dev_t dev;
+	struct uio *uio;
+	int flag;
+{
+#if 0
+	/* bypass tty output routines. */
+	int i, cnt, s;
+	int oldoff;
+
+	s = spltty();
+	oldoff = uio->uio_offset;
+	do  {
+		uiomove(bug_obuffer, BUGBUF, uio);
+		bugoutstr(bug_obuffer, &bug_obuffer[uio->uio_offset - oldoff]);
+		oldoff = uio->uio_offset;
+	} while (uio->uio_resid != 0);
+	splx(s);
+
+	return (0);
+#else
+	struct tty *tp;
+	if((tp = bugtty_tty[BUGTTYUNIT(dev)]) == NULL)
+		return (ENXIO);
+	return ((*linesw[tp->t_line].l_write)(tp, uio, flag));
+#endif
+}
+
+int
+bugttyioctl(dev, cmd, data, flag, p)
+	dev_t dev;
+	u_long cmd;
+	caddr_t data;
+	int flag;
+	struct proc *p;
+{
+	int unit = BUGTTYUNIT(dev);
+	struct tty *tp = bugtty_tty[unit];
+	int error;
+
+	if (!tp)
+		return (ENXIO);
+
+	error = (*linesw[tp->t_line].l_ioctl)(tp, cmd, data, flag, p);
+	if (error >= 0) 
+		return (error);
+
+	error = ttioctl(tp, cmd, data, flag, p);
+	if (error >= 0)
+		return (error);
+
+	switch (cmd) {
+	case TIOCSBRK:
+		/* */
+		break;
+
+	case TIOCCBRK:
+		/* */
+		break;
+
+	case TIOCSDTR:
+		(void) bugttymctl(dev, TIOCM_DTR | TIOCM_RTS, DMBIS);
+		break;
+
+	case TIOCCDTR:
+		(void) bugttymctl(dev, TIOCM_DTR | TIOCM_RTS, DMBIC);
+		break;
+
+	case TIOCMSET:
+		(void) bugttymctl(dev, *(int *) data, DMSET);
+		break;
+
+	case TIOCMBIS:
+		(void) bugttymctl(dev, *(int *) data, DMBIS);
+		break;
+
+	case TIOCMBIC:
+		(void) bugttymctl(dev, *(int *) data, DMBIC);
+		break;
+
+	case TIOCMGET:
+		*(int *)data = bugttymctl(dev, 0, DMGET);
+		break;
+	case TIOCGFLAGS:
+		*(int *)data = SWFLAGS(dev);
+		break;
+	case TIOCSFLAGS:
+		error = suser(p->p_ucred, &p->p_acflag); 
+		if (error != 0)
+			return (EPERM); 
+
+		bugttyswflags = *(int *)data;
+		bugttyswflags &= /* only allow valid flags */
+		    (TIOCFLAG_SOFTCAR | TIOCFLAG_CLOCAL | TIOCFLAG_CRTSCTS);
+		break;
+	default:
+		return (ENOTTY);
+	}
+
+	return (0);
+}
+
+int
+bugttystop(tp, flag)
+	struct tty *tp;
+	int flag;
+{
+	int s;
+
+	s = spltty();
+	if (tp->t_state & TS_BUSY) {
+		if ((tp->t_state & TS_TTSTOP) == 0)
+			tp->t_state |= TS_FLUSH;
+	}
+	splx(s);
+	return (0);
+}
+
+/*
+ * bugtty is the last possible choice for a console device.
+ */
+int
+bugttycnprobe(cp)
+	struct consdev *cp;
+{
+	int maj;
+	int needprom = 1;
+	
+	if (needprom == 0) {
+		cp->cn_pri = CN_DEAD;
+		return (0);
+	}
+		
+#if 0
+	switch (cputyp) {
+	case CPU_147:
+	case CPU_162:
+		cp->cn_pri = CN_NORMAL;
+		return (0);
+	default:
+		break;
+	}
+#endif
+#if 0
+	cp->cn_pri = CN_NORMAL;
+	return (0);
+#endif /* 0 */
+
+	/* locate the major number */
+	for (maj = 0; maj < nchrdev; maj++)
+		if (cdevsw[maj].d_open == bugttyopen)
+			break;
+
+	cp->cn_dev = makedev(maj, 0);
+	cp->cn_pri = CN_NORMAL;
+	return (1);
+}
+
+int
+bugttycninit(cp)
+	struct consdev *cp;
+{
+	/* Nothing to do */
+	return 0;
+}
+
+int
+bugttycngetc(dev)
+	dev_t dev;
+{
+	return (buginchr());
+}
+
+void
+bugttycnputc(dev, c)
+	dev_t dev;
+	char c;
+{
+	bugoutchr(c);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bugtty.c,v 1.14 2003/06/03 21:09:01 deraadt Exp $ */
+d15 4
+a18 1
+ * 3. The name of the author may not be used to endorse or promote products
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD source tree from CVS (anoncvs canada)
+of roughly 12:00 UTC today. Bumps us to OpenBSD 3.4
+and makes source/ports in sync. Hopefully.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bugtty.c,v 1.15 2003/08/15 20:32:14 tedu Exp $ */
+d424 1
+a424 1
+		error = suser(p, 0); 
+@
+
+
+1.1.1.4
+log
+@Release Time. Synchronize with OpenBSD 3.4-current (base system).
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bugtty.c,v 1.16 2003/09/01 19:14:01 miod Exp $ */
+d116 1
+a116 1
+	printf(": fallback console\n");
+d470 15
+@
+
+
+1.1.1.5
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bugtty.c,v 1.18 2003/12/22 11:54:48 miod Exp $ */
+d3 1
+a3 1
+/* Copyright (c) 1998 Steve Murphree, Jr.
+d6 1
+a6 1
+ *
+d28 1
+a28 1
+ */
+d54 1
+a54 1
+};
+d80 11
+d99 1
+a99 5
+
+	/*
+	 * Do not attach if a suitable console driver has been attached.
+	 * XXX but bugtty is probed first!
+	 */
+a101 1
+
+d104 1
+d106 1
+a106 1
+	ca->ca_name = "bugtty";
+d125 1
+a125 1
+struct tty *
+d311 1
+a311 1
+		return (ENXIO);
+d381 1
+a381 1
+	if (error >= 0)
+d424 1
+a424 1
+		error = suser(p, 0);
+d426 1
+a426 1
+			return (EPERM);
+d464 1
+a464 1
+
+d469 1
+a469 1
+
+@
+
+
+1.1.1.6
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bugtty.c,v 1.20 2004/01/14 20:50:48 miod Exp $ */
+a47 2
+#include "cl.h"
+#include "dart.h"
+d57 1
+a57 1
+        NULL, "bugtty", DV_TTY
+d78 2
+a79 2
+#define	BUGTTYS	4
+struct tty *bugtty_tty[BUGTTYS];
+d91 1
+d93 2
+a94 16
+#if NCL > 0
+	{
+		extern struct cfdriver cl_cd;
+
+		if (cl_cd.cd_ndevs != 0)
+			return (0);
+	}
+#endif
+#if NDART > 0
+	{
+		extern struct cfdriver dart_cd;
+
+		if (dart_cd.cd_ndevs != 0)
+			return (0);
+	}
+#endif
+d96 2
+d99 1
+d124 1
+a124 1
+	if (unit >= BUGTTYS) {
+d174 4
+d456 6
+@
+
+
+1.1.1.7
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bugtty.c,v 1.21 2004/02/10 10:06:48 miod Exp $ */
+d48 2
+d63 4
+a66 1
+cons_decl(bugtty);
+d94 16
+a109 2
+	if (cn_tab != NULL && cn_tab->cn_probe != bugttycnprobe)
+		return (0);
+d459 1
+a459 1
+void
+d472 1
+d475 1
+a475 1
+void
+d480 1
+@
+
+

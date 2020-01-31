@@ -1,0 +1,901 @@
+head	1.11;
+access;
+symbols
+	MIRBSD_7quater:1.8
+	cvs-200405160640:1.1.1.3
+	MIRBSD_7:1.8.0.2
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308221505:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	MIRBSD_4:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.11
+date	2004.10.10.21.11.57;	author tg;	state dead;
+branches;
+next	1.10;
+
+1.10
+date	2004.09.20.16.39.30;	author tg;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2004.07.21.10.24.31;	author tg;	state Stab;
+branches;
+next	1.8;
+
+1.8
+date	2004.02.25.13.32.48;	author tg;	state Exp;
+branches
+	1.8.2.1;
+next	1.7;
+
+1.7
+date	2004.02.25.13.28.10;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2004.02.11.16.34.10;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2004.01.14.15.59.36;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.01.12.19.06.38;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.01.11.22.38.19;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.01.02.02.53.24;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.55.49;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.55.49;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.15.00.59;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.07.06.15.56.42;	author tg;	state Exp;
+branches;
+next	;
+
+1.8.2.1
+date	2004.12.25.16.43.51;	author tg;	state dead;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.11
+log
+@package tools in base is dead
+
+agreed bsiegert@@
+@
+text
+@/* $MirBSD: src/usr.sbin/pkg_install/add/extract.c,v 1.10 2004/09/20 16:39:30 tg Exp $ */
+/* $OpenBSD: extract.c,v 1.16 2003/07/04 17:31:19 avsm Exp $ */
+
+/*
+ * FreeBSD install - a package for the installation and maintainance
+ * of non-core utilities.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * Jordan K. Hubbard
+ * 18 July 1993
+ *
+ * This is the package extraction code for the add module.
+ */
+
+#include <sys/types.h>
+#include <err.h>
+#include <md5.h>
+#include "lib.h"
+#include "add.h"
+#include "rcdb.h"
+
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/add/extract.c,v 1.10 2004/09/20 16:39:30 tg Exp $");
+
+#define STARTSTRING "tar cf - "
+#define TOOBIG(str) ((strlen(str) + FILENAME_MAX + where_count > maxargs) \
+		|| (strlen(str) + FILENAME_MAX + perm_count > maxargs))
+
+#define PUSHOUT(todir) /* push out string */				\
+        if (where_count > sizeof(STARTSTRING)-1) {			\
+		    strlcat(where_args, "|tar xpf - -C ", maxargs);	\
+		    strlcat(where_args, todir, maxargs);		\
+		    if (system(where_args)) {				\
+			cleanup(0);					\
+			errx(2, "can not invoke %lu byte tar pipeline: %s", \
+				(u_long)strlen(where_args), where_args); \
+		    }							\
+		    strlcpy(where_args, STARTSTRING, maxargs);		\
+		    where_count = sizeof(STARTSTRING)-1;		\
+	}								\
+	if (perm_count) {						\
+		    apply_perms(todir, perm_args);			\
+		    perm_args[0] = 0;					\
+		    perm_count = 0;					\
+	}
+
+static void
+rollback(char *name, char *home, plist_t *start, plist_t *stop)
+{
+    plist_t *q;
+    char try[FILENAME_MAX], bup[FILENAME_MAX], *dir;
+
+    dir = home;
+    for (q = start; q != stop; q = q->next) {
+	if (q->type == PLIST_FILE) {
+	    snprintf(try, sizeof(try), "%s/%s", dir, q->name);
+	    if (make_preserve_name(bup, sizeof(bup), name, try) && fexists(bup)) {
+		(void)chflags(try, 0);
+		(void)unlink(try);
+		if (rename(bup, try))
+		    pwarnx("rollback: unable to rename %s back to %s", bup, try);
+	    }
+	}
+	else if (q->type == PLIST_CWD) {
+	    if (strcmp(q->name, "."))
+		dir = q->name;
+	    else
+		dir = home;
+	}
+    }
+}
+
+static int
+preserve(const char *fname)
+{
+    char copy[FILENAME_MAX];
+    int i;
+
+    for (i = 0; i < 50; i++) {
+    	snprintf(copy, sizeof(copy), "%s-%d", fname, i);
+	if (fexists(copy))
+		continue;
+	if (rename(fname, copy) == 0) {
+		pwarnx("conflict: renamed existing %s to %s", fname, copy);
+		return 0;
+	}
+    }
+    return -1;
+}
+
+char *
+find_last_md5(plist_t *p)
+{
+    plist_t *q;
+    
+    for (q = p; q && (q->type != PLIST_COMMENT || strncmp(q->name, "MD5:", 4));
+	q = q->prev) {
+    }
+    if (q)
+    	return q->name + 4;
+    else
+	return NULL;
+}
+
+
+
+void
+extract_plist(char *home, package_t *pkg)
+{
+    plist_t *p = pkg->head;
+    char *last_file;
+    char *where_args, *perm_args, *last_chdir;
+    int maxargs, where_count = 0, perm_count = 0, add_count;
+    static int usedb = 1;
+    recno_t rr;
+    int64_t rcount;
+    RCDB *ourdb;
+
+    if ((ourdb = rcdb_open(_PATH_REFCNTDB)) == NULL) {
+	warn("rcdb_open - not using db!");
+	usedb = 0;
+    }
+
+    maxargs = sysconf(_SC_ARG_MAX) / 2;	/* Just use half the argument space */
+    where_args = alloca(maxargs);
+    if (!where_args) {
+	cleanup(0);
+	errx(2, "can't get argument list space");
+    }
+    perm_args = alloca(maxargs);
+    if (!perm_args) {
+	cleanup(0);
+	errx(2, "can't get argument list space");
+    }
+    strlcpy(where_args, STARTSTRING, maxargs);
+    where_count = sizeof(STARTSTRING)-1;
+    perm_args[0] = 0;
+
+    last_chdir = 0;
+
+    /* Reset the world */
+    Owner = NULL;
+    Group = NULL;
+    Mode = NULL;
+    last_file = NULL;
+    Directory = home;
+
+    /* Do it */
+    while (p) {
+	char cmd[FILENAME_MAX];
+
+	switch(p->type) {
+	case PLIST_NAME:
+	    PkgName = p->name;
+	    if (Verbose)
+		printf("extract: Package name is %s\n", p->name);
+	    break;
+
+	case PLIST_FILE:
+	    last_file = p->name;
+	    if (Verbose)
+		printf("extract: %s/%s\n", Directory, p->name);
+	    if (!Fake) {
+		char try[FILENAME_MAX];
+
+		if (strrchr(p->name,'\'')) {
+		  cleanup(0);
+		  errx(2, "Bogus filename \"%s\"", p->name);
+		}
+
+		/* first try to rename it into place */
+		snprintf(try, sizeof(try), "%s/%s", Directory, p->name);
+		if (fexists(try)) {
+		    if (preserve(try) == -1) {
+		    	pwarnx("unable to back up %s, aborting pkg_add", try);
+			rollback(PkgName, home, pkg->head, p);
+			return;
+		    }
+		}
+		if (rename(p->name, try) == 0) {
+		    /* try to add to list of perms to be changed and run in bulk. */
+		    if (p->name[0] == '/' || TOOBIG(p->name)) {
+			PUSHOUT(Directory);
+		    }
+		    add_count = snprintf(&perm_args[perm_count], maxargs - perm_count, "'%s' ", p->name);
+		    if (add_count > maxargs - perm_count) {
+			cleanup(0);
+			errx(2, "oops, miscounted strings!");
+		    }
+		    perm_count += add_count;
+		} else {
+		    /* rename failed, try copying with a big tar command */
+		    if (last_chdir != Directory) {
+			PUSHOUT(last_chdir);
+			last_chdir = Directory;
+		    }
+		    else if (p->name[0] == '/' || TOOBIG(p->name)) {
+			PUSHOUT(Directory);
+		    }
+		    add_count = snprintf(&where_args[where_count], maxargs - where_count, " '%s'", p->name);
+		    if (add_count > maxargs - where_count) {
+			cleanup(0);
+			errx(2, "oops, miscounted strings!");
+		    }
+		    where_count += add_count;
+		    add_count = snprintf(&perm_args[perm_count],
+					 maxargs - perm_count,
+					 "'%s' ", p->name);
+		    if (add_count > maxargs - perm_count) {
+			cleanup(0);
+			errx(2, "oops, miscounted strings!");
+		    }
+		    perm_count += add_count;
+		}
+	    }
+	    break;
+
+	case PLIST_CWD:
+	    if (Verbose)
+		printf("extract: CWD to %s\n", p->name);
+	    PUSHOUT(Directory);
+	    if (strcmp(p->name, ".")) {
+		if (!Fake && make_hierarchy(p->name) == FAIL) {
+		    cleanup(0);
+		    errx(2, "unable to make directory '%s'", p->name);
+		}
+		Directory = p->name;
+	    } else
+		Directory = home;
+	    break;
+
+	case PLIST_CMD:
+	    if (!format_cmd(cmd, sizeof(cmd), p->name, Directory, last_file)) {
+		cleanup(0);
+		if (last_file == NULL)
+		    errx(2, "no last file specified for '%s' command", p->name);
+		else
+		    errx(2, "'%s' command could not expand", p->name);
+	    }
+
+	    PUSHOUT(Directory);
+	    if (Verbose)
+		printf("extract: execute '%s'\n", cmd);
+	    if (!Fake && system(cmd))
+		pwarnx("command '%s' failed", cmd);
+	    break;
+
+	case PLIST_DIR_RM:
+	    if (usedb) {
+		if ((rr = rcdb_lookup(ourdb, p->name)) == (recno_t)-1) {
+		    warn("rcdb_lookup");
+		    usedb = 0;
+		    rcdb_close(ourdb);
+		    break;
+		}
+		rcount = 1;
+		if (rr) {
+		    if (rcdb_read(ourdb, rr, &rcount) == -1) {
+			warn("rcdb_read");
+			usedb = 0;
+			rcdb_close(ourdb);
+			break;
+		    }
+		    if (rcount == LLONG_MAX) {
+			warnx("rcount reached LLONG_MAX in <%s>"
+			    ", not increasing", p->name);
+			break;
+		    }
+		    ++rcount;
+		}
+		if (rcdb_store(ourdb, rcount, p->name) == -1) {
+		    warn("rcdb_write");
+		    usedb = 0;
+		    rcdb_close(ourdb);
+		    break;
+		}
+	    }
+	    break;
+
+	case PLIST_CHMOD:
+	    PUSHOUT(Directory);
+	    Mode = p->name;
+	    break;
+
+	case PLIST_CHOWN:
+	    PUSHOUT(Directory);
+	    Owner = p->name;
+	    break;
+
+	case PLIST_CHGRP:
+	    PUSHOUT(Directory);
+	    Group = p->name;
+	    break;
+
+	case PLIST_COMMENT:
+	    break;
+
+	case PLIST_IGNORE:
+	    p = p->next;
+	    break;
+
+	case PLIST_SAMPLE:
+	    PUSHOUT(Directory);
+	    if (!last_file || !p->name)
+		pwarnx("sample: no file given");
+	    else {
+		char tmp[FILENAME_MAX];
+		char *cp = NULL;
+		memset(tmp, 0, sizeof(tmp));
+		if (p->name[0] == '/')
+		    strlcpy(tmp, p->name, sizeof(tmp));
+		else
+		    (void) snprintf(tmp, sizeof(tmp), "%s/%s", Directory, p->name);
+		if (!fexists(tmp)) {
+		    (void) snprintf(cmd, sizeof(cmd), "cp %s/%s %s",
+			Directory, last_file, tmp);
+		    if (Verbose)
+			printf("extract: install configuration file '%s'\n", tmp);
+		    if (!Fake && system(cmd))
+			pwarnx("command '%s' failed", cmd);
+		} else if (strcmp(cp = MD5File(tmp, NULL), find_last_md5(p)))
+		    pwarnx("Config file '%s' was NOT updated, please do so yourself",
+			tmp);
+		else if (Verbose)
+		    printf("extract: Config file '%s' exists, but is the same as '%s/%s'\n",
+			tmp, Directory, last_file);
+	    }
+	    break;
+
+	default:
+	    break;
+	}
+	p = p->next;
+    }
+    if (usedb && rcdb_close(ourdb))
+	warn("rcdb_close: not synched correctly");
+    PUSHOUT(Directory);
+}
+@
+
+
+1.10
+log
+@ci on behalf of bsiegert@@: teach pkgtools about @@sample (basic support);
+add show flag; optimise internal processing of show; break lines better
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/usr.sbin/pkg_install/add/extract.c,v 1.9 2004/07/21 10:24:31 tg Stab $ */
+d30 1
+a30 1
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/add/extract.c,v 1.9 2004/07/21 10:24:31 tg Stab $");
+@
+
+
+1.9
+log
+@sync with mpsup module
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: mpsup/pkgtools/add/extract.c,v 1.2 2004/06/25 11:48:36 tg Exp $ */
+d23 1
+d25 1
+d30 1
+a30 1
+__RCSID("$MirBSD: mpsup/pkgtools/add/extract.c,v 1.2 2004/06/25 11:48:36 tg Exp $");
+d98 16
+d307 28
+@
+
+
+1.8
+log
+@switch back to use "rcdb.h"
+* for now, it just includes db.h and checks the API, thus
+  eliminating duplicate code.
+* later, it will also be used to simpligy using pkgtools
+  on systems with no rcdb in libc/libdb (MirBSD #7, ekkoBSD)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: extract.c,v 1.7 2004/02/25 13:28:10 tg Exp $ */
+a22 3
+#include <sys/cdefs.h>
+__RCSID("$MirBSD: extract.c,v 1.7 2004/02/25 13:28:10 tg Exp $");
+
+d27 2
+@
+
+
+1.8.2.1
+log
+@remove old MirPorts tools from #7quinquies-to-be
+agreed bsiegert@@
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/usr.sbin/pkg_install/add/extract.c,v 1.8 2004/02/25 13:32:48 tg Exp $ */
+d24 1
+a24 1
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/add/extract.c,v 1.8 2004/02/25 13:32:48 tg Exp $");
+@
+
+
+1.7
+log
+@* from now on, you can specify pkg_add(1) whether it should use
+  cat, less, more or ${PAGER:-more} as the displaying programme
+  for packet MESSAGEs (the latter was default).
+  Using cat can be useful for bulk unattended installations.
+
+  Annoyed myself and reminded by franciszek holop <fred@@pentacom.sk>
+* whitespace cleanup
+* use new MirOS-style RCS IDs
+* documentation fixes
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: extract.c,v 1.6 2004/02/11 16:34:10 tg Exp $ */
+d24 1
+a24 1
+__RCSID("$MirBSD$");
+d29 1
+a29 10
+#include <db.h>
+
+#if !defined(_DB_RCDB_API)
+# error db.h too old and does not support RCDB!
+#elif !defined(_DB_RCDB_MAJOR)
+# error db.h belongs to an too old version of RCDB!
+#elif (_DB_RCDB_API < 3) || (_DB_RCDB_MAJOR > 3)
+# error The RCDB API in db.h is different from the API required!
+#endif
+
+@
+
+
+1.6
+log
+@* new API for rcdb
+* improved usability
+* improved docs
+* many many fixes in the docs and code
+* ability to change separator char and newline
+* document the ISO_646.irv:1991 requirement
+* enable allowance of embedding raw lines into the database file
+* add shareddirs.db to changelist
+
+this commit ok bsiegert@@ the libdb guy
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: extract.c,v 1.5 2004/01/14 15:59:36 tg Exp $ */
+a3 5
+#ifndef lint
+#include <sys/cdefs.h>
+__RCSID("$MirBSD$");
+#endif
+
+a20 1
+ *
+d22 3
+@
+
+
+1.5
+log
+@fearless attempt to place rcdb into libc
+(no functional changes from the last version in pkg_install/lib)
+
+bump version numbers of libc and libpthread (depends on libc) so to make
+them in sync, as well
+
+start writing a preliminary rcdb man page (to be extended RSN)
+
+bsiegert@@ wbx@@ please read through the code once again, six eyes
+see more than two with glasses ;-)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: extract.c,v 1.4 2004/01/12 19:06:38 tg Exp $ */
+d5 2
+a6 1
+static const char rcsid[] = "$MirBSD: extract.c,v 1.4 2004/01/12 19:06:38 tg Exp $";
+d34 6
+a39 2
+#if !defined(_DB_RCDB_API) || (_DB_RCDB_API < 2)
+# error RCDB not in libdb or too old!
+d258 1
+d271 3
+a273 7
+		    if (rcdb_modify_count(ourdb, rr, ++rcount) == -1) {
+			warn("rcdb_modify");
+			usedb = 0;
+			rcdb_close(ourdb);
+			break;
+		    }
+		} else	if (rcdb_write(ourdb, 1, p->name) == -1) {
+@
+
+
+1.4
+log
+@for now, commit the change to rcdb v2 (using signed int64_t),
+the diff is still being reviewed at our libdb guy, but this
+way people can play with it
+new entries are written out in hexadecimal by default; the old
+code (v0/v1) is uncapable of this because I used atoi(3) and
+not strtol(3) at first.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: extract.c,v 1.3 2004/01/11 22:38:19 tg Exp $ */
+d5 1
+a5 1
+static const char rcsid[] = "$MirBSD: extract.c,v 1.3 2004/01/11 22:38:19 tg Exp $";
+d32 4
+a35 1
+#include "rcdb.h"
+@
+
+
+1.3
+log
+@some steps further in the development of rcdb:
+ * more descriptive text
+ * no globals any more, use thread-local storage (aka, handle)
+   (will help intrigation of rcdb into libc-db)
+ * nuke test programmes
+   (will be rewritten as a mini toolchain later)
+ * more stringent checking for
+   - return values
+   - failures
+   - NULL pointers
+ * fix some minor bugs
+ * remove an irrelevant API (changing the primary key isn't good)
+
+the diffs to lib/plist.c, lib/rcdb.c and lib/rcdb.h ok'd by bsiegert@@
+lib and pkg_add compile with -Wall -Werror again, like before
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: extract.c,v 1.2 2004/01/02 02:53:24 tg Exp $ */
+d5 1
+a5 1
+static const char rcsid[] = "$MirBSD: extract.c,v 1.2 2004/01/02 02:53:24 tg Exp $";
+d107 1
+a107 1
+    int maxargs, where_count = 0, perm_count = 0, add_count, rcount;
+d110 1
+d244 1
+a244 1
+		if ((rr = rcdb_lookup(ourdb, p->name)) == -1) {
+d251 1
+a251 1
+		    if ((rcount = rcdb_read(ourdb, rr)) == -1) {
+d255 5
+@
+
+
+1.2
+log
+@implement a database facility recording shared directories
+for the "old" pkgtools, to accomodate changes done in the
+"new" OpenBSD pkgtools.
+
+as of now, shared directories (ie, these with a @@dirrm)
+have to be owned by all packages using them, just as
+with OpenBSD Ports Tree.
+In contrast to them, MirPorts will use a more-or-less
+plaintext database counting references on them; you
+may even manually increase or decrease the count with
+a text editor (just be sure to not anger recno).
+
+Thanks for some help with Berzerkeley DB to bsiegert@@
+Thanks for discussing to bsiegert@@ and wbx@@ and some others
+Thanks for making me this work to espie@@openbsd
+ (but hey, it's cool now)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD$ */
+d5 1
+a5 1
+static const char rcsid[] = "$MirBSD: extract.c,v 1.16 2003/07/04 17:31:19 avsm Exp $";
+d110 1
+d112 1
+a112 1
+    if (usedb && rcdb_open(_PATH_REFCNTDB)) {
+d243 1
+a243 1
+		if ((rr = rcdb_lookup(p->name)) == -1) {
+d246 1
+a246 1
+		    rcdb_close();
+d250 1
+a250 1
+		    if ((rcount = rcdb_read(rr)) == -1) {
+d253 1
+a253 1
+			rcdb_close();
+d256 1
+a256 1
+		    if (rcdb_modify_count(rr, ++rcount) == -1) {
+d259 1
+a259 1
+			rcdb_close();
+d262 1
+a262 1
+		} else	if (rcdb_write(1, p->name) == -1) {
+d265 1
+a265 1
+		    rcdb_close();
+d298 2
+a299 1
+    if (usedb) rcdb_close();
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 1
+/*	$OpenBSD: extract.c,v 1.12 2001/04/08 16:45:46 espie Exp $	*/
+d5 1
+a5 1
+static const char *rcsid = "$OpenBSD: extract.c,v 1.12 2001/04/08 16:45:46 espie Exp $";
+d31 2
+d41 2
+a42 2
+		    strcat(where_args, "|tar xpf - -C ");		\
+		    strcat(where_args, todir);				\
+d48 1
+a48 1
+		    strcpy(where_args, STARTSTRING);			\
+d66 2
+a67 2
+	    snprintf(try, FILENAME_MAX, "%s/%s", dir, q->name);
+	    if (make_preserve_name(bup, FILENAME_MAX, name, try) && fexists(bup)) {
+d83 2
+a84 2
+static int 
+preserve(const char *fname) 
+d107 8
+a114 1
+    int maxargs, where_count = 0, perm_count = 0, add_count;
+d127 1
+a127 1
+    strcpy(where_args, STARTSTRING);
+d162 1
+a162 1
+		
+d164 1
+a164 1
+		snprintf(try, FILENAME_MAX, "%s/%s", Directory, p->name);
+d229 1
+a229 1
+		else 
+d232 1
+a232 1
+	    
+d240 30
+d297 1
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: extract.c,v 1.14 2003/04/05 18:04:00 avsm Exp $	*/
+d4 1
+a4 1
+static const char *rcsid = "$OpenBSD: extract.c,v 1.14 2003/04/05 18:04:00 avsm Exp $";
+d38 2
+a39 2
+		    strlcat(where_args, "|tar xpf - -C ", maxargs);	\
+		    strlcat(where_args, todir, maxargs);		\
+d45 1
+a45 1
+		    strlcpy(where_args, STARTSTRING, maxargs);		\
+d63 1
+a63 1
+	    snprintf(try, sizeof(try), "%s/%s", dir, q->name);
+d117 1
+a117 1
+    strlcpy(where_args, STARTSTRING, maxargs);
+d154 1
+a154 1
+		snprintf(try, sizeof(try), "%s/%s", Directory, p->name);
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD base system minus kerberos from CTM,
+kernel source from CVS right now (no diffs though)
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: extract.c,v 1.16 2003/07/04 17:31:19 avsm Exp $	*/
+d4 1
+a4 1
+static const char rcsid[] = "$OpenBSD: extract.c,v 1.16 2003/07/04 17:31:19 avsm Exp $";
+d64 1
+a64 1
+	    if (make_preserve_name(bup, sizeof(bup), name, try) && fexists(bup)) {
+@
+
+

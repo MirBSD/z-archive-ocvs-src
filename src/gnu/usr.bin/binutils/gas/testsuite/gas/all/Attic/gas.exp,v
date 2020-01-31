@@ -1,0 +1,337 @@
+head	1.2;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.05.16.17.41.41;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.37;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.37;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.41.47;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.06.04;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@#
+# These tests should be valid on all targets.
+#
+
+# I think currently all targets fail this one when listings are enabled.
+gas_test "p2425.s" ""   "" "pcrel values in assignment"
+
+# p1480.s uses a ".space" directive which for most assemblers means
+# "allocate some space".  On the PA it means "switch into this space".
+#
+# Therefore this test (as it is currently written) is completely bogus
+# for any PA target.  Do not bother trying to run it and just claim
+# it fails.
+#
+# The C54x uses ".space" to allocate bits, and requires absolute expressions;
+# The ".space" directive is taken care of in the C54x-specific tests, so fail
+#  here 
+#
+if { [istarget hppa*-*-*] || [istarget *c54x*-*-*] } then {
+    setup_xfail *-*-*
+    fail "simplifiable double subtraction"
+} else {
+    gas_test "p1480.s" "" "-a>" "simplifiable double subtraction"
+}
+
+# No floating point support in assembly code for CRIS.
+if ![istarget cris-*-*] then {
+    gas_test "float.s" ""   "" "simple FP constants"
+}
+
+# This test is meaningless for the PA; the difference of two undefined
+# symbols is something that is (and must be) supported on the PA.
+if ![istarget hppa*-*-*] then {
+    gas_test_error "diff1.s" "" "difference of two undefined symbols"
+}
+
+proc do_comment {} {
+    set testname "comment.s: comments in listings"
+    set x1 0
+    set x2 0
+    set x3 0
+    set white {[ \t]*}
+    gas_start "comment.s" "-al"
+    while 1 {
+# Apparently CRLF is received when using ptys for subprocesses; hence the
+# \r\n for line 3.
+	expect {
+	    -re "^ +1\[ \t\]+# This\[^\n\]*\n"		{ set x1 1 }
+	    -re "^ +2\[ \t\]+# correctly\[^\n\]*\n"	{ set x2 1 }
+	    -re "^ +3\[ \t\]+/. C comments too. ./\r?\n" { set x3 1 }
+	    -re "\[^\n\]*\n"				{ }
+	    timeout				{ perror "timeout\n"; break }
+	    eof					{ break }
+	}
+    }
+    gas_finish
+    if [all_ones $x1 $x2 $x3] then { pass $testname } else { fail $testname }
+}
+
+do_comment
+
+#
+# Test x930509a -- correct assembly of differences involving forward
+# references.
+#
+
+proc do_930509a {} {
+    set testname "difference between forward references"
+    set x 0
+    gas_start "x930509.s" "-al"
+    while 1 {
+# We need to accomodate both byte orders here.
+# If ".long" means an 8-byte value on some target someday, this test will have
+# to be fixed.
+	expect {
+	    -re "^ +1 .... 00 ?00 ?00 ?00" { fail $testname; set x 1 }
+	    -re "^ +1 .... 04 ?00 ?00 ?00" { pass $testname; set x 1 }
+	    -re "^ +1 .... 00 ?00 ?00 ?04" { pass $testname; set x 1 }
+	    -re "\[^\n\]*\n" { }
+	    timeout { perror "timeout\n"; break }
+	    eof { break }
+	}
+    }
+    gas_finish
+    if !$x then { fail $testname }
+}
+
+# This test is meaningless for the PA; the difference of two symbols
+# must not be resolved by the assembler.
+# C54x assembler (for compatibility) does not allow differences between
+# forward references
+if { ![istarget hppa*-*-*] && ![istarget *c54x*-*-*] } then {
+    # the vax fails because VMS can apparently actually handle this
+    # case in relocs, so gas doesn't handle it itself.
+    setup_xfail "vax*-*-vms*"
+    setup_xfail "mn10300*-*-*"
+    setup_xfail "mn10200*-*-*"
+    do_930509a
+}
+
+# ".struct" and ".align" have different meanings on c54x
+# These directives are done in the c54x-specific tests instead
+case $target_triplet in {
+    { hppa*-*-* } { }
+    { *c54x*-*-* } { }
+    default {
+	run_dump_test struct
+	run_dump_test align
+    }
+}
+
+# This test is for any COFF target.
+# We omit m88k COFF because it uses weird pseudo-op names.
+# We omit the ARM toolchains because they define locals to
+#  start with '.', which eliminates .eos, .text etc from the output.
+# Omit c54x, since .tag and .def mean something different on that target
+if {   ([istarget *-*-coff*] && ![istarget m88*-*-*] && ![istarget *arm*-*-coff] && ![istarget thumb*-*-coff] && ![istarget *c54x*-*-coff]) \
+     ||([istarget *-*-pe*] && ![istarget arm*-*-pe*] && ![istarget thumb*-*-pe*]) \
+     || [istarget a29k-*-udi*] \
+     || [istarget a29k-*-ebmon*] \
+     || [istarget a29k-*-sym*] \
+     || [istarget a29k-*-vxworks*] \
+     || [istarget i*86-*-aix*] \
+     || [istarget i*86-*-sco*] \
+     || [istarget i*86-*-isc*] \
+     || [istarget i*86-*-go32*] \
+     || [istarget i*86-*-cygwin*] \
+     || [istarget i*86-*-*nt] \
+     || [istarget i*86-*-interix*] \
+     || ([istarget i960-*-vxworks5.*] && ![istarget i960-*-vxworks5.0*]) } {
+    run_dump_test cofftag
+}
+
+# Test omitting conditionals from listings.
+proc test_cond {} {
+    global comp_output
+    global srcdir
+    global subdir
+
+    set testname "conditional listings"
+    gas_run cond.s "-alc" ">dump.out"
+    if ![string match "" $comp_output] {
+	send_log "$comp_output\n"
+	fail $testname
+    } else {
+	if { [regexp_diff dump.out $srcdir/$subdir/cond.d] } {
+	    fail $testname
+	} else {
+	    pass $testname
+	}
+    }
+}
+
+# again, p2align doesn't work on c54x target
+if ![istarget *c54x*-*-*] then {
+    test_cond
+}
+
+# FIXME: this is here cause of a bug in DejaGnu 1.1.1. When it is no longer
+#        in use, then this can be removed.
+if [info exists errorInfo] then {
+    unset errorInfo
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d92 1
+a92 5
+# C30 counts a four byte offset as a difference of one.
+if { ![istarget hppa*-*-*] &&
+     ![istarget *c30*-*-*] &&
+     ![istarget *c4x*-*-*] &&
+     ![istarget *c54x*-*-*] } then {
+d95 3
+a97 1
+    setup_xfail "h8300*-*-elf*" "mn10200*-*-*" "mn10300*-*-*" "vax*-*-vms*"
+a104 1
+    { *c4x*-*-* } { }
+a108 1
+	run_dump_test align2
+d117 1
+a117 1
+if {   ([istarget *-*-coff*] && ![istarget m88*-*-*] && ![istarget *arm*-*-coff] && ![istarget thumb*-*-coff] && ![istarget xscale-*-coff] && ![istarget *c4x*-*-coff] && ![istarget *c54x*-*-coff]) \
+a153 3
+# This test is not suitable for the PA for various reasons
+# not limited to the fact that it depends on specific section
+# names appearing in the output file.
+d155 2
+a156 8
+case $target_triplet in {
+    { hppa*-*-* } { }
+    { *c4x*-*-* } { }
+    { *c54x*-*-* } { }
+    default {
+        test_cond
+        run_dump_test incbin
+    }
+d159 4
+a162 4
+if {   [istarget "i*86-*-*pe*"] \
+    || [istarget "i*86-*-cygwin*"] \
+    || [istarget "i*86-*-mingw32*"] } {
+  gas_test "fastcall.s" ""   "" "fastcall labels"
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

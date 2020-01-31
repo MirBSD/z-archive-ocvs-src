@@ -1,0 +1,643 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.4
+	tg-mergefixes-1-branch:1.1.1.4.0.8
+	tg-mergefixes-1-base:1.1.1.4
+	MIROS_X:1.1.1.4.0.6
+	MIROS_X_BASE:1.1.1.4
+	tg-mergetmp-3:1.1.1.4
+	MIRBSD_XP_MIRPPC:1.1.1.4.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.4
+	MIRBSD_XP_SPARC:1.1.1.4.0.2
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.4
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.4
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309261655:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307081345:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3283:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.2
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.52.10;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.10;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.05.18.57.38;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.08.17.14.40.38;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.12.22.21.04.53;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: ip_ether.c,v 1.43 2003/03/06 11:54:06 markus Exp $  */
+/*
+ * The author of this code is Angelos D. Keromytis (kermit@@adk.gr)
+ *
+ * This code was written by Angelos D. Keromytis for OpenBSD in October 1999.
+ *
+ * Copyright (C) 1999-2001 Angelos D. Keromytis.
+ *
+ * Permission to use, copy, and modify this software with or without fee
+ * is hereby granted, provided that this entire notice is included in
+ * all copies of any software which is or includes a copy or
+ * modification of this software.
+ * You may use this code under the GNU public license if you so wish. Please
+ * contribute changes back to the authors under this freer than GPL license
+ * so that we may further the use of strong encryption without limitations to
+ * all.
+ *
+ * THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR
+ * IMPLIED WARRANTY. IN PARTICULAR, NONE OF THE AUTHORS MAKES ANY
+ * REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE
+ * MERCHANTABILITY OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR
+ * PURPOSE.
+ */
+
+/*
+ * Ethernet-inside-IP processing (RFC3378).
+ */
+
+#include "bridge.h"
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+#include <sys/sysctl.h>
+
+#include <net/if.h>
+#include <net/route.h>
+#include <net/bpf.h>
+
+#ifdef INET
+#include <netinet/in.h>
+#include <netinet/in_systm.h>
+#include <netinet/ip.h>
+#include <netinet/in_pcb.h>
+#include <netinet/ip_var.h>
+#endif /* INET */
+
+#include <netinet/ip_ether.h>
+#include <netinet/if_ether.h>
+#include <net/if_bridge.h>
+#include <net/if_gif.h>
+
+#include "gif.h"
+#include "bpfilter.h"
+
+#ifdef ENCDEBUG
+#define DPRINTF(x)	if (encdebug) printf x
+#else
+#define DPRINTF(x)
+#endif
+
+/*
+ * We can control the acceptance of EtherIP packets by altering the sysctl
+ * net.inet.etherip.allow value. Zero means drop them, all else is acceptance.
+ */
+int etherip_allow = 0;
+
+struct etheripstat etheripstat;
+
+/*
+ * etherip_input gets called when we receive an encapsulated packet,
+ * either because we got it at a real interface, or because AH or ESP
+ * were being used in tunnel mode (in which case the rcvif element will
+ * contain the address of the encX interface associated with the tunnel.
+ */
+
+void
+etherip_input(struct mbuf *m, ...)
+{
+	union sockaddr_union ssrc, sdst;
+	struct ether_header eh;
+	int iphlen;
+	struct etherip_header eip;
+	u_int8_t v;
+	va_list ap;
+
+#if NGIF > 0
+	int i;
+#if NBRIDGE > 0
+	int s;
+#endif /* NBRIDGE */
+#endif /* NGIF */
+
+	va_start(ap, m);
+	iphlen = va_arg(ap, int);
+	va_end(ap);
+
+	etheripstat.etherip_ipackets++;
+
+	/* If we do not accept EtherIP explicitly, drop. */
+	if (!etherip_allow && (m->m_flags & (M_AUTH|M_CONF)) == 0) {
+		DPRINTF(("etherip_input(): dropped due to policy\n"));
+		etheripstat.etherip_pdrops++;
+		m_freem(m);
+		return;
+	}
+
+	/*
+	 * Make sure there's at least an ethernet header's and an EtherIP
+	 * header's of worth of data after the outer IP header.
+	 */
+	if (m->m_pkthdr.len < iphlen + sizeof(struct ether_header) +
+	    sizeof(struct etherip_header)) {
+		DPRINTF(("etherip_input(): encapsulated packet too short\n"));
+		etheripstat.etherip_hdrops++;
+		m_freem(m);
+		return;
+	}
+
+	/* Verify EtherIP version number */
+	m_copydata(m, iphlen, sizeof(struct etherip_header), (caddr_t)&eip);
+	if ((eip.eip_ver & ETHERIP_VER_VERS_MASK) != ETHERIP_VERSION) {
+		DPRINTF(("etherip_input(): received EtherIP version number "
+		    "%d not suppoorted\n", (v >> 4) & 0xff));
+		etheripstat.etherip_adrops++;
+		m_freem(m);
+		return;
+	}
+
+	/*
+	 * Note that the other potential failure of the above check is that the
+	 * second nibble of the EtherIP header (the reserved part) is not
+	 * zero; this is also invalid protocol behaviour.
+	 */
+	if (eip.eip_ver & ETHERIP_VER_RSVD_MASK) {
+		DPRINTF(("etherip_input(): received EtherIP invalid EtherIP "
+		    "header (reserved field non-zero\n"));
+		etheripstat.etherip_adrops++;
+		m_freem(m);
+		return;
+	}
+
+	/* Finally, the pad value must be zero. */
+	if (eip.eip_pad) {
+		DPRINTF(("etherip_input(): received EtherIP invalid "
+		    "pad value\n"));
+		etheripstat.etherip_adrops++;
+		m_freem(m);
+		return;
+	}
+
+	/* Make sure the ethernet header at least is in the first mbuf. */
+	if (m->m_len < iphlen + sizeof(struct ether_header) +
+	    sizeof(struct etherip_header)) {
+		if ((m = m_pullup(m, iphlen + sizeof(struct ether_header) +
+		    sizeof(struct etherip_header))) == NULL) {
+			DPRINTF(("etherip_input(): m_pullup() failed\n"));
+			etheripstat.etherip_adrops++;
+			return;
+		}
+	}
+
+	/* Copy the addresses for use later. */
+	bzero(&ssrc, sizeof(ssrc));
+	bzero(&sdst, sizeof(sdst));
+
+	v = *mtod(m, u_int8_t *);
+	switch (v >> 4) {
+#ifdef INET
+	case 4:
+		ssrc.sa.sa_len = sdst.sa.sa_len = sizeof(struct sockaddr_in);
+		ssrc.sa.sa_family = sdst.sa.sa_family = AF_INET;
+		m_copydata(m, offsetof(struct ip, ip_src),
+		    sizeof(struct in_addr),
+		    (caddr_t) &ssrc.sin.sin_addr);
+		m_copydata(m, offsetof(struct ip, ip_dst),
+		    sizeof(struct in_addr),
+		    (caddr_t) &sdst.sin.sin_addr);
+		break;
+#endif /* INET */
+#ifdef INET6
+	case 6:
+		ssrc.sa.sa_len = sdst.sa.sa_len = sizeof(struct sockaddr_in6);
+		ssrc.sa.sa_family = sdst.sa.sa_family = AF_INET6;
+		m_copydata(m, offsetof(struct ip6_hdr, ip6_src),
+		    sizeof(struct in6_addr),
+		    (caddr_t) &ssrc.sin6.sin6_addr);
+		m_copydata(m, offsetof(struct ip6_hdr, ip6_dst),
+		    sizeof(struct in6_addr),
+		    (caddr_t) &sdst.sin6.sin6_addr);
+		break;
+#endif /* INET6 */
+	default:
+		DPRINTF(("etherip_input(): invalid protocol %d\n", v));
+		m_freem(m);
+		etheripstat.etherip_hdrops++;
+		return /* EAFNOSUPPORT */;
+	}
+
+	/* Chop off the `outer' IP and EtherIP headers and reschedule. */
+	m_adj(m, iphlen + sizeof(struct etherip_header));
+
+	/* Statistics */
+	etheripstat.etherip_ibytes += m->m_pkthdr.len;
+
+	/* Copy ethernet header */
+	m_copydata(m, 0, sizeof(eh), (void *) &eh);
+
+	/* Reset the flags based on the inner packet */
+	m->m_flags &= ~(M_BCAST|M_MCAST|M_AUTH|M_CONF|M_AUTH_AH);
+	if (eh.ether_dhost[0] & 1) {
+		if (bcmp((caddr_t) etherbroadcastaddr,
+		    (caddr_t)eh.ether_dhost, sizeof(etherbroadcastaddr)) == 0)
+			m->m_flags |= M_BCAST;
+		else
+			m->m_flags |= M_MCAST;
+	}
+
+	/* Trim the beginning of the mbuf, to remove the ethernet header. */
+	m_adj(m, sizeof(struct ether_header));
+
+#if NGIF > 0
+	/* Find appropriate gif(4) interface */
+	for (i = 0; i < ngif; i++) {
+		if ((gif_softc[i].gif_psrc == NULL) ||
+		    (gif_softc[i].gif_pdst == NULL) ||
+		    !(gif_softc[i].gif_if.if_flags & (IFF_UP|IFF_RUNNING)))
+			continue;
+
+		if (!bcmp(gif_softc[i].gif_psrc, &sdst, gif_softc[i].gif_psrc->sa_len) &&
+		    !bcmp(gif_softc[i].gif_pdst, &ssrc, gif_softc[i].gif_pdst->sa_len) &&
+		    gif_softc[i].gif_if.if_bridge != NULL)
+			break;
+	}
+
+	/* None found. */
+	if (i >= ngif) {
+		DPRINTF(("etherip_input(): no interface found\n"));
+		etheripstat.etherip_noifdrops++;
+		m_freem(m);
+		return;
+	}
+#if NBPFILTER > 0
+	if (gif_softc[i].gif_if.if_bpf) {
+		struct mbuf m0;
+		u_int32_t af = sdst.sa.sa_family;
+
+		m0.m_next = m;
+		m0.m_len = 4;
+		m0.m_data = (char *)&af;
+
+		bpf_mtap(gif_softc[i].gif_if.if_bpf, &m0);
+	}
+#endif
+
+#if NBRIDGE > 0
+	/*
+	 * Tap the packet off here for a bridge. bridge_input() returns
+	 * NULL if it has consumed the packet.  In the case of gif's,
+	 * bridge_input() returns non-NULL when an error occurs.
+	 */
+	m->m_pkthdr.rcvif = &gif_softc[i].gif_if;
+	if (m->m_flags & (M_BCAST|M_MCAST))
+		gif_softc[i].gif_if.if_imcasts++;
+
+	s = splnet();
+	m = bridge_input(&gif_softc[i].gif_if, &eh, m);
+	splx(s);
+	if (m == NULL)
+		return;
+#endif /* NBRIDGE */
+#endif /* NGIF */
+
+	etheripstat.etherip_noifdrops++;
+	m_freem(m);
+	return;
+}
+
+int
+etherip_output(struct mbuf *m, struct tdb *tdb, struct mbuf **mp, int skip,
+	       int protoff)
+{
+#ifdef INET
+	struct ip *ipo;
+#endif /* INET */
+
+#ifdef INET6
+	struct ip6_hdr *ip6;
+#endif /* INET6 */
+
+	struct etherip_header eip;
+	struct mbuf *m0;
+	ushort hlen;
+
+	/* Some address family sanity checks. */
+	if ((tdb->tdb_src.sa.sa_family != 0) &&
+	    (tdb->tdb_src.sa.sa_family != AF_INET) &&
+	    (tdb->tdb_src.sa.sa_family != AF_INET6)) {
+		DPRINTF(("etherip_output(): IP in protocol-family <%d> "
+		    "attempted, aborting", tdb->tdb_src.sa.sa_family));
+		etheripstat.etherip_adrops++;
+		m_freem(m);
+		return EINVAL;
+	}
+
+	if ((tdb->tdb_dst.sa.sa_family != AF_INET) &&
+	    (tdb->tdb_dst.sa.sa_family != AF_INET6)) {
+		DPRINTF(("etherip_output(): IP in protocol-family <%d> "
+		    "attempted, aborting", tdb->tdb_dst.sa.sa_family));
+		etheripstat.etherip_adrops++;
+		m_freem(m);
+		return EINVAL;
+	}
+
+	if (tdb->tdb_dst.sa.sa_family != tdb->tdb_src.sa.sa_family) {
+		DPRINTF(("etherip_output(): mismatch in tunnel source and "
+		    "destination address protocol families (%d/%d), aborting",
+		    tdb->tdb_src.sa.sa_family, tdb->tdb_dst.sa.sa_family));
+		etheripstat.etherip_adrops++;
+		m_freem(m);
+		return EINVAL;
+	}
+
+	switch (tdb->tdb_dst.sa.sa_family) {
+#ifdef INET
+	case AF_INET:
+		hlen = sizeof(struct ip);
+		break;
+#endif /* INET */
+#ifdef INET6
+	case AF_INET6:
+		hlen = sizeof(struct ip6_hdr);
+		break;
+#endif /* INET6 */
+	default:
+		DPRINTF(("etherip_output(): unsupported tunnel protocol "
+		    "family <%d>, aborting", tdb->tdb_dst.sa.sa_family));
+		etheripstat.etherip_adrops++;
+		m_freem(m);
+		return EINVAL;
+	}
+
+	/* Don't forget the EtherIP header. */
+	hlen += sizeof(struct etherip_header);
+
+	if (!(m->m_flags & M_PKTHDR)) {
+		DPRINTF(("etherip_output(): mbuf is not a header\n"));
+		m_freem(m);
+		return (ENOBUFS);
+	}
+
+	MGETHDR(m0, M_DONTWAIT, MT_DATA);
+	if (m0 == NULL) {
+		DPRINTF(("etherip_output(): M_GETHDR failed\n"));
+		etheripstat.etherip_adrops++;
+		m_freem(m);
+		return ENOBUFS;
+	}
+	M_MOVE_PKTHDR(m0, m);
+	m0->m_next = m;
+	m0->m_len = hlen;
+	m0->m_pkthdr.len += hlen;
+	m = m0;
+
+	/* Statistics */
+	etheripstat.etherip_opackets++;
+	etheripstat.etherip_obytes += m->m_pkthdr.len - hlen;
+
+	switch (tdb->tdb_dst.sa.sa_family) {
+#ifdef INET
+	case AF_INET:
+		ipo = mtod(m, struct ip *);
+
+		ipo->ip_v = IPVERSION;
+		ipo->ip_hl = 5;
+		ipo->ip_len = htons(m->m_pkthdr.len);
+		ipo->ip_ttl = ip_defttl;
+		ipo->ip_p = IPPROTO_ETHERIP;
+		ipo->ip_tos = 0;
+		ipo->ip_off = 0;
+		ipo->ip_sum = 0;
+		ipo->ip_id = htons(ip_randomid());
+
+		/*
+		 * We should be keeping tunnel soft-state and send back
+		 * ICMPs as needed.
+		 */
+
+		ipo->ip_src = tdb->tdb_src.sin.sin_addr;
+		ipo->ip_dst = tdb->tdb_dst.sin.sin_addr;
+		break;
+#endif /* INET */
+#ifdef INET6
+	case AF_INET6:
+		ip6 = mtod(m, struct ip6_hdr *);
+
+		ip6->ip6_flow = 0;
+		ip6->ip6_nxt = IPPROTO_ETHERIP;
+		ip6->ip6_vfc &= ~IPV6_VERSION_MASK;
+		ip6->ip6_vfc |= IPV6_VERSION;
+		ip6->ip6_plen = htons(m->m_pkthdr.len);
+		ip6->ip6_hlim = ip_defttl;
+		ip6->ip6_dst = tdb->tdb_dst.sin6.sin6_addr;
+		ip6->ip6_src = tdb->tdb_src.sin6.sin6_addr;
+		break;
+#endif /* INET6 */
+	}
+
+	/* Set the version number */
+	eip.eip_ver = ETHERIP_VERSION & ETHERIP_VER_VERS_MASK;
+	eip.eip_pad = 0;
+	m_copyback(m, hlen - sizeof(struct etherip_header),
+	    sizeof(struct etherip_header), (caddr_t)&eip);
+
+	*mp = m;
+
+	return 0;
+}
+
+int
+etherip_sysctl(name, namelen, oldp, oldlenp, newp, newlen)
+	int *name;
+	u_int namelen;
+	void *oldp, *newp;
+	size_t *oldlenp, newlen;
+{
+	/* All sysctl names at this level are terminal. */
+	if (namelen != 1)
+		return (ENOTDIR);
+
+	switch (name[0]) {
+	case ETHERIPCTL_ALLOW:
+		return (sysctl_int(oldp, oldlenp, newp, newlen,
+		    &etherip_allow));
+	default:
+		return (ENOPROTOOPT);
+	}
+	/* NOTREACHED */
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of now, CTM delta 3255, just before the i386 flag day
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: ip_ether.c,v 1.44 2003/05/03 01:43:07 itojun Exp $  */
+a248 1
+		m0.m_flags = 0;
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD source tree from CVS (anoncvs canada)
+of roughly 12:00 UTC today. Bumps us to OpenBSD 3.4
+and makes source/ports in sync. Hopefully.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: ip_ether.c,v 1.45 2003/08/14 19:00:12 jason Exp $  */
+d415 1
+a415 1
+	    sizeof(struct etherip_header), &eip);
+@
+
+
+1.1.1.4
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: ip_ether.c,v 1.46 2003/12/03 14:51:05 markus Exp $  */
+d89 1
+a89 1
+	struct gif_softc *sc;
+d225 4
+a228 4
+	LIST_FOREACH(sc, &gif_softc_list, gif_list) {
+		if ((sc->gif_psrc == NULL) ||
+		    (sc->gif_pdst == NULL) ||
+		    !(sc->gif_if.if_flags & (IFF_UP|IFF_RUNNING)))
+d231 3
+a233 3
+		if (!bcmp(sc->gif_psrc, &sdst, sc->gif_psrc->sa_len) &&
+		    !bcmp(sc->gif_pdst, &ssrc, sc->gif_pdst->sa_len) &&
+		    sc->gif_if.if_bridge != NULL)
+d238 1
+a238 1
+	if (sc == NULL) {
+d245 1
+a245 1
+	if (sc->gif_if.if_bpf) {
+d254 1
+a254 1
+		bpf_mtap(sc->gif_if.if_bpf, &m0);
+d264 1
+a264 1
+	m->m_pkthdr.rcvif = &sc->gif_if;
+d266 1
+a266 1
+		sc->gif_if.if_imcasts++;
+d269 1
+a269 1
+	m = bridge_input(&sc->gif_if, &eh, m);
+@
+
+

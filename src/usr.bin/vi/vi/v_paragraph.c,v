@@ -1,0 +1,453 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.47;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.47;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: v_paragraph.c,v 1.4 2002/02/16 21:27:58 millert Exp $	*/
+
+/*-
+ * Copyright (c) 1992, 1993, 1994
+ *	The Regents of the University of California.  All rights reserved.
+ * Copyright (c) 1992, 1993, 1994, 1995, 1996
+ *	Keith Bostic.  All rights reserved.
+ *
+ * See the LICENSE file for redistribution information.
+ */
+
+#include "config.h"
+
+#ifndef lint
+static const char sccsid[] = "@@(#)v_paragraph.c	10.7 (Berkeley) 3/6/96";
+#endif /* not lint */
+
+#include <sys/types.h>
+#include <sys/queue.h>
+#include <sys/time.h>
+
+#include <bitstring.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "../common/common.h"
+#include "vi.h"
+
+#define	INTEXT_CHECK {							\
+	if (len == 0 || v_isempty(p, len)) {				\
+		if (!--cnt)						\
+			goto found;					\
+		pstate = P_INBLANK;					\
+	}								\
+	/*								\
+	 * !!!								\
+	 * Historic documentation (USD:15-11, 4.2) said that formfeed	\
+	 * characters (^L) in the first column delimited paragraphs.	\
+	 * The historic vi code mentions formfeed characters, but never	\
+	 * implements them.  It seems reasonable, do it.		\
+	 */								\
+	if (p[0] == '\014') {						\
+		if (!--cnt)						\
+			goto found;					\
+		continue;						\
+	}								\
+	if (p[0] != '.' || len < 2)					\
+		continue;						\
+	for (lp = VIP(sp)->ps; *lp != '\0'; lp += 2)			\
+		if (lp[0] == p[1] &&					\
+		    (lp[1] == ' ' && len == 2 || lp[1] == p[2]) &&	\
+		    !--cnt)						\
+			goto found;					\
+}
+
+/*
+ * v_paragraphf -- [count]}
+ *	Move forward count paragraphs.
+ *
+ * Paragraphs are empty lines after text, formfeed characters, or values
+ * from the paragraph or section options.
+ *
+ * PUBLIC: int v_paragraphf(SCR *, VICMD *);
+ */
+int
+v_paragraphf(sp, vp)
+	SCR *sp;
+	VICMD *vp;
+{
+	enum { P_INTEXT, P_INBLANK } pstate;
+	size_t lastlen, len;
+	recno_t cnt, lastlno, lno;
+	int isempty;
+	char *p, *lp;
+
+	/*
+	 * !!!
+	 * If the starting cursor position is at or before any non-blank
+	 * characters in the line, i.e. the movement is cutting all of the
+	 * line's text, the buffer is in line mode.  It's a lot easier to
+	 * check here, because we know that the end is going to be the start
+	 * or end of a line.
+	 *
+	 * This was historical practice in vi, with a single exception.  If
+	 * the paragraph movement was from the start of the last line to EOF,
+	 * then all the characters were deleted from the last line, but the
+	 * line itself remained.  If somebody complains, don't pause, don't
+	 * hesitate, just hit them.
+	 */
+	if (ISMOTION(vp))
+		if (vp->m_start.cno == 0)
+			F_SET(vp, VM_LMODE);
+		else {
+			vp->m_stop = vp->m_start;
+			vp->m_stop.cno = 0;
+			if (nonblank(sp, vp->m_stop.lno, &vp->m_stop.cno))
+				return (1);
+			if (vp->m_start.cno <= vp->m_stop.cno)
+				F_SET(vp, VM_LMODE);
+		}
+
+	/* Figure out what state we're currently in. */
+	lno = vp->m_start.lno;
+	if (db_get(sp, lno, 0, &p, &len))
+		goto eof;
+
+	/*
+	 * If we start in text, we want to switch states
+	 * (2 * N - 1) times, in non-text, (2 * N) times.
+	 */
+	cnt = F_ISSET(vp, VC_C1SET) ? vp->count : 1;
+	cnt *= 2;
+	if (len == 0 || v_isempty(p, len))
+		pstate = P_INBLANK;
+	else {
+		--cnt;
+		pstate = P_INTEXT;
+	}
+
+	for (;;) {
+		lastlno = lno;
+		lastlen = len;
+		if (db_get(sp, ++lno, 0, &p, &len))
+			goto eof;
+		switch (pstate) {
+		case P_INTEXT:
+			INTEXT_CHECK;
+			break;
+		case P_INBLANK:
+			if (len == 0 || v_isempty(p, len))
+				break;
+			if (--cnt) {
+				pstate = P_INTEXT;
+				break;
+			}
+			/*
+			 * !!!
+			 * Non-motion commands move to the end of the range,
+			 * delete and yank stay at the start.  Ignore others.
+			 * Adjust the end of the range for motion commands;
+			 * historically, a motion component was to the end of
+			 * the previous line, whereas the movement command was
+			 * to the start of the new "paragraph".
+			 */
+found:			if (ISMOTION(vp)) {
+				vp->m_stop.lno = lastlno;
+				vp->m_stop.cno = lastlen ? lastlen - 1 : 0;
+				vp->m_final = vp->m_start;
+			} else {
+				vp->m_stop.lno = lno;
+				vp->m_stop.cno = 0;
+				vp->m_final = vp->m_stop;
+			}
+			return (0);
+		default:
+			abort();
+		}
+	}
+
+	/*
+	 * !!!
+	 * Adjust end of the range for motion commands; EOF is a movement
+	 * sink.  The } command historically moved to the end of the last
+	 * line, not the beginning, from any position before the end of the
+	 * last line.  It also historically worked on empty files, so we
+	 * have to make it okay.
+	 */
+eof:	if (vp->m_start.lno == lno || vp->m_start.lno == lno - 1) {
+		if (db_eget(sp, vp->m_start.lno, &p, &len, &isempty)) {
+			if (!isempty)
+				return (1);
+			vp->m_start.cno = 0;
+			return (0);
+		}
+		if (vp->m_start.cno == (len ? len - 1 : 0)) {
+			v_eof(sp, NULL);
+			return (1);
+		}
+	}
+	/*
+	 * !!!
+	 * Non-motion commands move to the end of the range, delete
+	 * and yank stay at the start.  Ignore others.
+	 *
+	 * If deleting the line (which happens if deleting to EOF), then
+	 * cursor movement is to the first nonblank.
+	 */
+	if (ISMOTION(vp) && ISCMD(vp->rkp, 'd')) {
+		F_CLR(vp, VM_RCM_MASK);
+		F_SET(vp, VM_RCM_SETFNB);
+	}
+	vp->m_stop.lno = lno - 1;
+	vp->m_stop.cno = len ? len - 1 : 0;
+	vp->m_final = ISMOTION(vp) ? vp->m_start : vp->m_stop;
+	return (0);
+}
+
+/*
+ * v_paragraphb -- [count]{
+ *	Move backward count paragraphs.
+ *
+ * PUBLIC: int v_paragraphb(SCR *, VICMD *);
+ */
+int
+v_paragraphb(sp, vp)
+	SCR *sp;
+	VICMD *vp;
+{
+	enum { P_INTEXT, P_INBLANK } pstate;
+	size_t len;
+	recno_t cnt, lno;
+	char *p, *lp;
+
+	/*
+	 * !!!
+	 * Check for SOF.  The historic vi didn't complain if users hit SOF
+	 * repeatedly, unless it was part of a motion command.  There is no
+	 * question but that Emerson's editor of choice was vi.
+	 *
+	 * The { command historically moved to the beginning of the first
+	 * line if invoked on the first line.
+	 *
+	 * !!!
+	 * If the starting cursor position is in the first column (backward
+	 * paragraph movements did NOT historically pay attention to non-blank
+	 * characters) i.e. the movement is cutting the entire line, the buffer
+	 * is in line mode.  Cuts from the beginning of the line also did not
+	 * cut the current line, but started at the previous EOL.
+	 *
+	 * Correct for a left motion component while we're thinking about it.
+	 */
+	lno = vp->m_start.lno;
+
+	if (ISMOTION(vp))
+		if (vp->m_start.cno == 0) {
+			if (vp->m_start.lno == 1) {
+				v_sof(sp, &vp->m_start);
+				return (1);
+			} else
+				--vp->m_start.lno;
+			F_SET(vp, VM_LMODE);
+		} else
+			--vp->m_start.cno;
+
+	if (vp->m_start.lno <= 1)
+		goto sof;
+
+	/* Figure out what state we're currently in. */
+	if (db_get(sp, lno, 0, &p, &len))
+		goto sof;
+
+	/*
+	 * If we start in text, we want to switch states
+	 * (2 * N - 1) times, in non-text, (2 * N) times.
+	 */
+	cnt = F_ISSET(vp, VC_C1SET) ? vp->count : 1;
+	cnt *= 2;
+	if (len == 0 || v_isempty(p, len))
+		pstate = P_INBLANK;
+	else {
+		--cnt;
+		pstate = P_INTEXT;
+
+		/*
+		 * !!!
+		 * If the starting cursor is past the first column,
+		 * the current line is checked for a paragraph.
+		 */
+		if (vp->m_start.cno > 0)
+			++lno;
+	}
+
+	for (;;) {
+		if (db_get(sp, --lno, 0, &p, &len))
+			goto sof;
+		switch (pstate) {
+		case P_INTEXT:
+			INTEXT_CHECK;
+			break;
+		case P_INBLANK:
+			if (len != 0 && !v_isempty(p, len)) {
+				if (!--cnt)
+					goto found;
+				pstate = P_INTEXT;
+			}
+			break;
+		default:
+			abort();
+		}
+	}
+
+	/* SOF is a movement sink. */
+sof:	lno = 1;
+
+found:	vp->m_stop.lno = lno;
+	vp->m_stop.cno = 0;
+
+	/*
+	 * All commands move to the end of the range.  (We already
+	 * adjusted the start of the range for motion commands).
+	 */
+	vp->m_final = vp->m_stop;
+	return (0);
+}
+
+/*
+ * v_buildps --
+ *	Build the paragraph command search pattern.
+ *
+ * PUBLIC: int v_buildps(SCR *, char *, char *);
+ */
+int
+v_buildps(sp, p_p, s_p)
+	SCR *sp;
+	char *p_p, *s_p;
+{
+	VI_PRIVATE *vip;
+	size_t p_len, s_len;
+	char *p;
+
+	/*
+	 * The vi paragraph command searches for either a paragraph or
+	 * section option macro.
+	 */
+	p_len = p_p == NULL ? 0 : strlen(p_p);
+	s_len = s_p == NULL ? 0 : strlen(s_p);
+
+	if (p_len == 0 && s_len == 0)
+		return (0);
+
+	MALLOC_RET(sp, p, char *, p_len + s_len + 1);
+
+	vip = VIP(sp);
+	if (vip->ps != NULL)
+		free(vip->ps);
+
+	if (p_p != NULL)
+		memmove(p, p_p, p_len + 1);
+	if (s_p != NULL)
+		memmove(p + p_len, s_p, s_len + 1);
+	vip->ps = p;
+	return (0);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,326 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.03.21.15.14.45;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.52.15;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.15;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.41.32;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.12.22.21.05.14;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke netccitt, netiso, netns (as announced earlier)
+netatalk stays in as per bsiegert@@
+
+sync kernel
+sync bktr(4) options with reality
+@
+text
+@/*	$OpenBSD: tuba_table.c,v 1.4 2001/08/19 15:07:34 miod Exp $	*/
+/*	$NetBSD: tuba_table.c,v 1.6 1996/02/13 22:12:34 christos Exp $	*/
+
+/*
+ * Copyright (c) 1992, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@@(#)tuba_table.c	8.2 (Berkeley) 11/15/93
+ */
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/proc.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+#include <sys/domain.h>
+#include <sys/protosw.h>
+#include <sys/ioctl.h>
+#include <sys/time.h>
+#include <sys/kernel.h>
+#include <sys/timeout.h>
+
+#include <net/if.h>
+#include <net/radix.h>
+
+#include <netiso/iso.h>
+#include <netiso/tuba_table.h>
+
+int             tuba_table_size;
+struct tuba_cache **tuba_table;
+struct radix_node_head *tuba_tree;
+extern int      arpt_keep, arpt_prune;	/* use same values as arp cache */
+struct timeout tuba_timeout;
+
+void
+tuba_timer(v)
+	void *v;
+{
+	int             s = splsoftnet();
+	int             i;
+	register struct tuba_cache *tc;
+	long            timelimit = time.tv_sec - arpt_keep;
+
+	timeout_add(&tuba_timeout, arpt_prune * hz);
+	for (i = tuba_table_size; i > 0; i--)
+		if ((tc = tuba_table[i]) && (tc->tc_refcnt == 0) &&
+		    (tc->tc_time < timelimit)) {
+			tuba_table[i] = 0;
+			rn_delete(&tc->tc_siso.siso_addr, NULL, tuba_tree);
+			free((caddr_t) tc, M_RTABLE);
+		}
+	splx(s);
+}
+
+void
+tuba_table_init()
+{
+	rn_inithead((void **) &tuba_tree, 40);
+	timeout_set(&tuba_timeout, tuba_timer, NULL);
+	timeout_add(&tuba_timeout, arpt_prune * hz);
+}
+
+int
+tuba_lookup(siso, wait)
+	register struct sockaddr_iso *siso;
+	int wait;
+{
+	struct radix_node *rn;
+	register struct tuba_cache *tc;
+	struct tuba_cache **new;
+	int             dupentry = 0, sum_a = 0, sum_b = 0, old_size, i;
+
+	if ((rn = rn_match((caddr_t) &siso->siso_addr, tuba_tree)) != NULL
+	    && ((rn->rn_flags & RNF_ROOT) == 0)) {
+		tc = (struct tuba_cache *) rn;
+		tc->tc_time = time.tv_sec;
+		return (tc->tc_index);
+	}
+	if ((tc = (struct tuba_cache *) malloc(sizeof(*tc), M_RTABLE, wait))
+	    == NULL)
+		return (0);
+	bzero((caddr_t) tc, sizeof(*tc));
+	bcopy(siso->siso_data, tc->tc_siso.siso_data,
+	      tc->tc_siso.siso_nlen = siso->siso_nlen);
+	rn_insert(&tc->tc_siso.siso_addr, tuba_tree, &dupentry, tc->tc_nodes);
+	if (dupentry)
+		panic("tuba_lookup 1");
+	tc->tc_siso.siso_family = AF_ISO;
+	tc->tc_siso.siso_len = sizeof(tc->tc_siso);
+	tc->tc_time = time.tv_sec;
+	for (i = sum_a = tc->tc_siso.siso_nlen; --i >= 0;)
+		if (i & 1)
+			sum_a += (u_char) tc->tc_siso.siso_data[i];
+		else
+			sum_b += (u_char) tc->tc_siso.siso_data[i];
+	REDUCE(tc->tc_sum, (sum_a << 8) + sum_b);
+	HTONS(tc->tc_sum);
+	SWAB(tc->tc_ssum, tc->tc_sum);
+	for (i = tuba_table_size; i > 0; i--)
+		if (tuba_table[i] == 0)
+			goto fixup;
+	old_size = tuba_table_size;
+	if (tuba_table_size == 0)
+		tuba_table_size = 15;
+	if (tuba_table_size > 0x7fff)
+		return (0);
+	tuba_table_size = 1 + 2 * tuba_table_size;
+	i = (tuba_table_size + 1) * sizeof(tc);
+	new = (struct tuba_cache **) malloc((unsigned) i, M_RTABLE, wait);
+	if (new == 0) {
+		tuba_table_size = old_size;
+		rn_delete(&tc->tc_siso.siso_addr, NULL, tuba_tree);
+		free((caddr_t) tc, M_RTABLE);
+		return (0);
+	}
+	bzero((caddr_t) new, (unsigned) i);
+	if (tuba_table) {
+		bcopy((caddr_t) tuba_table, (caddr_t) new, i >> 1);
+		free((caddr_t) tuba_table, M_RTABLE);
+	}
+	tuba_table = new;
+	i = tuba_table_size;
+fixup:
+	tuba_table[i] = tc;
+	tc->tc_index = i;
+	return (tc->tc_index);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: tuba_table.c,v 1.5 2003/06/02 23:28:18 millert Exp $	*/
+d16 5
+a20 1
+ * 3. Neither the name of the University nor the names of its contributors
+@
+
+
+1.1.1.3
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: tuba_table.c,v 1.6 2003/12/10 07:22:44 itojun Exp $	*/
+d65 1
+a65 1
+	struct tuba_cache *tc;
+d89 1
+a89 1
+	struct sockaddr_iso *siso;
+d93 1
+a93 1
+	struct tuba_cache *tc;
+@
+
+

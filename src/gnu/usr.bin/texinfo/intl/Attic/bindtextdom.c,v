@@ -1,0 +1,560 @@
+head	1.2;
+access;
+symbols
+	texinfo-4_8:1.1.2.1
+	FSF:1.1.2
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.02.08.19.49.10;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.44.15;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.15;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2005.01.06.23.33.32;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@* bump to 0x079D (a bit late for tiff, but hey)
+* sync lists
+* regenerate configure files
+* remove MirLibtool, go back to gcc3 libtool :-(
+* fix for $stuff
+* remove dupes (libz, etc.) and unused (libintl, getopt)
+* update lynx
+* update texinfo.tex
+etc.
+
+XXX borked commit, eleventh try
+@
+text
+@/* Implementation of the bindtextdomain(3) function
+   Copyright (C) 1995-1998, 2000, 2001 Free Software Foundation, Inc.
+
+   This program is free software; you can redistribute it and/or modify it
+   under the terms of the GNU Library General Public License as published
+   by the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   Library General Public License for more details.
+
+   You should have received a copy of the GNU Library General Public
+   License along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307,
+   USA.  */
+
+#ifdef HAVE_CONFIG_H
+# include <config.h>
+#endif
+
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef _LIBC
+# include <libintl.h>
+#else
+# include "libgnuintl.h"
+#endif
+#include "gettextP.h"
+
+#ifdef _LIBC
+/* We have to handle multi-threaded applications.  */
+# include <bits/libc-lock.h>
+#else
+/* Provide dummy implementation if this is outside glibc.  */
+# define __libc_rwlock_define(CLASS, NAME)
+# define __libc_rwlock_wrlock(NAME)
+# define __libc_rwlock_unlock(NAME)
+#endif
+
+/* The internal variables in the standalone libintl.a must have different
+   names than the internal variables in GNU libc, otherwise programs
+   using libintl.a cannot be linked statically.  */
+#if !defined _LIBC
+# define _nl_default_dirname _nl_default_dirname__
+# define _nl_domain_bindings _nl_domain_bindings__
+#endif
+
+/* Some compilers, like SunOS4 cc, don't have offsetof in <stddef.h>.  */
+#ifndef offsetof
+# define offsetof(type,ident) ((size_t)&(((type*)0)->ident))
+#endif
+
+/* @@@@ end of prolog @@@@ */
+
+/* Contains the default location of the message catalogs.  */
+extern const char _nl_default_dirname[];
+
+/* List with bindings of specific domains.  */
+extern struct binding *_nl_domain_bindings;
+
+/* Lock variable to protect the global data in the gettext implementation.  */
+__libc_rwlock_define (extern, _nl_state_lock)
+
+
+/* Names for the libintl functions are a problem.  They must not clash
+   with existing names and they should follow ANSI C.  But this source
+   code is also used in GNU C Library where the names have a __
+   prefix.  So we have to make a difference here.  */
+#ifdef _LIBC
+# define BINDTEXTDOMAIN __bindtextdomain
+# define BIND_TEXTDOMAIN_CODESET __bind_textdomain_codeset
+# ifndef strdup
+#  define strdup(str) __strdup (str)
+# endif
+#else
+# define BINDTEXTDOMAIN bindtextdomain__
+# define BIND_TEXTDOMAIN_CODESET bind_textdomain_codeset__
+#endif
+
+/* Prototypes for local functions.  */
+static void set_binding_values PARAMS ((const char *domainname,
+					const char **dirnamep,
+					const char **codesetp));
+
+/* Specifies the directory name *DIRNAMEP and the output codeset *CODESETP
+   to be used for the DOMAINNAME message catalog.
+   If *DIRNAMEP or *CODESETP is NULL, the corresponding attribute is not
+   modified, only the current value is returned.
+   If DIRNAMEP or CODESETP is NULL, the corresponding attribute is neither
+   modified nor returned.  */
+static void
+set_binding_values (domainname, dirnamep, codesetp)
+     const char *domainname;
+     const char **dirnamep;
+     const char **codesetp;
+{
+  struct binding *binding;
+  int modified;
+
+  /* Some sanity checks.  */
+  if (domainname == NULL || domainname[0] == '\0')
+    {
+      if (dirnamep)
+	*dirnamep = NULL;
+      if (codesetp)
+	*codesetp = NULL;
+      return;
+    }
+
+  __libc_rwlock_wrlock (_nl_state_lock);
+
+  modified = 0;
+
+  for (binding = _nl_domain_bindings; binding != NULL; binding = binding->next)
+    {
+      int compare = strcmp (domainname, binding->domainname);
+      if (compare == 0)
+	/* We found it!  */
+	break;
+      if (compare < 0)
+	{
+	  /* It is not in the list.  */
+	  binding = NULL;
+	  break;
+	}
+    }
+
+  if (binding != NULL)
+    {
+      if (dirnamep)
+	{
+	  const char *dirname = *dirnamep;
+
+	  if (dirname == NULL)
+	    /* The current binding has be to returned.  */
+	    *dirnamep = binding->dirname;
+	  else
+	    {
+	      /* The domain is already bound.  If the new value and the old
+		 one are equal we simply do nothing.  Otherwise replace the
+		 old binding.  */
+	      char *result = binding->dirname;
+	      if (strcmp (dirname, result) != 0)
+		{
+		  if (strcmp (dirname, _nl_default_dirname) == 0)
+		    result = (char *) _nl_default_dirname;
+		  else
+		    {
+#if defined _LIBC || defined HAVE_STRDUP
+		      result = strdup (dirname);
+#else
+		      size_t len = strlen (dirname) + 1;
+		      result = (char *) malloc (len);
+		      if (__builtin_expect (result != NULL, 1))
+			memcpy (result, dirname, len);
+#endif
+		    }
+
+		  if (__builtin_expect (result != NULL, 1))
+		    {
+		      if (binding->dirname != _nl_default_dirname)
+			free (binding->dirname);
+
+		      binding->dirname = result;
+		      modified = 1;
+		    }
+		}
+	      *dirnamep = result;
+	    }
+	}
+
+      if (codesetp)
+	{
+	  const char *codeset = *codesetp;
+
+	  if (codeset == NULL)
+	    /* The current binding has be to returned.  */
+	    *codesetp = binding->codeset;
+	  else
+	    {
+	      /* The domain is already bound.  If the new value and the old
+		 one are equal we simply do nothing.  Otherwise replace the
+		 old binding.  */
+	      char *result = binding->codeset;
+	      if (result == NULL || strcmp (codeset, result) != 0)
+		{
+#if defined _LIBC || defined HAVE_STRDUP
+		  result = strdup (codeset);
+#else
+		  size_t len = strlen (codeset) + 1;
+		  result = (char *) malloc (len);
+		  if (__builtin_expect (result != NULL, 1))
+		    memcpy (result, codeset, len);
+#endif
+
+		  if (__builtin_expect (result != NULL, 1))
+		    {
+		      if (binding->codeset != NULL)
+			free (binding->codeset);
+
+		      binding->codeset = result;
+		      binding->codeset_cntr++;
+		      modified = 1;
+		    }
+		}
+	      *codesetp = result;
+	    }
+	}
+    }
+  else if ((dirnamep == NULL || *dirnamep == NULL)
+	   && (codesetp == NULL || *codesetp == NULL))
+    {
+      /* Simply return the default values.  */
+      if (dirnamep)
+	*dirnamep = _nl_default_dirname;
+      if (codesetp)
+	*codesetp = NULL;
+    }
+  else
+    {
+      /* We have to create a new binding.  */
+      size_t len = strlen (domainname) + 1;
+      struct binding *new_binding =
+	(struct binding *) malloc (offsetof (struct binding, domainname) + len);
+
+      if (__builtin_expect (new_binding == NULL, 0))
+	goto failed;
+
+      memcpy (new_binding->domainname, domainname, len);
+
+      if (dirnamep)
+	{
+	  const char *dirname = *dirnamep;
+
+	  if (dirname == NULL)
+	    /* The default value.  */
+	    dirname = _nl_default_dirname;
+	  else
+	    {
+	      if (strcmp (dirname, _nl_default_dirname) == 0)
+		dirname = _nl_default_dirname;
+	      else
+		{
+		  char *result;
+#if defined _LIBC || defined HAVE_STRDUP
+		  result = strdup (dirname);
+		  if (__builtin_expect (result == NULL, 0))
+		    goto failed_dirname;
+#else
+		  size_t len = strlen (dirname) + 1;
+		  result = (char *) malloc (len);
+		  if (__builtin_expect (result == NULL, 0))
+		    goto failed_dirname;
+		  memcpy (result, dirname, len);
+#endif
+		  dirname = result;
+		}
+	    }
+	  *dirnamep = dirname;
+	  new_binding->dirname = (char *) dirname;
+	}
+      else
+	/* The default value.  */
+	new_binding->dirname = (char *) _nl_default_dirname;
+
+      new_binding->codeset_cntr = 0;
+
+      if (codesetp)
+	{
+	  const char *codeset = *codesetp;
+
+	  if (codeset != NULL)
+	    {
+	      char *result;
+
+#if defined _LIBC || defined HAVE_STRDUP
+	      result = strdup (codeset);
+	      if (__builtin_expect (result == NULL, 0))
+		goto failed_codeset;
+#else
+	      size_t len = strlen (codeset) + 1;
+	      result = (char *) malloc (len);
+	      if (__builtin_expect (result == NULL, 0))
+		goto failed_codeset;
+	      memcpy (result, codeset, len);
+#endif
+	      codeset = result;
+	      new_binding->codeset_cntr++;
+	    }
+	  *codesetp = codeset;
+	  new_binding->codeset = (char *) codeset;
+	}
+      else
+	new_binding->codeset = NULL;
+
+      /* Now enqueue it.  */
+      if (_nl_domain_bindings == NULL
+	  || strcmp (domainname, _nl_domain_bindings->domainname) < 0)
+	{
+	  new_binding->next = _nl_domain_bindings;
+	  _nl_domain_bindings = new_binding;
+	}
+      else
+	{
+	  binding = _nl_domain_bindings;
+	  while (binding->next != NULL
+		 && strcmp (domainname, binding->next->domainname) > 0)
+	    binding = binding->next;
+
+	  new_binding->next = binding->next;
+	  binding->next = new_binding;
+	}
+
+      modified = 1;
+
+      /* Here we deal with memory allocation failures.  */
+      if (0)
+	{
+	failed_codeset:
+	  if (new_binding->dirname != _nl_default_dirname)
+	    free (new_binding->dirname);
+	failed_dirname:
+	  free (new_binding);
+	failed:
+	  if (dirnamep)
+	    *dirnamep = NULL;
+	  if (codesetp)
+	    *codesetp = NULL;
+	}
+    }
+
+  /* If we modified any binding, we flush the caches.  */
+  if (modified)
+    ++_nl_msg_cat_cntr;
+
+  __libc_rwlock_unlock (_nl_state_lock);
+}
+
+/* Specify that the DOMAINNAME message catalog will be found
+   in DIRNAME rather than in the system locale data base.  */
+char *
+BINDTEXTDOMAIN (domainname, dirname)
+     const char *domainname;
+     const char *dirname;
+{
+  set_binding_values (domainname, &dirname, NULL);
+  return (char *) dirname;
+}
+
+/* Specify the character encoding in which the messages from the
+   DOMAINNAME message catalog will be returned.  */
+char *
+BIND_TEXTDOMAIN_CODESET (domainname, codeset)
+     const char *domainname;
+     const char *codeset;
+{
+  set_binding_values (domainname, NULL, &codeset);
+  return (char *) codeset;
+}
+
+#ifdef _LIBC
+/* Aliases for function names in GNU C Library.  */
+weak_alias (__bindtextdomain, bindtextdomain);
+weak_alias (__bind_textdomain_codeset, bind_textdomain_codeset);
+#endif
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@GNU Texinfo 4.8 here, too
+@
+text
+@d2 1
+a2 1
+   Copyright (C) 1995-1998, 2000-2003 Free Software Foundation, Inc.
+d48 2
+a49 2
+# define _nl_default_dirname libintl_nl_default_dirname
+# define _nl_domain_bindings libintl_nl_domain_bindings
+a60 5
+#ifdef _LIBC
+extern const char _nl_default_dirname_internal[] attribute_hidden;
+#else
+# define INTUSE(name) name
+#endif
+d66 1
+a66 1
+__libc_rwlock_define (extern, _nl_state_lock attribute_hidden)
+d80 2
+a81 2
+# define BINDTEXTDOMAIN libintl_bindtextdomain
+# define BIND_TEXTDOMAIN_CODESET libintl_bind_textdomain_codeset
+d84 5
+d96 4
+a99 2
+set_binding_values (const char *domainname,
+		    const char **dirnamep, const char **codesetp)
+d149 2
+a150 2
+		  if (strcmp (dirname, INTUSE(_nl_default_dirname)) == 0)
+		    result = (char *) INTUSE(_nl_default_dirname);
+d165 1
+a165 1
+		      if (binding->dirname != INTUSE(_nl_default_dirname))
+d219 1
+a219 1
+	*dirnamep = INTUSE(_nl_default_dirname);
+d241 1
+a241 1
+	    dirname = INTUSE(_nl_default_dirname);
+d244 2
+a245 2
+	      if (strcmp (dirname, INTUSE(_nl_default_dirname)) == 0)
+		dirname = INTUSE(_nl_default_dirname);
+d268 1
+a268 1
+	new_binding->dirname = (char *) INTUSE(_nl_default_dirname);
+d324 1
+a324 1
+	  if (new_binding->dirname != INTUSE(_nl_default_dirname))
+d346 3
+a348 1
+BINDTEXTDOMAIN (const char *domainname, const char *dirname)
+d357 3
+a359 1
+BIND_TEXTDOMAIN_CODESET (const char *domainname, const char *codeset)
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

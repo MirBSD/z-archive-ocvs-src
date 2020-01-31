@@ -1,0 +1,240 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.48.40;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.48.40;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: swaplist.c,v 1.4 2002/07/03 22:32:34 deraadt Exp $	*/
+/*	$NetBSD: swaplist.c,v 1.8 1998/10/08 10:00:31 mrg Exp $	*/
+
+/*
+ * Copyright (c) 1997 Matthew R. Green
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+ * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/stat.h>
+#include <sys/swap.h>
+
+#include <unistd.h>
+#include <err.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <inttypes.h>
+
+#define	dbtoqb(b) dbtob((int64_t)(b))
+
+/*
+ * NOTE:  This file is separate from swapctl.c so that pstat can grab it.
+ */
+
+#include "swapctl.h"
+
+void
+list_swap(int pri, int kflag, int pflag, int tflag, int dolong)
+{
+	struct	swapent *sep, *fsep;
+	long	blocksize;
+	char	*header;
+	size_t	l;
+	int	hlen, totalsize, size, totalinuse, inuse, ncounted, pathmax;
+	int	rnswap, nswap = swapctl(SWAP_NSWAP, 0, 0), i;
+
+	if (nswap < 1) {
+		puts("no swap devices configured");
+		exit(0);
+	}
+
+	fsep = sep = (struct swapent *)malloc(nswap * sizeof(*sep));
+	if (sep == NULL)
+		err(1, "malloc");
+	rnswap = swapctl(SWAP_STATS, (void *)sep, nswap);
+	if (rnswap < 0)
+		err(1, "SWAP_STATS");
+	if (nswap != rnswap)
+		warnx("SWAP_STATS different to SWAP_NSWAP (%d != %d)",
+		    rnswap, nswap);
+
+	pathmax = 11;
+	if (dolong && tflag == 0) {
+		if (kflag) {
+			header = "1K-blocks";
+			blocksize = 1024;
+			hlen = strlen(header);
+		} else
+			header = getbsize(&hlen, &blocksize);
+		for (i = rnswap; i-- > 0; sep++)
+			if (pathmax < (l = strlen(sep->se_path)))
+				pathmax = l;
+		sep = fsep;
+		(void)printf("%-*s %*s %8s %8s %8s  %s\n",
+		    pathmax, "Device", hlen, header,
+		    "Used", "Avail", "Capacity", "Priority");
+	}
+	totalsize = totalinuse = ncounted = 0;
+	for (; rnswap-- > 0; sep++) {
+		if (pflag && sep->se_priority != pri)
+			continue;
+		ncounted++;
+		size = sep->se_nblks;
+		inuse = sep->se_inuse;
+		totalsize += size;
+		totalinuse += inuse;
+
+		if (dolong && tflag == 0) {
+			(void)printf("%-*s %*ld ", pathmax, sep->se_path, hlen,
+			    (long)(dbtoqb(size) / blocksize));
+
+			(void)printf("%8ld %8ld %5.0f%%    %d\n",
+			    (long)(dbtoqb(inuse) / blocksize),
+			    (long)(dbtoqb(size - inuse) / blocksize),
+			    (double)inuse / (double)size * 100.0,
+			    sep->se_priority);
+		}
+	}
+	if (tflag)
+		(void)printf("%dM/%dM swap space\n",
+		    (int)(dbtoqb(totalinuse) / (1024 * 1024)),
+		    (int)(dbtoqb(totalsize) / (1024 * 1024)));
+	else if (dolong == 0)
+		    printf("total: %ldk bytes allocated = %ldk used, "
+			   "%ldk available\n",
+		    (long)(dbtoqb(totalsize) / 1024),
+		    (long)(dbtoqb(totalinuse) / 1024),
+		    (long)(dbtoqb(totalsize - totalinuse) / 1024));
+	else if (ncounted > 1)
+		(void)printf("%-*s %*ld %8ld %8ld %5.0f%%\n", pathmax, "Total",
+		    hlen,
+		    (long)(dbtoqb(totalsize) / blocksize),
+		    (long)(dbtoqb(totalinuse) / blocksize),
+		    (long)(dbtoqb(totalsize - totalinuse) / blocksize),
+		    (double)(totalinuse) / (double)totalsize * 100.0);
+	if (fsep)
+		(void)free(fsep);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

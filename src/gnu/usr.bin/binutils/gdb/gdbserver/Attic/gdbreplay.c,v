@@ -1,0 +1,586 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.16.46;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.33;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.33;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.29.25;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Replay a remote debug session logfile for GDB.
+   Copyright (C) 1996 Free Software Foundation, Inc.
+   Written by Fred Fish (fnf@@cygnus.com) from pieces of gdbserver.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include <stdio.h>
+#include <sys/file.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <ctype.h>
+
+/* Sort of a hack... */
+#define EOL (EOF - 1)
+
+static int remote_desc;
+
+/* Print the system error message for errno, and also mention STRING
+   as the file name for which the error was encountered.
+   Then return to command level.  */
+
+void
+perror_with_name (string)
+     char *string;
+{
+  extern int sys_nerr;
+  extern char *sys_errlist[];
+  extern int errno;
+  char *err;
+  char *combined;
+
+  err = (errno < sys_nerr) ? sys_errlist[errno] : "unknown error";
+  combined = (char *) alloca (strlen (err) + strlen (string) + 3);
+  strcpy (combined, string);
+  strcat (combined, ": ");
+  strcat (combined, err);
+  fprintf (stderr, "\n%s.\n", combined);
+  fflush (stderr);
+  exit (1);
+}
+
+static void
+sync_error (fp, desc, expect, got)
+     FILE *fp;
+     char *desc;
+     int expect;
+     int got;
+{
+  fprintf (stderr, "\n%s\n", desc);
+  fprintf (stderr, "At logfile offset %ld, expected '0x%x' got '0x%x'\n",
+	   ftell (fp), expect, got);
+  fflush (stderr);
+  exit (1);
+}
+
+void
+remote_close()
+{
+  close (remote_desc);
+}
+
+/* Open a connection to a remote debugger.
+   NAME is the filename used for communication.  */
+
+void
+remote_open (name)
+     char *name;
+{
+  extern char *strchr ();
+
+  if (!strchr (name, ':'))
+    {
+      fprintf (stderr, "%s: Must specify tcp connection as host:addr\n", name);
+      fflush (stderr);
+      exit (1);
+    }
+  else
+    {
+      char *port_str;
+      int port;
+      struct sockaddr_in sockaddr;
+      int tmp;
+      struct protoent *protoent;
+      int tmp_desc;
+
+      port_str = strchr (name, ':');
+
+      port = atoi (port_str + 1);
+
+      tmp_desc = socket (PF_INET, SOCK_STREAM, 0);
+      if (tmp_desc < 0)
+	perror_with_name ("Can't open socket");
+
+      /* Allow rapid reuse of this port. */
+      tmp = 1;
+      setsockopt (tmp_desc, SOL_SOCKET, SO_REUSEADDR, (char *)&tmp,
+		  sizeof(tmp));
+
+      sockaddr.sin_family = PF_INET;
+      sockaddr.sin_port = htons(port);
+      sockaddr.sin_addr.s_addr = INADDR_ANY;
+
+      if (bind (tmp_desc, (struct sockaddr *)&sockaddr, sizeof (sockaddr))
+	  || listen (tmp_desc, 1))
+	perror_with_name ("Can't bind address");
+
+      tmp = sizeof (sockaddr);
+      remote_desc = accept (tmp_desc, (struct sockaddr *)&sockaddr, &tmp);
+      if (remote_desc == -1)
+	perror_with_name ("Accept failed");
+
+      protoent = getprotobyname ("tcp");
+      if (!protoent)
+	perror_with_name ("getprotobyname");
+
+      /* Enable TCP keep alive process. */
+      tmp = 1;
+      setsockopt (tmp_desc, SOL_SOCKET, SO_KEEPALIVE, (char *)&tmp, sizeof(tmp));
+
+      /* Tell TCP not to delay small packets.  This greatly speeds up
+	 interactive response. */
+      tmp = 1;
+      setsockopt (remote_desc, protoent->p_proto, TCP_NODELAY,
+		  (char *)&tmp, sizeof(tmp));
+
+      close (tmp_desc);		/* No longer need this */
+
+      signal (SIGPIPE, SIG_IGN); /* If we don't do this, then gdbreplay simply
+				    exits when the remote side dies.  */
+    }
+
+  fcntl (remote_desc, F_SETFL, FASYNC);
+
+  fprintf (stderr, "Replay logfile using %s\n", name);
+  fflush (stderr);
+}
+
+static int tohex (ch)
+     int ch;
+{
+  if (ch >= '0' && ch <= '9')
+    {
+      return (ch - '0');
+    }
+  if (ch >= 'A' && ch <= 'F')
+    {
+      return (ch - 'A' + 10);
+    }
+  if (ch >= 'a' && ch <= 'f')
+    {
+      return (ch - 'a' + 10);
+    }
+  fprintf (stderr, "\nInvalid hex digit '%c'\n", ch);
+  fflush (stderr);
+  exit (1);
+}
+
+static int
+logchar (fp)
+     FILE *fp;
+{
+  int ch;
+  int ch2;
+
+  ch = fgetc (fp);
+  fputc (ch, stdout);
+  fflush (stdout);
+  switch (ch)
+    {
+    case '\n':
+      ch = EOL;
+      break;
+    case '\\':
+      ch = fgetc (fp);
+      fputc (ch, stdout);
+      fflush (stdout);
+      switch (ch)
+	{
+	case '\\': break;
+	case 'b': ch = '\b'; break;
+	case 'f': ch = '\f'; break;
+	case 'n': ch = '\n'; break;
+	case 'r': ch = '\r'; break;
+	case 't': ch = '\t'; break;
+	case 'v': ch = '\v'; break;
+	case 'x':
+	  ch2 = fgetc (fp);
+	  fputc (ch2, stdout);
+	  fflush (stdout);
+	  ch = tohex (ch2) << 4;
+	  ch2 = fgetc (fp);
+	  fputc (ch2, stdout);
+	  fflush (stdout);
+	  ch |= tohex (ch2);
+	  break;
+	default:
+	  /* Treat any other char as just itself */
+	  break;
+	}
+    default:
+      break;
+    }
+  return (ch);
+}
+
+/* Accept input from gdb and match with chars from fp (after skipping one
+   blank) up until a \n is read from fp (which is not matched) */
+
+void
+expect (fp)
+     FILE *fp;
+{
+  int fromlog;
+  unsigned char fromgdb;
+
+  if ((fromlog = logchar (fp)) != ' ')
+    {
+      sync_error (fp, "Sync error during gdb read of leading blank", ' ',
+		  fromlog);
+    }
+  do
+    {
+      fromlog = logchar (fp);
+      if (fromlog == EOL)
+	{
+	  break;
+	}
+      read (remote_desc, &fromgdb, 1);
+    } while (fromlog == fromgdb);
+  if (fromlog != EOL)
+    {
+      sync_error (fp, "Sync error during read of gdb packet", fromlog,
+		  fromgdb);
+    }
+}
+
+/* Play data back to gdb from fp (after skipping leading blank) up until a
+   \n is read from fp (which is discarded and not sent to gdb). */
+
+void
+play (fp)
+     FILE *fp;
+{
+  int fromlog;
+  char ch;
+
+  if ((fromlog = logchar (fp)) != ' ')
+    {
+      sync_error (fp, "Sync error skipping blank during write to gdb", ' ',
+		  fromlog);
+    }
+  while ((fromlog = logchar (fp)) != EOL)
+    {
+      ch = fromlog;
+      write (remote_desc, &ch, 1);
+    }
+}
+
+int
+main (argc, argv)
+     int argc;
+     char *argv[];
+{
+  FILE *fp;
+  int ch;
+
+  if (argc < 3)
+    {
+      fprintf (stderr, "Usage: gdbreplay <logfile> <host:port>\n");
+      fflush (stderr);
+      exit (1);
+    }
+  fp = fopen (argv[1], "r");
+  if (fp == NULL)
+    {
+      perror_with_name (argv[1]);
+    }      
+  remote_open (argv[2]);
+  while ((ch = logchar (fp)) != EOF)
+    {
+      switch (ch)
+	{
+	case 'w':
+	  /* data sent from gdb to gdbreplay, accept and match it */
+	  expect (fp);
+	  break;
+	case 'r':
+	  /* data sent from gdbreplay to gdb, play it */
+	  play (fp);
+	  break;
+	case 'c':
+	  /* Command executed by gdb */
+	  while ((ch = logchar (fp)) != EOL);
+	  break;
+	}
+    }
+  remote_close ();
+  exit (0);
+}
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1996, 1998, 1999, 2000, 2002, 2003 Free Software Foundation, Inc.
+d5 1
+a5 1
+   This file is part of GDB.
+d7 13
+a19 14
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a20 1
+#include "config.h"
+a28 12
+#include <fcntl.h>
+#include <errno.h>
+
+#ifdef HAVE_STDLIB_H
+#include <stdlib.h>
+#endif
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+d39 3
+a41 2
+static void
+perror_with_name (char *string)
+d43 2
+a44 1
+#ifndef STDC_HEADERS
+d46 1
+a46 2
+#endif
+  const char *err;
+d49 1
+a49 4
+  err = strerror (errno);
+  if (err == NULL)
+    err = "unknown error";
+
+d60 5
+a64 1
+sync_error (FILE *fp, char *desc, int expect, int got)
+d73 2
+a74 2
+static void
+remote_close (void)
+d82 3
+a84 2
+static void
+remote_open (char *name)
+d86 2
+d100 1
+d113 2
+a114 2
+      setsockopt (tmp_desc, SOL_SOCKET, SO_REUSEADDR, (char *) &tmp,
+		  sizeof (tmp));
+d117 1
+a117 1
+      sockaddr.sin_port = htons (port);
+d120 1
+a120 1
+      if (bind (tmp_desc, (struct sockaddr *) &sockaddr, sizeof (sockaddr))
+d125 1
+a125 1
+      remote_desc = accept (tmp_desc, (struct sockaddr *) &sockaddr, &tmp);
+d129 4
+d135 1
+a135 1
+      setsockopt (tmp_desc, SOL_SOCKET, SO_KEEPALIVE, (char *) &tmp, sizeof (tmp));
+d138 1
+a138 1
+         interactive response. */
+d140 2
+a141 2
+      setsockopt (remote_desc, IPPROTO_TCP, TCP_NODELAY,
+		  (char *) &tmp, sizeof (tmp));
+d145 2
+a146 2
+      signal (SIGPIPE, SIG_IGN);	/* If we don't do this, then gdbreplay simply
+					   exits when the remote side dies.  */
+d155 2
+a156 2
+static int
+tohex (int ch)
+d176 2
+a177 1
+logchar (FILE *fp)
+d196 7
+a202 20
+	case '\\':
+	  break;
+	case 'b':
+	  ch = '\b';
+	  break;
+	case 'f':
+	  ch = '\f';
+	  break;
+	case 'n':
+	  ch = '\n';
+	  break;
+	case 'r':
+	  ch = '\r';
+	  break;
+	case 't':
+	  ch = '\t';
+	  break;
+	case 'v':
+	  ch = '\v';
+	  break;
+d226 3
+a228 2
+static void
+expect (FILE *fp)
+d246 1
+a246 2
+    }
+  while (fromlog == fromgdb);
+d257 3
+a259 2
+static void
+play (FILE *fp)
+d277 3
+a279 1
+main (int argc, char *argv[])
+d294 1
+a294 1
+    }
+d317 1
+@
+

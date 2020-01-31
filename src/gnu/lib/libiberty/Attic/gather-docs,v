@@ -1,0 +1,260 @@
+head	1.4;
+access;
+symbols
+	MIRBSD_7quater:1.1.2.1
+	MIRBSD_7_ALPHA:1.1.2.1.0.6
+	MIRBSD_7:1.1.2.1.0.4
+	MIRBSD_7ter:1.1.2.1
+	MIRBSD_7_DEV:1.1.2.1.0.2
+	binutils_2_14:1.1.2.1
+	FSF:1.1.2;
+locks; strict;
+comment	@# @;
+
+
+1.4
+date	2004.08.09.19.35.23;	author tg;	state dead;
+branches;
+next	1.3;
+
+1.3
+date	2003.12.23.15.04.35;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.11.04.17.24.48;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.09.23.15.13.24;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.13.24;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@update; new location; new shlib version (2.0)
+old hash table functions are now "in"
+@
+text
+@#!/usr/bin/perl
+# -*- perl -*-
+
+#   Copyright (C) 2001
+#   Free Software Foundation
+#
+# This file is part of the libiberty library.
+# Libiberty is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Library General Public
+# License as published by the Free Software Foundation; either
+# version 2 of the License, or (at your option) any later version.
+#
+# Libiberty is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Library General Public
+# License along with libiberty; see the file COPYING.LIB.  If not,
+# write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+# Boston, MA 02111-1307, USA.
+#
+# Originally written by DJ Delorie <dj@@redhat.com>
+
+
+
+# This program looks for texinfo snippets in source files and other
+# files, and builds per-category files with entries sorted in
+# alphabetical order.
+
+# The syntax it looks for is lines starting with '@@def' in *.c and
+# other files (see TEXIFILES in Makefile.in).  Entries are terminated
+# at the next @@def* (which begins a new entry) or, for C files, a line
+# that begins with '*/' without leading spaces (this assumes that the
+# texinfo snippet is within a C-style /* */ comment).
+
+# 
+
+
+
+if ($ARGV[0] eq "-v") {
+    $verbose = 1;
+    shift;
+}
+
+$srcdir = shift;
+$outfile = shift;
+
+if ($outfile !~ /\S/ || ! -f "$srcdir/Makefile.in" ) {
+    print STDERR "Usage: gather-docs [-v] srcdir outfile.txi [files with snippets in them ...]\n";
+    exit 1;
+}
+
+$errors = 0;
+
+for $in (@@ARGV) {
+
+    if (!open(IN, "$srcdir/$in")) {
+	print STDERR "Cannot open $srcdir/$in for reading: $!\n";
+	$errors ++;
+
+    } else {
+	$first = 1;
+	$pertinent = 0;
+	$man_mode = 0;
+	$line = 0;
+
+	while (<IN>) {
+	    $line ++;
+	    $pertinent = 1 if /^\@@def[a-z]*[a-wyz] /;
+	    $pertinent = 0 if /^\*\//;
+	    next unless $pertinent;
+
+	    if (/^\@@def[a-z]*[a-wyz] /) {
+		
+		($name) = m/[^\(]* ([^\( \t\r\n]+) *\(/;
+		$name =~ s/[ 	]*$//;
+		$key = $name;
+		$key =~ tr/A-Z/a-z/;
+		$key =~ s/[^a-z0-9]+/ /g;
+		$name{$key} = $node;
+		$lines{$key} = '';
+		$src_file{$key} = $in;
+		$src_line{$key} = $line;
+		print "\nReading $in :" if $verbose && $first;
+		$first = 0;
+		print " $name" if $verbose;
+		$node_lines{$key} .= $_;
+
+	    } else {
+		$node_lines{$key} .= $_;
+	    }
+
+	    $pertinent = 0 if /^\@@end def/;
+	}
+	close (IN);
+    }
+}
+
+print "\n" if $verbose;
+exit $errors if $errors;
+
+if (!open (OUT, "> $outfile")) {
+    print STDERR "Cannot open $outfile for writing: $!\n";
+    $errors ++;
+    next;
+}
+print "Writing $outfile\n" if $verbose;
+
+print OUT "\@@c \$MirBSD: src/gnu/lib/libiberty/gather-docs,v 1.3 2003/12/23 15:04:35 tg Exp $\n";
+print OUT "\@@c\n";
+print OUT "\@@c This file is under the GNU General Public License, Version 2, because:\n";
+print OUT "\@@c Automatically generated from *.c and others (the comments before\n";
+print OUT "\@@c each entry tell you which file and where in that file).  DO NOT EDIT!\n";
+print OUT "\@@c Edit the *.c files, configure with --enable-maintainer-mode,\n";
+print OUT "\@@c and let gather-docs build you a new copy.\n\n";
+
+for $key (sort keys %name) {
+    print OUT "\@@c $src_file{$key}:$src_line{$key}\n";
+    print OUT $node_lines{$key};
+    print OUT "\n";
+}
+
+if (! print OUT "\n") {
+    print STDERR "Disk full writing $srcdir/$cat.texi\n";
+    $errors ++;
+}
+
+close (OUT);
+
+exit $errors;
+@
+
+
+1.3
+log
+@* fix formatting and output
+* remove unused files
+@
+text
+@d110 1
+a110 1
+print OUT "\@@c \$MirBSD: gather-docs,v 1.2 2003/11/04 17:24:48 tg Exp \$\n";
+@
+
+
+1.2
+log
+@Yours sincerely, licence auditor, strikes again.
+
+
+Remove stuff under the so-called "GNU Free Documentation License".
+
+You are actually even breaching the licence when you are
+storing GFDL-licenced documents on an encrypted filesystem,
+or "even  storing  it  on  a  file-sharing  system  with
+non-world-readable permissions", according to the information
+found at http://home.twcny.rr.com/nerode/neroden/fdl.html
+via Slashdot.
+
+I am thinking whether to adopt the (amended) Debian Social
+Contract, and either the DFSG or the OSD (or both) for MirOS.
+(see the /. story)
+
+src/gnu/libstdc++:
+
+| The Docs: FDL
+|
+|    The documentation shipped with the library and made available over the
+|    web,   including   the  pages  generated  from  source  comments,  are
+|    copyrighted  by  the  Free  Software  Foundation, and placed under the
+|    [3]GNU   Free   Documentation   License  version  1.1.  There  are  no
+|    Front-Cover Texts, no Back-Cover Texts, and no Invariant Sections.
+
+Of course this doesn't apply to documentation for libstdc++ generated by
+ourselfes from GPL'd or LGPL'd files, because the GFDL is incompatible
+with both of them.
+
+
+Hint: if you can dig out older versions of the GNU tools man pages, such
+as gcc 3.0 and binutils 2.12/2.13 (for example), which are not yet GFDL
+licenced, please give me a hint (I'm not actively searching myself now)
+or mail them to me, and be sure I'll commit them, together with a warning
+about inactuality.
+@
+text
+@d110 2
+a111 2
+print OUT "\@@c $MirBSD$\n";
+print OUT "\@@c \n";
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d110 3
+@
+
+
+1.1.2.1
+log
+@Import GNU libiberty (LGPL licenced) from the FSF binutils 2.14 sources
+via the vendor branch (to ease future updating)
+@
+text
+@@

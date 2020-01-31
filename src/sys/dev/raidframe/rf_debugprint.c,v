@@ -1,0 +1,259 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	cvs-200411281330:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	cvs-200305131745:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.51.33;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.51.33;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: rf_debugprint.c,v 1.3 2002/12/16 07:01:03 tdeval Exp $	*/
+/*	$NetBSD: rf_debugprint.c,v 1.3 1999/02/05 00:06:08 oster Exp $	*/
+
+/*
+ * Copyright (c) 1995 Carnegie-Mellon University.
+ * All rights reserved.
+ *
+ * Author: Mark Holland
+ *
+ * Permission to use, copy, modify and distribute this software and
+ * its documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ *
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND
+ * FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ *
+ * Carnegie Mellon requests users of this software to return to
+ *
+ *  Software Distribution Coordinator  or  Software.Distribution@@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ *
+ * any improvements or extensions that they make and grant Carnegie the
+ * rights to redistribute these changes.
+ */
+
+/*
+ * Code to do debug printfs. Calls to rf_debug_printf cause the corresponding
+ * information to be printed to a circular buffer rather than the screen.
+ * The point is to try and minimize the timing variations induced by the
+ * printfs, and to capture only the printf's immediately preceding a failure.
+ */
+
+#include "rf_types.h"
+#include "rf_threadstuff.h"
+#include "rf_debugprint.h"
+#include "rf_general.h"
+#include "rf_options.h"
+
+#include <sys/param.h>
+
+struct RF_Entry_s {
+	char	*cstring;
+	void	*a1, *a2, *a3, *a4, *a5, *a6, *a7, *a8;
+};
+
+/* space for 1k lines */
+#define	BUFSHIFT		   10
+#define	BUFSIZE		(1<<BUFSHIFT)
+#define	BUFMASK		  (BUFSIZE-1)
+
+static struct RF_Entry_s rf_debugprint_buf[BUFSIZE];
+static int rf_debugprint_index = 0;
+RF_DECLARE_STATIC_MUTEX(rf_debug_print_mutex);
+
+int
+rf_ConfigureDebugPrint(RF_ShutdownList_t **listp)
+{
+	int rc;
+
+	rc = rf_create_managed_mutex(listp, &rf_debug_print_mutex);
+	if (rc) {
+		RF_ERRORMSG3("Unable to init mutex file %s line %d rc=%d\n",
+		    __FILE__, __LINE__, rc);
+		return (rc);
+	}
+
+	rf_clear_debug_print_buffer();
+	return (0);
+}
+
+void
+rf_clear_debug_print_buffer(void)
+{
+	int i;
+
+	for (i = 0; i < BUFSIZE; i++)
+		rf_debugprint_buf[i].cstring = NULL;
+	rf_debugprint_index = 0;
+}
+
+void
+rf_debug_printf(char *s, void *a1, void *a2, void *a3, void *a4, void *a5,
+    void *a6, void *a7, void *a8)
+{
+	int idx;
+
+	if (rf_debugPrintUseBuffer) {
+
+		RF_LOCK_MUTEX(rf_debug_print_mutex);
+		idx = rf_debugprint_index;
+		rf_debugprint_index = (rf_debugprint_index + 1) & BUFMASK;
+		RF_UNLOCK_MUTEX(rf_debug_print_mutex);
+
+		rf_debugprint_buf[idx].cstring = s;
+		rf_debugprint_buf[idx].a1 = a1;
+		rf_debugprint_buf[idx].a2 = a2;
+		rf_debugprint_buf[idx].a3 = a3;
+		rf_debugprint_buf[idx].a4 = a4;
+		rf_debugprint_buf[idx].a5 = a5;
+		rf_debugprint_buf[idx].a6 = a6;
+		rf_debugprint_buf[idx].a7 = a7;
+		rf_debugprint_buf[idx].a8 = a8;
+	} else {
+		printf(s, a1, a2, a3, a4, a5, a6, a7, a8);
+	}
+}
+
+void
+rf_print_debug_buffer(void)
+{
+	rf_spill_debug_buffer(NULL);
+}
+
+void
+rf_spill_debug_buffer(char *fname)
+{
+	int i;
+
+	if (!rf_debugPrintUseBuffer)
+		return;
+
+	RF_LOCK_MUTEX(rf_debug_print_mutex);
+
+	for (i = rf_debugprint_index + 1; i != rf_debugprint_index;
+	     i = (i + 1) & BUFMASK)
+		if (rf_debugprint_buf[i].cstring)
+			printf(rf_debugprint_buf[i].cstring,
+			    rf_debugprint_buf[i].a1, rf_debugprint_buf[i].a2,
+			    rf_debugprint_buf[i].a3, rf_debugprint_buf[i].a4,
+			    rf_debugprint_buf[i].a5, rf_debugprint_buf[i].a6,
+			    rf_debugprint_buf[i].a7, rf_debugprint_buf[i].a8);
+
+	printf(rf_debugprint_buf[i].cstring,
+	    rf_debugprint_buf[i].a1, rf_debugprint_buf[i].a2,
+	    rf_debugprint_buf[i].a3, rf_debugprint_buf[i].a4,
+	    rf_debugprint_buf[i].a5, rf_debugprint_buf[i].a6,
+	    rf_debugprint_buf[i].a7, rf_debugprint_buf[i].a8);
+
+	RF_UNLOCK_MUTEX(rf_debug_print_mutex);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

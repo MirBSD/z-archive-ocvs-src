@@ -1,0 +1,504 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.41;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.41;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.53.53;	author tg;	state Stab;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.10.23.18.37.55;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#      Assembler.pm
+#
+#      Copyright (c) 1996 Malcolm Beattie
+#
+#      You may distribute under the terms of either the GNU General Public
+#      License or the Artistic License, as specified in the README file.
+
+package B::Assembler;
+use Exporter;
+use B qw(ppname);
+use B::Asmdata qw(%insn_data @@insn_name);
+use Config qw(%Config);
+require ByteLoader;		# we just need its $VERSIOM
+
+@@ISA = qw(Exporter);
+@@EXPORT_OK = qw(assemble_fh newasm endasm assemble);
+$VERSION = 0.04;
+
+use strict;
+my %opnumber;
+my ($i, $opname);
+for ($i = 0; defined($opname = ppname($i)); $i++) {
+    $opnumber{$opname} = $i;
+}
+
+my($linenum, $errors, $out); #	global state, set up by newasm
+
+sub error {
+    my $str = shift;
+    warn "$linenum: $str\n";
+    $errors++;
+}
+
+my $debug = 0;
+sub debug { $debug = shift }
+
+sub limcheck($$$$){
+    my( $val, $lo, $hi, $loc ) = @@_;
+    if( $val < $lo || $hi < $val ){
+        error "argument for $loc outside [$lo, $hi]: $val";
+        $val = $hi;
+    }
+    return $val;
+}
+
+#
+# First define all the data conversion subs to which Asmdata will refer
+#
+
+sub B::Asmdata::PUT_U8 {
+    my $arg = shift;
+    my $c = uncstring($arg);
+    if (defined($c)) {
+	if (length($c) != 1) {
+	    error "argument for U8 is too long: $c";
+	    $c = substr($c, 0, 1);
+	}
+    } else {
+        $arg = limcheck( $arg, 0, 0xff, 'U8' );
+	$c = chr($arg);
+    }
+    return $c;
+}
+
+sub B::Asmdata::PUT_U16 {
+    my $arg = limcheck( $_[0], 0, 0xffff, 'U16' );
+    pack("S", $arg);
+}
+sub B::Asmdata::PUT_U32 {
+    my $arg = limcheck( $_[0], 0, 0xffffffff, 'U32' );
+    pack("L", $arg);
+}
+sub B::Asmdata::PUT_I32 {
+    my $arg = limcheck( $_[0], -0x80000000, 0x7fffffff, 'I32' );
+    pack("l", $arg);
+}
+sub B::Asmdata::PUT_NV  { sprintf("%s\0", $_[0]) } # "%lf" looses precision and pack('d',...)
+						   # may not even be portable between compilers
+sub B::Asmdata::PUT_objindex { # could allow names here
+    my $arg = limcheck( $_[0], 0, 0xffffffff, '*index' );
+    pack("L", $arg);
+} 
+sub B::Asmdata::PUT_svindex { &B::Asmdata::PUT_objindex }
+sub B::Asmdata::PUT_opindex { &B::Asmdata::PUT_objindex }
+sub B::Asmdata::PUT_pvindex { &B::Asmdata::PUT_objindex }
+
+sub B::Asmdata::PUT_strconst {
+    my $arg = shift;
+    my $str = uncstring($arg);
+    if (!defined($str)) {
+	error "bad string constant: $arg";
+	$str = '';
+    }
+    if ($str =~ s/\0//g) {
+	error "string constant argument contains NUL: $arg";
+        $str = '';
+    }
+    return $str . "\0";
+}
+
+sub B::Asmdata::PUT_pvcontents {
+    my $arg = shift;
+    error "extraneous argument: $arg" if defined $arg;
+    return "";
+}
+sub B::Asmdata::PUT_PV {
+    my $arg = shift;
+    my $str = uncstring($arg);
+    if( ! defined($str) ){
+        error "bad string argument: $arg";
+        $str = '';
+    }
+    return pack("L", length($str)) . $str;
+}
+sub B::Asmdata::PUT_comment_t {
+    my $arg = shift;
+    $arg = uncstring($arg);
+    error "bad string argument: $arg" unless defined($arg);
+    if ($arg =~ s/\n//g) {
+	error "comment argument contains linefeed: $arg";
+    }
+    return $arg . "\n";
+}
+sub B::Asmdata::PUT_double { sprintf("%s\0", $_[0]) } # see PUT_NV above
+sub B::Asmdata::PUT_none {
+    my $arg = shift;
+    error "extraneous argument: $arg" if defined $arg;
+    return "";
+}
+sub B::Asmdata::PUT_op_tr_array {
+    my $arg = shift;
+    my @@ary = split(/\s*,\s*/, $arg);
+    if (@@ary != 256) {
+	error "wrong number of arguments to op_tr_array";
+	@@ary = (0) x 256;
+    }
+    return pack("S256", @@ary);
+}
+# XXX Check this works
+# Note: $arg >> 32 is a no-op on 32-bit systems
+sub B::Asmdata::PUT_IV64 {
+    my $arg = shift;
+    return pack("LL", ($arg >> 16) >>16 , $arg & 0xffffffff);
+}
+
+sub B::Asmdata::PUT_IV {
+    $Config{ivsize} == 4 ? &B::Asmdata::PUT_I32 : &B::Asmdata::PUT_IV64;
+}
+
+my %unesc = (n => "\n", r => "\r", t => "\t", a => "\a",
+	     b => "\b", f => "\f", v => "\013");
+
+sub uncstring {
+    my $s = shift;
+    $s =~ s/^"// and $s =~ s/"$// or return undef;
+    $s =~ s/\\(\d\d\d|.)/length($1) == 3 ? chr(oct($1)) : ($unesc{$1}||$1)/eg;
+    return $s;
+}
+
+sub strip_comments {
+    my $stmt = shift;
+    # Comments only allowed in instructions which don't take string arguments
+    # Treat string as a single line so .* eats \n characters.
+    $stmt =~ s{
+	^\s*	# Ignore leading whitespace
+	(
+	  [^"]*	# A double quote '"' indicates a string argument. If we
+		# find a double quote, the match fails and we strip nothing.
+	)
+	\s*\#	# Any amount of whitespace plus the comment marker...
+	.*$	# ...which carries on to end-of-string.
+    }{$1}sx;	# Keep only the instruction and optional argument.
+    return $stmt;
+}
+
+# create the ByteCode header: magic, archname, ByteLoader $VERSION, ivsize,
+# 	ptrsize, byteorder
+# nvtype is irrelevant (floats are stored as strings)
+# byteorder is strconst not U32 because of varying size issues
+
+sub gen_header {
+    my $header = "";
+
+    $header .= B::Asmdata::PUT_U32(0x43424c50);	# 'PLBC'
+    $header .= B::Asmdata::PUT_strconst('"' . $Config{archname}. '"');
+    $header .= B::Asmdata::PUT_strconst(qq["$ByteLoader::VERSION"]);
+    $header .= B::Asmdata::PUT_U32($Config{ivsize});
+    $header .= B::Asmdata::PUT_U32($Config{ptrsize});
+    $header .= B::Asmdata::PUT_strconst(sprintf(qq["0x%s"], $Config{byteorder}));
+
+    $header;
+}
+
+sub parse_statement {
+    my $stmt = shift;
+    my ($insn, $arg) = $stmt =~ m{
+	^\s*	# allow (but ignore) leading whitespace
+	(.*?)	# Instruction continues up until...
+	(?:	# ...an optional whitespace+argument group
+	    \s+		# first whitespace.
+	    (.*)	# The argument is all the rest (newlines included).
+	)?$	# anchor at end-of-line
+    }sx;
+    if (defined($arg)) {
+	if ($arg =~ s/^0x(?=[0-9a-fA-F]+$)//) {
+	    $arg = hex($arg);
+	} elsif ($arg =~ s/^0(?=[0-7]+$)//) {
+	    $arg = oct($arg);
+	} elsif ($arg =~ /^pp_/) {
+	    $arg =~ s/\s*$//; # strip trailing whitespace
+	    my $opnum = $opnumber{$arg};
+	    if (defined($opnum)) {
+		$arg = $opnum;
+	    } else {
+		error qq(No such op type "$arg");
+		$arg = 0;
+	    }
+	}
+    }
+    return ($insn, $arg);
+}
+
+sub assemble_insn {
+    my ($insn, $arg) = @@_;
+    my $data = $insn_data{$insn};
+    if (defined($data)) {
+	my ($bytecode, $putsub) = @@{$data}[0, 1];
+	my $argcode = &$putsub($arg);
+	return chr($bytecode).$argcode;
+    } else {
+	error qq(no such instruction "$insn");
+	return "";
+    }
+}
+
+sub assemble_fh {
+    my ($fh, $out) = @@_;
+    my $line;
+    my $asm = newasm($out);
+    while ($line = <$fh>) {
+	assemble($line);
+    }
+    endasm();
+}
+
+sub newasm {
+    my($outsub) = @@_;
+
+    die "Invalid printing routine for B::Assembler\n" unless ref $outsub eq 'CODE';
+    die <<EOD if ref $out;
+Can't have multiple byteassembly sessions at once!
+	(perhaps you forgot an endasm()?)
+EOD
+
+    $linenum = $errors = 0;
+    $out = $outsub;
+
+    $out->(gen_header());
+}
+
+sub endasm {
+    if ($errors) {
+	die "There were $errors assembly errors\n";
+    }
+    $linenum = $errors = $out = 0;
+}
+
+sub assemble {
+    my($line) = @@_;
+    my ($insn, $arg);
+    $linenum++;
+    chomp $line;
+    if ($debug) {
+	my $quotedline = $line;
+	$quotedline =~ s/\\/\\\\/g;
+	$quotedline =~ s/"/\\"/g;
+	$out->(assemble_insn("comment", qq("$quotedline")));
+    }
+    if( $line = strip_comments($line) ){
+        ($insn, $arg) = parse_statement($line);
+        $out->(assemble_insn($insn, $arg));
+        if ($debug) {
+	    $out->(assemble_insn("nop", undef));
+        }
+    }
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+B::Assembler - Assemble Perl bytecode
+
+=head1 SYNOPSIS
+
+	use B::Assembler qw(newasm endasm assemble);
+	newasm(\&printsub);	# sets up for assembly
+	assemble($buf); 	# assembles one line
+	endasm();		# closes down
+
+	use B::Assembler qw(assemble_fh);
+	assemble_fh($fh, \&printsub);	# assemble everything in $fh
+
+=head1 DESCRIPTION
+
+See F<ext/B/B/Assembler.pm>.
+
+=head1 AUTHORS
+
+Malcolm Beattie, C<mbeattie@@sable.ox.ac.uk>
+Per-statement interface by Benjamin Stuhl, C<sho_pi@@hotmail.com>
+
+=cut
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@a14 2
+no warnings;			# XXX
+
+d16 2
+a17 2
+@@EXPORT_OK = qw(assemble_fh newasm endasm assemble asm);
+$VERSION = 0.06;
+d131 7
+a137 2
+    my @@ary = split /\s*,\s*/, shift;
+    return pack "S*", @@ary;
+d139 2
+a140 1
+
+d142 2
+a143 1
+    return pack "Q", shift;
+a149 8
+sub B::Asmdata::PUT_PADOFFSET {
+    $Config{ptrsize} == 8 ? &B::Asmdata::PUT_IV64 : &B::Asmdata::PUT_U32;
+}
+
+sub B::Asmdata::PUT_long {
+    $Config{longsize} == 8 ? &B::Asmdata::PUT_IV64 : &B::Asmdata::PUT_U32;
+}
+
+d189 2
+a285 11
+}
+
+### temporary workaround
+
+sub asm {
+    return if $_[0] =~ /\s*\W/;
+    if (defined $_[1]) {
+	return if $_[1] eq "0" and $_[0] !~ /^(?:newsvx?|av_pushx?|xav_flags)$/;
+	return if $_[1] eq "1" and $_[0] =~ /^(?:sv_refcnt)$/;
+    }
+    assemble "@@_";
+@
+
+
+1.1.1.3
+log
+@5.8.5
+@
+text
+@d19 1
+a19 1
+$VERSION = 0.07;
+d294 1
+a294 2
+	return if $_[1] eq "0" and
+	    $_[0] !~ /^(?:newsvx?|av_pushx?|av_extend|xav_flags)$/;
+@
+
+

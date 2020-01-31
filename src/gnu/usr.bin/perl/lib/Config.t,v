@@ -1,0 +1,342 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.06;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.06;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.25;	author tg;	state Stab;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.10.23.18.40.18;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@BEGIN {
+    chdir 't' if -d 't';
+    @@INC = '../lib';
+    require "./test.pl";
+}
+
+plan tests => 23;
+
+use_ok('Config');
+
+# Some (safe?) bets.
+
+ok(keys %Config > 500, "Config has more than 500 entries");
+
+ok(each %Config);
+
+is($Config{PERL_REVISION}, 5, "PERL_REVISION is 5");
+
+ok( exists $Config{cc},      "has cc");
+
+ok( exists $Config{ccflags}, "has ccflags");
+
+ok(!exists $Config{python},  "has no python");
+
+ok( exists $Config{d_fork},  "has d_fork");
+
+ok(!exists $Config{d_bork},  "has no d_bork");
+
+like($Config{ivsize},     qr/^(4|8)$/, "ivsize is 4 or 8 (it is $Config{ivsize})");
+
+# byteorder is virtual, but it has rules. 
+
+like($Config{byteorder}, qr/^(1234|4321|12345678|87654321)$/, "byteorder is 1234 or 4321 or 12345678 or 87654321 (it is $Config{byteorder})");
+
+is(length $Config{byteorder}, $Config{ivsize}, "byteorder is as long as ivsize (which is $Config{ivsize})");
+
+# ccflags_nolargefiles is virtual, too.
+
+ok(exists $Config{ccflags_nolargefiles}, "has ccflags_nolargefiles");
+
+# Utility functions.
+
+like(Config::myconfig(),  qr/cc='$Config{cc}'/, "myconfig");
+
+SKIP: {
+	skip "cc is tied in $^O", 1 if $^O eq 'MacOS';
+	like(Config::config_sh(), qr/cc='$Config{cc}'/, "config_sh");
+}
+
+my $out = tie *STDOUT, 'FakeOut';
+
+Config::config_vars('cc');
+my $out1 = $$out;
+$out->clear;
+
+Config::config_vars('d_bork');
+my $out2 = $$out;
+$out->clear;
+
+untie *STDOUT;
+
+like($out1, qr/^cc='$Config{cc}';/, "config_vars cc");
+like($out2, qr/^d_bork='UNKNOWN';/, "config_vars d_bork is UNKNOWN");
+
+# Read-only.
+
+undef $@@;
+eval { $Config{d_bork} = 'borkbork' };
+like($@@, qr/Config is read-only/, "no STORE");
+
+ok(!exists $Config{d_bork}, "still no d_bork");
+
+undef $@@;
+eval { delete $Config{d_fork} };
+like($@@, qr/Config is read-only/, "no DELETE");
+
+ok( exists $Config{d_fork}, "still d_fork");
+
+undef $@@;
+eval { %Config = () };
+like($@@, qr/Config is read-only/, "no CLEAR");
+
+ok( exists $Config{d_fork}, "still d_fork");
+
+package FakeOut;
+
+sub TIEHANDLE {
+        bless(\(my $text), $_[0]);
+}
+
+sub clear {
+        ${ $_[0] } = '';
+}
+
+sub PRINT {
+        my $self = shift;
+        $$self .= join('', @@_);
+}
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@a0 2
+#!./perl
+
+d7 1
+a7 1
+plan tests => 36;
+a18 10
+# Check that old config variable names are aliased to their new ones.
+my %grandfathers = ( PERL_VERSION       => 'PATCHLEVEL',
+                     PERL_SUBVERSION    => 'SUBVERSION',
+                     PERL_CONFIG_SH     => 'CONFIG'
+                   );
+while( my($new, $old) = each %grandfathers ) {
+    isnt($Config{$new}, undef,       "$new is defined");
+    is($Config{$new}, $Config{$old}, "$new is aliased to $old");
+}
+
+d43 5
+a47 8
+{
+    # make sure we can export what we say we can export.
+    package Foo;
+    my @@exports = qw(myconfig config_sh config_vars config_re);
+    Config->import(@@exports);
+    foreach my $func (@@exports) {
+	::ok( __PACKAGE__->can($func), "$func exported" );
+    }
+a49 5
+like(Config::myconfig(),       qr/osname=\Q$Config{osname}\E/,   "myconfig");
+like(Config::config_sh(),      qr/osname='\Q$Config{osname}\E'/, "config_sh");
+like(join("\n", Config::config_re('c.*')),
+			       qr/^c.*?=/,                   'config_re' );
+
+d62 1
+a62 1
+like($out1, qr/^cc='\Q$Config{cc}\E';/, "config_vars cc");
+d85 5
+a89 2
+{
+    package FakeOut;
+d91 2
+a92 12
+    sub TIEHANDLE {
+	bless(\(my $text), $_[0]);
+    }
+
+    sub clear {
+	${ $_[0] } = '';
+    }
+
+    sub PRINT {
+	my $self = shift;
+	$$self .= join('', @@_);
+    }
+d95 4
+a98 2
+# Signal-related variables
+# (this is actually a regression test for Configure.)
+a99 2
+is($Config{sig_num_init}  =~ tr/,/,/, $Config{sig_size}, "sig_num_init size");
+is($Config{sig_name_init} =~ tr/,/,/, $Config{sig_size}, "sig_name_init size");
+@
+
+
+1.1.1.3
+log
+@5.8.5
+@
+text
+@d9 1
+a9 1
+plan tests => 47;
+d80 1
+a80 11
+Config::config_vars('PERL_API_.*');
+my $out3 = $$out;
+$out->clear;
+
+Config::config_vars(':PERL_API_.*:');
+my $out4 = $$out;
+$out->clear;
+
+Config::config_vars(':PERL_API_REVISION:');
+my $out5 = $$out;
+$out->clear;
+a81 5
+Config::config_vars('?flags');
+my $out6 = $$out;
+$out->clear;
+
+untie *STDOUT;
+a83 16
+
+is(3, scalar split(/\n/, $out3), "3 PERL_API vars found");
+my @@api = $out3 =~ /^PERL_API_(\w+)=(.*);/mg;
+is("'5'", $api[1], "1st is 5");
+is("'8'", $api[5], "2nd is 9");
+is("'0'", $api[3], "3rd is 1");
+@@api = split(/ /, $out4);
+is(3, @@api, "trailing colon puts 3 terms on same line");
+unlike($out4, qr/=/, "leading colon suppresses param names");
+is("'5'", $api[0], "revision is 5");
+is("'8'", $api[2], "version is 9");
+is("'0'", $api[1], "subversion is 1");
+
+is("'5' ", $out5, "leading and trailing colons return just the value");
+
+like($out6, qr/\bnot\s+found\b/, "config_vars with invalid regexp");
+@
+
+

@@ -1,0 +1,405 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.37;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.37;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.53.30;	author tg;	state Stab;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.10.23.18.37.22;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/bin/sh
+
+# Fix up yacc output to allow dynamic allocation.  Since perly.c
+# is now provided with the perl source, this should not be necessary.
+#
+# However, if the user wishes to use byacc, or wishes to try another 
+# compiler compiler (e.g. bison or yacc), this script will get run.
+# See makefile run_byacc target for more details.
+#
+# Currently, only byacc version 1.8 is fully supported.
+#
+#  Hacks to make it work with Interactive's SysVr3 Version 2.2
+#   doughera@@lafvax.lafayette.edu (Andy Dougherty)   3/23/91
+#
+# Additional information to make the BSD section work with SunOS 4.0.2
+#   tdinger@@East.Sun.COM (Tom Dinger)	4/15/1991
+#
+# Also edit some practices gcc -Wall finds questionable.
+#  
+
+gnupatch=patch
+. ./config.sh
+
+input=$1
+output=$2
+tmp=/tmp/f$$
+
+inputh=`echo $input|sed 's:\.c$:.h:'`
+if grep '^#ifdef PERL_CORE' $inputh; then
+	: never mind
+else
+	echo "#ifdef PERL_CORE"	> $tmp
+	sed -e 's:^typedef union {:#endif /* PERL_CORE */\
+\
+typedef union {:' $inputh		>> $tmp
+	mv -f $tmp $inputh
+fi
+
+if grep 'yaccpar 1.8 (Berkeley)' $input >/dev/null 2>&1; then
+    cp $input $output
+    # Don't expect the diff to do everything -- do some by hand
+    if test -f perly_c.diff; then
+	$gnupatch -F3 $output <perly_c.diff
+	sed -e '/^[ 	]*printf("yydebug:/s/printf(/PerlIO_printf(Perl_debug_log, /' \
+	    -e '/^#line /s/"y[.]tab[.]c"/"perly.c"/' \
+	    -e '/\[\] *= *[{]/s/^/static /' \
+	    -e '/^static static/s/^static //' \
+	    -e '/^#define.WORD/,/^#define.ARROW/d' \
+	    -e '/^int.yydebug/,/^#define.yystacksize/d' \
+	    -e 's/^yyerrlab:$//' \
+	    -e 's/^    goto yyerrlab;//' \
+	    -e 's/^yynewerror:$//' \
+	    -e 's/^    goto yynewerror;//' \
+	    -e 's|^static char yysccsid\(.*\)|/* static char yysccsid\1 */|' \
+	    -e 's|deprecate(|deprecate_old(|' \
+	    < $output > $tmp && mv -f $tmp $output || exit 1
+	rm -rf $input
+	echo "If you need to debug perly.c, you need to fix up the #line"
+	echo "directives yourself."
+    fi
+    exit
+elif grep 'yaccpar	1.9 (Berkeley)' $input >/dev/null 2>&1; then
+    if test -f perly.c.dif9; then
+	$gnupatch -F3 $output <perly.c.dif9
+	sed -e '/^[ 	]*printf("yydebug:/s/printf(/PerlIO_printf(Perl_debug_log, /' \
+	    -e '/^#line /s/"y[.]tab[.]c"/"perly.c"/' \
+	    -e '/\[\] *= *[{]/s/^/static /' \
+	    -e '/^static static/s/^static //' \
+	    -e '/^#define.WORD/,/^#define.ARROW/d' \
+	    -e '/^int.yydebug/,/^#define.yystacksize/d' \
+	    -e 's/^yyerrlab:$//' \
+	    -e 's/^    goto yyerrlab;//' \
+	    -e 's/^yynewerror:$//' \
+	    -e 's/^    goto yynewerror;//' \
+	    -e 's|^static char yysccsid\(.*\)|/* static char yysccsid\1 */|' \
+	    -e 's|deprecate(|deprecate_old(|' \
+	    < $output > $tmp && mv -f $tmp $output || exit 1
+	rm -rf $input
+	echo "If you need to debug perly.c, you need to fix up the #line"
+	echo "directives yourself."
+	exit 0
+    else
+	echo "Diffs from byacc-1.9 are not available."
+	echo "If you wish to proceed anyway, do"
+	echo "cp $input $output"
+	echo "cp y.tab.h perly.h"
+	echo "and re-run make. Otherwise, I will use the old perly.c"
+	touch perly.c
+	# Exit with error status to stop make.
+	exit 1
+    fi
+fi
+
+plan="unknown"
+
+echo ""
+echo "Warning: the yacc you have used is not directly supported by perl."
+echo "The perly.fixer script will attempt to make some changes to the generated"
+echo "file. The changes may be incomplete and that might lead to problems later"
+echo "(especially with complex scripts). You may need to apply the changes"
+echo "embedded in perl.fixer (and/or perly_c.dif*) by hand."
+echo ""
+
+# Below, we check for various characteristic yaccpar outputs.
+
+#  Test for BSD 4.3 version.
+#  Also tests for the SunOS 4.0.2 version
+egrep 'YYSTYPE[ 	]*yyv\[ *YYMAXDEPTH *\];
+short[  ]*yys\[ *YYMAXDEPTH *\] *;
+yyps *= *&yys\[ *-1 *\];
+yypv *= *&yyv\[ *-1 *\];
+if *\( *\+\+yyps *>=* *&yys\[ *YYMAXDEPTH *\] *\)' $input >$tmp 2>/dev/null
+
+set `wc -l $tmp`
+if test "$1" = "5"; then
+      plan="bsd43"
+fi
+
+if test "$plan" = "unknown"; then
+    #   Test for ISC 2.2 version (probably generic SysVr3).
+egrep 'YYSTYPE[ 	]*yyv\[ *YYMAXDEPTH *\];
+int[    ]*yys\[ *YYMAXDEPTH *\] *;
+yyps *= *&yys\[ *-1 *\];
+yypv *= *&yyv\[ *-1 *\];
+if *\( *\+\+yy_ps *>= *&yys\[ *YYMAXDEPTH *\] *\)' $input >$tmp 2>/dev/null
+
+    set `wc -l $tmp`
+    if test "$1" = "5"; then
+	plan="isc"
+    fi
+fi
+
+# ------
+
+case "$plan" in
+    ##################################################################
+    # The SunOS 4.0.2 version has the comparison fixed already.
+    # Also added are out of memory checks (makes porting the generated
+    # code easier) For most systems, it can't hurt. -- TD
+    "bsd43")
+	echo "Attempting to patch perly.c to allow dynamic yacc stack allocation"
+	echo "Assuming bsd4.3 yaccpar"
+	cat >$tmp <<'END'
+/YYSTYPE[ 	]*yyv\[ *YYMAXDEPTH *\];/c\
+int yymaxdepth = YYMAXDEPTH;\
+YYSTYPE *yyv; /* where the values are stored */\
+short *yys;\
+short *maxyyps;
+
+/short[ 	]*yys\[ *YYMAXDEPTH *\] *;/d
+
+/yyps *= *&yys\[ *-1 *\];/d
+
+/yypv *= *&yyv\[ *-1 *\];/c\
+\	if (!yyv) {\
+\	    New(73, yyv, yymaxdepth, YYSTYPE);\
+\	    New(73, yys, yymaxdepth, short);\
+\	    if ( !yyv || !yys ) {\
+\		yyerror( "out of memory" );\
+\		return(1);\
+\	    }\
+\	    maxyyps = &yys[yymaxdepth];\
+\	}\
+\	yyps = &yys[-1];\
+\	yypv = &yyv[-1];
+
+
+/if *( *\+\+yyps *>=* *&yys\[ *YYMAXDEPTH *\] *)/c\
+\		if( ++yyps >= maxyyps ) {\
+\		    int tv = yypv - yyv;\
+\		    int ts = yyps - yys;\
+\
+\		    yymaxdepth *= 2;\
+\		    Renew(yyv, yymaxdepth, YYSTYPE);\
+\		    Renew(yys, yymaxdepth, short);\
+\		    if ( !yyv || !yys ) {\
+\			yyerror( "yacc stack overflow" );\
+\			return(1);\
+\		    }\
+\		    yyps = yys + ts;\
+\		    yypv = yyv + tv;\
+\		    maxyyps = &yys[yymaxdepth];\
+\		}
+
+/yacc stack overflow.*}/d
+/yacc stack overflow/,/}/d
+END
+	if sed -f $tmp <$input >$output
+	then echo "The edit seems to have been applied okay."
+	else echo "The edit seems to have failed!"
+	fi
+	;;
+
+    #######################################################
+    "isc") # Interactive Systems 2.2  version
+	echo "Attempting to patch perly.c to allow dynamic yacc stack allocation"
+	echo "Assuming Interactive SysVr3 2.2 yaccpar"
+	# Easier to simply put whole script here than to modify the
+	# bsd script with sed.
+	# Main changes:  yaccpar sometimes uses yy_ps and yy_pv
+	# which are local register variables.
+	#  if(++yyps > YYMAXDEPTH) had opening brace on next line.
+	# I've kept that brace in along with a call to yyerror if
+	# realloc fails. (Actually, I just don't know how to do
+	# multi-line matches in sed.)
+	cat > $tmp << 'END'
+/YYSTYPE[ 	]*yyv\[ *YYMAXDEPTH *\];/c\
+int yymaxdepth = YYMAXDEPTH;\
+YYSTYPE *yyv; /* where the values are stored */\
+int *yys;\
+int *maxyyps;
+
+/int[ 	]*yys\[ *YYMAXDEPTH *\] *;/d
+
+/yyps *= *&yys\[ *-1 *\];/d
+
+/yypv *= *&yyv\[ *-1 *\];/c\
+\	if (!yyv) {\
+\	    New(73, yyv, yymaxdepth, YYSTYPE);\
+\	    New(73, yys, yymaxdepth, int);\
+\	    maxyyps = &yys[yymaxdepth];\
+\	}\
+\	yyps = &yys[-1];\
+\	yypv = &yyv[-1];
+
+/if *( *\+\+yy_ps *>= *&yys\[ *YYMAXDEPTH *\] *)/c\
+\		if( ++yy_ps >= maxyyps ) {\
+\		    int tv = yy_pv - yyv;\
+\		    int ts = yy_ps - yys;\
+\
+\		    yymaxdepth *= 2;\
+\		    Renew(yyv, yymaxdepth, YYSTYPE);\
+\		    Renew(yys, yymaxdepth, int);\
+\		    yy_ps = yyps = yys + ts;\
+\		    yy_pv = yypv = yyv + tv;\
+\		    maxyyps = &yys[yymaxdepth];\
+\		}\
+\		if (yyv == NULL || yys == NULL)
+END
+	if sed -f $tmp < $input > $output
+	then echo "The edit seems to have been applied okay."
+	else echo "The edit seems to have failed!"
+	fi
+	;;
+
+    ######################################################
+    # Plan still unknown
+    *)
+	echo "Unable to patch perly.c to allow dynamic yacc stack allocation (plan=$plan)"
+	# just do minimal change to write $output from $input
+	sed -e 's/Received token/ *** Received token/' $input >$output
+	;;
+esac
+
+echo ""
+rm -rf $tmp $input
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d13 1
+a13 1
+#   doughera@@lafayette.edu (Andy Dougherty)   3/23/91
+@
+
+
+1.1.1.3
+log
+@5.8.5
+@
+text
+@d26 1
+a26 1
+tmp=perly$$
+@
+
+

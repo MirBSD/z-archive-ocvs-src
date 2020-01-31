@@ -1,0 +1,327 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.05.16.17.43.11;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@/*    step.c for step.exp    */
+#include <ipc.h>
+#include <pthread.h>
+#include <st.h>
+#include <signal.h>
+#include <stdio.h>
+
+void alarm_handler ();
+void alarm_handler1 ();
+void alarm_handler2 ();
+void thread1 ();
+void thread2 ();
+
+#define TIME_LIMIT 30
+
+
+int count1 = 0;
+int count2 = 0;
+
+pthread_t tid1, tid2;
+pthread_attr_t attr1, attr2;
+
+pthread_mutex_t mut;
+pthread_mutexattr_t mut_attr;
+
+pthread_condattr_t cv_attr_a, cv_attr_b;
+pthread_cond_t cv_a, cv_b;
+
+struct cv_struct
+  {
+    char a;
+    char b;
+  }
+test_struct;
+
+main ()
+{
+  /*init la struct */
+  test_struct.a = 0;
+  test_struct.b = 1;
+
+  /* create le mutex */
+  if (pthread_mutexattr_create (&mut_attr) == -1)
+    {
+      perror ("mutexattr_create");
+      exit (1);
+    }
+
+
+  if (pthread_mutex_init (&mut, mut_attr) == -1)
+    {
+      perror ("mutex_init");
+      exit (1);
+    }
+
+  /* create 2 cv */
+  if (pthread_condattr_create (&cv_attr_a) == -1)
+    {
+      perror ("condattr_create(1)");
+      exit (1);
+    }
+
+  if (pthread_cond_init (&cv_a, cv_attr_a) == -1)
+    {
+      perror ("cond_init(1)");
+      exit (1);
+    }
+
+  if (pthread_condattr_create (&cv_attr_b) == -1)
+    {
+      perror ("condattr_create(2)");
+      exit (1);
+    }
+
+  if (pthread_cond_init (&cv_b, cv_attr_b) == -1)
+    {
+      perror ("cond_init(2)");
+      exit (1);
+    }
+
+  /* create 2 threads of execution */
+  if (pthread_attr_create (&attr1) == -1)
+    {
+      perror ("attr_create(1)");
+      exit (1);
+    }
+
+  if (pthread_create (&tid1, attr1, thread1, &count1) == -1)
+    {
+      perror ("pthread_create(1)");
+      exit (1);
+    }
+
+  if (pthread_attr_create (&attr2) == -1)
+    {
+      perror ("attr_create(2)");
+      exit (1);
+    }
+
+  if (pthread_create (&tid2, attr2, thread2, &count2) == -1)
+    {
+      perror ("pthread_create(2)");
+      exit (1);
+    }
+
+  /* set alarm to print out data and exit */
+  signal (SIGALRM, alarm_handler);
+  alarm (TIME_LIMIT);
+
+  for (;;)
+    pause ();
+}
+
+void 
+thread1 (count)
+     int *count;
+{
+  tid_t tid;
+
+  tid = getstid ();
+  printf ("Thread1 tid 0x%x  (%d) \n", tid, tid);
+  printf ("Thread1 @@tid=0x%x \n", &tid);
+  signal (SIGALRM, alarm_handler1);
+
+  for (;;)
+    {
+      if (pthread_mutex_lock (&mut) == -1)
+	{
+	  perror ("pthread_mutex_lock(1)");
+	  pthread_exit ((void *) 0);
+	}
+
+      while (test_struct.a == 0)
+	{
+	  if (pthread_cond_wait (&cv_a, &mut) == -1)
+	    {
+	      perror ("pthread_cond_wait(1)");
+	      pthread_exit ((void *) -1);
+	    }
+	}
+
+      (*count)++;
+      printf ("*******thread1 count %d\n", *count);
+
+      test_struct.a = 0;
+
+      test_struct.b = 1;
+      pthread_cond_signal (&cv_b);
+
+      if (pthread_mutex_unlock (&mut) == -1)
+	{
+	  perror ("pthread_mutex_unlock(1)");
+	  pthread_exit ((void *) -1);
+	}
+    }
+}
+
+void 
+thread2 (count)
+     int *count;
+{
+  tid_t tid;
+
+  tid = getstid ();
+  printf ("Thread2 tid 0x%x  (%d) \n", tid, tid);
+  printf ("Thread1 @@tid=0x%x \n", &tid);
+  signal (SIGALRM, alarm_handler2);
+
+  for (;;)
+    {
+      if (pthread_mutex_lock (&mut) == -1)
+	{
+	  perror ("pthread_mutex_lock(2)");
+	  pthread_exit ((void *) 0);
+	}
+
+      while (test_struct.b == 0)
+	{
+	  if (pthread_cond_wait (&cv_b, &mut) == -1)
+	    {
+	      perror ("pthread_cond_wait(2)");
+	      pthread_exit ((void *) -1);
+	    }
+	}
+
+      (*count)++;
+      printf ("*******thread2 count %d\n", *count);
+
+      test_struct.b = 0;
+
+      test_struct.a = 1;
+      pthread_cond_signal (&cv_a);
+
+      if (pthread_mutex_unlock (&mut) == -1)
+	{
+	  perror ("pthread_mutex_unlock(2)");
+	  pthread_exit ((void *) -1);
+	}
+    }
+}
+
+
+void 
+alarm_handler ()
+{
+  printf ("\tcount1 (%d) \n\tcount2 (%d)\n", count1, count2);
+  exit (0);
+}
+
+void 
+alarm_handler1 ()
+{
+  printf ("ALARM thread 1\n");
+}
+
+void 
+alarm_handler2 ()
+{
+  printf ("ALARM thread 2\n");
+  pthread_exit ((void *) 0);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

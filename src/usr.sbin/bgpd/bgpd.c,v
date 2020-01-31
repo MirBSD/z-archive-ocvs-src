@@ -1,0 +1,1079 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.4
+	tg-mergefixes-1-branch:1.1.1.4.0.8
+	tg-mergefixes-1-base:1.1.1.4
+	MIROS_X:1.1.1.4.0.6
+	MIROS_X_BASE:1.1.1.4
+	tg-mergetmp-3:1.1.1.4
+	MIRBSD_XP_MIRPPC:1.1.1.4.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.4
+	MIRBSD_XP_SPARC:1.1.1.4.0.2
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.12.22.21.20.11;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.12.22.21.20.11;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.01.02.18.12.24;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.01.26.19.05.44;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.05.16.07.19.20;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: bgpd.c,v 1.18 2003/12/22 15:22:13 henning Exp $ */
+
+/*
+ * Copyright (c) 2003 Henning Brauer <henning@@openbsd.org>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <err.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "mrt.h"
+#include "bgpd.h"
+
+void	sighdlr(int);
+void	usage(void);
+int	main(int, char *[]);
+int	reconfigure(char *, struct bgpd_config *, struct mrt_config *);
+int	dispatch_imsg(struct imsgbuf *, int, struct mrt_config *);
+
+int			mrtfd = -1;
+int			rfd = -1;
+volatile sig_atomic_t	mrtdump = 0;
+volatile sig_atomic_t	quit = 0;
+volatile sig_atomic_t	reconfig = 0;
+struct imsgbuf		ibuf_se;
+struct imsgbuf		ibuf_rde;
+
+void
+sighdlr(int sig)
+{
+	switch (sig) {
+	case SIGTERM:
+	case SIGINT:
+	case SIGCHLD:
+		quit = 1;
+		break;
+	case SIGHUP:
+		reconfig = 1;
+		break;
+	case SIGALRM:
+		mrtdump = 1;
+		break;
+	case SIGUSR1:
+		mrtdump = 2;
+		break;
+	}
+}
+
+void
+usage(void)
+{
+	extern char *__progname;
+
+	fprintf(stderr, "usage: %s [-dnv] ", __progname);
+	fprintf(stderr, "[-D macro=value] [-f file]\n");
+	exit(1);
+}
+
+#define POLL_MAX		8
+#define PFD_PIPE_SESSION	0
+#define PFD_PIPE_ROUTE		1
+#define PFD_MRT_START		2
+
+int
+main(int argc, char *argv[])
+{
+	struct bgpd_config	 conf;
+	struct mrt_config	 mrtconf;
+	struct mrtdump_config	*mconf, *(mrt[POLL_MAX]);
+	struct pollfd		 pfd[POLL_MAX];
+	pid_t			 io_pid = 0, rde_pid = 0;
+	char			*conffile;
+	int			 debug = 0;
+	int			 ch, i, j, n, nfds;
+	int			 pipe_m2s[2];
+	int			 pipe_m2r[2];
+	int			 pipe_s2r[2];
+
+	conffile = CONFFILE;
+	bgpd_process = PROC_MAIN;
+
+	log_init(1);		/* log to stderr until daemonized */
+
+	bzero(&conf, sizeof(conf));
+	bzero(&mrtconf, sizeof(mrtconf));
+	LIST_INIT(&mrtconf);
+
+	while ((ch = getopt(argc, argv, "dD:f:nv")) != -1) {
+		switch (ch) {
+		case 'd':
+			debug = 1;
+			break;
+		case 'D':
+			if (cmdline_symset(optarg) < 0)
+				logit(LOG_CRIT,
+				    "could not parse macro definition %s",
+				    optarg);
+			break;
+		case 'f':
+			conffile = optarg;
+			break;
+		case 'n':
+			conf.opts |= BGPD_OPT_NOACTION;
+			break;
+		case 'v':
+			if (conf.opts & BGPD_OPT_VERBOSE)
+				conf.opts |= BGPD_OPT_VERBOSE2;
+			conf.opts |= BGPD_OPT_VERBOSE;
+			break;
+		default:
+			usage();
+			/* NOTREACHED */
+		}
+	}
+
+	if (parse_config(conffile, &conf, &mrtconf))
+		exit(1);
+
+	if (conf.opts & BGPD_OPT_NOACTION) {
+		fprintf(stderr, "configuration OK\n");
+		exit(0);
+	}
+
+	if (geteuid())
+		errx(1, "need root privileges");
+
+	signal(SIGTERM, sighdlr);
+	signal(SIGINT, sighdlr);
+	signal(SIGCHLD, sighdlr);
+	signal(SIGHUP, sighdlr);
+	signal(SIGALRM, sighdlr);
+	signal(SIGUSR1, sighdlr);
+
+	log_init(debug);
+
+	if (!debug)
+		daemon(1, 0);
+
+	logit(LOG_INFO, "startup");
+
+	if (pipe(pipe_m2s) == -1)
+		fatal("pipe", errno);
+	if (fcntl(pipe_m2s[0], F_SETFL, O_NONBLOCK) == -1 ||
+	    fcntl(pipe_m2s[1], F_SETFL, O_NONBLOCK) == -1)
+		fatal("fcntl", errno);
+	if (pipe(pipe_m2r) == -1)
+		fatal("pipe", errno);
+	if (fcntl(pipe_m2r[0], F_SETFL, O_NONBLOCK) == -1 ||
+	    fcntl(pipe_m2r[1], F_SETFL, O_NONBLOCK) == -1)
+		fatal("fcntl", errno);
+	if (pipe(pipe_s2r) == -1)
+		fatal("pipe", errno);
+	if (fcntl(pipe_s2r[0], F_SETFL, O_NONBLOCK) == -1 ||
+	    fcntl(pipe_s2r[1], F_SETFL, O_NONBLOCK) == -1)
+		fatal("fcntl", errno);
+
+	if ((rde_pid = rde_main(&conf, pipe_m2r, pipe_s2r)) < 0)
+		fatal("could not start route decision engine", 0);
+
+	if ((io_pid = session_main(&conf, pipe_m2s, pipe_s2r)) < 0)
+		fatal("could not start session engine", 0);
+
+	setproctitle("parent");
+
+	close(pipe_m2s[1]);
+	close(pipe_m2r[1]);
+	close(pipe_s2r[0]);
+	close(pipe_s2r[1]);
+
+	imsg_init(&ibuf_se, pipe_m2s[0]);
+	imsg_init(&ibuf_rde, pipe_m2r[0]);
+	rfd = kroute_init();
+
+	while (quit == 0) {
+		pfd[PFD_PIPE_SESSION].fd = ibuf_se.sock;
+		pfd[PFD_PIPE_SESSION].events = POLLIN;
+		if (ibuf_se.w.queued)
+			pfd[PFD_PIPE_SESSION].events |= POLLOUT;
+		pfd[PFD_PIPE_ROUTE].fd = ibuf_rde.sock;
+		pfd[PFD_PIPE_ROUTE].events = POLLIN;
+		if (ibuf_rde.w.queued)
+			pfd[PFD_PIPE_ROUTE].events |= POLLOUT;
+		i = PFD_MRT_START;
+		LIST_FOREACH(mconf, &mrtconf, list)
+			if (mconf->msgbuf.queued > 0) {
+				pfd[i].fd = mconf->msgbuf.sock;
+				pfd[i].events |= POLLOUT;
+				mrt[i++] = mconf;
+			}
+
+		if ((nfds = poll(pfd, 2, INFTIM)) == -1)
+			if (errno != EINTR)
+				fatal("poll error", errno);
+
+		if (nfds > 0 && (pfd[PFD_PIPE_SESSION].revents & POLLOUT))
+			if ((n = msgbuf_write(&ibuf_se.w)) == -1)
+				fatal("pipe write error", errno);
+
+		if (nfds > 0 && (pfd[PFD_PIPE_ROUTE].revents & POLLOUT))
+			if ((n = msgbuf_write(&ibuf_rde.w)) == -1)
+				fatal("pipe write error", errno);
+
+		if (nfds > 0 && pfd[PFD_PIPE_SESSION].revents & POLLIN) {
+			nfds--;
+			dispatch_imsg(&ibuf_se, PFD_PIPE_SESSION, &mrtconf);
+		}
+
+		if (nfds > 0 && pfd[PFD_PIPE_ROUTE].revents & POLLIN) {
+			nfds--;
+			dispatch_imsg(&ibuf_rde, PFD_PIPE_ROUTE, &mrtconf);
+		}
+
+		for (j =  PFD_MRT_START; j < i && nfds > 0 ; j++) {
+			if (pfd[j].revents & POLLOUT) {
+				if ((n = msgbuf_write(&mrt[i]->msgbuf)) == -1)
+					fatal("pipe write error", errno);
+			}
+		}
+
+		if (reconfig) {
+			logit(LOG_CRIT, "rereading config");
+			reconfigure(conffile, &conf, &mrtconf);
+			LIST_FOREACH(mconf, &mrtconf, list)
+				mrt_state(mconf, IMSG_NONE, &ibuf_rde);
+			reconfig = 0;
+		}
+
+		if (mrtdump == 1) {
+			mrt_alrm(&mrtconf, &ibuf_rde);
+			mrtdump = 0;
+		} else if (mrtdump == 2) {
+			mrt_usr1(&mrtconf, &ibuf_rde);
+			mrtdump = 0;
+		}
+	}
+
+	signal(SIGCHLD, SIG_IGN);
+
+	if (io_pid)
+		kill(io_pid, SIGTERM);
+
+	if (rde_pid)
+		kill(rde_pid, SIGTERM);
+
+	do {
+		i = waitpid(-1, NULL, WNOHANG);
+	} while (i > 0 || (i == -1 && errno == EINTR));
+
+	logit(LOG_CRIT, "Terminating");
+	return (0);
+}
+
+int
+reconfigure(char *conffile, struct bgpd_config *conf, struct mrt_config *mrtc)
+{
+	struct peer		*p;
+
+	if (parse_config(conffile, conf, mrtc)) {
+		logit(LOG_CRIT, "config file %s has errors, not reloading",
+		    conffile);
+		return (-1);
+	}
+	imsg_compose(&ibuf_se, IMSG_RECONF_CONF, 0,
+	    conf, sizeof(struct bgpd_config));
+	imsg_compose(&ibuf_rde, IMSG_RECONF_CONF, 0,
+	    conf, sizeof(struct bgpd_config));
+	for (p = conf->peers; p != NULL; p = p->next) {
+		imsg_compose(&ibuf_se, IMSG_RECONF_PEER, p->conf.id,
+		    &p->conf, sizeof(struct peer_config));
+		imsg_compose(&ibuf_rde, IMSG_RECONF_PEER, p->conf.id,
+		    &p->conf, sizeof(struct peer_config));
+	}
+	imsg_compose(&ibuf_se, IMSG_RECONF_DONE, 0, NULL, 0);
+	imsg_compose(&ibuf_rde, IMSG_RECONF_DONE, 0, NULL, 0);
+
+	return (0);
+}
+
+/*
+ * XXX currently messages are only buffered for mrt files.
+ */
+int
+dispatch_imsg(struct imsgbuf *ibuf, int idx, struct mrt_config *conf)
+{
+	struct imsg		 imsg;
+	struct buf		*wbuf;
+	struct mrtdump_config	*m;
+	ssize_t			 len;
+	int			 n;
+
+	if (imsg_get(ibuf, &imsg) > 0) {
+		switch (imsg.hdr.type) {
+		case IMSG_MRT_MSG:
+		case IMSG_MRT_END:
+			LIST_FOREACH(m, conf, list) {
+				if (m->id != imsg.hdr.peerid)
+					continue;
+				if (mrt_state(m, imsg.hdr.type, ibuf) == 0)
+					break;
+				if (m->msgbuf.sock == -1)
+					break;
+				len = imsg.hdr.len - IMSG_HEADER_SIZE;
+				wbuf = buf_open(len);
+				if (wbuf == NULL)
+					fatal("buf_open error", 0);
+				if (buf_add(wbuf, imsg.data, len) == -1)
+					fatal("buf_add error", 0);
+				if ((n = buf_close(&m->msgbuf, wbuf)) == -1)
+					fatal("buf_close error", 0);
+				break;
+			}
+			break;
+		case IMSG_KROUTE_ADD:
+			if (idx != PFD_PIPE_ROUTE)
+				fatal("route request not from RDE", 0);
+			if (kroute_add(rfd, imsg.data))
+				fatal("kroute bytes left", 0);
+			break;
+		case IMSG_KROUTE_CHANGE:
+			if (idx != PFD_PIPE_ROUTE)
+				fatal("route request not from RDE", 0);
+			if (kroute_change(rfd, imsg.data))
+				fatal("kroute bytes left", 0);
+		case IMSG_KROUTE_DELETE:
+			if (idx != PFD_PIPE_ROUTE)
+				fatal("route request not from RDE", 0);
+			if (kroute_delete(rfd, imsg.data))
+				fatal("kroute bytes left", 0);
+			break;
+		default:
+			break;
+		}
+		imsg_free(&imsg);
+	}
+	return (0);
+}
+
+@
+
+
+1.1.1.1
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD again, for various reasons.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bgpd.c,v 1.49 2004/01/01 23:46:47 henning Exp $ */
+d85 1
+a85 2
+#define PFD_SOCK_ROUTE		2
+#define PFD_MRT_START		3
+d97 1
+a97 1
+	int			 ch, i, j, n, nfds, csock;
+d150 7
+d165 1
+a165 1
+		fatal("pipe");
+d168 1
+a168 1
+		fatal("fcntl");
+d170 1
+a170 1
+		fatal("pipe");
+d173 1
+a173 1
+		fatal("fcntl");
+d175 1
+a175 1
+		fatal("pipe");
+d178 1
+a178 1
+		fatal("fcntl");
+d180 2
+a181 2
+	if ((csock = control_init()) == -1)
+		fatalx("control socket setup failed");
+d183 2
+a184 3
+	/* fork children */
+	rde_pid = rde_main(&conf, pipe_m2r, pipe_s2r);
+	io_pid = session_main(&conf, pipe_m2s, pipe_s2r);
+a187 7
+	signal(SIGTERM, sighdlr);
+	signal(SIGINT, sighdlr);
+	signal(SIGCHLD, sighdlr);
+	signal(SIGHUP, sighdlr);
+	signal(SIGALRM, sighdlr);
+	signal(SIGUSR1, sighdlr);
+
+a191 1
+	close(csock);
+d195 1
+a195 2
+	if ((rfd = kroute_init(!(conf.flags & BGPD_FLAG_NO_FIB_UPDATE))) == -1)
+		quit = 1;
+a205 2
+		pfd[PFD_SOCK_ROUTE].fd = rfd;
+		pfd[PFD_SOCK_ROUTE].events = POLLIN;
+d214 3
+a216 5
+		if ((nfds = poll(pfd, i, INFTIM)) == -1)
+			if (errno != EINTR) {
+				log_err("poll error");
+				quit = 1;
+			}
+d219 2
+a220 4
+			if ((n = msgbuf_write(&ibuf_se.w)) < 0) {
+				log_err("pipe write error (to SE)");
+				quit = 1;
+			}
+d223 2
+a224 4
+			if ((n = msgbuf_write(&ibuf_rde.w)) < 0) {
+				log_err("pipe write error (to RDE)");
+				quit = 1;
+			}
+d228 1
+a228 3
+			if (dispatch_imsg(&ibuf_se, PFD_PIPE_SESSION,
+			    &mrtconf) == -1)
+				quit = 1;
+d233 1
+a233 9
+			if (dispatch_imsg(&ibuf_rde, PFD_PIPE_ROUTE,
+			    &mrtconf) == -1)
+				quit = 1;
+		}
+
+		if (nfds > 0 && pfd[PFD_SOCK_ROUTE].revents & POLLIN) {
+			nfds--;
+			if (kroute_dispatch_msg() == -1)
+				quit = 1;
+d236 1
+a236 1
+		for (j = PFD_MRT_START; j < i && nfds > 0 ; j++) {
+d238 2
+a239 4
+				if ((n = msgbuf_write(&mrt[i]->msgbuf)) < 0) {
+					log_err("pipe write error (MRT)");
+					quit = 1;
+				}
+a271 3
+	control_cleanup();
+	kroute_shutdown();
+
+d286 4
+a289 7
+
+	if (imsg_compose(&ibuf_se, IMSG_RECONF_CONF, 0,
+	    conf, sizeof(struct bgpd_config)) == -1)
+		return (-1);
+	if (imsg_compose(&ibuf_rde, IMSG_RECONF_CONF, 0,
+	    conf, sizeof(struct bgpd_config)) == -1)
+		return (-1);
+d291 4
+a294 6
+		if (imsg_compose(&ibuf_se, IMSG_RECONF_PEER, p->conf.id,
+		    &p->conf, sizeof(struct peer_config)) == -1)
+			return (-1);
+		if (imsg_compose(&ibuf_rde, IMSG_RECONF_PEER, p->conf.id,
+		    &p->conf, sizeof(struct peer_config)) == -1)
+			return (-1);
+d296 2
+a297 3
+	if (imsg_compose(&ibuf_se, IMSG_RECONF_DONE, 0, NULL, 0) == -1 ||
+	    imsg_compose(&ibuf_rde, IMSG_RECONF_DONE, 0, NULL, 0) == -1)
+		return (-1);
+a312 11
+	in_addr_t		 ina;
+
+	if (imsg_read(ibuf) == -1)
+		return (-1);
+
+	for (;;) {
+		if ((n = imsg_get(ibuf, &imsg)) == -1)
+			return (-1);
+
+		if (n == 0)
+			break;
+d314 1
+d328 5
+a332 9
+					return (-1);
+				if (buf_add(wbuf, imsg.data, len) == -1) {
+					buf_free(wbuf);
+					return (-1);
+				}
+				if ((n = buf_close(&m->msgbuf, wbuf)) < 0) {
+					buf_free(wbuf);
+					return (-1);
+				}
+d336 6
+d344 3
+a346 4
+				logit(LOG_CRIT, "route request not from RDE");
+			else if (kroute_change(imsg.data))
+				return (-1);
+			break;
+d349 3
+a351 20
+				logit(LOG_CRIT, "route request not from RDE");
+			else if (kroute_delete(imsg.data))
+				return (-1);
+			break;
+		case IMSG_NEXTHOP_ADD:
+			if (idx != PFD_PIPE_ROUTE)
+				logit(LOG_CRIT, "nexthop request not from RDE");
+			else {
+				memcpy(&ina, imsg.data, sizeof(ina));
+				if (kroute_nexthop_add(ina) == -1)
+					return (-1);
+			}
+			break;
+		case IMSG_NEXTHOP_REMOVE:
+			if (idx != PFD_PIPE_ROUTE)
+				logit(LOG_CRIT, "nexthop request not from RDE");
+			else {
+				memcpy(&ina, imsg.data, sizeof(ina));
+				kroute_nexthop_delete(ina);
+			}
+a360 22
+void
+send_nexthop_update(struct kroute_nexthop *msg)
+{
+	char	*gw = NULL;
+
+	if (msg->gateway)
+		if (asprintf(&gw, ": via %s", log_ntoa(msg->gateway)) == -1) {
+			log_err("send_nexthop_update");
+			quit = 1;
+		}
+
+	logit(LOG_INFO, "nexthop %s now %s%s%s", log_ntoa(msg->nexthop),
+	    msg->valid ? "valid" : "invalid",
+	    msg->connected ? ": directly connected" : "",
+	    msg->gateway ? gw : "");
+
+	free(gw);
+
+	if (imsg_compose(&ibuf_rde, IMSG_NEXTHOP_UPDATE, 0,
+	    msg, sizeof(struct kroute_nexthop)) == -1)
+		quit = 1;
+}
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bgpd.c,v 1.72 2004/01/23 21:18:12 henning Exp $ */
+d4 1
+a4 1
+ * Copyright (c) 2003, 2004 Henning Brauer <henning@@openbsd.org>
+a27 1
+#include <pwd.h>
+a35 1
+#include "session.h"
+d40 2
+a41 4
+int	check_child(pid_t, const char *);
+int	reconfigure(char *, struct bgpd_config *, struct mrt_head *,
+	    struct peer *);
+int	dispatch_imsg(struct imsgbuf *, int, struct mrt_head *);
+d43 1
+a47 1
+volatile sig_atomic_t	sigchld = 0;
+d57 1
+a59 3
+	case SIGCHLD:
+		sigchld = 1;
+		break;
+d64 2
+d67 1
+a67 1
+		mrtdump = 1;
+d92 2
+a93 5
+	struct peer		*peer_l, *p, *next;
+	struct mrt_head		 mrt_l;
+	struct network_head	 net_l;
+	struct network		*net;
+	struct mrt		*(mrt[POLL_MAX]);
+d95 1
+a95 1
+	pid_t			 io_pid = 0, rde_pid = 0, pid;
+d98 1
+a98 1
+	int			 ch, csock, i, j, n, nfds, timeout;
+d109 2
+a110 3
+	LIST_INIT(&mrt_l);
+	TAILQ_INIT(&net_l);
+	peer_l = NULL;
+d119 2
+a120 1
+				log_warnx("could not parse macro definition %s",
+d140 1
+a140 1
+	if (parse_config(conffile, &conf, &mrt_l, &peer_l, &net_l))
+a150 4
+	if (getpwnam(BGPD_USER) == NULL)
+		errx(1, "unknown user %s", BGPD_USER);
+	endpwent();
+
+d156 1
+a156 1
+	log_info("startup");
+d178 2
+a179 2
+	rde_pid = rde_main(&conf, peer_l, &net_l, pipe_m2r, pipe_s2r);
+	io_pid = session_main(&conf, peer_l, pipe_m2s, pipe_s2r);
+d198 1
+a198 2
+	mrt_init(&ibuf_rde, &ibuf_se);
+	if ((rfd = kr_init(!(conf.flags & BGPD_FLAG_NO_FIB_UPDATE))) == -1)
+a200 10
+	for (p = peer_l; p != NULL; p = next) {
+		next = p->next;
+		free(p);
+	}
+	for (net = TAILQ_FIRST(&net_l); net != TAILQ_END(&net_l);
+	    net = TAILQ_FIRST(&net_l)) {
+		TAILQ_REMOVE(&net_l, net, network_l);
+		free(net);
+	}
+
+d213 6
+a218 1
+		i = mrt_select(&mrt_l, pfd, mrt, i, POLL_MAX, &timeout);
+d222 1
+a222 1
+				log_warn("poll error");
+d228 1
+a228 1
+				log_warn("pipe write error (to SE)");
+d234 1
+a234 1
+				log_warn("pipe write error (to RDE)");
+d241 1
+a241 1
+			    &mrt_l) == -1)
+d248 1
+a248 1
+			    &mrt_l) == -1)
+d254 1
+a254 1
+			if (kr_dispatch_msg() == -1)
+d260 3
+a262 2
+				if ((n = mrt_write(mrt[j])) < 0) {
+					log_warn("mrt write error");
+d268 4
+a271 2
+			log_info("rereading config");
+			reconfigure(conffile, &conf, &mrt_l, peer_l);
+a274 8
+		if (sigchld) {
+			if (check_child(io_pid, "session engine"))
+				quit = 1;
+			if (check_child(rde_pid, "route decision engine"))
+				quit = 1;
+			sigchld = 0;
+		}
+
+d276 4
+a279 1
+			mrt_handler(&mrt_l);
+d293 2
+a294 2
+		pid = waitpid(-1, NULL, WNOHANG);
+	} while (pid > 0 || (pid == -1 && errno == EINTR));
+d297 1
+a297 1
+	kr_shutdown();
+d299 1
+a299 1
+	log_info("Terminating");
+d304 1
+a304 1
+check_child(pid_t pid, const char *pname)
+d306 1
+a306 16
+	int	status;
+
+	if (waitpid(pid, &status, WNOHANG) > 0) {
+		if (WIFEXITED(status)) {
+			log_warnx("Lost child: %s exited", pname);
+			return (1);
+		}
+		if (WIFSIGNALED(status)) {
+			log_warnx("Lost child: %s terminated; signal %d",
+			    pname, WTERMSIG(status));
+			return (1);
+		}
+	}
+
+	return (0);
+}
+d308 2
+a309 10
+int
+reconfigure(char *conffile, struct bgpd_config *conf, struct mrt_head *mrt_l,
+    struct peer *peer_l)
+{
+	struct network_head	 net_l;
+	struct network		*n;
+	struct peer		*p, *next;
+
+	if (parse_config(conffile, conf, mrt_l, &peer_l, &net_l)) {
+		log_warnx("config file %s has errors, not reloading",
+d320 1
+a320 2
+	for (p = peer_l; p != NULL; p = next) {
+		next = p->next;
+a326 9
+		free(p);
+	}
+	for (n = TAILQ_FIRST(&net_l); n != TAILQ_END(&net_l);
+	    n = TAILQ_FIRST(&net_l)) {
+		if (imsg_compose(&ibuf_rde, IMSG_RECONF_NETWORK, 0,
+		    &n->net, sizeof(struct network_config)) == -1)
+			return (-1);
+		TAILQ_REMOVE(&net_l, n, network_l);
+		free(n);
+d335 3
+d339 1
+a339 1
+dispatch_imsg(struct imsgbuf *ibuf, int idx, struct mrt_head *mrt_l)
+d342 3
+d346 1
+d348 1
+a348 1
+	if ((n = imsg_read(ibuf)) == -1)
+a350 5
+	if (n == 0) {	/* connection closed */
+		log_warnx("dispatch_imsg in main: pipe closed");
+		return (-1);
+	}
+
+d361 21
+a381 2
+			if (mrt_queue(mrt_l, &imsg) == -1)
+				log_warnx("mrt_queue failed.");
+d385 2
+a386 2
+				log_warnx("route request not from RDE");
+			else if (kr_change(imsg.data))
+d391 2
+a392 2
+				log_warnx("route request not from RDE");
+			else if (kr_delete(imsg.data))
+d397 4
+a400 6
+				log_warnx("nexthop request not from RDE");
+			else
+				if (imsg.hdr.len != IMSG_HEADER_SIZE +
+				    sizeof(struct bgpd_addr))
+					log_warnx("wrong imsg len");
+				else if (kr_nexthop_add(imsg.data) == -1)
+d402 1
+d406 5
+a410 33
+				log_warnx("nexthop request not from RDE");
+			else
+				if (imsg.hdr.len != IMSG_HEADER_SIZE +
+				    sizeof(struct bgpd_addr))
+					log_warnx("wrong imsg len");
+				else kr_nexthop_delete(imsg.data);
+			break;
+		case IMSG_CTL_RELOAD:
+			if (idx != PFD_PIPE_SESSION)
+				log_warnx("reload request not from SE");
+			else
+				reconfig = 1;
+			break;
+		case IMSG_CTL_FIB_COUPLE:
+			if (idx != PFD_PIPE_SESSION)
+				log_warnx("couple request not from SE");
+			else
+				kr_fib_couple();
+			break;
+		case IMSG_CTL_FIB_DECOUPLE:
+			if (idx != PFD_PIPE_SESSION)
+				log_warnx("decouple request not from SE");
+			else
+				kr_fib_decouple();
+			break;
+		case IMSG_CTL_KROUTE:
+		case IMSG_CTL_KROUTE_ADDR:
+		case IMSG_CTL_SHOW_NEXTHOP:
+		case IMSG_CTL_SHOW_INTERFACE:
+			if (idx != PFD_PIPE_SESSION)
+				log_warnx("kroute request not from SE");
+			else
+				kr_show_route(&imsg);
+d425 3
+a427 4
+	if (msg->gateway.af)
+		if (asprintf(&gw, ": via %s",
+		    log_addr(&msg->gateway)) == -1) {
+			log_warn("send_nexthop_update");
+d431 1
+a431 1
+	log_info("nexthop %s now %s%s%s", log_addr(&msg->nexthop),
+d434 1
+a434 1
+	    msg->gateway.af ? gw : "");
+a441 8
+
+void
+send_imsg_session(int type, pid_t pid, void *data, u_int16_t datalen)
+{
+	imsg_compose_pid(&ibuf_se, type, pid, data, datalen);
+}
+
+
+@
+
+
+1.1.1.4
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bgpd.c,v 1.93 2004/05/07 10:06:15 djm Exp $ */
+d44 1
+a44 1
+	    struct peer **, struct filter_head *);
+d96 1
+a96 1
+	struct peer		*peer_l, *p;
+a98 1
+	struct filter_head	*rules_l;
+d100 1
+a100 2
+	struct filter_rule	*r;
+	struct mrt		*(mrt[POLL_MAX]), *m;
+d105 1
+a105 1
+	int			 ch, i, j, nfds, timeout;
+a114 3
+	if ((rules_l = calloc(1, sizeof(struct filter_head))) == NULL)
+		err(1, NULL);
+
+a117 1
+	TAILQ_INIT(rules_l);
+d147 1
+a147 1
+	if (parse_config(conffile, &conf, &mrt_l, &peer_l, &net_l, rules_l))
+d151 1
+a151 4
+		if (conf.opts & BGPD_OPT_VERBOSE)
+			print_config(&conf, &net_l, peer_l, rules_l, &mrt_l);
+		else
+			fprintf(stderr, "configuration OK\n");
+d185 3
+d189 2
+a190 3
+	rde_pid = rde_main(&conf, &net_l, rules_l, &mrt_l, pipe_m2r, pipe_s2r);
+	io_pid = session_main(&conf, peer_l, &net_l, rules_l, &mrt_l,
+	    pipe_m2s, pipe_s2r);
+d205 1
+a211 2
+	if (pftable_clear_all() != 0)
+		quit = 1;
+d213 6
+a218 1
+	while ((net = TAILQ_FIRST(&net_l)) != NULL) {
+a222 5
+	while ((r = TAILQ_FIRST(rules_l)) != NULL) {
+		TAILQ_REMOVE(rules_l, r, entries);
+		free(r);
+	}
+
+d224 1
+a224 1
+		pfd[PFD_PIPE_SESSION].fd = ibuf_se.fd;
+d228 1
+a228 1
+		pfd[PFD_PIPE_ROUTE].fd = ibuf_rde.fd;
+d244 1
+a244 1
+			if (msgbuf_write(&ibuf_se.w) < 0) {
+d250 1
+a250 1
+			if (msgbuf_write(&ibuf_rde.w) < 0) {
+d277 1
+a277 1
+				if (mrt_write(mrt[j]) < 0) {
+d285 1
+a285 1
+			reconfigure(conffile, &conf, &mrt_l, &peer_l, rules_l);
+d311 3
+a313 8
+	while ((p = peer_l) != NULL) {
+		peer_l = p->next;
+		free(p);
+	}
+	while ((m = LIST_FIRST(&mrt_l)) != NULL) {
+		LIST_REMOVE(m, list);
+		free(m);
+	}
+a314 1
+	free(rules_l);
+a316 7
+	pftable_clear_all();
+
+	do {
+		if ((pid = wait(NULL)) == -1 &&
+		    errno != EINTR && errno != ECHILD)
+			fatal("wait");
+	} while (pid != -1 || (pid == -1 && errno == EINTR));
+d344 1
+a344 1
+    struct peer **peer_l, struct filter_head *rules_l)
+d348 1
+a348 2
+	struct peer		*p;
+	struct filter_rule	*r;
+d350 1
+a350 1
+	if (parse_config(conffile, conf, mrt_l, peer_l, &net_l, rules_l)) {
+d362 2
+a363 1
+	for (p = *peer_l; p != NULL; p = p->next)
+d367 7
+a373 1
+	while ((n = TAILQ_FIRST(&net_l)) != NULL) {
+a379 7
+	while ((r = TAILQ_FIRST(rules_l)) != NULL) {
+		if (imsg_compose(&ibuf_rde, IMSG_RECONF_FILTER, 0,
+		    r, sizeof(struct filter_rule)) == -1)
+			return (-1);
+		TAILQ_REMOVE(rules_l, r, entries);
+		free(r);
+	}
+d443 1
+a443 31
+				else
+					kr_nexthop_delete(imsg.data);
+			break;
+		case IMSG_PFTABLE_ADD:
+			if (idx != PFD_PIPE_ROUTE)
+				log_warnx("pftable request not from RDE");
+			else
+				if (imsg.hdr.len != IMSG_HEADER_SIZE +
+				    sizeof(struct pftable_msg))
+					log_warnx("wrong imsg len");
+				else if (pftable_addr_add(imsg.data) != 0)
+					return (-1);
+			break;
+		case IMSG_PFTABLE_REMOVE:
+			if (idx != PFD_PIPE_ROUTE)
+				log_warnx("pftable request not from RDE");
+			else
+				if (imsg.hdr.len != IMSG_HEADER_SIZE +
+				    sizeof(struct pftable_msg))
+					log_warnx("wrong imsg len");
+				else if (pftable_addr_remove(imsg.data) != 0)
+					return (-1);
+			break;
+		case IMSG_PFTABLE_COMMIT:
+			if (idx != PFD_PIPE_ROUTE)
+				log_warnx("pftable request not from RDE");
+			else
+				if (imsg.hdr.len != IMSG_HEADER_SIZE)
+					log_warnx("wrong imsg len");
+				else if (pftable_commit() != 0)
+					return (-1);
+d509 2
+@
+
+

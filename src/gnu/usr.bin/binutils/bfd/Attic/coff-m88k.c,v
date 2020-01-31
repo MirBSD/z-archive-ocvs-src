@@ -1,0 +1,726 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.47.23;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.00.02;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.38.53;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.38.53;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.25.58;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.28;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.03.56;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.06.14;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* BFD back-end for Motorola 88000 COFF "Binary Compatability Standard" files.
+   Copyright 1990, 1991, 1992, 1993, 1994, 1995, 1997, 1998, 1999, 2000,
+   2001, 2002
+   Free Software Foundation, Inc.
+   Written by Cygnus Support.
+
+This file is part of BFD, the Binary File Descriptor library.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#define M88 1		/* Customize various include files */
+#include "bfd.h"
+#include "sysdep.h"
+#include "libbfd.h"
+#include "coff/m88k.h"
+#include "coff/internal.h"
+#include "libcoff.h"
+
+static bfd_boolean m88k_is_local_label_name PARAMS ((bfd *, const char *));
+static bfd_reloc_status_type m88k_special_reloc
+  PARAMS ((bfd *, arelent *, asymbol *, PTR, asection *, bfd *, char **));
+static void rtype2howto PARAMS ((arelent *, struct internal_reloc *));
+static void reloc_processing
+  PARAMS ((arelent *, struct internal_reloc *, asymbol **, bfd *, asection *));
+
+#define COFF_DEFAULT_SECTION_ALIGNMENT_POWER (3)
+
+#define GET_SCNHDR_NRELOC H_GET_32
+#define GET_SCNHDR_NLNNO  H_GET_32
+
+/* On coff-m88k, local labels start with '@@'.  */
+
+#define coff_bfd_is_local_label_name m88k_is_local_label_name
+
+static bfd_boolean
+m88k_is_local_label_name (abfd, name)
+     bfd *abfd ATTRIBUTE_UNUSED;
+     const char *name;
+{
+  return name[0] == '@@';
+}
+
+static bfd_reloc_status_type
+m88k_special_reloc (abfd, reloc_entry, symbol, data,
+		    input_section, output_bfd, error_message)
+     bfd *abfd;
+     arelent *reloc_entry;
+     asymbol *symbol;
+     PTR data;
+     asection *input_section;
+     bfd *output_bfd;
+     char **error_message ATTRIBUTE_UNUSED;
+{
+  reloc_howto_type *howto = reloc_entry->howto;
+
+  switch (howto->type)
+    {
+    case R_HVRT16:
+    case R_LVRT16:
+      if (output_bfd != (bfd *) NULL)
+	{
+	  /* This is a partial relocation, and we want to apply the
+	     relocation to the reloc entry rather than the raw data.
+	     Modify the reloc inplace to reflect what we now know.  */
+
+	  reloc_entry->address += input_section->output_offset;
+	}
+      else
+	{
+	  bfd_vma output_base = 0;
+	  bfd_vma addr = reloc_entry->address;
+	  bfd_vma x = bfd_get_16 (abfd, (bfd_byte *) data + addr);
+	  asection *reloc_target_output_section;
+	  long relocation = 0;
+
+	  /* Work out which section the relocation is targetted at and the
+	     initial relocation command value.  */
+
+	  /* Get symbol value.  (Common symbols are special.)  */
+	  if (bfd_is_com_section (symbol->section))
+	    relocation = 0;
+	  else
+	    relocation = symbol->value;
+
+	  reloc_target_output_section = symbol->section->output_section;
+
+	  /* Convert input-section-relative symbol value to absolute.  */
+	  if (output_bfd)
+	    output_base = 0;
+	  else
+	    output_base = reloc_target_output_section->vma;
+
+	  relocation += output_base + symbol->section->output_offset;
+
+	  /* Add in supplied addend.  */
+	  relocation += ((reloc_entry->addend << howto->bitsize) + x);
+
+	  reloc_entry->addend = 0;
+
+	  relocation >>= (bfd_vma) howto->rightshift;
+
+	  /* Shift everything up to where it's going to be used */
+
+	  relocation <<= (bfd_vma) howto->bitpos;
+
+	  if (relocation)
+	    bfd_put_16 (abfd, (bfd_vma) relocation,
+			(unsigned char *) data + addr);
+	}
+
+      /* If we are not producing relocateable output, return an error if
+	 the symbol is not defined.  */
+      if (bfd_is_und_section (symbol->section) && output_bfd == (bfd *) NULL)
+	return bfd_reloc_undefined;
+
+      return bfd_reloc_ok;
+
+    default:
+      if (output_bfd != (bfd *) NULL)
+	{
+	  /* This is a partial relocation, and we want to apply the
+	     relocation to the reloc entry rather than the raw data.
+	     Modify the reloc inplace to reflect what we now know.  */
+
+	  reloc_entry->address += input_section->output_offset;
+	  return bfd_reloc_ok;
+	}
+      break;
+    }
+
+  if (output_bfd == (bfd *) NULL)
+    return bfd_reloc_continue;
+
+  return bfd_reloc_ok;
+}
+
+static reloc_howto_type howto_table[] =
+{
+  HOWTO (R_PCR16L,			/* type */
+	 02,				/* rightshift */
+	 1,				/* size (0 = byte, 1 = short, 2 = long) */
+	 16,				/* bitsize */
+	 TRUE,				/* pc_relative */
+	 0,				/* bitpos */
+	 complain_overflow_signed,	/* complain_on_overflow */
+	 m88k_special_reloc,		/* special_function */
+	 "PCR16L",			/* name */
+	 FALSE,				/* partial_inplace */
+	 0x0000ffff,			/* src_mask */
+	 0x0000ffff,			/* dst_mask */
+	 TRUE),				/* pcrel_offset */
+
+  HOWTO (R_PCR26L,			/* type */
+	 02,				/* rightshift */
+	 2,				/* size (0 = byte, 1 = short, 2 = long) */
+	 26,				/* bitsize */
+	 TRUE,				/* pc_relative */
+	 0,				/* bitpos */
+	 complain_overflow_signed,	/* complain_on_overflow */
+	 m88k_special_reloc,		/* special_function */
+	 "PCR26L",			/* name */
+	 FALSE,				/* partial_inplace */
+	 0x03ffffff,			/* src_mask */
+	 0x03ffffff,			/* dst_mask */
+	 TRUE),				/* pcrel_offset */
+
+  HOWTO (R_VRT16,			/* type */
+	 00,				/* rightshift */
+	 1,				/* size (0 = byte, 1 = short, 2 = long) */
+	 16,				/* bitsize */
+	 FALSE,				/* pc_relative */
+	 0,				/* bitpos */
+	 complain_overflow_bitfield,	/* complain_on_overflow */
+	 m88k_special_reloc,		/* special_function */
+	 "VRT16",			/* name */
+	 FALSE,				/* partial_inplace */
+	 0x0000ffff,			/* src_mask */
+	 0x0000ffff,			/* dst_mask */
+	 TRUE),				/* pcrel_offset */
+
+  HOWTO (R_HVRT16,			/* type */
+	 16,				/* rightshift */
+	 1,				/* size (0 = byte, 1 = short, 2 = long) */
+	 16,				/* bitsize */
+	 FALSE,				/* pc_relative */
+	 0,				/* bitpos */
+	 complain_overflow_dont,	/* complain_on_overflow */
+	 m88k_special_reloc,		/* special_function */
+	 "HVRT16",			/* name */
+	 FALSE,				/* partial_inplace */
+	 0x0000ffff,			/* src_mask */
+	 0x0000ffff,			/* dst_mask */
+	 TRUE),				/* pcrel_offset */
+
+  HOWTO (R_LVRT16,			/* type */
+	 00,				/* rightshift */
+	 1,				/* size (0 = byte, 1 = short, 2 = long) */
+	 16,				/* bitsize */
+	 FALSE,				/* pc_relative */
+	 0,				/* bitpos */
+	 complain_overflow_dont,	/* complain_on_overflow */
+	 m88k_special_reloc,		/* special_function */
+	 "LVRT16",			/* name */
+	 FALSE,				/* partial_inplace */
+	 0x0000ffff,			/* src_mask */
+	 0x0000ffff,			/* dst_mask */
+	 TRUE),				/* pcrel_offset */
+
+  HOWTO (R_VRT32,			/* type */
+	 00,				/* rightshift */
+	 2,				/* size (0 = byte, 1 = short, 2 = long) */
+	 32,				/* bitsize */
+	 FALSE,				/* pc_relative */
+	 0,				/* bitpos */
+	 complain_overflow_bitfield,	/* complain_on_overflow */
+	 m88k_special_reloc,		/* special_function */
+	 "VRT32",			/* name */
+	 FALSE,				/* partial_inplace */
+	 0xffffffff,			/* src_mask */
+	 0xffffffff,			/* dst_mask */
+	 TRUE),				/* pcrel_offset */
+};
+
+/* Code to turn an external r_type into a pointer to an entry in the
+   above howto table.  */
+static void
+rtype2howto (cache_ptr, dst)
+     arelent *cache_ptr;
+     struct internal_reloc *dst;
+{
+  if (dst->r_type >= R_PCR16L && dst->r_type <= R_VRT32)
+    {
+      cache_ptr->howto = howto_table + dst->r_type - R_PCR16L;
+    }
+  else
+    {
+      BFD_ASSERT (0);
+    }
+}
+
+#define RTYPE2HOWTO(cache_ptr, dst) rtype2howto (cache_ptr, dst)
+
+/* Code to swap in the reloc offset */
+#define SWAP_IN_RELOC_OFFSET  H_GET_16
+#define SWAP_OUT_RELOC_OFFSET H_PUT_16
+
+#define RELOC_PROCESSING(relent,reloc,symbols,abfd,section)	\
+  reloc_processing(relent, reloc, symbols, abfd, section)
+
+static void
+reloc_processing (relent, reloc, symbols, abfd, section)
+     arelent *relent;
+     struct internal_reloc *reloc;
+     asymbol **symbols;
+     bfd *abfd;
+     asection *section;
+{
+  relent->address = reloc->r_vaddr;
+  rtype2howto (relent, reloc);
+
+  if (((int) reloc->r_symndx) > 0)
+    {
+      relent->sym_ptr_ptr = symbols + obj_convert (abfd)[reloc->r_symndx];
+    }
+  else
+    {
+      relent->sym_ptr_ptr = bfd_abs_section_ptr->symbol_ptr_ptr;
+    }
+
+  relent->addend = reloc->r_offset;
+  relent->address -= section->vma;
+}
+
+#define BADMAG(x) MC88BADMAG(x)
+#include "coffcode.h"
+
+#undef coff_write_armap
+
+CREATE_BIG_COFF_TARGET_VEC (m88kbcs_vec, "coff-m88kbcs", 0, 0, '_', NULL)
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 2
+a3 1
+   Copyright 1990, 1991, 1992, 1993, 1994, 1995, 1997, 1998, 1999, 2000
+d31 1
+a31 1
+static boolean m88k_is_local_label_name PARAMS ((bfd *, const char *));
+d40 2
+a41 2
+#define GET_SCNHDR_NRELOC bfd_h_get_32
+#define GET_SCNHDR_NLNNO bfd_h_get_32
+d47 1
+a47 1
+static boolean
+d119 2
+a120 1
+	      bfd_put_16 (abfd, relocation, (unsigned char *) data + addr);
+d155 1
+a155 1
+	 true,				/* pc_relative */
+d160 1
+a160 1
+	 false,				/* partial_inplace */
+d163 1
+a163 1
+	 true),				/* pcrel_offset */
+d169 1
+a169 1
+	 true,				/* pc_relative */
+d174 1
+a174 1
+	 false,				/* partial_inplace */
+d177 1
+a177 1
+	 true),				/* pcrel_offset */
+d183 1
+a183 1
+	 false,				/* pc_relative */
+d188 1
+a188 1
+	 false,				/* partial_inplace */
+d191 1
+a191 1
+	 true),				/* pcrel_offset */
+d197 1
+a197 1
+	 false,				/* pc_relative */
+d202 1
+a202 1
+	 false,				/* partial_inplace */
+d205 1
+a205 1
+	 true),				/* pcrel_offset */
+d211 1
+a211 1
+	 false,				/* pc_relative */
+d216 1
+a216 1
+	 false,				/* partial_inplace */
+d219 1
+a219 1
+	 true),				/* pcrel_offset */
+d225 1
+a225 1
+	 false,				/* pc_relative */
+d230 1
+a230 1
+	 false,				/* partial_inplace */
+d233 1
+a233 1
+	 true),				/* pcrel_offset */
+d256 2
+a257 2
+#define SWAP_IN_RELOC_OFFSET  bfd_h_get_16
+#define SWAP_OUT_RELOC_OFFSET bfd_h_put_16
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 2
+   Copyright 1990, 1991, 1992, 1993, 1994, 1995, 1997, 1998, 1999, 2000,
+   2001, 2002
+d30 1
+a30 1
+static bfd_boolean m88k_is_local_label_name PARAMS ((bfd *, const char *));
+d39 2
+a40 2
+#define GET_SCNHDR_NRELOC H_GET_32
+#define GET_SCNHDR_NLNNO  H_GET_32
+d46 1
+a46 1
+static bfd_boolean
+d118 1
+a118 2
+	    bfd_put_16 (abfd, (bfd_vma) relocation,
+			(unsigned char *) data + addr);
+d153 1
+a153 1
+	 TRUE,				/* pc_relative */
+d158 1
+a158 1
+	 FALSE,				/* partial_inplace */
+d161 1
+a161 1
+	 TRUE),				/* pcrel_offset */
+d167 1
+a167 1
+	 TRUE,				/* pc_relative */
+d172 1
+a172 1
+	 FALSE,				/* partial_inplace */
+d175 1
+a175 1
+	 TRUE),				/* pcrel_offset */
+d181 1
+a181 1
+	 FALSE,				/* pc_relative */
+d186 1
+a186 1
+	 FALSE,				/* partial_inplace */
+d189 1
+a189 1
+	 TRUE),				/* pcrel_offset */
+d195 1
+a195 1
+	 FALSE,				/* pc_relative */
+d200 1
+a200 1
+	 FALSE,				/* partial_inplace */
+d203 1
+a203 1
+	 TRUE),				/* pcrel_offset */
+d209 1
+a209 1
+	 FALSE,				/* pc_relative */
+d214 1
+a214 1
+	 FALSE,				/* partial_inplace */
+d217 1
+a217 1
+	 TRUE),				/* pcrel_offset */
+d223 1
+a223 1
+	 FALSE,				/* pc_relative */
+d228 1
+a228 1
+	 FALSE,				/* partial_inplace */
+d231 1
+a231 1
+	 TRUE),				/* pcrel_offset */
+d254 2
+a255 2
+#define SWAP_IN_RELOC_OFFSET  H_GET_16
+#define SWAP_OUT_RELOC_OFFSET H_PUT_16
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d1 1
+a1 1
+/* BFD back-end for Motorola 88000 COFF "Binary Compatibility Standard" files.
+d3 1
+a3 1
+   2001, 2002, 2003
+d88 1
+a88 1
+	  /* Work out which section the relocation is targeted at and the
+d123 1
+a123 1
+      /* If we are not producing relocatable output, return an error if
+d291 1
+a291 1
+CREATE_BIG_COFF_TARGET_VEC (m88kbcs_vec, "coff-m88kbcs", 0, 0, '_', NULL, COFF_SWAP_TABLE)
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 2
+   Copyright 1990, 1991, 1992, 1993, 1994, 1995, 1997, 1998, 1999, 2000,
+   2001, 2002
+d30 1
+a30 1
+static bfd_boolean m88k_is_local_label_name PARAMS ((bfd *, const char *));
+d39 2
+a40 2
+#define GET_SCNHDR_NRELOC H_GET_32
+#define GET_SCNHDR_NLNNO  H_GET_32
+d46 1
+a46 1
+static bfd_boolean
+d118 1
+a118 2
+	    bfd_put_16 (abfd, (bfd_vma) relocation,
+			(unsigned char *) data + addr);
+d153 1
+a153 1
+	 TRUE,				/* pc_relative */
+d158 1
+a158 1
+	 FALSE,				/* partial_inplace */
+d161 1
+a161 1
+	 TRUE),				/* pcrel_offset */
+d167 1
+a167 1
+	 TRUE,				/* pc_relative */
+d172 1
+a172 1
+	 FALSE,				/* partial_inplace */
+d175 1
+a175 1
+	 TRUE),				/* pcrel_offset */
+d181 1
+a181 1
+	 FALSE,				/* pc_relative */
+d186 1
+a186 1
+	 FALSE,				/* partial_inplace */
+d189 1
+a189 1
+	 TRUE),				/* pcrel_offset */
+d195 1
+a195 1
+	 FALSE,				/* pc_relative */
+d200 1
+a200 1
+	 FALSE,				/* partial_inplace */
+d203 1
+a203 1
+	 TRUE),				/* pcrel_offset */
+d209 1
+a209 1
+	 FALSE,				/* pc_relative */
+d214 1
+a214 1
+	 FALSE,				/* partial_inplace */
+d217 1
+a217 1
+	 TRUE),				/* pcrel_offset */
+d223 1
+a223 1
+	 FALSE,				/* pc_relative */
+d228 1
+a228 1
+	 FALSE,				/* partial_inplace */
+d231 1
+a231 1
+	 TRUE),				/* pcrel_offset */
+d254 2
+a255 2
+#define SWAP_IN_RELOC_OFFSET  H_GET_16
+#define SWAP_OUT_RELOC_OFFSET H_PUT_16
+@
+

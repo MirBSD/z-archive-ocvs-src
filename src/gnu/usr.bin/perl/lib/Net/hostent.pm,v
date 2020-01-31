@@ -1,0 +1,286 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.18;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.56.00;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package Net::hostent;
+use strict;
+
+use 5.006_001;
+our $VERSION = '1.00';
+our(@@EXPORT, @@EXPORT_OK, %EXPORT_TAGS);
+BEGIN { 
+    use Exporter   ();
+    @@EXPORT      = qw(gethostbyname gethostbyaddr gethost);
+    @@EXPORT_OK   = qw(
+			$h_name	    	@@h_aliases
+			$h_addrtype 	$h_length
+			@@h_addr_list 	$h_addr
+		   );
+    %EXPORT_TAGS = ( FIELDS => [ @@EXPORT_OK, @@EXPORT ] );
+}
+use vars      @@EXPORT_OK;
+
+# Class::Struct forbids use of @@ISA
+sub import { goto &Exporter::import }
+
+use Class::Struct qw(struct);
+struct 'Net::hostent' => [
+   name		=> '$',
+   aliases	=> '@@',
+   addrtype	=> '$',
+   'length'	=> '$',
+   addr_list	=> '@@',
+];
+
+sub addr { shift->addr_list->[0] }
+
+sub populate (@@) {
+    return unless @@_;
+    my $hob = new();
+    $h_name 	 =    $hob->[0]     	     = $_[0];
+    @@h_aliases	 = @@{ $hob->[1] } = split ' ', $_[1];
+    $h_addrtype  =    $hob->[2] 	     = $_[2];
+    $h_length	 =    $hob->[3] 	     = $_[3];
+    $h_addr 	 =                             $_[4];
+    @@h_addr_list = @@{ $hob->[4] } =          @@_[ (4 .. $#_) ];
+    return $hob;
+} 
+
+sub gethostbyname ($)  { populate(CORE::gethostbyname(shift)) } 
+
+sub gethostbyaddr ($;$) { 
+    my ($addr, $addrtype);
+    $addr = shift;
+    require Socket unless @@_;
+    $addrtype = @@_ ? shift : Socket::AF_INET();
+    populate(CORE::gethostbyaddr($addr, $addrtype)) 
+} 
+
+sub gethost($) {
+    if ($_[0] =~ /^\d+(?:\.\d+(?:\.\d+(?:\.\d+)?)?)?$/) {
+	require Socket;
+	&gethostbyaddr(Socket::inet_aton(shift));
+    } else {
+	&gethostbyname;
+    } 
+} 
+
+1;
+__END__
+
+=head1 NAME
+
+Net::hostent - by-name interface to Perl's built-in gethost*() functions
+
+=head1 SYNOPSIS
+
+ use Net::hostnet;
+
+=head1 DESCRIPTION
+
+This module's default exports override the core gethostbyname() and
+gethostbyaddr() functions, replacing them with versions that return
+"Net::hostent" objects.  This object has methods that return the similarly
+named structure field name from the C's hostent structure from F<netdb.h>;
+namely name, aliases, addrtype, length, and addr_list.  The aliases and
+addr_list methods return array reference, the rest scalars.  The addr
+method is equivalent to the zeroth element in the addr_list array
+reference.
+
+You may also import all the structure fields directly into your namespace
+as regular variables using the :FIELDS import tag.  (Note that this still
+overrides your core functions.)  Access these fields as variables named
+with a preceding C<h_>.  Thus, C<$host_obj-E<gt>name()> corresponds to
+$h_name if you import the fields.  Array references are available as
+regular array variables, so for example C<@@{ $host_obj-E<gt>aliases()
+}> would be simply @@h_aliases.
+
+The gethost() function is a simple front-end that forwards a numeric
+argument to gethostbyaddr() by way of Socket::inet_aton, and the rest
+to gethostbyname().
+
+To access this functionality without the core overrides,
+pass the C<use> an empty import list, and then access
+function functions with their full qualified names.
+On the other hand, the built-ins are still available
+via the C<CORE::> pseudo-package.
+
+=head1 EXAMPLES
+
+ use Net::hostent;
+ use Socket;
+
+ @@ARGV = ('netscape.com') unless @@ARGV;
+
+ for $host ( @@ARGV ) {
+
+    unless ($h = gethost($host)) {
+	warn "$0: no such host: $host\n";
+	next;
+    }
+
+    printf "\n%s is %s%s\n", 
+	    $host, 
+	    lc($h->name) eq lc($host) ? "" : "*really* ",
+	    $h->name;
+
+    print "\taliases are ", join(", ", @@{$h->aliases}), "\n"
+		if @@{$h->aliases};     
+
+    if ( @@{$h->addr_list} > 1 ) { 
+	my $i;
+	for $addr ( @@{$h->addr_list} ) {
+	    printf "\taddr #%d is [%s]\n", $i++, inet_ntoa($addr);
+	} 
+    } else {
+	printf "\taddress is [%s]\n", inet_ntoa($h->addr);
+    } 
+
+    if ($h = gethostbyaddr($h->addr)) {
+	if (lc($h->name) ne lc($host)) {
+	    printf "\tThat addr reverses to host %s!\n", $h->name;
+	    $host = $h->name;
+	    redo;
+	} 
+    }
+ }
+
+=head1 NOTE
+
+While this class is currently implemented using the Class::Struct
+module to build a struct-like class, you shouldn't rely upon this.
+
+=head1 AUTHOR
+
+Tom Christiansen
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d5 1
+a5 1
+our $VERSION = '1.01';
+d73 1
+a73 1
+ use Net::hostent;
+@
+

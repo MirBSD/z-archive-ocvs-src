@@ -1,0 +1,367 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.05.16.17.41.19;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.37.00;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.37.00;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@/* Compatibility code for gettext-using-catgets interface.
+   Copyright (C) 1995, 1997 Free Software Foundation, Inc.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software Foundation,
+   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#ifdef HAVE_CONFIG_H
+# include <config.h>
+#endif
+
+#include <stdio.h>
+
+#ifdef STDC_HEADERS
+# include <stdlib.h>
+# include <string.h>
+#else
+char *getenv ();
+# ifdef HAVE_MALLOC_H
+#  include <malloc.h>
+# endif
+#endif
+
+#ifdef HAVE_NL_TYPES_H
+# include <nl_types.h>
+#endif
+
+#include "libgettext.h"
+
+/* @@@@ end of prolog @@@@ */
+
+/* XPG3 defines the result of `setlocale (category, NULL)' as:
+   ``Directs `setlocale()' to query `category' and return the current
+     setting of `local'.''
+   However it does not specify the exact format.  And even worse: POSIX
+   defines this not at all.  So we can use this feature only on selected
+   system (e.g. those using GNU C Library).  */
+#ifdef _LIBC
+# define HAVE_LOCALE_NULL
+#endif
+
+/* The catalog descriptor.  */
+static nl_catd catalog = (nl_catd) -1;
+
+/* Name of the default catalog.  */
+static const char default_catalog_name[] = "messages";
+
+/* Name of currently used catalog.  */
+static const char *catalog_name = default_catalog_name;
+
+/* Get ID for given string.  If not found return -1.  */
+static int msg_to_cat_id PARAMS ((const char *msg));
+
+/* Substitution for systems lacking this function in their C library.  */
+#if !_LIBC && !HAVE_STPCPY
+static char *stpcpy PARAMS ((char *dest, const char *src));
+#endif
+
+
+/* Set currently used domain/catalog.  */
+char *
+textdomain (domainname)
+     const char *domainname;
+{
+  nl_catd new_catalog;
+  char *new_name;
+  size_t new_name_len;
+  char *lang;
+
+#if defined HAVE_SETLOCALE && defined HAVE_LC_MESSAGES \
+    && defined HAVE_LOCALE_NULL
+  lang = setlocale (LC_MESSAGES, NULL);
+#else
+  lang = getenv ("LC_ALL");
+  if (lang == NULL || lang[0] == '\0')
+    {
+      lang = getenv ("LC_MESSAGES");
+      if (lang == NULL || lang[0] == '\0')
+	lang = getenv ("LANG");
+    }
+#endif
+  if (lang == NULL || lang[0] == '\0')
+    lang = "C";
+
+  /* See whether name of currently used domain is asked.  */
+  if (domainname == NULL)
+    return (char *) catalog_name;
+
+  if (domainname[0] == '\0')
+    domainname = default_catalog_name;
+
+  /* Compute length of added path element.  */
+  new_name_len = sizeof (LOCALEDIR) - 1 + 1 + strlen (lang)
+		 + sizeof ("/LC_MESSAGES/") - 1 + sizeof (PACKAGE) - 1
+		 + sizeof (".cat");
+
+  new_name = (char *) malloc (new_name_len);
+  if (new_name == NULL)
+    return NULL;
+
+  strcpy (new_name, PACKAGE);
+  new_catalog = catopen (new_name, 0);
+
+  if (new_catalog == (nl_catd) -1)
+    {
+      /* NLSPATH search didn't work, try absolute path */
+      sprintf (new_name, "%s/%s/LC_MESSAGES/%s.cat", LOCALEDIR, lang,
+	       PACKAGE);
+      new_catalog = catopen (new_name, 0);
+
+      if (new_catalog == (nl_catd) -1)
+	{
+	  free (new_name);
+	  return (char *) catalog_name;
+	}
+    }
+
+  /* Close old catalog.  */
+  if (catalog != (nl_catd) -1)
+    catclose (catalog);
+  if (catalog_name != default_catalog_name)
+    free ((char *) catalog_name);
+
+  catalog = new_catalog;
+  catalog_name = new_name;
+
+  return (char *) catalog_name;
+}
+
+char *
+bindtextdomain (domainname, dirname)
+     const char *domainname;
+     const char *dirname;
+{
+#if HAVE_SETENV || HAVE_PUTENV
+  char *old_val, *new_val, *cp;
+  size_t new_val_len;
+
+  /* This does not make much sense here but to be compatible do it.  */
+  if (domainname == NULL)
+    return NULL;
+
+  /* Compute length of added path element.  If we use setenv we don't need
+     the first byts for NLSPATH=, but why complicate the code for this
+     peanuts.  */
+  new_val_len = sizeof ("NLSPATH=") - 1 + strlen (dirname)
+		+ sizeof ("/%L/LC_MESSAGES/%N.cat");
+
+  old_val = getenv ("NLSPATH");
+  if (old_val == NULL || old_val[0] == '\0')
+    {
+      old_val = NULL;
+      new_val_len += 1 + sizeof (LOCALEDIR) - 1
+	             + sizeof ("/%L/LC_MESSAGES/%N.cat");
+    }
+  else
+    new_val_len += strlen (old_val);
+
+  new_val = (char *) malloc (new_val_len);
+  if (new_val == NULL)
+    return NULL;
+
+# if HAVE_SETENV
+  cp = new_val;
+# else
+  cp = stpcpy (new_val, "NLSPATH=");
+# endif
+
+  cp = stpcpy (cp, dirname);
+  cp = stpcpy (cp, "/%L/LC_MESSAGES/%N.cat:");
+
+  if (old_val == NULL)
+    {
+# if __STDC__
+      stpcpy (cp, LOCALEDIR "/%L/LC_MESSAGES/%N.cat");
+# else
+
+      cp = stpcpy (cp, LOCALEDIR);
+      stpcpy (cp, "/%L/LC_MESSAGES/%N.cat");
+# endif
+    }
+  else
+    stpcpy (cp, old_val);
+
+# if HAVE_SETENV
+  setenv ("NLSPATH", new_val, 1);
+  free (new_val);
+# else
+  putenv (new_val);
+  /* Do *not* free the environment entry we just entered.  It is used
+     from now on.   */
+# endif
+
+#endif
+
+  return (char *) domainname;
+}
+
+#undef gettext
+char *
+gettext (msg)
+     const char *msg;
+{
+  int msgid;
+
+  if (msg == NULL || catalog == (nl_catd) -1)
+    return (char *) msg;
+
+  /* Get the message from the catalog.  We always use set number 1.
+     The message ID is computed by the function `msg_to_cat_id'
+     which works on the table generated by `po-to-tbl'.  */
+  msgid = msg_to_cat_id (msg);
+  if (msgid == -1)
+    return (char *) msg;
+
+  return catgets (catalog, 1, msgid, (char *) msg);
+}
+
+/* Look through the table `_msg_tbl' which has `_msg_tbl_length' entries
+   for the one equal to msg.  If it is found return the ID.  In case when
+   the string is not found return -1.  */
+static int
+msg_to_cat_id (msg)
+     const char *msg;
+{
+  int cnt;
+
+  for (cnt = 0; cnt < _msg_tbl_length; ++cnt)
+    if (strcmp (msg, _msg_tbl[cnt]._msg) == 0)
+      return _msg_tbl[cnt]._msg_number;
+
+  return -1;
+}
+
+
+/* @@@@ begin of epilog @@@@ */
+
+/* We don't want libintl.a to depend on any other library.  So we
+   avoid the non-standard function stpcpy.  In GNU C Library this
+   function is available, though.  Also allow the symbol HAVE_STPCPY
+   to be defined.  */
+#if !_LIBC && !HAVE_STPCPY
+static char *
+stpcpy (dest, src)
+     char *dest;
+     const char *src;
+{
+  while ((*dest++ = *src++) != '\0')
+    /* Do nothing. */ ;
+  return dest - 1;
+}
+#endif
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

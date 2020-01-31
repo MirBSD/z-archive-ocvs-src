@@ -1,0 +1,1276 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.53.57;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.00.44;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.11;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.11;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.27.03;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.56;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.04.39;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.08.40;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* BFD back end for SCO5 core files (U-area and raw sections)
+   Copyright 1998, 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+   Written by Jouke Numan <jnuman@@hiscom.nl>
+
+This file is part of BFD, the Binary File Descriptor library.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "bfd.h"
+#include "sysdep.h"
+#include "libbfd.h"
+#include "libaout.h"		/* BFD a.out internal data structures */
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/dir.h>
+#include <signal.h>
+
+#include <sys/user.h>		/* After a.out.h  */
+#include <sys/paccess.h>
+#include <sys/region.h>
+
+struct sco5_core_struct
+{
+  struct user u;
+};
+
+/* forward declarations */
+
+static asection *make_bfd_asection
+  PARAMS ((bfd *, const char *, flagword, bfd_size_type, bfd_vma, file_ptr));
+static struct user *read_uarea PARAMS ((bfd *, int));
+const bfd_target *sco5_core_file_p PARAMS ((bfd *abfd));
+char *sco5_core_file_failing_command PARAMS ((bfd *abfd));
+int sco5_core_file_failing_signal PARAMS ((bfd *abfd));
+bfd_boolean sco5_core_file_matches_executable_p
+  PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+static void swap_abort PARAMS ((void));
+
+static asection *
+make_bfd_asection (abfd, name, flags, _raw_size, vma, filepos)
+     bfd *abfd;
+     const char *name;
+     flagword flags;
+     bfd_size_type _raw_size;
+     bfd_vma vma;
+     file_ptr filepos;
+{
+  asection *asect;
+
+  asect = bfd_make_section_anyway (abfd, name);
+  if (!asect)
+    return NULL;
+  asect->flags = flags;
+  asect->_raw_size = _raw_size;
+  asect->vma = vma;
+  asect->filepos = filepos;
+  asect->alignment_power = 2;
+
+  return asect;
+}
+
+static struct user *
+read_uarea(abfd, filepos)
+     bfd *abfd;
+     int filepos;
+
+{
+  struct sco5_core_struct *rawptr;
+  bfd_size_type amt = sizeof (struct sco5_core_struct);
+
+  rawptr = (struct sco5_core_struct *) bfd_zmalloc (amt);
+  if (rawptr == NULL)
+    return NULL;
+
+  abfd->tdata.sco5_core_data = rawptr;
+
+  if (bfd_seek (abfd, (file_ptr) filepos, SEEK_SET) != 0
+      || bfd_bread ((void *) &rawptr->u, (bfd_size_type) sizeof rawptr->u,
+		   abfd) != sizeof rawptr->u)
+    {
+      bfd_set_error (bfd_error_wrong_format);
+      return NULL;
+    }
+
+  /* Sanity check perhaps??? */
+  if (rawptr->u.u_dsize > 0x1000000)    /* Remember, it's in pages...  */
+    {
+      bfd_set_error (bfd_error_wrong_format);
+      return NULL;
+    }
+  if (rawptr->u.u_ssize > 0x1000000)
+    {
+      bfd_set_error (bfd_error_wrong_format);
+      return NULL;
+    }
+  return &rawptr->u;
+}
+
+/* ARGSUSED */
+const bfd_target *
+sco5_core_file_p (abfd)
+     bfd *abfd;
+{
+  int coffset_siz, val, nsecs, cheadoffs;
+  int coresize;
+  struct user *u;
+  struct coreoffsets coffsets;
+  struct coresecthead chead;
+  char *secname;
+  flagword flags;
+
+  /* Read coreoffsets region at end of core (see core(FP)) */
+
+  {
+    FILE *stream = bfd_cache_lookup (abfd);
+    struct stat statbuf;
+    if (stream == NULL)
+      return NULL;
+    if (fstat (fileno (stream), &statbuf) < 0)
+      {
+	bfd_set_error (bfd_error_system_call);
+	return NULL;
+      }
+    coresize = statbuf.st_size;
+  }
+  /* Last long in core is sizeof struct coreoffsets, read it */
+  if ((bfd_seek (abfd, (file_ptr) (coresize - sizeof coffset_siz),
+		 SEEK_SET) != 0)
+      || bfd_bread ((void *) &coffset_siz, (bfd_size_type) sizeof coffset_siz,
+		   abfd) != sizeof coffset_siz)
+    {
+      bfd_set_error (bfd_error_wrong_format);
+      return NULL;
+    }
+
+  /* Use it to seek start of coreoffsets region, read it and determine
+     validity */
+  if ((bfd_seek (abfd, (file_ptr) (coresize - coffset_siz), SEEK_SET) != 0)
+      || (bfd_bread ((void *) &coffsets, (bfd_size_type) sizeof coffsets, abfd)
+	  != sizeof coffsets)
+      || ((coffsets.u_info != 1) && (coffsets.u_info != C_VERSION)))
+    {
+      bfd_set_error (bfd_error_wrong_format);
+      return NULL;
+    }
+
+  if (coffsets.u_info == 1)
+    {
+      /* Old version, no section heads, read info from user struct */
+
+      u = read_uarea (abfd, coffsets.u_user);
+      if (! u)
+	goto fail;
+
+      if (!make_bfd_asection (abfd, ".reg", SEC_HAS_CONTENTS,
+			      (bfd_size_type) coffsets.u_usize,
+			      0 - (bfd_vma) u->u_ar0,
+			      (file_ptr) coffsets.u_user))
+	goto fail;
+
+      if (!make_bfd_asection (abfd, ".data",
+			      SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS,
+			      ((bfd_size_type) u->u_exdata.ux_dsize
+			       + u->u_exdata.ux_bsize),
+			      (bfd_vma) u->u_exdata.ux_datorg,
+			      (file_ptr) coffsets.u_data))
+	goto fail;
+
+      if (!make_bfd_asection (abfd, ".stack",
+			      SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS,
+			      (bfd_size_type) u->u_ssize * NBPC,
+			      (bfd_vma) u->u_sub,
+			      (file_ptr) coffsets.u_stack))
+	goto fail;
+
+      return abfd->xvec;		/* Done for version 1 */
+    }
+
+  /* Immediately before coreoffsets region is a long with offset in core
+     to first coresecthead (CORES_OFFSETS), the long before this is the
+     number of section heads in the list. Read both longs and read the
+     coresecthead and check its validity */
+
+  if ((bfd_seek (abfd,
+		 (file_ptr) (coresize - coffset_siz - 2 * sizeof coffset_siz),
+		 SEEK_SET) != 0)
+      || (bfd_bread ((void *) &nsecs, (bfd_size_type) sizeof nsecs, abfd)
+	  != sizeof nsecs)
+      || (bfd_bread ((void *) &cheadoffs, (bfd_size_type) sizeof cheadoffs,
+		    abfd) != sizeof cheadoffs)
+      || (bfd_seek (abfd, (file_ptr) cheadoffs, SEEK_SET) != 0)
+      || (bfd_bread ((void *) &chead, (bfd_size_type) sizeof chead, abfd)
+	  != sizeof chead)
+      || (chead.cs_stype != CORES_OFFSETS)
+      || (chead.cs_x.csx_magic != COREMAGIC_NUMBER))
+    {
+      bfd_set_error (bfd_error_wrong_format);
+      goto fail;
+    }
+
+  /* OK, we believe you.  You're a core file (sure, sure).  */
+
+  /* Now loop over all regions and map them */
+  nsecs--;				/* We've seen CORES_OFFSETS already */
+  for (; nsecs; nsecs--)
+    {
+      if ((bfd_seek (abfd, (file_ptr) chead.cs_hseek, SEEK_SET) != 0)
+	  || (bfd_bread ((void *) &chead, (bfd_size_type) sizeof chead, abfd)
+	      != sizeof chead))
+	{
+	  bfd_set_error (bfd_error_wrong_format);
+	  goto fail;
+	}
+
+      switch (chead.cs_stype)
+	{
+	case CORES_MAGIC:			/* Core header, check magic */
+	  if (chead.cs_x.csx_magic != COREMAGIC_NUMBER)
+	    {
+	      bfd_set_error (bfd_error_wrong_format);
+	      goto fail;
+	    }
+	  secname = NULL;
+	  nsecs++;				/* MAGIC not in section cnt!*/
+	  break;
+	case CORES_UAREA:			/* U-area, read in tdata */
+	  u = read_uarea (abfd, chead.cs_sseek);
+	  if (! u)
+	    goto fail;
+
+	  /* This is tricky.  As the "register section", we give them
+	     the entire upage and stack.  u.u_ar0 points to where
+	     "register 0" is stored.  There are two tricks with this,
+	     though.  One is that the rest of the registers might be
+	     at positive or negative (or both) displacements from
+	     *u_ar0.  The other is that u_ar0 is sometimes an absolute
+	     address in kernel memory, and on other systems it is an
+	     offset from the beginning of the `struct user'.
+
+	     As a practical matter, we don't know where the registers
+	     actually are, so we have to pass the whole area to GDB.
+	     We encode the value of u_ar0 by setting the .regs section
+	     up so that its virtual memory address 0 is at the place
+	     pointed to by u_ar0 (by setting the vma of the start of
+	     the section to -u_ar0).  GDB uses this info to locate the
+	     regs, using minor trickery to get around the
+	     offset-or-absolute-addr problem.  */
+
+	  chead.cs_vaddr = 0 - (bfd_vma) u->u_ar0;
+
+	  secname = ".reg";
+	  flags = SEC_HAS_CONTENTS;
+
+	  break;
+	case CORES_PREGION:			/* A program region, map it */
+	  switch (chead.cs_x.csx_preg.csxp_rtyp)
+	    {
+	    case PT_DATA:
+	      secname = ".data";	/* Data region.		 */
+	      break;
+	    case PT_STACK:
+	      secname = ".stack";	/* Stack region.	 */
+	      break;
+	    case PT_SHMEM:
+	      secname = ".shmem";	/* Shared memory	 */
+	      break;
+	    case PT_LIBDAT:
+	      secname = ".libdat";	/* Shared library data	 */
+	      break;
+	    case PT_V86:
+	      secname = ".virt86";	/* Virtual 8086 mode	 */
+	      break;
+	    case PT_SHFIL:
+	      secname = ".mmfile";	/* Memory mapped file	 */
+	      break;
+	    case PT_XDATA0:
+	      secname = ".Xdat0";	/* XENIX data region, virtual 0 */
+	      break;
+	    default:
+	      secname = "";
+	    }
+	  flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+	  break;
+	case CORES_PROC:			/* struct proc */
+	case CORES_ITIMER:			/* interval timers */
+	case CORES_SCOUTSNAME:			/* struct scoutsname */
+	  secname = NULL;	/* Ignore these */
+	  break;
+	default:
+	  (*_bfd_error_handler) ("Unhandled SCO core file section type %d\n",
+				 chead.cs_stype);
+	  continue;
+	}
+
+      if (secname
+	  && !make_bfd_asection (abfd, secname, flags,
+				 (bfd_size_type) chead.cs_vsize,
+				 (bfd_vma) chead.cs_vaddr,
+				 (file_ptr) chead.cs_sseek))
+	goto fail;
+
+    }
+
+  return abfd->xvec;
+
+ fail:
+  if (abfd->tdata.any)
+    {
+      bfd_release (abfd, abfd->tdata.any);
+      abfd->tdata.any = NULL;
+    }
+  bfd_section_list_clear (abfd);
+  return NULL;
+}
+
+char *
+sco5_core_file_failing_command (abfd)
+     bfd *abfd;
+{
+  char *com = abfd->tdata.sco5_core_data->u.u_comm;
+  if (*com)
+    return com;
+  else
+    return NULL;
+}
+
+/* ARGSUSED */
+int
+sco5_core_file_failing_signal (ignore_abfd)
+     bfd *ignore_abfd;
+{
+  return ((ignore_abfd->tdata.sco5_core_data->u.u_sysabort != 0)
+	  ? ignore_abfd->tdata.sco5_core_data->u.u_sysabort
+	  : -1);
+}
+
+/* ARGSUSED */
+bfd_boolean
+sco5_core_file_matches_executable_p  (core_bfd, exec_bfd)
+     bfd *core_bfd ATTRIBUTE_UNUSED;
+     bfd *exec_bfd ATTRIBUTE_UNUSED;
+{
+  return TRUE;		/* FIXME, We have no way of telling at this point */
+}
+
+/* If somebody calls any byte-swapping routines, shoot them.  */
+static void
+swap_abort ()
+{
+  abort (); /* This way doesn't require any declaration for ANSI to fuck up */
+}
+#define NO_GET  ((bfd_vma (*) PARAMS ((   const bfd_byte *))) swap_abort )
+#define NO_PUT  ((void    (*) PARAMS ((bfd_vma, bfd_byte *))) swap_abort )
+#define NO_SIGNED_GET \
+  ((bfd_signed_vma (*) PARAMS ((const bfd_byte *))) swap_abort )
+
+const bfd_target sco5_core_vec =
+  {
+    "sco5-core",
+    bfd_target_unknown_flavour,
+    BFD_ENDIAN_LITTLE,	       /* target byte order */
+    BFD_ENDIAN_LITTLE,	       /* target headers byte order */
+    (HAS_RELOC | EXEC_P |	/* object flags */
+     HAS_LINENO | HAS_DEBUG |
+     HAS_SYMS | HAS_LOCALS | WP_TEXT | D_PAGED),
+    (SEC_HAS_CONTENTS | SEC_ALLOC | SEC_LOAD | SEC_RELOC), /* section flags */
+    0,							   /* symbol prefix */
+    ' ',						   /* ar_pad_char */
+    16,							   /* ar_max_namelen */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 64 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 32 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 16 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 64 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 32 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 16 bit hdrs */
+
+    {				/* bfd_check_format */
+     _bfd_dummy_target,		/* unknown format */
+     _bfd_dummy_target,		/* object file */
+     _bfd_dummy_target,		/* archive */
+     sco5_core_file_p		/* a core file */
+    },
+    {				/* bfd_set_format */
+     bfd_false, bfd_false,
+     bfd_false, bfd_false
+    },
+    {				/* bfd_write_contents */
+     bfd_false, bfd_false,
+     bfd_false, bfd_false
+    },
+
+    BFD_JUMP_TABLE_GENERIC (_bfd_generic),
+    BFD_JUMP_TABLE_COPY (_bfd_generic),
+    BFD_JUMP_TABLE_CORE (sco5),
+    BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
+    BFD_JUMP_TABLE_SYMBOLS (_bfd_nosymbols),
+    BFD_JUMP_TABLE_RELOCS (_bfd_norelocs),
+    BFD_JUMP_TABLE_WRITE (_bfd_generic),
+    BFD_JUMP_TABLE_LINK (_bfd_nolink),
+    BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
+
+    NULL,
+
+    (PTR) 0			/* backend_data */
+};
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1998, 1999, 2000 Free Software Foundation, Inc.
+d24 1
+a24 1
+#include "libaout.h"           /* BFD a.out internal data structures */
+d32 1
+a32 1
+#include <sys/user.h>           /* After a.out.h  */
+d43 2
+a44 4
+static asection *
+make_bfd_asection PARAMS ((bfd *, const char *, flagword, bfd_size_type,
+                           bfd_vma, file_ptr));
+static asymbol *sco5_core_make_empty_symbol PARAMS ((bfd *));
+d49 2
+a50 2
+boolean sco5_core_file_matches_executable_p PARAMS ((bfd *core_bfd,
+						     bfd *exec_bfd));
+a75 10
+static asymbol *
+sco5_core_make_empty_symbol (abfd)
+     bfd *abfd;
+{
+  asymbol *new = (asymbol *) bfd_zalloc (abfd, sizeof (asymbol));
+  if (new)
+    new->the_bfd = abfd;
+  return new;
+}
+
+d83 1
+d85 1
+a85 2
+  rawptr = ((struct sco5_core_struct *)
+	    bfd_zmalloc (sizeof (struct sco5_core_struct)));
+d91 3
+a93 3
+  if ((bfd_seek (abfd, filepos, SEEK_SET) != 0)
+      || (bfd_read ((void *)&rawptr->u, 1, sizeof rawptr->u, abfd)
+	  != sizeof rawptr->u))
+d135 2
+a136 2
+        bfd_set_error (bfd_error_system_call);
+        return NULL;
+d141 4
+a144 3
+  if ((bfd_seek (abfd, coresize-sizeof coffset_siz, SEEK_SET) != 0)
+      || (bfd_read ((void *)&coffset_siz, 1, sizeof coffset_siz, abfd)
+	  != sizeof coffset_siz) )
+d152 2
+a153 2
+  if ((bfd_seek (abfd, coresize-coffset_siz, SEEK_SET) != 0)
+      || (bfd_read ((void *)&coffsets, 1, sizeof coffsets, abfd)
+d165 1
+a165 1
+      u = read_uarea(abfd, coffsets.u_user);
+d167 1
+a167 1
+          return NULL;
+d170 4
+a173 4
+                              (bfd_size_type) coffsets.u_usize,
+                              0 - (bfd_vma) u->u_ar0,
+                              (file_ptr) coffsets.u_user))
+        return NULL;
+d177 1
+a177 1
+                              ((bfd_size_type) u->u_exdata.ux_dsize
+d179 3
+a181 3
+                              (bfd_vma) u->u_exdata.ux_datorg,
+                              (file_ptr) coffsets.u_data))
+        return NULL;
+d185 4
+a188 4
+                              (bfd_size_type) u->u_ssize * NBPC,
+                              (bfd_vma) u->u_sub,
+                              (file_ptr) coffsets.u_stack))
+        return NULL;
+d199 1
+a199 1
+		 coresize - coffset_siz - 2 * sizeof coffset_siz,
+d201 7
+a207 5
+      || (bfd_read ((void *)&nsecs, 1, sizeof nsecs, abfd) != sizeof nsecs)
+      || (bfd_read ((void *)&cheadoffs, 1, sizeof cheadoffs, abfd)
+	  != sizeof cheadoffs)
+      || (bfd_seek (abfd, cheadoffs, SEEK_SET) != 0)
+      || (bfd_read ((void *)&chead, 1, sizeof chead, abfd) != sizeof chead)
+d212 1
+a212 1
+      return NULL;
+d221 7
+a227 6
+      if ((bfd_seek (abfd, chead.cs_hseek, SEEK_SET) != 0)
+	  || bfd_read ((void *)&chead, 1, sizeof chead, abfd) != sizeof chead)
+        {
+          bfd_set_error (bfd_error_wrong_format);
+          return NULL;
+        }
+d235 1
+a235 1
+	      return NULL;
+d241 1
+a241 1
+	  u = read_uarea(abfd, chead.cs_sseek);
+d243 1
+a243 1
+	    return NULL;
+d245 1
+a245 1
+          /* This is tricky.  As the "register section", we give them
+d265 2
+a266 2
+          secname = ".reg";
+          flags = SEC_HAS_CONTENTS;
+d268 1
+a268 1
+          break;
+d273 1
+a273 1
+	      secname = ".data";  	/* Data region.          */
+d276 1
+a276 1
+	      secname = ".stack"; 	/* Stack region.         */
+d279 1
+a279 1
+	      secname = ".shmem"; 	/* Shared memory         */
+d282 1
+a282 1
+	      secname = ".libdat";	/* Shared library data   */
+d285 1
+a285 1
+	      secname = ".virt86";	/* Virtual 8086 mode     */
+d288 1
+a288 1
+	      secname = ".mmfile";	/* Memory mapped file    */
+d291 1
+a291 1
+	      secname = ".Xdat0"; 	/* XENIX data region, virtual 0 */
+d303 5
+a307 5
+        default:
+          (*_bfd_error_handler) ("Unhandled SCO core file section type %d\n",
+                                 chead.cs_stype);
+          continue;
+        }
+d314 1
+a314 1
+        return NULL;
+d320 8
+d352 1
+a352 1
+boolean
+d354 2
+a355 1
+     bfd *core_bfd, *exec_bfd;
+d357 1
+a357 1
+  return true;          /* FIXME, We have no way of telling at this point */
+a359 11
+#define sco5_core_get_symtab_upper_bound _bfd_nosymbols_get_symtab_upper_bound
+#define sco5_core_get_symtab _bfd_nosymbols_get_symtab
+#define sco5_core_print_symbol _bfd_nosymbols_print_symbol
+#define sco5_core_get_symbol_info _bfd_nosymbols_get_symbol_info
+#define sco5_core_bfd_is_local_label_name _bfd_nosymbols_bfd_is_local_label_name
+#define sco5_core_get_lineno _bfd_nosymbols_get_lineno
+#define sco5_core_find_nearest_line _bfd_nosymbols_find_nearest_line
+#define sco5_core_bfd_make_debug_symbol _bfd_nosymbols_bfd_make_debug_symbol
+#define sco5_core_read_minisymbols _bfd_nosymbols_read_minisymbols
+#define sco5_core_minisymbol_to_symbol _bfd_nosymbols_minisymbol_to_symbol
+
+d375 3
+a377 3
+    BFD_ENDIAN_LITTLE,         /* target byte order */
+    BFD_ENDIAN_LITTLE,         /* target headers byte order */
+    (HAS_RELOC | EXEC_P |       /* object flags */
+d381 15
+a395 15
+    0,                                                     /* symbol prefix */
+    ' ',                                                   /* ar_pad_char */
+    16,                                                    /* ar_max_namelen */
+    NO_GET, NO_SIGNED_GET, NO_PUT,      /* 64 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,      /* 32 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,      /* 16 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,      /* 64 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,      /* 32 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,      /* 16 bit hdrs */
+
+    {                           /* bfd_check_format */
+     _bfd_dummy_target,         /* unknown format */
+     _bfd_dummy_target,         /* object file */
+     _bfd_dummy_target,         /* archive */
+     sco5_core_file_p      	/* a core file */
+d397 1
+a397 1
+    {                           /* bfd_set_format */
+d401 1
+a401 1
+    {                           /* bfd_write_contents */
+d406 9
+a414 9
+       BFD_JUMP_TABLE_GENERIC (_bfd_generic),
+       BFD_JUMP_TABLE_COPY (_bfd_generic),
+       BFD_JUMP_TABLE_CORE (sco5),
+       BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
+       BFD_JUMP_TABLE_SYMBOLS (sco5_core),
+       BFD_JUMP_TABLE_RELOCS (_bfd_norelocs),
+       BFD_JUMP_TABLE_WRITE (_bfd_generic),
+       BFD_JUMP_TABLE_LINK (_bfd_nolink),
+       BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
+d418 1
+a418 1
+    (PTR) 0                     /* backend_data */
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1998, 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+d24 1
+a24 1
+#include "libaout.h"		/* BFD a.out internal data structures */
+d32 1
+a32 1
+#include <sys/user.h>		/* After a.out.h  */
+d43 4
+a46 2
+static asection *make_bfd_asection
+  PARAMS ((bfd *, const char *, flagword, bfd_size_type, bfd_vma, file_ptr));
+d51 2
+a52 2
+bfd_boolean sco5_core_file_matches_executable_p
+  PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+d78 10
+a94 1
+  bfd_size_type amt = sizeof (struct sco5_core_struct);
+d96 2
+a97 1
+  rawptr = (struct sco5_core_struct *) bfd_zmalloc (amt);
+d103 3
+a105 3
+  if (bfd_seek (abfd, (file_ptr) filepos, SEEK_SET) != 0
+      || bfd_bread ((void *) &rawptr->u, (bfd_size_type) sizeof rawptr->u,
+		   abfd) != sizeof rawptr->u)
+d147 2
+a148 2
+	bfd_set_error (bfd_error_system_call);
+	return NULL;
+d153 3
+a155 4
+  if ((bfd_seek (abfd, (file_ptr) (coresize - sizeof coffset_siz),
+		 SEEK_SET) != 0)
+      || bfd_bread ((void *) &coffset_siz, (bfd_size_type) sizeof coffset_siz,
+		   abfd) != sizeof coffset_siz)
+d163 2
+a164 2
+  if ((bfd_seek (abfd, (file_ptr) (coresize - coffset_siz), SEEK_SET) != 0)
+      || (bfd_bread ((void *) &coffsets, (bfd_size_type) sizeof coffsets, abfd)
+d176 1
+a176 1
+      u = read_uarea (abfd, coffsets.u_user);
+d178 1
+a178 1
+	goto fail;
+d181 4
+a184 4
+			      (bfd_size_type) coffsets.u_usize,
+			      0 - (bfd_vma) u->u_ar0,
+			      (file_ptr) coffsets.u_user))
+	goto fail;
+d188 1
+a188 1
+			      ((bfd_size_type) u->u_exdata.ux_dsize
+d190 3
+a192 3
+			      (bfd_vma) u->u_exdata.ux_datorg,
+			      (file_ptr) coffsets.u_data))
+	goto fail;
+d196 4
+a199 4
+			      (bfd_size_type) u->u_ssize * NBPC,
+			      (bfd_vma) u->u_sub,
+			      (file_ptr) coffsets.u_stack))
+	goto fail;
+d210 1
+a210 1
+		 (file_ptr) (coresize - coffset_siz - 2 * sizeof coffset_siz),
+d212 5
+a216 7
+      || (bfd_bread ((void *) &nsecs, (bfd_size_type) sizeof nsecs, abfd)
+	  != sizeof nsecs)
+      || (bfd_bread ((void *) &cheadoffs, (bfd_size_type) sizeof cheadoffs,
+		    abfd) != sizeof cheadoffs)
+      || (bfd_seek (abfd, (file_ptr) cheadoffs, SEEK_SET) != 0)
+      || (bfd_bread ((void *) &chead, (bfd_size_type) sizeof chead, abfd)
+	  != sizeof chead)
+d221 1
+a221 1
+      goto fail;
+d230 6
+a235 7
+      if ((bfd_seek (abfd, (file_ptr) chead.cs_hseek, SEEK_SET) != 0)
+	  || (bfd_bread ((void *) &chead, (bfd_size_type) sizeof chead, abfd)
+	      != sizeof chead))
+	{
+	  bfd_set_error (bfd_error_wrong_format);
+	  goto fail;
+	}
+d243 1
+a243 1
+	      goto fail;
+d249 1
+a249 1
+	  u = read_uarea (abfd, chead.cs_sseek);
+d251 1
+a251 1
+	    goto fail;
+d253 1
+a253 1
+	  /* This is tricky.  As the "register section", we give them
+d273 2
+a274 2
+	  secname = ".reg";
+	  flags = SEC_HAS_CONTENTS;
+d276 1
+a276 1
+	  break;
+d281 1
+a281 1
+	      secname = ".data";	/* Data region.		 */
+d284 1
+a284 1
+	      secname = ".stack";	/* Stack region.	 */
+d287 1
+a287 1
+	      secname = ".shmem";	/* Shared memory	 */
+d290 1
+a290 1
+	      secname = ".libdat";	/* Shared library data	 */
+d293 1
+a293 1
+	      secname = ".virt86";	/* Virtual 8086 mode	 */
+d296 1
+a296 1
+	      secname = ".mmfile";	/* Memory mapped file	 */
+d299 1
+a299 1
+	      secname = ".Xdat0";	/* XENIX data region, virtual 0 */
+d311 5
+a315 5
+	default:
+	  (*_bfd_error_handler) ("Unhandled SCO core file section type %d\n",
+				 chead.cs_stype);
+	  continue;
+	}
+d322 1
+a322 1
+	goto fail;
+a327 8
+ fail:
+  if (abfd->tdata.any)
+    {
+      bfd_release (abfd, abfd->tdata.any);
+      abfd->tdata.any = NULL;
+    }
+  bfd_section_list_clear (abfd);
+  return NULL;
+d352 1
+a352 1
+bfd_boolean
+d354 1
+a354 2
+     bfd *core_bfd ATTRIBUTE_UNUSED;
+     bfd *exec_bfd ATTRIBUTE_UNUSED;
+d356 1
+a356 1
+  return TRUE;		/* FIXME, We have no way of telling at this point */
+d359 11
+d385 3
+a387 3
+    BFD_ENDIAN_LITTLE,	       /* target byte order */
+    BFD_ENDIAN_LITTLE,	       /* target headers byte order */
+    (HAS_RELOC | EXEC_P |	/* object flags */
+d391 15
+a405 15
+    0,							   /* symbol prefix */
+    ' ',						   /* ar_pad_char */
+    16,							   /* ar_max_namelen */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 64 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 32 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 16 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 64 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 32 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 16 bit hdrs */
+
+    {				/* bfd_check_format */
+     _bfd_dummy_target,		/* unknown format */
+     _bfd_dummy_target,		/* object file */
+     _bfd_dummy_target,		/* archive */
+     sco5_core_file_p		/* a core file */
+d407 1
+a407 1
+    {				/* bfd_set_format */
+d411 1
+a411 1
+    {				/* bfd_write_contents */
+d416 9
+a424 9
+    BFD_JUMP_TABLE_GENERIC (_bfd_generic),
+    BFD_JUMP_TABLE_COPY (_bfd_generic),
+    BFD_JUMP_TABLE_CORE (sco5),
+    BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
+    BFD_JUMP_TABLE_SYMBOLS (_bfd_nosymbols),
+    BFD_JUMP_TABLE_RELOCS (_bfd_norelocs),
+    BFD_JUMP_TABLE_WRITE (_bfd_generic),
+    BFD_JUMP_TABLE_LINK (_bfd_nolink),
+    BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
+d428 1
+a428 1
+    (PTR) 0			/* backend_data */
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d2 1
+a2 2
+   Copyright 1998, 1999, 2000, 2001, 2002, 2003, 2004
+   Free Software Foundation, Inc.
+d113 1
+d341 1
+d351 1
+d366 4
+a369 7
+
+#define	NO_GET ((bfd_vma (*) (const void *)) swap_abort)
+#define	NO_PUT ((void (*) (bfd_vma, void *)) swap_abort)
+#define	NO_GETS ((bfd_signed_vma (*) (const void *)) swap_abort)
+#define	NO_GET64 ((bfd_uint64_t (*) (const void *)) swap_abort)
+#define	NO_PUT64 ((void (*) (bfd_uint64_t, void *)) swap_abort)
+#define	NO_GETS64 ((bfd_int64_t (*) (const void *)) swap_abort)
+d384 6
+a389 6
+    NO_GET64, NO_GETS64, NO_PUT64,	/* 64 bit data */
+    NO_GET, NO_GETS, NO_PUT,		/* 32 bit data */
+    NO_GET, NO_GETS, NO_PUT,		/* 16 bit data */
+    NO_GET64, NO_GETS64, NO_PUT64,	/* 64 bit hdrs */
+    NO_GET, NO_GETS, NO_PUT,		/* 32 bit hdrs */
+    NO_GET, NO_GETS, NO_PUT,		/* 16 bit hdrs */
+d392 4
+a395 4
+      _bfd_dummy_target,		/* unknown format */
+      _bfd_dummy_target,		/* object file */
+      _bfd_dummy_target,		/* archive */
+      sco5_core_file_p			/* a core file */
+d398 2
+a399 2
+      bfd_false, bfd_false,
+      bfd_false, bfd_false
+d402 2
+a403 2
+      bfd_false, bfd_false,
+      bfd_false, bfd_false
+d419 1
+a419 1
+  };
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1998, 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+d24 1
+a24 1
+#include "libaout.h"		/* BFD a.out internal data structures */
+d32 1
+a32 1
+#include <sys/user.h>		/* After a.out.h  */
+d43 4
+a46 2
+static asection *make_bfd_asection
+  PARAMS ((bfd *, const char *, flagword, bfd_size_type, bfd_vma, file_ptr));
+d51 2
+a52 2
+bfd_boolean sco5_core_file_matches_executable_p
+  PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+d78 10
+a94 1
+  bfd_size_type amt = sizeof (struct sco5_core_struct);
+d96 2
+a97 1
+  rawptr = (struct sco5_core_struct *) bfd_zmalloc (amt);
+d103 3
+a105 3
+  if (bfd_seek (abfd, (file_ptr) filepos, SEEK_SET) != 0
+      || bfd_bread ((void *) &rawptr->u, (bfd_size_type) sizeof rawptr->u,
+		   abfd) != sizeof rawptr->u)
+d147 2
+a148 2
+	bfd_set_error (bfd_error_system_call);
+	return NULL;
+d153 3
+a155 4
+  if ((bfd_seek (abfd, (file_ptr) (coresize - sizeof coffset_siz),
+		 SEEK_SET) != 0)
+      || bfd_bread ((void *) &coffset_siz, (bfd_size_type) sizeof coffset_siz,
+		   abfd) != sizeof coffset_siz)
+d163 2
+a164 2
+  if ((bfd_seek (abfd, (file_ptr) (coresize - coffset_siz), SEEK_SET) != 0)
+      || (bfd_bread ((void *) &coffsets, (bfd_size_type) sizeof coffsets, abfd)
+d176 1
+a176 1
+      u = read_uarea (abfd, coffsets.u_user);
+d178 1
+a178 1
+	goto fail;
+d181 4
+a184 4
+			      (bfd_size_type) coffsets.u_usize,
+			      0 - (bfd_vma) u->u_ar0,
+			      (file_ptr) coffsets.u_user))
+	goto fail;
+d188 1
+a188 1
+			      ((bfd_size_type) u->u_exdata.ux_dsize
+d190 3
+a192 3
+			      (bfd_vma) u->u_exdata.ux_datorg,
+			      (file_ptr) coffsets.u_data))
+	goto fail;
+d196 4
+a199 4
+			      (bfd_size_type) u->u_ssize * NBPC,
+			      (bfd_vma) u->u_sub,
+			      (file_ptr) coffsets.u_stack))
+	goto fail;
+d210 1
+a210 1
+		 (file_ptr) (coresize - coffset_siz - 2 * sizeof coffset_siz),
+d212 5
+a216 7
+      || (bfd_bread ((void *) &nsecs, (bfd_size_type) sizeof nsecs, abfd)
+	  != sizeof nsecs)
+      || (bfd_bread ((void *) &cheadoffs, (bfd_size_type) sizeof cheadoffs,
+		    abfd) != sizeof cheadoffs)
+      || (bfd_seek (abfd, (file_ptr) cheadoffs, SEEK_SET) != 0)
+      || (bfd_bread ((void *) &chead, (bfd_size_type) sizeof chead, abfd)
+	  != sizeof chead)
+d221 1
+a221 1
+      goto fail;
+d230 6
+a235 7
+      if ((bfd_seek (abfd, (file_ptr) chead.cs_hseek, SEEK_SET) != 0)
+	  || (bfd_bread ((void *) &chead, (bfd_size_type) sizeof chead, abfd)
+	      != sizeof chead))
+	{
+	  bfd_set_error (bfd_error_wrong_format);
+	  goto fail;
+	}
+d243 1
+a243 1
+	      goto fail;
+d249 1
+a249 1
+	  u = read_uarea (abfd, chead.cs_sseek);
+d251 1
+a251 1
+	    goto fail;
+d253 1
+a253 1
+	  /* This is tricky.  As the "register section", we give them
+d273 2
+a274 2
+	  secname = ".reg";
+	  flags = SEC_HAS_CONTENTS;
+d276 1
+a276 1
+	  break;
+d281 1
+a281 1
+	      secname = ".data";	/* Data region.		 */
+d284 1
+a284 1
+	      secname = ".stack";	/* Stack region.	 */
+d287 1
+a287 1
+	      secname = ".shmem";	/* Shared memory	 */
+d290 1
+a290 1
+	      secname = ".libdat";	/* Shared library data	 */
+d293 1
+a293 1
+	      secname = ".virt86";	/* Virtual 8086 mode	 */
+d296 1
+a296 1
+	      secname = ".mmfile";	/* Memory mapped file	 */
+d299 1
+a299 1
+	      secname = ".Xdat0";	/* XENIX data region, virtual 0 */
+d311 5
+a315 5
+	default:
+	  (*_bfd_error_handler) ("Unhandled SCO core file section type %d\n",
+				 chead.cs_stype);
+	  continue;
+	}
+d322 1
+a322 1
+	goto fail;
+a327 8
+ fail:
+  if (abfd->tdata.any)
+    {
+      bfd_release (abfd, abfd->tdata.any);
+      abfd->tdata.any = NULL;
+    }
+  bfd_section_list_clear (abfd);
+  return NULL;
+d352 1
+a352 1
+bfd_boolean
+d354 1
+a354 2
+     bfd *core_bfd ATTRIBUTE_UNUSED;
+     bfd *exec_bfd ATTRIBUTE_UNUSED;
+d356 1
+a356 1
+  return TRUE;		/* FIXME, We have no way of telling at this point */
+d359 11
+d385 3
+a387 3
+    BFD_ENDIAN_LITTLE,	       /* target byte order */
+    BFD_ENDIAN_LITTLE,	       /* target headers byte order */
+    (HAS_RELOC | EXEC_P |	/* object flags */
+d391 15
+a405 15
+    0,							   /* symbol prefix */
+    ' ',						   /* ar_pad_char */
+    16,							   /* ar_max_namelen */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 64 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 32 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 16 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 64 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 32 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 16 bit hdrs */
+
+    {				/* bfd_check_format */
+     _bfd_dummy_target,		/* unknown format */
+     _bfd_dummy_target,		/* object file */
+     _bfd_dummy_target,		/* archive */
+     sco5_core_file_p		/* a core file */
+d407 1
+a407 1
+    {				/* bfd_set_format */
+d411 1
+a411 1
+    {				/* bfd_write_contents */
+d416 9
+a424 9
+    BFD_JUMP_TABLE_GENERIC (_bfd_generic),
+    BFD_JUMP_TABLE_COPY (_bfd_generic),
+    BFD_JUMP_TABLE_CORE (sco5),
+    BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
+    BFD_JUMP_TABLE_SYMBOLS (_bfd_nosymbols),
+    BFD_JUMP_TABLE_RELOCS (_bfd_norelocs),
+    BFD_JUMP_TABLE_WRITE (_bfd_generic),
+    BFD_JUMP_TABLE_LINK (_bfd_nolink),
+    BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
+d428 1
+a428 1
+    (PTR) 0			/* backend_data */
+@
+

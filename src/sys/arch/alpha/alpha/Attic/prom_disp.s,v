@@ -1,0 +1,232 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.04.06.04.28.02;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.18;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/* $OpenBSD: prom_disp.s,v 1.6 2000/11/08 19:16:59 ericj Exp $ */
+/* $NetBSD: prom_disp.s,v 1.8 1997/11/03 04:22:03 ross Exp $ */
+
+/*
+ * Copyright (c) 1994, 1995, 1996 Carnegie-Mellon University.
+ * All rights reserved.
+ *
+ * Author: Chris G. Demetriou
+ * 
+ * Permission to use, copy, modify and distribute this software and
+ * its documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS" 
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND 
+ * FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ *
+ *  Software Distribution Coordinator  or  Software.Distribution@@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ *
+ * any improvements or extensions that they make and grant Carnegie the
+ * rights to redistribute these changes.
+ */
+
+#ifndef _LOCORE
+#include <machine/asm.h>
+#endif
+
+	.globl	prom_dispatch_v
+	.comm	prom_dispatch_v,16
+
+	.text
+	.align	4
+
+inc3:	.stabs	__FILE__,132,0,0,inc3; .loc	1 __LINE__
+/*
+ * Dispatcher routine.  Implements prom's calling machinery, saves our
+ * callee-saved registers as required by C.
+ */
+#define	D_RA			 (7*8)
+#define	D_S0			 (8*8)
+#define	D_S1			 (9*8)
+#define	D_S2			(10*8)
+#define	D_S3			(11*8)
+#define	D_S4			(12*8)
+#define	D_S5			(13*8)
+#define	D_S6			(14*8)
+#define	DISPATCH_FRAME_SIZE	(15*8)
+#define	DISPATCH_REGS		IM_RA|IM_S0|IM_S1|IM_S2|IM_S3|IM_S4|IM_S5|IM_S6
+
+NESTED(prom_dispatch, 5, DISPATCH_FRAME_SIZE, ra, DISPATCH_REGS, 0)
+
+	ldgp	gp, 0(pv)
+
+	lda	sp, -DISPATCH_FRAME_SIZE(sp)
+	stq	ra, D_RA(sp)
+	stq	s0, D_S0(sp)
+	stq	s1, D_S1(sp)
+	stq	s2, D_S2(sp)
+	stq	s3, D_S3(sp)
+	stq	s4, D_S4(sp)
+	stq	s5, D_S5(sp)
+	stq	s6, D_S6(sp)
+
+	/* Lord have mercy because.. I would not. */
+#define	STUPID_PROM_IS_32_BITS
+#ifdef	STUPID_PROM_IS_32_BITS
+	ldah	s0, 0x2000(zero)	/* hack for hack */
+	lda	s0, (0x2000-8)(s0)
+
+	stq	sp, 0(s0)
+	or	s0, zero, sp
+#endif	/* STUPID_PROM_IS_32_BITS */
+
+	lda	pv, prom_dispatch_v
+	ldq	v0, 0(pv)		/* routine */
+	ldq	pv, 8(pv)		/* routine_arg */
+	
+	jsr	ra, (v0)
+
+#ifdef	STUPID_PROM_IS_32_BITS
+	ldah	s0, 0x2000(zero)	/* hack for hack */
+	lda	s0, (0x2000-8)(s0)
+
+	ldq	sp, 0(s0)
+#endif	/* STUPID_PROM_IS_32_BITS */
+
+	ldq	ra, D_RA(sp)
+	ldq	s0, D_S0(sp)
+	ldq	s1, D_S1(sp)
+	ldq	s2, D_S2(sp)
+	ldq	s3, D_S3(sp)
+	ldq	s4, D_S4(sp)
+	ldq	s5, D_S5(sp)
+	ldq	s6, D_S6(sp)
+	lda	sp, DISPATCH_FRAME_SIZE(sp)
+	RET
+END(prom_dispatch)
+
+#undef	D_RA			
+#undef	D_S0			
+#undef	D_S1			
+#undef	D_S2			
+#undef	D_S3			
+#undef	D_S4			
+#undef	D_S5			
+#undef	D_S6			
+#undef	DISPATCH_FRAME_SIZE
+#undef	DISPATCH_REGS
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

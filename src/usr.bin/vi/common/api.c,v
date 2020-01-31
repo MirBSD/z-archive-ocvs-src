@@ -1,0 +1,678 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	MIRBSD_4:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.39;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.39;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.15.17.48.34;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: api.c,v 1.11 2002/02/16 21:27:56 millert Exp $	*/
+
+/*-
+ * Copyright (c) 1992, 1993, 1994
+ *	The Regents of the University of California.  All rights reserved.
+ * Copyright (c) 1992, 1993, 1994, 1995, 1996
+ *	Keith Bostic.  All rights reserved.
+ * Copyright (c) 1995
+ *	George V. Neville-Neil. All rights reserved.
+ *
+ * See the LICENSE file for redistribution information.
+ */
+
+#include "config.h"
+
+#ifndef lint
+static const char sccsid[] = "@@(#)api.c	8.26 (Berkeley) 10/14/96";
+#endif /* not lint */
+
+#include <sys/types.h>
+#include <sys/queue.h>
+#include <sys/time.h>
+
+#include <bitstring.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <termios.h>
+#include <unistd.h>
+
+#include "../common/common.h"
+
+extern GS *__global_list;			/* XXX */
+
+/*
+ * api_fscreen --
+ *	Return a pointer to the screen specified by the screen id
+ *	or a file name.
+ *
+ * PUBLIC: SCR *api_fscreen(int, char *);
+ */
+SCR *
+api_fscreen(id, name)
+	int id;
+	char *name;
+{
+	GS *gp;
+	SCR *tsp;
+
+	gp = __global_list;
+
+	/* Search the displayed list. */
+	for (tsp = gp->dq.cqh_first;
+	    tsp != (void *)&gp->dq; tsp = tsp->q.cqe_next)
+		if (name == NULL) {
+			if (id == tsp->id)
+				return (tsp);
+		} else if (!strcmp(name, tsp->frp->name))
+			return (tsp);
+
+	/* Search the hidden list. */
+	for (tsp = gp->hq.cqh_first;
+	    tsp != (void *)&gp->hq; tsp = tsp->q.cqe_next)
+		if (name == NULL) {
+			if (id == tsp->id)
+				return (tsp);
+		} else if (!strcmp(name, tsp->frp->name))
+			return (tsp);
+	return (NULL);
+}
+
+/*
+ * api_aline --
+ *	Append a line.
+ *
+ * PUBLIC: int api_aline(SCR *, recno_t, char *, size_t);
+ */
+int
+api_aline(sp, lno, line, len)
+	SCR *sp;
+	recno_t lno;
+	char *line;
+	size_t len;
+{
+	return (db_append(sp, 1, lno, line, len));
+}
+
+/*
+ * api_dline --
+ *	Delete a line.
+ *
+ * PUBLIC: int api_dline(SCR *, recno_t);
+ */
+int
+api_dline(sp, lno)
+	SCR *sp;
+	recno_t lno;
+{
+	return (db_delete(sp, lno));
+}
+
+/*
+ * api_gline --
+ *	Get a line.
+ *
+ * PUBLIC: int api_gline(SCR *, recno_t, char **, size_t *);
+ */
+int
+api_gline(sp, lno, linepp, lenp)
+	SCR *sp;
+	recno_t lno;
+	char **linepp;
+	size_t *lenp;
+{
+	int isempty;
+
+	if (db_eget(sp, lno, linepp, lenp, &isempty)) {
+		if (isempty)
+			msgq(sp, M_ERR, "209|The file is empty");
+		return (1);
+	}
+	return (0);
+}
+
+/*
+ * api_iline --
+ *	Insert a line.
+ *
+ * PUBLIC: int api_iline(SCR *, recno_t, char *, size_t);
+ */
+int
+api_iline(sp, lno, line, len)
+	SCR *sp;
+	recno_t lno;
+	char *line;
+	size_t len;
+{
+	return (db_insert(sp, lno, line, len));
+}
+
+/*
+ * api_lline --
+ *	Return the line number of the last line in the file.
+ *
+ * PUBLIC: int api_lline(SCR *, recno_t *);
+ */
+int
+api_lline(sp, lnop)
+	SCR *sp;
+	recno_t *lnop;
+{
+	return (db_last(sp, lnop));
+}
+
+/*
+ * api_sline --
+ *	Set a line.
+ *
+ * PUBLIC: int api_sline(SCR *, recno_t, char *, size_t);
+ */
+int
+api_sline(sp, lno, line, len)
+	SCR *sp;
+	recno_t lno;
+	char *line;
+	size_t len;
+{
+	return (db_set(sp, lno, line, len));
+}
+
+/*
+ * api_getmark --
+ *	Get the mark.
+ *
+ * PUBLIC: int api_getmark(SCR *, int, MARK *);
+ */
+int
+api_getmark(sp, markname, mp)
+	SCR *sp;
+	int markname;
+	MARK *mp;
+{
+	return (mark_get(sp, (ARG_CHAR_T)markname, mp, M_ERR));
+}
+
+/*
+ * api_setmark --
+ *	Set the mark.
+ *
+ * PUBLIC: int api_setmark(SCR *, int, MARK *);
+ */
+int
+api_setmark(sp, markname, mp)
+	SCR *sp;
+	int markname;
+	MARK *mp;
+{
+	return (mark_set(sp, (ARG_CHAR_T)markname, mp, 1));
+}
+
+/*
+ * api_nextmark --
+ *	Return the first mark if next not set, otherwise return the
+ *	subsequent mark.
+ *
+ * PUBLIC: int api_nextmark(SCR *, int, char *);
+ */
+int
+api_nextmark(sp, next, namep)
+	SCR *sp;
+	int next;
+	char *namep;
+{
+	LMARK *mp;
+
+	mp = sp->ep->marks.lh_first;
+	if (next)
+		for (; mp != NULL; mp = mp->q.le_next)
+			if (mp->name == *namep) {
+				mp = mp->q.le_next;
+				break;
+			}
+	if (mp == NULL)
+		return (1);
+	*namep = mp->name;
+	return (0);
+}
+
+/*
+ * api_getcursor --
+ *	Get the cursor.
+ *
+ * PUBLIC: int api_getcursor(SCR *, MARK *);
+ */
+int
+api_getcursor(sp, mp)
+	SCR *sp;
+	MARK *mp;
+{
+	mp->lno = sp->lno;
+	mp->cno = sp->cno;
+	return (0);
+}
+
+/*
+ * api_setcursor --
+ *	Set the cursor.
+ *
+ * PUBLIC: int api_setcursor(SCR *, MARK *);
+ */
+int
+api_setcursor(sp, mp)
+	SCR *sp;
+	MARK *mp;
+{
+	size_t len;
+
+	if (db_get(sp, mp->lno, DBG_FATAL, NULL, &len))
+		return (1);
+	if (mp->cno < 0 || mp->cno > len) {
+		msgq(sp, M_ERR, "Cursor set to nonexistent column");
+		return (1);
+	}
+
+	/* Set the cursor. */
+	sp->lno = mp->lno;
+	sp->cno = mp->cno;
+	return (0);
+}
+
+/*
+ * api_emessage --
+ *	Print an error message.
+ *
+ * PUBLIC: void api_emessage(SCR *, char *);
+ */
+void
+api_emessage(sp, text)
+	SCR *sp;
+	char *text;
+{
+	msgq(sp, M_ERR, "%s", text);
+}
+
+/*
+ * api_imessage --
+ *	Print an informational message.
+ *
+ * PUBLIC: void api_imessage(SCR *, char *);
+ */
+void
+api_imessage(sp, text)
+	SCR *sp;
+	char *text;
+{
+	msgq(sp, M_INFO, "%s", text);
+}
+
+/*
+ * api_edit
+ *	Create a new screen and return its id 
+ *	or edit a new file in the current screen.
+ *
+ * PUBLIC: int api_edit(SCR *, char *, SCR **, int);
+ */
+int
+api_edit(sp, file, spp, newscreen)
+	SCR *sp;
+	char *file;
+	SCR **spp;
+	int newscreen;
+{
+	ARGS *ap[2], a;
+	EXCMD cmd;
+
+	if (file) {
+		ex_cinit(&cmd, C_EDIT, 0, OOBLNO, OOBLNO, 0, ap);
+		ex_cadd(&cmd, &a, file, strlen(file));
+	} else
+		ex_cinit(&cmd, C_EDIT, 0, OOBLNO, OOBLNO, 0, NULL);
+	if (newscreen)
+		cmd.flags |= E_NEWSCREEN;		/* XXX */
+	if (cmd.cmd->fn(sp, &cmd))
+		return (1);
+	*spp = sp->nextdisp;
+	return (0);
+}
+
+/*
+ * api_escreen
+ *	End a screen.
+ *
+ * PUBLIC: int api_escreen(SCR *);
+ */
+int
+api_escreen(sp)
+	SCR *sp;
+{
+	EXCMD cmd;
+
+	/*
+	 * XXX
+	 * If the interpreter exits anything other than the current
+	 * screen, vi isn't going to update everything correctly.
+	 */
+	ex_cinit(&cmd, C_QUIT, 0, OOBLNO, OOBLNO, 0, NULL);
+	return (cmd.cmd->fn(sp, &cmd));
+}
+
+/*
+ * api_swscreen --
+ *    Switch to a new screen.
+ *
+ * PUBLIC: int api_swscreen(SCR *, SCR *);
+ */
+int
+api_swscreen(sp, new)
+      SCR *sp, *new;
+{
+	/*
+	 * XXX
+	 * If the interpreter switches from anything other than the
+	 * current screen, vi isn't going to update everything correctly.
+	 */
+	sp->nextdisp = new;
+	F_SET(sp, SC_SSWITCH);
+
+	return (0);
+}
+
+/*
+ * api_map --
+ *	Map a key.
+ *
+ * PUBLIC: int api_map(SCR *, char *, char *, size_t);
+ */
+int
+api_map(sp, name, map, len)
+	SCR *sp;
+	char *name, *map;
+	size_t len;
+{
+	ARGS *ap[3], a, b;
+	EXCMD cmd;
+
+	ex_cinit(&cmd, C_MAP, 0, OOBLNO, OOBLNO, 0, ap);
+	ex_cadd(&cmd, &a, name, strlen(name));
+	ex_cadd(&cmd, &b, map, len);
+	return (cmd.cmd->fn(sp, &cmd));
+}
+
+/*
+ * api_unmap --
+ *	Unmap a key.
+ *
+ * PUBLIC: int api_unmap(SCR *, char *);
+ */
+int 
+api_unmap(sp, name)
+	SCR *sp;
+	char *name;
+{
+	ARGS *ap[2], a;
+	EXCMD cmd;
+
+	ex_cinit(&cmd, C_UNMAP, 0, OOBLNO, OOBLNO, 0, ap);
+	ex_cadd(&cmd, &a, name, strlen(name));
+	return (cmd.cmd->fn(sp, &cmd));
+}
+
+/*
+ * api_opts_get --
+ *	Return a option value as a string, in allocated memory.
+ *	If the option is of type boolean, boolvalue is (un)set
+ *	according to the value; otherwise boolvalue is -1.
+ *
+ * PUBLIC: int api_opts_get(SCR *, char *, char **, int *);
+ */
+int
+api_opts_get(sp, name, value, boolvalue)
+	SCR *sp;
+	char *name, **value;
+	int *boolvalue;
+{
+	OPTLIST const *op;
+	int offset;
+
+	if ((op = opts_search(name)) == NULL) {
+		opts_nomatch(sp, name);
+		return (1);
+	}
+
+	offset = op - optlist;
+	if (boolvalue != NULL)
+		*boolvalue = -1;
+	switch (op->type) {
+	case OPT_0BOOL:
+	case OPT_1BOOL:
+		MALLOC_RET(sp, *value, char *, strlen(op->name) + 2 + 1);
+		(void)sprintf(*value,
+		    "%s%s", O_ISSET(sp, offset) ? "" : "no", op->name);
+		if (boolvalue != NULL)
+			*boolvalue = O_ISSET(sp, offset);
+		break;
+	case OPT_NUM:
+		MALLOC_RET(sp, *value, char *, 20);
+		(void)sprintf(*value, "%lu", (u_long)O_VAL(sp, offset));
+		break;
+	case OPT_STR:
+		if (O_STR(sp, offset) == NULL) {
+			MALLOC_RET(sp, *value, char *, 2);
+			value[0] = '\0';
+		} else {
+			MALLOC_RET(sp,
+			    *value, char *, strlen(O_STR(sp, offset)) + 1);
+			(void)sprintf(*value, "%s", O_STR(sp, offset));
+		}
+		break;
+	}
+	return (0);
+}
+
+/*
+ * api_opts_set --
+ *	Set options.
+ *
+ * PUBLIC: int api_opts_set(SCR *, char *, char *, u_long, int);
+ */
+int
+api_opts_set(sp, name, str_value, num_value, bool_value)
+	SCR *sp;
+	char *name, *str_value;
+	u_long num_value;
+	int bool_value;
+{
+	ARGS *ap[2], a, b;
+	OPTLIST const *op;
+	int rval;
+	size_t blen;
+	char *bp;
+
+	if ((op = opts_search(name)) == NULL) {
+		opts_nomatch(sp, name);
+		return (1);
+	}
+
+	switch (op->type) {
+	case OPT_0BOOL:
+	case OPT_1BOOL:
+		GET_SPACE_RET(sp, bp, blen, 64);
+		a.len = snprintf(bp, 64, "%s%s", bool_value ? "" : "no", name);
+		if (a.len > 63)
+			a.len = 63;
+		break;
+	case OPT_NUM:
+		GET_SPACE_RET(sp, bp, blen, 64);
+		a.len = snprintf(bp, 64, "%s=%lu", name, num_value);
+		if (a.len > 63)
+			a.len = 63;
+		break;
+	case OPT_STR:
+		GET_SPACE_RET(sp, bp, blen, 1024);
+		a.len = snprintf(bp, 1024, "%s=%s", name, str_value);
+		if (a.len > 1023)
+			a.len = 1023;
+		break;
+	}
+	a.bp = bp;
+	b.len = 0;
+	b.bp = NULL;
+	ap[0] = &a;
+	ap[1] = &b;
+	rval = opts_set(sp, ap, NULL);
+
+	FREE_SPACE(sp, bp, blen);
+
+	return (rval);
+}
+
+/*
+ * api_run_str --
+ *      Execute a string as an ex command.
+ *
+ * PUBLIC: int api_run_str(SCR *, char *);
+ */
+int     
+api_run_str(sp, cmd)
+	SCR *sp;
+	char *cmd;
+{
+	return (ex_run_str(sp, NULL, cmd, strlen(cmd), 0, 0));
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD source with the "new" command line as well,
+in order to be able to provide a MirBSD release which bases
+upon a fairly current OpenBSD base source code tree deemed
+stable enough.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: api.c,v 1.12 2003/04/15 08:08:02 deraadt Exp $	*/
+a427 1
+	size_t len;
+d440 2
+a441 3
+		len = strlen(op->name) + 2 + 1;
+		MALLOC_RET(sp, *value, char *, len);
+		(void)snprintf(*value, len,
+d447 2
+a448 3
+		len = 20;
+		MALLOC_RET(sp, *value, char *, len);
+		(void)snprintf(*value, len, "%lu", (u_long)O_VAL(sp, offset));
+a454 1
+			len = strlen(O_STR(sp, offset)) + 1;
+d456 2
+a457 2
+			    *value, char *, len);
+			(void)snprintf(*value, len, "%s", O_STR(sp, offset));
+@
+

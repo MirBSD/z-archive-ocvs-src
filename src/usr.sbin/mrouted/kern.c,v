@@ -1,0 +1,399 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.55.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.55.45;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.21.19.25;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$NetBSD: kern.c,v 1.4 1995/12/10 10:07:03 mycroft Exp $	*/
+
+/*
+ * The mrouted program is covered by the license in the accompanying file
+ * named "LICENSE".  Use of the mrouted program represents acceptance of
+ * the terms and conditions listed in that file.
+ *
+ * The mrouted program is COPYRIGHT 1989 by The Board of Trustees of
+ * Leland Stanford Junior University.
+ */
+
+
+#include "defs.h"
+
+
+void k_set_rcvbuf(int bufsize)
+{
+    if (setsockopt(igmp_socket, SOL_SOCKET, SO_RCVBUF,
+		   (char *)&bufsize, sizeof(bufsize)) < 0)
+	log(LOG_ERR, errno, "setsockopt SO_RCVBUF %u", bufsize);
+}
+
+
+void k_hdr_include(int bool)
+{
+#ifdef IP_HDRINCL
+    if (setsockopt(igmp_socket, IPPROTO_IP, IP_HDRINCL,
+		   (char *)&bool, sizeof(bool)) < 0)
+	log(LOG_ERR, errno, "setsockopt IP_HDRINCL %u", bool);
+#endif
+}
+
+
+void k_set_ttl(int t)
+{
+    u_char ttl;
+
+    ttl = t;
+    if (setsockopt(igmp_socket, IPPROTO_IP, IP_MULTICAST_TTL,
+		   (char *)&ttl, sizeof(ttl)) < 0)
+	log(LOG_ERR, errno, "setsockopt IP_MULTICAST_TTL %u", ttl);
+}
+
+
+void k_set_loop(int l)
+{
+    u_char loop;
+
+    loop = l;
+    if (setsockopt(igmp_socket, IPPROTO_IP, IP_MULTICAST_LOOP,
+		   (char *)&loop, sizeof(loop)) < 0)
+	log(LOG_ERR, errno, "setsockopt IP_MULTICAST_LOOP %u", loop);
+}
+
+
+void k_set_if(u_int32_t ifa)
+{
+    struct in_addr adr;
+
+    adr.s_addr = ifa;
+    if (setsockopt(igmp_socket, IPPROTO_IP, IP_MULTICAST_IF,
+		   (char *)&adr, sizeof(adr)) < 0)
+	log(LOG_ERR, errno, "setsockopt IP_MULTICAST_IF %s",
+			    inet_fmt(ifa, s1));
+}
+
+
+void k_join(u_int32_t grp, u_int32_t ifa)
+{
+    struct ip_mreq mreq;
+
+    mreq.imr_multiaddr.s_addr = grp;
+    mreq.imr_interface.s_addr = ifa;
+
+    if (setsockopt(igmp_socket, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+		   (char *)&mreq, sizeof(mreq)) < 0)
+	log(LOG_WARNING, errno, "can't join group %s on interface %s",
+				inet_fmt(grp, s1), inet_fmt(ifa, s2));
+}
+
+
+void k_leave(u_int32_t grp, u_int32_t ifa)
+{
+    struct ip_mreq mreq;
+
+    mreq.imr_multiaddr.s_addr = grp;
+    mreq.imr_interface.s_addr = ifa;
+
+    if (setsockopt(igmp_socket, IPPROTO_IP, IP_DROP_MEMBERSHIP,
+		   (char *)&mreq, sizeof(mreq)) < 0)
+	log(LOG_WARNING, errno, "can't leave group %s on interface %s",
+				inet_fmt(grp, s1), inet_fmt(ifa, s2));
+}
+
+
+void k_init_dvmrp(void)
+{
+#ifdef OLD_KERNEL
+    if (setsockopt(igmp_socket, IPPROTO_IP, MRT_INIT,
+		   (char *)NULL, 0) < 0)
+#else
+    int v=1;
+
+    if (setsockopt(igmp_socket, IPPROTO_IP, MRT_INIT,
+		   (char *)&v, sizeof(int)) < 0)
+#endif
+	log(LOG_ERR, errno, "can't enable Multicast routing in kernel");
+}
+
+
+void k_stop_dvmrp(void)
+{
+    if (setsockopt(igmp_socket, IPPROTO_IP, MRT_DONE,
+		   (char *)NULL, 0) < 0)
+	log(LOG_WARNING, errno, "can't disable Multicast routing in kernel");
+}
+
+
+void k_add_vif(vifi_t vifi, struct uvif *v)
+{
+    struct vifctl vc;
+
+    vc.vifc_vifi            = vifi;
+    vc.vifc_flags           = v->uv_flags & VIFF_KERNEL_FLAGS;
+    vc.vifc_threshold       = v->uv_threshold;
+    vc.vifc_rate_limit	    = v->uv_rate_limit;
+    vc.vifc_lcl_addr.s_addr = v->uv_lcl_addr;
+    vc.vifc_rmt_addr.s_addr = v->uv_rmt_addr;
+
+    if (setsockopt(igmp_socket, IPPROTO_IP, MRT_ADD_VIF,
+		   (char *)&vc, sizeof(vc)) < 0)
+	log(LOG_ERR, errno, "setsockopt MRT_ADD_VIF");
+}
+
+
+void k_del_vif(vifi_t vifi)
+{
+    if (setsockopt(igmp_socket, IPPROTO_IP, MRT_DEL_VIF,
+		   (char *)&vifi, sizeof(vifi)) < 0)
+	log(LOG_ERR, errno, "setsockopt MRT_DEL_VIF");
+}
+
+
+/*
+ * Adds a (source, mcastgrp) entry to the kernel
+ */
+void k_add_rg(u_int32_t origin, struct gtable *g)
+{
+    struct mfcctl mc;
+    vifi_t i;
+
+#ifdef DEBUG_MFC
+    md_log(MD_ADD, origin, g->gt_mcastgrp);
+#endif
+    /* copy table values so that setsockopt can process it */
+    mc.mfcc_origin.s_addr = origin;
+#ifdef OLD_KERNEL
+    mc.mfcc_originmask.s_addr = 0xffffffff;
+#endif
+    mc.mfcc_mcastgrp.s_addr = g->gt_mcastgrp;
+    mc.mfcc_parent = g->gt_route ? g->gt_route->rt_parent : NO_VIF;
+    for (i = 0; i < numvifs; i++)
+	mc.mfcc_ttls[i] = g->gt_ttls[i];
+
+    /* write to kernel space */
+    if (setsockopt(igmp_socket, IPPROTO_IP, MRT_ADD_MFC,
+		   (char *)&mc, sizeof(mc)) < 0) {
+#ifdef DEBUG_MFC
+	md_log(MD_ADD_FAIL, origin, g->gt_mcastgrp);
+#endif
+	log(LOG_WARNING, errno, "setsockopt MRT_ADD_MFC");
+    }
+}
+
+
+/*
+ * Deletes a (source, mcastgrp) entry from the kernel
+ */
+int k_del_rg(u_int32_t origin, struct gtable *g)
+{
+    struct mfcctl mc;
+    int retval;
+
+#ifdef DEBUG_MFC
+    md_log(MD_DEL, origin, g->gt_mcastgrp);
+#endif
+    /* copy table values so that setsockopt can process it */
+    mc.mfcc_origin.s_addr = origin;
+#ifdef OLD_KERNEL
+    mc.mfcc_originmask.s_addr = 0xffffffff;
+#endif
+    mc.mfcc_mcastgrp.s_addr = g->gt_mcastgrp;
+
+    /* write to kernel space */
+    if ((retval = setsockopt(igmp_socket, IPPROTO_IP, MRT_DEL_MFC,
+		   (char *)&mc, sizeof(mc))) < 0) {
+#ifdef DEBUG_MFC
+	md_log(MD_DEL_FAIL, origin, g->gt_mcastgrp);
+#endif
+	log(LOG_WARNING, errno, "setsockopt MRT_DEL_MFC");
+    }
+
+    return retval;
+}
+
+/*
+ * Get the kernel's idea of what version of mrouted needs to run with it.
+ */
+int k_get_version(void)
+{
+#ifdef OLD_KERNEL
+    return -1;
+#else
+    int vers;
+    int len = sizeof(vers);
+
+    if (getsockopt(igmp_socket, IPPROTO_IP, MRT_VERSION,
+			(char *)&vers, &len) < 0)
+	log(LOG_ERR, errno,
+		"getsockopt MRT_VERSION: perhaps your kernel is too old");
+
+    return vers;
+#endif
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d20 1
+a20 1
+	logit(LOG_ERR, errno, "setsockopt SO_RCVBUF %u", bufsize);
+d29 1
+a29 1
+	logit(LOG_ERR, errno, "setsockopt IP_HDRINCL %u", bool);
+d41 1
+a41 1
+	logit(LOG_ERR, errno, "setsockopt IP_MULTICAST_TTL %u", ttl);
+d52 1
+a52 1
+	logit(LOG_ERR, errno, "setsockopt IP_MULTICAST_LOOP %u", loop);
+d63 1
+a63 1
+	logit(LOG_ERR, errno, "setsockopt IP_MULTICAST_IF %s",
+d77 1
+a77 1
+	logit(LOG_WARNING, errno, "can't join group %s on interface %s",
+d91 1
+a91 1
+	logit(LOG_WARNING, errno, "can't leave group %s on interface %s",
+d107 1
+a107 1
+	logit(LOG_ERR, errno, "can't enable Multicast routing in kernel");
+d115 1
+a115 1
+	logit(LOG_WARNING, errno, "can't disable Multicast routing in kernel");
+d132 1
+a132 1
+	logit(LOG_ERR, errno, "setsockopt MRT_ADD_VIF");
+d140 1
+a140 1
+	logit(LOG_ERR, errno, "setsockopt MRT_DEL_VIF");
+d153 1
+a153 1
+    md_logit(MD_ADD, origin, g->gt_mcastgrp);
+d169 1
+a169 1
+	md_logit(MD_ADD_FAIL, origin, g->gt_mcastgrp);
+d171 1
+a171 1
+	logit(LOG_WARNING, errno, "setsockopt MRT_ADD_MFC");
+d185 1
+a185 1
+    md_logit(MD_DEL, origin, g->gt_mcastgrp);
+d198 1
+a198 1
+	md_logit(MD_DEL_FAIL, origin, g->gt_mcastgrp);
+d200 1
+a200 1
+	logit(LOG_WARNING, errno, "setsockopt MRT_DEL_MFC");
+d219 1
+a219 1
+	logit(LOG_ERR, errno,
+@
+

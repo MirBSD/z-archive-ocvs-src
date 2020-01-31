@@ -1,0 +1,656 @@
+head	1.7;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.7
+	MIROS_X:1.7.0.2
+	MIROS_X_BASE:1.7
+	mksh-18:1.7
+	mirbsdksh-1_17:1.7
+	MIRBSD_XP_MIRPPC:1.4.0.4
+	mirbsdksh-1_16:1.7
+	cvs-200411032110:1.1.1.2
+	cvs-200411031520:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.4
+	MIRBSD_XP_SPARC:1.4.0.2
+	mirbsdksh-1_12:1.2
+	cvs-200408271355:1.1.1.2
+	MIRBSD_7quater:1.2
+	mirbsdksh-1_11:1.2
+	mirbsdksh-1_10:1.2
+	cvs-200405160640:1.1.1.2
+	mirbsdksh-1_6:1.1.1.2
+	mirbsdksh-1_5:1.1.1.2
+	mirbsdksh-1_4:1.1.1.2
+	mirbsdksh-1_3:1.1.1.2
+	mirbsdksh-1_2:1.1.1.2
+	ksh_maintainer:1.1.1.2.0.4
+	pdksh-5_2_14:1.1.3.1
+	tg:1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.2.0.2
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.7
+date	2004.10.28.11.53.43;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2004.10.28.11.11.19;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2004.10.28.11.03.24;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.09.21.14.03.58;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.09.21.11.57.13;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.05.24.19.56.17;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.35.03;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.35.03;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.20.22.48;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.03.21.00.34.04;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.7
+log
+@run GNU protoize
+protect header files
+nuke some dead code
+regenerate configure script
+let silly code die
+@
+text
+@/**	$MirBSD: src/bin/ksh/path.c,v 1.6 2004/10/28 11:11:19 tg Exp $ */
+/*	$OpenBSD: path.c,v 1.9 2003/10/22 07:40:38 jmc Exp $	*/
+
+#include "sh.h"
+#include "ksh_stat.h"
+
+__RCSID("$MirBSD: src/bin/ksh/path.c,v 1.6 2004/10/28 11:11:19 tg Exp $");
+
+/*
+ *	Contains a routine to search a : separated list of
+ *	paths (a la CDPATH) and make appropriate file names.
+ *	Also contains a routine to simplify .'s and ..'s out of
+ *	a path name.
+ *
+ *	Larry Bouzane (larry@@cs.mun.ca)
+ */
+
+#ifdef S_ISLNK
+static char	*do_phys_path(XString *xsp, char *xp, const char *path);
+#endif /* S_ISLNK */
+
+/*
+ *	Makes a filename into result using the following algorithm.
+ *	- make result NULL
+ *	- if file starts with '/', append file to result & set cdpathp to NULL
+ *	- if file starts with ./ or ../ append cwd and file to result
+ *	  and set cdpathp to NULL
+ *	- if the first element of cdpathp doesnt start with a '/' xx or '.' xx
+ *	  then cwd is appended to result.
+ *	- the first element of cdpathp is appended to result
+ *	- file is appended to result
+ *	- cdpathp is set to the start of the next element in cdpathp (or NULL
+ *	  if there are no more elements.
+ *	The return value indicates whether a non-null element from cdpathp
+ *	was appended to result.
+ */
+int
+make_path(const char *cwd, const char *file, char **cdpathp, XString *xsp, int *phys_pathp)
+
+
+	    	          	/* & of : separated list */
+
+
+{
+	int	rval = 0;
+	int	use_cdpath = 1;
+	char	*plist;
+	int	len;
+	int	plen = 0;
+	char	*xp = Xstring(*xsp, xp);
+
+	if (!file)
+		file = null;
+
+	if (!ISRELPATH(file)) {
+		*phys_pathp = 0;
+		use_cdpath = 0;
+	} else {
+		if (file[0] == '.') {
+			char c = file[1];
+
+			if (c == '.')
+				c = file[2];
+			if (ISDIRSEP(c) || c == '\0')
+				use_cdpath = 0;
+		}
+
+		plist = *cdpathp;
+		if (!plist)
+			use_cdpath = 0;
+		else if (use_cdpath) {
+			char *pend;
+
+			for (pend = plist; *pend && *pend != PATHSEP; pend++)
+				;
+			plen = pend - plist;
+			*cdpathp = *pend ? ++pend : (char *) 0;
+		}
+
+		if ((use_cdpath == 0 || !plen || ISRELPATH(plist))
+		    && (cwd && *cwd))
+		{
+			len = strlen(cwd);
+			XcheckN(*xsp, xp, len);
+			memcpy(xp, cwd, len);
+			xp += len;
+			if (!ISDIRSEP(cwd[len - 1]))
+				Xput(*xsp, xp, DIRSEP);
+		}
+		*phys_pathp = Xlength(*xsp, xp);
+		if (use_cdpath && plen) {
+			XcheckN(*xsp, xp, plen);
+			memcpy(xp, plist, plen);
+			xp += plen;
+			if (!ISDIRSEP(plist[plen - 1]))
+				Xput(*xsp, xp, DIRSEP);
+			rval = 1;
+		}
+	}
+
+	len = strlen(file) + 1;
+	XcheckN(*xsp, xp, len);
+	memcpy(xp, file, len);
+
+	if (!use_cdpath)
+		*cdpathp = (char *) 0;
+
+	return rval;
+}
+
+/*
+ * Simplify pathnames containing "." and ".." entries.
+ * ie, simplify_path("/a/b/c/./../d/..") returns "/a/b"
+ */
+void
+simplify_path(char *path)
+{
+	char	*cur;
+	char	*t;
+	int	isrooted;
+	char	*very_start = path;
+	char	*start;
+
+	if (!*path)
+		return;
+
+	if ((isrooted = ISROOTEDPATH(path)))
+		very_start++;
+#if defined (OS2) || defined (__CYGWIN__)
+	if (path[0] && path[1] == ':')	/* skip a: */
+		very_start += 2;
+#endif /* OS2 || __CYGWIN__ */
+
+	/* Before			After
+	 *  /foo/			/foo
+	 *  /foo/../../bar		/bar
+	 *  /foo/./blah/..		/foo
+	 *  .				.
+	 *  ..				..
+	 *  ./foo			foo
+	 *  foo/../../../bar		../../bar
+	 * OS2 and CYGWIN:
+	 *  a:/foo/../..		a:/
+	 *  a:.				a:
+	 *  a:..			a:..
+	 *  a:foo/../../blah		a:../blah
+	 */
+
+#ifdef __CYGWIN__
+       /* preserve leading double-slash on pathnames (for UNC paths) */
+       if (path[0] && ISDIRSEP(path[0]) && path[1] && ISDIRSEP(path[1]))
+               very_start++;
+#endif /* __CYGWIN__ */
+
+	for (cur = t = start = very_start; ; ) {
+		/* treat multiple '/'s as one '/' */
+		while (ISDIRSEP(*t))
+			t++;
+
+		if (*t == '\0') {
+			if (cur == path)
+				/* convert empty path to dot */
+				*cur++ = '.';
+			*cur = '\0';
+			break;
+		}
+
+		if (t[0] == '.') {
+			if (!t[1] || ISDIRSEP(t[1])) {
+				t += 1;
+				continue;
+			} else if (t[1] == '.' && (!t[2] || ISDIRSEP(t[2]))) {
+				if (!isrooted && cur == start) {
+					if (cur != very_start)
+						*cur++ = DIRSEP;
+					*cur++ = '.';
+					*cur++ = '.';
+					start = cur;
+				} else if (cur != start)
+					while (--cur > start && !ISDIRSEP(*cur))
+						;
+				t += 2;
+				continue;
+			}
+		}
+
+		if (cur != very_start)
+			*cur++ = DIRSEP;
+
+		/* find/copy next component of pathname */
+		while (*t && !ISDIRSEP(*t))
+			*cur++ = *t++;
+	}
+}
+
+
+void
+set_current_wd(char *path)
+{
+	int len;
+	char *p = path;
+
+	if (!p && !(p = ksh_get_wd((char *) 0, 0)))
+		p = null;
+
+	len = strlen(p) + 1;
+
+	if (len > current_wd_size)
+		current_wd = aresize(current_wd, current_wd_size = len, APERM);
+	memcpy(current_wd, p, len);
+	if (p != path && p != null)
+		afree(p, ATEMP);
+}
+
+#ifdef S_ISLNK
+char *
+get_phys_path(const char *path)
+{
+	XString xs;
+	char *xp;
+
+	Xinit(xs, xp, strlen(path) + 1, ATEMP);
+
+	xp = do_phys_path(&xs, xp, path);
+
+	if (!xp)
+		return (char *) 0;
+
+	if (Xlength(xs, xp) == 0)
+		Xput(xs, xp, DIRSEP);
+	Xput(xs, xp, '\0');
+
+	return Xclose(xs, xp);
+}
+
+static char *
+do_phys_path(XString *xsp, char *xp, const char *path)
+{
+	const char *p, *q;
+	size_t len;
+	int savepos, llen;
+	char lbuf[PATH_MAX];
+
+	Xcheck(*xsp, xp);
+	for (p = path; p; p = q) {
+		while (ISDIRSEP(*p))
+			p++;
+		if (!*p)
+			break;
+		len = (q = ksh_strchr_dirsep(p)) ? (size_t)(q - p) : strlen(p);
+		if (len == 1 && p[0] == '.')
+			continue;
+		if (len == 2 && p[0] == '.' && p[1] == '.') {
+			while (xp > Xstring(*xsp, xp)) {
+				xp--;
+				if (ISDIRSEP(*xp))
+					break;
+			}
+			continue;
+		}
+
+		savepos = Xsavepos(*xsp, xp);
+		Xput(*xsp, xp, DIRSEP);
+		XcheckN(*xsp, xp, len + 1);
+		memcpy(xp, p, len);
+		xp += len;
+		*xp = '\0';
+
+		llen = readlink(Xstring(*xsp, xp), lbuf, sizeof(lbuf) - 1);
+		if (llen < 0) {
+			/* EINVAL means it wasn't a symlink... */
+			if (errno != EINVAL)
+				return (char *) 0;
+			continue;
+		}
+		lbuf[llen] = '\0';
+
+		/* If absolute path, start from scratch.. */
+		xp = ISABSPATH(lbuf) ? Xstring(*xsp, xp)
+				     : Xrestpos(*xsp, xp, savepos);
+		if (!(xp = do_phys_path(xsp, xp, lbuf)))
+			return (char *) 0;
+	}
+	return xp;
+}
+#endif /* S_ISLNK */
+
+#ifdef	TEST
+
+main(argc, argv)
+{
+	int	rv;
+	char	*cp, cdpath[256], pwd[256], file[256], result[256];
+
+	printf("enter CDPATH: "); gets(cdpath);
+	printf("enter PWD: "); gets(pwd);
+	while (1) {
+		if (printf("Enter file: "), gets(file) == 0)
+			return 0;
+		cp = cdpath;
+		do {
+			rv = make_path(pwd, file, &cp, result, sizeof(result));
+			printf("make_path returns (%d), \"%s\" ", rv, result);
+			simplify_path(result);
+			printf("(simpifies to \"%s\")\n", result);
+		} while (cp);
+	}
+}
+#endif	/* TEST */
+@
+
+
+1.6
+log
+@de-register, de-inline, de-__P
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/bin/ksh/path.c,v 1.5 2004/10/28 11:03:24 tg Exp $ */
+d7 1
+a7 1
+__RCSID("$MirBSD: src/bin/ksh/path.c,v 1.5 2004/10/28 11:03:24 tg Exp $");
+d38 6
+a43 6
+make_path(cwd, file, cdpathp, xsp, phys_pathp)
+	const char *cwd;
+	const char *file;
+	char	**cdpathp;	/* & of : separated list */
+	XString	*xsp;
+	int	*phys_pathp;
+d116 1
+a116 2
+simplify_path(path)
+	char	*path;
+d198 1
+a198 2
+set_current_wd(path)
+	char *path;
+d217 1
+a217 2
+get_phys_path(path)
+	const char *path;
+d237 1
+a237 4
+do_phys_path(xsp, xp, path)
+	XString *xsp;
+	char *xp;
+	const char *path;
+@
+
+
+1.5
+log
+@-Wall -Werror -W -pedantic clean
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/bin/ksh/path.c,v 1.4 2004/09/21 14:03:58 tg Exp $ */
+d7 1
+a7 1
+__RCSID("$MirBSD$");
+d19 1
+a19 1
+static char	*do_phys_path ARGS((XString *xsp, char *xp, const char *path));
+@
+
+
+1.4
+log
+@fix PATH
+add 1023/2047 array elts mentioning to manpage
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/bin/ksh/path.c,v 1.3 2004/09/21 11:57:13 tg Exp $ */
+d7 2
+d246 2
+a247 2
+	int len, llen;
+	int savepos;
+d256 1
+a256 1
+		len = (q = ksh_strchr_dirsep(p)) ? q - p : strlen(p);
+@
+
+
+1.3
+log
+@unify spacing of RCS IDs
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD$ */
+d246 1
+a246 1
+	char lbuf[PATH];
+@
+
+
+1.2
+log
+@polish, mop up whitespace, etc.
+
+passes regressions on MirOS
+@
+text
+@d1 2
+a2 2
+/* $MirBSD$ */
+/* $OpenBSD: path.c,v 1.9 2003/10/22 07:40:38 jmc Exp $	*/
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 1
+/*	$OpenBSD: path.c,v 1.8 2003/02/28 09:45:09 jmc Exp $	*/
+d33 1
+a33 1
+ *	was appened to result.
+@
+
+
+1.1.3.1
+log
+@Import upstream pdksh-5.2.14 (latest version) in order to be able
+to play around with it a bit
+@
+text
+@d1 2
+d8 1
+a8 1
+ *	paths (a la CDPATH) and make appropiate file names.
+a12 34
+ */
+
+/*
+ * $Log: path.c,v $
+ * Revision 1.2  1994/05/19  18:32:40  michael
+ * Merge complete, stdio replaced, various fixes. (pre autoconf)
+ *
+ * Revision 1.1  1994/04/06  13:14:03  michael
+ * Initial revision
+ *
+ * Revision 4.2  1990/12/06  18:05:24  larry
+ * Updated test code to reflect parameter change.
+ * Fixed problem with /a/./.dir being simplified to /a and not /a/.dir due
+ * to *(cur+2) == *f test instead of the correct cur+2 == f
+ *
+ * Revision 4.1  90/10/29  14:42:19  larry
+ * base MUN version
+ * 
+ * Revision 3.1.0.4  89/02/16  20:28:36  larry
+ * Forgot to set *pathlist to NULL when last changed make_path().
+ * 
+ * Revision 3.1.0.3  89/02/13  20:29:55  larry
+ * Fixed up cd so that it knew when a node from CDPATH was used and would
+ * print a message only when really necessary.
+ * 
+ * Revision 3.1.0.2  89/02/13  17:51:22  larry
+ * Merged with Eric Gisin's version.
+ * 
+ * Revision 3.1.0.1  89/02/13  17:50:58  larry
+ * *** empty log message ***
+ * 
+ * Revision 3.1  89/02/13  17:49:28  larry
+ * *** empty log message ***
+ * 
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: path.c,v 1.9 2003/10/22 07:40:38 jmc Exp $	*/
+d32 1
+a32 1
+ *	was appended to result.
+@
+

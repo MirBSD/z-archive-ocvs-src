@@ -1,0 +1,669 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.07.22;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.04;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.04;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.28.12;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Build symbol tables in GDB's internal format.
+   Copyright (C) 1986-1996 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#if !defined (BUILDSYM_H)
+#define BUILDSYM_H 1
+
+/* This module provides definitions used for creating and adding to
+   the symbol table.  These routines are called from various symbol-
+   file-reading routines.  
+
+   They originated in dbxread.c of gdb-4.2, and were split out to
+   make xcoffread.c more maintainable by sharing code.
+
+   Variables declared in this file can be defined by #define-ing
+   the name EXTERN to null.  It is used to declare variables that
+   are normally extern, but which get defined in a single module
+   using this technique.  */
+
+#ifndef EXTERN
+#define	EXTERN extern
+#endif
+
+#define HASHSIZE 127	/* Size of things hashed via hashname() */
+
+/* Name of source file whose symbol data we are now processing.
+   This comes from a symbol of type N_SO. */
+
+EXTERN char *last_source_file;
+
+/* Core address of start of text of current source file.
+   This too comes from the N_SO symbol. */
+
+EXTERN CORE_ADDR last_source_start_addr;
+
+/* The list of sub-source-files within the current individual compilation.
+   Each file gets its own symtab with its own linetable and associated info,
+   but they all share one blockvector.  */
+
+struct subfile
+{
+  struct subfile *next;
+  char *name;
+  char *dirname;
+  struct linetable *line_vector;
+  int line_vector_length;
+  enum language language;
+};
+
+EXTERN struct subfile *subfiles;
+
+EXTERN struct subfile *current_subfile;
+
+/* Global variable which, when set, indicates that we are processing a
+   .o file compiled with gcc */
+
+EXTERN unsigned char processing_gcc_compilation;
+
+/* When set, we are processing a .o file compiled by sun acc.  This is
+   misnamed; it refers to all stabs-in-elf implementations which use
+   N_UNDF the way Sun does, including Solaris gcc.  Hopefully all
+   stabs-in-elf implementations ever invented will choose to be
+   compatible.  */
+
+EXTERN unsigned char processing_acc_compilation;
+
+/* Count symbols as they are processed, for error messages.  */
+
+EXTERN unsigned int symnum;
+
+/* Record the symbols defined for each context in a list.
+   We don't create a struct block for the context until we
+   know how long to make it.  */
+
+#define PENDINGSIZE 100
+
+struct pending
+{
+  struct pending *next;
+  int nsyms;
+  struct symbol *symbol[PENDINGSIZE];
+};
+
+/* Here are the three lists that symbols are put on.  */
+
+EXTERN struct pending *file_symbols;	/* static at top level, and types */
+
+EXTERN struct pending *global_symbols;	/* global functions and variables */
+
+EXTERN struct pending *local_symbols;	/* everything local to lexic context */
+
+/* Stack representing unclosed lexical contexts
+   (that will become blocks, eventually).  */
+
+struct context_stack
+{
+  /* Outer locals at the time we entered */
+
+  struct pending *locals;
+
+  /* Pointer into blocklist as of entry */
+
+  struct pending_block *old_blocks;
+
+  /* Name of function, if any, defining context*/
+
+  struct symbol *name;
+
+  /* PC where this context starts */
+
+  CORE_ADDR start_addr;
+
+  /* Temp slot for exception handling. */
+
+  CORE_ADDR end_addr;
+
+  /* For error-checking matching push/pop */
+
+  int depth;
+
+};
+
+EXTERN struct context_stack *context_stack;
+
+/* Index of first unused entry in context stack.  */
+
+EXTERN int context_stack_depth;
+
+/* Currently allocated size of context stack.  */
+
+EXTERN int context_stack_size;
+
+/* Macro "function" for popping contexts from the stack.  Pushing is done
+   by a real function, push_context.  This returns a pointer to a struct
+   context_stack.  */
+
+#define	pop_context() (&context_stack[--context_stack_depth]);
+
+/* Nonzero if within a function (so symbols should be local,
+   if nothing says specifically).  */
+
+EXTERN int within_function;
+
+/* List of blocks already made (lexical contexts already closed).
+   This is used at the end to make the blockvector.  */
+
+struct pending_block
+{
+  struct pending_block *next;
+  struct block *block;
+};
+
+
+struct subfile_stack
+{
+  struct subfile_stack *next;
+  char *name;
+};
+
+EXTERN struct subfile_stack *subfile_stack;
+
+#define next_symbol_text(objfile) (*next_symbol_text_func)(objfile)
+
+/* Function to invoke get the next symbol.  Return the symbol name. */
+
+EXTERN char *(*next_symbol_text_func) PARAMS ((struct objfile *));
+
+/* Vector of types defined so far, indexed by their type numbers.
+   Used for both stabs and coff.
+   (In newer sun systems, dbx uses a pair of numbers in parens,
+    as in "(SUBFILENUM,NUMWITHINSUBFILE)".  Then these numbers must be
+    translated through the type_translations hash table to get
+    the index into the type vector.)  */
+
+EXTERN struct type **type_vector;
+
+/* Number of elements allocated for type_vector currently.  */
+
+EXTERN int type_vector_length;
+
+/* Initial size of type vector.  Is realloc'd larger if needed,
+   and realloc'd down to the size actually used, when completed.  */
+
+#define	INITIAL_TYPE_VECTOR_LENGTH	160
+
+extern void
+add_symbol_to_list PARAMS ((struct symbol *, struct pending **));
+
+extern struct symbol *
+find_symbol_in_list PARAMS ((struct pending *, char *, int));
+
+extern void
+finish_block PARAMS ((struct symbol *, struct pending **,
+		      struct pending_block *, CORE_ADDR, CORE_ADDR,
+		      struct objfile *));
+
+extern void
+really_free_pendings PARAMS ((int foo));
+
+extern void
+start_subfile PARAMS ((char *, char *));
+
+extern void
+patch_subfile_names PARAMS ((struct subfile *subfile, char *name));
+
+extern void
+push_subfile PARAMS ((void));
+
+extern char *
+pop_subfile PARAMS ((void));
+
+extern struct symtab *
+end_symtab PARAMS ((CORE_ADDR, struct objfile *, int));
+
+extern void
+scan_file_globals PARAMS ((struct objfile *));
+
+extern void
+buildsym_new_init PARAMS ((void));
+
+extern void
+buildsym_init PARAMS ((void));
+
+extern struct context_stack *
+push_context PARAMS ((int, CORE_ADDR));
+
+extern void
+record_line PARAMS ((struct subfile *, int, CORE_ADDR));
+
+extern void
+start_symtab PARAMS ((char *, char *, CORE_ADDR));
+
+extern int
+hashname PARAMS ((char *));
+
+extern void
+free_pending_blocks PARAMS ((void));
+
+/* FIXME: Note that this is used only in buildsym.c and dstread.c,
+   which should be fixed to not need direct access to make_blockvector. */
+
+extern struct blockvector *
+make_blockvector PARAMS ((struct objfile *));
+
+/* FIXME: Note that this is used only in buildsym.c and dstread.c,
+   which should be fixed to not need direct access to record_pending_block. */
+
+extern void
+record_pending_block PARAMS ((struct objfile *, struct block *,
+			      struct pending_block *));
+
+#undef EXTERN
+
+#endif	/* defined (BUILDSYM_H) */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 2
+   Copyright 1986, 1987, 1988, 1989, 1990, 1991, 1992, 1993, 1995, 1996,
+   1997, 1998, 1999, 2000, 2002, 2003 Free Software Foundation, Inc.
+d4 1
+a4 1
+   This file is part of GDB.
+d6 13
+a18 14
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a22 3
+struct objfile;
+struct symbol;
+
+d25 1
+a25 1
+   file-reading routines.
+d30 4
+a33 6
+   Variables declared in this file can be defined by #define-ing the
+   name EXTERN to null.  It is used to declare variables that are
+   normally extern, but which get defined in a single module using
+   this technique.  */
+
+struct block;
+d39 1
+a39 2
+#define HASHSIZE 127		/* Size of things hashed via
+				   hashname() */
+d41 2
+a42 2
+/* Name of source file whose symbol data we are now processing.  This
+   comes from a symbol of type N_SO. */
+d46 2
+a47 2
+/* Core address of start of text of current source file.  This too
+   comes from the N_SO symbol. */
+d51 3
+a53 3
+/* The list of sub-source-files within the current individual
+   compilation.  Each file gets its own symtab with its own linetable
+   and associated info, but they all share one blockvector.  */
+d56 8
+a63 9
+  {
+    struct subfile *next;
+    char *name;
+    char *dirname;
+    struct linetable *line_vector;
+    int line_vector_length;
+    enum language language;
+    char *debugformat;
+  };
+d86 3
+a88 3
+/* Record the symbols defined for each context in a list.  We don't
+   create a struct block for the context until we know how long to
+   make it.  */
+d93 5
+a97 5
+  {
+    struct pending *next;
+    int nsyms;
+    struct symbol *symbol[PENDINGSIZE];
+  };
+d101 1
+a101 5
+/* static at top level, and types */
+
+EXTERN struct pending *file_symbols;
+
+/* global functions and variables */
+d103 1
+a103 1
+EXTERN struct pending *global_symbols;
+d105 1
+a105 1
+/* everything local to lexical context */
+d107 2
+a108 8
+EXTERN struct pending *local_symbols;
+
+/* func params local to lexical  context */
+
+EXTERN struct pending *param_symbols;
+
+/* Stack representing unclosed lexical contexts (that will become
+   blocks, eventually).  */
+d111 2
+a112 4
+  {
+    /* Outer locals at the time we entered */
+
+    struct pending *locals;
+d114 1
+a114 1
+    /* Pending func params at the time we entered */
+d116 1
+a116 1
+    struct pending *params;
+d118 1
+a118 1
+    /* Pointer into blocklist as of entry */
+d120 1
+a120 1
+    struct pending_block *old_blocks;
+d122 1
+a122 1
+    /* Name of function, if any, defining context */
+d124 1
+a124 1
+    struct symbol *name;
+d126 1
+a126 1
+    /* PC where this context starts */
+d128 1
+a128 1
+    CORE_ADDR start_addr;
+d130 1
+a130 1
+    /* Temp slot for exception handling. */
+d132 1
+a132 1
+    CORE_ADDR end_addr;
+d134 1
+a134 1
+    /* For error-checking matching push/pop */
+d136 1
+a136 3
+    int depth;
+
+  };
+d148 5
+a152 2
+/* Non-zero if the context stack is empty.  */
+#define outermost_context_p() (context_stack_depth == 0)
+d154 2
+a155 2
+/* Nonzero if within a function (so symbols should be local, if
+   nothing says specifically).  */
+d163 4
+a166 9
+  {
+    struct pending_block *next;
+    struct block *block;
+  };
+
+/* Pointer to the head of a linked list of symbol blocks which have
+   already been finalized (lexical contexts already closed) and which
+   are just waiting to be built into a blockvector when finalizing the
+   associated symtab. */
+a167 1
+EXTERN struct pending_block *pending_blocks;
+a168 1
+
+d170 4
+a173 4
+  {
+    struct subfile_stack *next;
+    char *name;
+  };
+d181 1
+a181 1
+EXTERN char *(*next_symbol_text_func) (struct objfile *);
+d184 5
+a188 4
+   Used for both stabs and coff.  (In newer sun systems, dbx uses a
+   pair of numbers in parens, as in "(SUBFILENUM,NUMWITHINSUBFILE)".
+   Then these numbers must be translated through the type_translations
+   hash table to get the index into the type vector.)  */
+d196 2
+a197 2
+/* Initial size of type vector.  Is realloc'd larger if needed, and
+   realloc'd down to the size actually used, when completed.  */
+d201 2
+a202 1
+extern void add_free_pendings (struct pending *list);
+d204 2
+a205 2
+extern void add_symbol_to_list (struct symbol *symbol,
+				struct pending **listhead);
+d207 4
+a210 2
+extern struct symbol *find_symbol_in_list (struct pending *list,
+					   char *name, int length);
+d212 2
+a213 5
+extern void finish_block (struct symbol *symbol,
+			  struct pending **listhead,
+			  struct pending_block *old_blocks,
+			  CORE_ADDR start, CORE_ADDR end,
+			  struct objfile *objfile);
+d215 2
+a216 1
+extern void really_free_pendings (void *dummy);
+d218 2
+a219 1
+extern void start_subfile (char *name, char *dirname);
+d221 2
+a222 1
+extern void patch_subfile_names (struct subfile *subfile, char *name);
+d224 2
+a225 1
+extern void push_subfile (void);
+d227 2
+a228 1
+extern char *pop_subfile (void);
+d230 2
+a231 2
+extern struct symtab *end_symtab (CORE_ADDR end_addr,
+				  struct objfile *objfile, int section);
+d233 2
+a234 1
+/* Defined in stabsread.c.  */
+d236 2
+a237 1
+extern void scan_file_globals (struct objfile *objfile);
+d239 2
+a240 1
+extern void buildsym_new_init (void);
+d242 2
+a243 1
+extern void buildsym_init (void);
+d245 2
+a246 1
+extern struct context_stack *push_context (int desc, CORE_ADDR valu);
+d248 2
+a249 1
+extern struct context_stack *pop_context (void);
+d251 2
+a252 1
+extern void record_line (struct subfile *subfile, int line, CORE_ADDR pc);
+d254 2
+a255 1
+extern void start_symtab (char *name, char *dirname, CORE_ADDR start_addr);
+d257 2
+a258 3
+extern int hashname (char *name);
+
+extern void free_pending_blocks (void);
+d261 1
+a261 11
+   which should be fixed to not need direct access to
+   record_pending_block. */
+
+extern void record_pending_block (struct objfile *objfile,
+				  struct block *block,
+				  struct pending_block *opblock);
+
+extern void record_debugformat (char *format);
+
+extern void merge_symbol_lists (struct pending **srclist,
+				struct pending **targetlist);
+d263 3
+a265 3
+/* The macro table for the compilation unit whose symbols we're
+   currently reading.  All the symtabs for this CU will point to this.  */
+EXTERN struct macro_table *pending_macros;
+d269 1
+a269 1
+#endif /* defined (BUILDSYM_H) */
+@
+

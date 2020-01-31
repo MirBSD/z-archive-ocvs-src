@@ -1,0 +1,307 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.30.37;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.35;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.35;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.37.09;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: ns_cksum.c,v 1.4 2001/09/20 17:02:31 mpech Exp $	*/
+/*	$NetBSD: ns_cksum.c,v 1.3 1996/10/13 03:35:55 christos Exp $	*/
+/*
+ * Copyright (c) 1985, 1986 Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@@(#)ns_cksum.c	7.6 (Berkeley) 12/16/90
+ */
+
+#include <sys/param.h>
+#include <sys/mbuf.h>
+
+
+/*
+ * Checksum routine for Network Systems Protocol Packets (VAX Version).
+ *
+ * This routine is very heavily used in the network
+ * code and should be modified for each CPU to be as fast as possible.
+ */
+
+u_short
+ns_cksum(m, len)
+	register struct mbuf *m;
+	register int len;
+{
+	register u_short *w asm("r9");		/* on vax, known to be r9 */
+	register int sum asm("r8");		/* on vax, known to be r8 */
+	register int low asm("r7");		/* on vax, known to be r7 */
+	register int mlen;		/* want 0, shuts lint up about low */
+
+	sum = 0;
+	low = 0;
+	mlen = 0;
+	for (;;) {
+		/*
+		 * Each trip around loop adds in
+		 * word from one mbuf segment.
+		 */
+		w = mtod(m, u_short *);
+		if (mlen == -1) {
+			/*
+			 * There is a byte left from the last segment;
+			 * add it into the checksum.  Don't have to worry
+			 * about a carry-out here because we make sure
+			 * that high part of (32 bit) sum is small below.
+			 */
+			sum += *(u_char *)w << 8;
+			sum += sum;
+			w = (u_short *)((char *)w + 1);
+			mlen = m->m_len - 1;
+			len--;
+		} else
+			mlen = m->m_len;
+		m = m->m_next;
+		if (len < mlen)
+			mlen = len;
+		len -= mlen;
+		/*
+		 * Force to long boundary so we do longword aligned
+		 * memory operations.  It is too hard to do byte
+		 * adjustment, do only word adjustment.
+		 */
+		if (((int)w&0x2) && mlen >= 2) {
+			sum += *w++;
+			sum += sum;
+			mlen -= 2;
+		}
+		/*
+		 *
+		 * We can do a 16 bit ones complement sum using
+		 * 32 bit arithmetic registers for adding,
+		 * with carries from the low added
+		 * into the high (by normal carry-chaining)
+		 * so long as we fold back before 16 carries have occurred.
+		 *
+		 */
+		while ((mlen -= 32) >= 0) {
+			/*asm("bicpsw $1");		 clears carry */
+#undef ADD
+#define ADD asm("movw (r9)+,r7; addl2 r7,r8; addl2 r8,r8")
+#define FOLD { asm("ashl $-16,r8,r0; addw2 r0,r8; adwc $0,r8; movzwl r8,r8"); }
+			FOLD;
+			ADD; ADD; ADD; ADD; ADD; ADD; ADD; ADD;
+			FOLD;
+			ADD; ADD; ADD; ADD; ADD; ADD; ADD; ADD;
+		}
+		mlen += 32;
+		while ((mlen -= 8) >= 0) {
+			/*asm("bicpsw $1");		 clears carry */
+			FOLD;
+			ADD; ADD; ADD; ADD;
+		}
+		mlen += 8;
+		/*
+		 * Now eliminate the possibility of carry-out's by
+		 * folding back to a 16 bit number (adding high and
+		 * low parts together.)  Then mop up trailing words
+		 * and maybe an odd byte.
+		 */
+		FOLD;
+		while ((mlen -= 2) >= 0) {
+			ADD;
+		}
+		if (mlen == -1) {
+			sum += *(u_char *)w;
+		}
+		if (len == 0)
+			break;
+		/*
+		 * Locate the next block with some data.
+		 * If there is a word split across a boundary we
+		 * will wrap to the top with mlen == -1 and
+		 * then add it in shifted appropriately.
+		 */
+		for (;;) {
+			if (m == 0) {
+				printf("idpcksum: out of data\n");
+				goto done;
+			}
+			if (m->m_len)
+				break;
+			m = m->m_next;
+		}
+	}
+done:
+	/*
+	 * Add together high and low parts of sum
+	 * and carry to get cksum.
+	 * Have to be careful to not drop the last
+	 * carry here.
+	 */
+	FOLD;
+	
+	if(sum==0xffff) sum = 0;
+	return (sum);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: ns_cksum.c,v 1.5 2003/06/02 23:27:59 millert Exp $	*/
+d15 5
+a19 1
+ * 3. Neither the name of the University nor the names of its contributors
+@
+

@@ -1,0 +1,1063 @@
+head	1.4;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.4
+date	2004.08.11.21.20.05;	author tg;	state dead;
+branches;
+next	1.3;
+
+1.3
+date	2004.06.10.19.03.39;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.05.32;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.00;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.00;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.25.04;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.43.18;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.08.41;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.18.10;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@remove old binutils
+@
+text
+@#!/bin/sh
+# genscripts.sh - generate the ld-emulation-target specific files
+#
+# Usage: genscripts.sh srcdir libdir exec_prefix \
+#        host target target_alias default_emulation \
+#        native_lib_dirs use_sysroot this_emulation tool_dir
+#
+# Sample usage:
+# genscripts.sh /djm/ld-devo/devo/ld /usr/local/lib /usr/local \
+#  sparc-sun-sunos4.1.3 sparc-sun-sunos4.1.3 sparc-sun-sunos4.1.3 sun4 \
+#  "" no sun3 sparc-sun-sunos4.1.3
+# produces sun3.x sun3.xbn sun3.xn sun3.xr sun3.xu em_sun3.c
+
+srcdir=$1
+libdir=$2
+exec_prefix=$3
+host=$4
+target=$5
+target_alias=$6
+EMULATION_LIBPATH=$7
+NATIVE_LIB_DIRS=$8
+use_sysroot=$9
+shift 9
+EMULATION_NAME=$1
+shift
+# Can't use ${1:-$target_alias} here due to an Ultrix shell bug.
+if [ "x$1" = "x" ] ; then
+  tool_lib=${exec_prefix}/${target_alias}/lib
+else
+  tool_lib=${exec_prefix}/$1/lib
+fi
+
+# Include the emulation-specific parameters:
+. ${srcdir}/emulparams/${EMULATION_NAME}.sh
+
+if test -d ldscripts; then
+  true
+else
+  mkdir ldscripts
+fi
+
+# Set some flags for the emultempl scripts.  USE_LIBPATH will
+# be set for any libpath-using emulation; NATIVE will be set for a
+# libpath-using emulation where ${host} = ${target}.  NATIVE
+# may already have been set by the emulparams file, but that's OK
+# (it'll just get set to "yes" twice).
+
+case " $EMULATION_LIBPATH " in
+  *" ${EMULATION_NAME} "*)
+    if [ "x${host}" = "x${target}" ] ; then
+      NATIVE=yes
+      USE_LIBPATH=yes
+    elif [ "x${use_sysroot}" = "xyes" ] ; then
+      USE_LIBPATH=yes
+    fi
+    ;;
+esac
+
+# If the emulparams file sets NATIVE, make sure USE_LIBPATH is set also.
+if test "x$NATIVE" = "xyes" ; then
+  USE_LIBPATH=yes
+fi
+
+# Set the library search path, for libraries named by -lfoo.
+# If LIB_PATH is defined (e.g., by Makefile) and non-empty, it is used.
+# Otherwise, the default is set here.
+#
+# The format is the usual list of colon-separated directories.
+# To force a logically empty LIB_PATH, do LIBPATH=":".
+#
+# If we are using a sysroot, prefix library paths with "=" to indicate this.
+#
+# If the emulparams file set LIBPATH_SUFFIX, prepend an extra copy of
+# the library path with the suffix applied.
+
+if [ "x${LIB_PATH}" = "x" ] && [ "x${USE_LIBPATH}" = xyes ] ; then
+  if [ x"$use_sysroot" != xyes ] ; then
+    LIB_PATH=${libdir}
+  fi
+  LIB_PATH2=""
+  for lib in ${NATIVE_LIB_DIRS}; do
+    # The "=" is harmless if we aren't using a sysroot, but also needless.
+    if [ "x${use_sysroot}" = "xyes" ] ; then
+      lib="=${lib}"
+    fi
+    addsuffix=
+    case "${LIBPATH_SUFFIX}:${lib}" in
+      :*) ;;
+      *:*${LIBPATH_SUFFIX}) ;;
+      *) addsuffix=yes ;;
+    esac
+    if test -n "$addsuffix"; then
+      case :${LIB_PATH}: in
+	*:${lib}${LIBPATH_SUFFIX}:*) ;;
+	::) LIB_PATH=${lib}${LIBPATH_SUFFIX} ;;
+	*) LIB_PATH=${LIB_PATH}:${lib}${LIBPATH_SUFFIX} ;;
+      esac
+      case :${LIB_PATH}${LIB_PATH2}: in
+	*:${lib}:*) ;;
+        *) LIB_PATH2=${LIB_PATH2}:${lib} ;;
+      esac
+    else
+      case :${LIB_PATH}: in
+        *:${lib}:*) ;;
+        ::) LIB_PATH=${lib} ;;
+        *) LIB_PATH=${LIB_PATH}:${lib} ;;
+      esac
+    fi
+  done
+  LIB_PATH=${LIB_PATH}${LIB_PATH2}
+fi
+
+LIB_SEARCH_DIRS=`echo ${LIB_PATH} | sed -e 's/:/ /g' -e 's/\([^ ][^ ]*\)/SEARCH_DIR(\\"\1\\");/g'`
+
+# Generate 5 or 6 script files from a master script template in
+# ${srcdir}/scripttempl/${SCRIPT_NAME}.sh.  Which one of the 5 or 6
+# script files is actually used depends on command line options given
+# to ld.  (SCRIPT_NAME was set in the emulparams_file.)
+#
+# A .x script file is the default script.
+# A .xr script is for linking without relocation (-r flag).
+# A .xu script is like .xr, but *do* create constructors (-Ur flag).
+# A .xn script is for linking with -n flag (mix text and data on same page).
+# A .xbn script is for linking with -N flag (mix text and data on same page).
+# A .xs script is for generating a shared library with the --shared
+#   flag; it is only generated if $GENERATE_SHLIB_SCRIPT is set by the
+#   emulation parameters.
+# A .xc script is for linking with -z combreloc; it is only generated if
+#   $GENERATE_COMBRELOC_SCRIPT is set by the emulation parameters or
+#   $SCRIPT_NAME is "elf".
+# A .xsc script is for linking with --shared -z combreloc; it is generated
+#   if $GENERATE_COMBRELOC_SCRIPT is set by the emulation parameters or
+#   $SCRIPT_NAME is "elf" and $GENERATE_SHLIB_SCRIPT is set by the emulation
+#   parameters too.
+
+if [ "x$SCRIPT_NAME" = "xelf" ]; then
+  GENERATE_COMBRELOC_SCRIPT=yes
+fi
+
+SEGMENT_SIZE=${SEGMENT_SIZE-${MAXPAGESIZE-${TARGET_PAGE_SIZE}}}
+
+# Determine DATA_ALIGNMENT for the 5 variants, using
+# values specified in the emulparams/<emulation>.sh file or default.
+
+DATA_ALIGNMENT_="${DATA_ALIGNMENT_-${DATA_ALIGNMENT-ALIGN(${SEGMENT_SIZE})}}"
+DATA_ALIGNMENT_n="${DATA_ALIGNMENT_n-${DATA_ALIGNMENT_}}"
+DATA_ALIGNMENT_N="${DATA_ALIGNMENT_N-${DATA_ALIGNMENT-.}}"
+DATA_ALIGNMENT_r="${DATA_ALIGNMENT_r-${DATA_ALIGNMENT-}}"
+DATA_ALIGNMENT_u="${DATA_ALIGNMENT_u-${DATA_ALIGNMENT_r}}"
+
+LD_FLAG=r
+DATA_ALIGNMENT=${DATA_ALIGNMENT_r}
+DEFAULT_DATA_ALIGNMENT="ALIGN(${SEGMENT_SIZE})"
+( echo "/* Script for ld -r: link without relocation */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xr
+
+LD_FLAG=u
+DATA_ALIGNMENT=${DATA_ALIGNMENT_u}
+CONSTRUCTING=" "
+( echo "/* Script for ld -Ur: link w/out relocation, do create constructors */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xu
+
+LD_FLAG=
+DATA_ALIGNMENT=${DATA_ALIGNMENT_}
+RELOCATING=" "
+( echo "/* Default linker script, for normal executables */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.x
+
+LD_FLAG=n
+DATA_ALIGNMENT=${DATA_ALIGNMENT_n}
+TEXT_START_ADDR=${NONPAGED_TEXT_START_ADDR-${TEXT_START_ADDR}}
+( echo "/* Script for -n: mix text and data on same page */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xn
+
+LD_FLAG=N
+DATA_ALIGNMENT=${DATA_ALIGNMENT_N}
+( echo "/* Script for -N: mix text and data on same page; don't align data */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xbn
+
+if test -n "$GENERATE_COMBRELOC_SCRIPT"; then
+  DATA_ALIGNMENT=${DATA_ALIGNMENT_c-${DATA_ALIGNMENT_}}
+  LD_FLAG=c
+  COMBRELOC=ldscripts/${EMULATION_NAME}.xc.tmp
+  ( echo "/* Script for -z combreloc: combine and sort reloc sections */"
+    . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+    . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+  ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xc
+  rm -f ${COMBRELOC}
+  COMBRELOC=
+fi
+
+if test -n "$GENERATE_SHLIB_SCRIPT"; then
+  LD_FLAG=shared
+  DATA_ALIGNMENT=${DATA_ALIGNMENT_s-${DATA_ALIGNMENT_}}
+  CREATE_SHLIB=" "
+  # Note that TEXT_START_ADDR is set to NONPAGED_TEXT_START_ADDR.
+  (
+    echo "/* Script for ld --shared: link shared library */"
+    . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+    . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+  ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xs
+  if test -n "$GENERATE_COMBRELOC_SCRIPT"; then
+    LD_FLAG=cshared
+    DATA_ALIGNMENT=${DATA_ALIGNMENT_sc-${DATA_ALIGNMENT}}
+    COMBRELOC=ldscripts/${EMULATION_NAME}.xc.tmp
+    ( echo "/* Script for --shared -z combreloc: shared library, combine & sort relocs */"
+      . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+      . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+    ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xsc
+    rm -f ${COMBRELOC}
+    COMBRELOC=
+  fi
+  unset CREATE_SHLIB
+fi
+
+LD_FLAG=Z
+DATA_ALIGNMENT=${DATA_ALIGNMENT_}
+RELOCATING=" "
+( echo "/* Script for -Z: traditional binaries with no PLT/GOT padding */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xz
+
+case " $EMULATION_LIBPATH " in
+    *" ${EMULATION_NAME} "*) COMPILE_IN=true;;
+esac
+
+# Generate e${EMULATION_NAME}.c.
+. ${srcdir}/emultempl/${TEMPLATE_NAME-generic}.em
+@
+
+
+1.3
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@a112 7
+
+# Always search $(tooldir)/lib, aka /usr/local/TARGET/lib, except for
+# sysrooted configurations.
+if [ "x${use_sysroot}" != "xyes" ] ; then
+  LIB_PATH=${tool_lib}:${LIB_PATH}
+fi
+
+d223 1
+d229 4
+a232 2
+(. ${srcdir}/scripttempl/${SCRIPT_NAME}.sc) | sed -e '/^ *$/d' > \
+  ldscripts/${EMULATION_NAME}.xz
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d6 1
+a6 1
+#        native_lib_dirs this_emulation tool_dir
+d11 1
+a11 1
+#  "" sun3 sparc-sun-sunos4.1.3
+d22 1
+a22 1
+EMULATION_NAME=$9
+d24 2
+d42 22
+d70 5
+d76 15
+a90 15
+if [ "x${LIB_PATH}" = "x" ] ; then
+  # Cross, or native non-default emulation not requesting LIB_PATH.
+  LIB_PATH=
+
+  if [ "x${host}" = "x${target}" ] ; then
+    case " $EMULATION_LIBPATH " in
+      *" ${EMULATION_NAME} "*)
+        # Native, and default or emulation requesting LIB_PATH.
+        LIB_PATH=/usr/lib
+        if [ -n "${NATIVE_LIB_DIRS}" ]; then
+	  LIB_PATH=${LIB_PATH}:${NATIVE_LIB_DIRS}
+        fi
+        if [ "${libdir}" != /usr/lib ]; then
+	  LIB_PATH=${LIB_PATH}:${libdir}
+        fi
+d92 19
+a110 1
+  fi
+a112 2
+# Always search $(tooldir)/lib, aka /usr/local/TARGET/lib.
+LIB_PATH=${LIB_PATH}:${tool_lib}
+d114 7
+a120 1
+LIB_SEARCH_DIRS=`echo ${LIB_PATH} | tr ':' ' ' | sed -e 's/\([^ ][^ ]*\)/SEARCH_DIR(\1);/g'`
+d135 7
+d143 5
+a147 1
+SEGMENT_SIZE=${SEGMENT_SIZE-${TARGET_PAGE_SIZE}}
+d161 4
+a164 2
+(. ${srcdir}/scripttempl/${SCRIPT_NAME}.sc) | sed -e '/^ *$/d' > \
+  ldscripts/${EMULATION_NAME}.xr
+d169 4
+a172 2
+(. ${srcdir}/scripttempl/${SCRIPT_NAME}.sc) | sed -e '/^ *$/d' > \
+  ldscripts/${EMULATION_NAME}.xu
+d177 4
+a180 2
+(. ${srcdir}/scripttempl/${SCRIPT_NAME}.sc) | sed -e '/^ *$/d' > \
+  ldscripts/${EMULATION_NAME}.x
+d185 4
+a188 2
+(. ${srcdir}/scripttempl/${SCRIPT_NAME}.sc) | sed -e '/^ *$/d' > \
+  ldscripts/${EMULATION_NAME}.xn
+d192 16
+a207 2
+(. ${srcdir}/scripttempl/${SCRIPT_NAME}.sc) | sed -e '/^ *$/d' > \
+  ldscripts/${EMULATION_NAME}.xbn
+d214 16
+a229 2
+  (. ${srcdir}/scripttempl/${SCRIPT_NAME}.sc) | sed -e '/^ *$/d' > \
+    ldscripts/${EMULATION_NAME}.xs
+d238 3
+a240 3
+for i in $EMULATION_LIBPATH ; do
+  test "$i" = "$EMULATION_NAME" && COMPILE_IN=true
+done
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@d55 1
+a55 1
+        LIB_PATH=/lib:/usr/lib
+a61 3
+        if [ "${libdir}" != /usr/local/lib ] ; then
+	  LIB_PATH=${LIB_PATH}:/usr/local/lib
+        fi
+d133 6
+@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d6 1
+a6 1
+#        native_lib_dirs use_sysroot this_emulation tool_dir
+d11 1
+a11 1
+#  "" no sun3 sparc-sun-sunos4.1.3
+d22 1
+a22 1
+use_sysroot=$9
+a23 2
+EMULATION_NAME=$1
+shift
+a39 22
+# Set some flags for the emultempl scripts.  USE_LIBPATH will
+# be set for any libpath-using emulation; NATIVE will be set for a
+# libpath-using emulation where ${host} = ${target}.  NATIVE
+# may already have been set by the emulparams file, but that's OK
+# (it'll just get set to "yes" twice).
+
+case " $EMULATION_LIBPATH " in
+  *" ${EMULATION_NAME} "*)
+    if [ "x${host}" = "x${target}" ] ; then
+      NATIVE=yes
+      USE_LIBPATH=yes
+    elif [ "x${use_sysroot}" = "xyes" ] ; then
+      USE_LIBPATH=yes
+    fi
+    ;;
+esac
+
+# If the emulparams file sets NATIVE, make sure USE_LIBPATH is set also.
+if test "x$NATIVE" = "xyes" ; then
+  USE_LIBPATH=yes
+fi
+
+a45 5
+#
+# If we are using a sysroot, prefix library paths with "=" to indicate this.
+#
+# If the emulparams file set LIBPATH_SUFFIX, prepend an extra copy of
+# the library path with the suffix applied.
+d47 19
+a65 3
+if [ "x${LIB_PATH}" = "x" ] && [ "x${USE_LIBPATH}" = xyes ] ; then
+  if [ x"$use_sysroot" != xyes ] ; then
+    LIB_PATH=${libdir}
+a66 31
+  LIB_PATH2=""
+  for lib in ${NATIVE_LIB_DIRS}; do
+    # The "=" is harmless if we aren't using a sysroot, but also needless.
+    if [ "x${use_sysroot}" = "xyes" ] ; then
+      lib="=${lib}"
+    fi
+    addsuffix=
+    case "${LIBPATH_SUFFIX}:${lib}" in
+      :*) ;;
+      *:*${LIBPATH_SUFFIX}) ;;
+      *) addsuffix=yes ;;
+    esac
+    if test -n "$addsuffix"; then
+      case :${LIB_PATH}: in
+	*:${lib}${LIBPATH_SUFFIX}:*) ;;
+	::) LIB_PATH=${lib}${LIBPATH_SUFFIX} ;;
+	*) LIB_PATH=${LIB_PATH}:${lib}${LIBPATH_SUFFIX} ;;
+      esac
+      case :${LIB_PATH}${LIB_PATH2}: in
+	*:${lib}:*) ;;
+        *) LIB_PATH2=${LIB_PATH2}:${lib} ;;
+      esac
+    else
+      case :${LIB_PATH}: in
+        *:${lib}:*) ;;
+        ::) LIB_PATH=${lib} ;;
+        *) LIB_PATH=${LIB_PATH}:${lib} ;;
+      esac
+    fi
+  done
+  LIB_PATH=${LIB_PATH}${LIB_PATH2}
+d69 2
+d72 1
+a72 7
+# Always search $(tooldir)/lib, aka /usr/local/TARGET/lib, except for
+# sysrooted configurations.
+if [ "x${use_sysroot}" != "xyes" ] ; then
+  LIB_PATH=${tool_lib}:${LIB_PATH}
+fi
+
+LIB_SEARCH_DIRS=`echo ${LIB_PATH} | sed -e 's/:/ /g' -e 's/\([^ ][^ ]*\)/SEARCH_DIR(\\"\1\\");/g'`
+a86 11
+# A .xc script is for linking with -z combreloc; it is only generated if
+#   $GENERATE_COMBRELOC_SCRIPT is set by the emulation parameters or
+#   $SCRIPT_NAME is "elf".
+# A .xsc script is for linking with --shared -z combreloc; it is generated
+#   if $GENERATE_COMBRELOC_SCRIPT is set by the emulation parameters or
+#   $SCRIPT_NAME is "elf" and $GENERATE_SHLIB_SCRIPT is set by the emulation
+#   parameters too.
+
+if [ "x$SCRIPT_NAME" = "xelf" ]; then
+  GENERATE_COMBRELOC_SCRIPT=yes
+fi
+d88 1
+a88 1
+SEGMENT_SIZE=${SEGMENT_SIZE-${MAXPAGESIZE-${TARGET_PAGE_SIZE}}}
+d102 2
+a103 4
+( echo "/* Script for ld -r: link without relocation */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xr
+d108 2
+a109 4
+( echo "/* Script for ld -Ur: link w/out relocation, do create constructors */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xu
+d114 2
+a115 4
+( echo "/* Default linker script, for normal executables */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.x
+d120 2
+a121 4
+( echo "/* Script for -n: mix text and data on same page */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xn
+d125 2
+a126 16
+( echo "/* Script for -N: mix text and data on same page; don't align data */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xbn
+
+if test -n "$GENERATE_COMBRELOC_SCRIPT"; then
+  DATA_ALIGNMENT=${DATA_ALIGNMENT_c-${DATA_ALIGNMENT_}}
+  LD_FLAG=c
+  COMBRELOC=ldscripts/${EMULATION_NAME}.xc.tmp
+  ( echo "/* Script for -z combreloc: combine and sort reloc sections */"
+    . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+    . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+  ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xc
+  rm -f ${COMBRELOC}
+  COMBRELOC=
+fi
+d133 2
+a134 16
+  (
+    echo "/* Script for ld --shared: link shared library */"
+    . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+    . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+  ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xs
+  if test -n "$GENERATE_COMBRELOC_SCRIPT"; then
+    LD_FLAG=cshared
+    DATA_ALIGNMENT=${DATA_ALIGNMENT_sc-${DATA_ALIGNMENT}}
+    COMBRELOC=ldscripts/${EMULATION_NAME}.xc.tmp
+    ( echo "/* Script for --shared -z combreloc: shared library, combine & sort relocs */"
+      . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+      . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+    ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xsc
+    rm -f ${COMBRELOC}
+    COMBRELOC=
+  fi
+d137 3
+a139 3
+case " $EMULATION_LIBPATH " in
+    *" ${EMULATION_NAME} "*) COMPILE_IN=true;;
+esac
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d4 3
+a6 14
+# Usage: genscripts_extra.sh \
+#          srcdir \
+#          libdir \
+#          exec_prefix \
+#          host \
+#          target \
+#          target_alias \
+#          default_emulation \
+#          native_lib_dirs \
+#          use_sysroot \
+#          this_emulation \
+# optional:
+#          tool_dir \
+#          customizer_script
+d9 4
+a12 39
+#
+#   genscripts_extra.sh \
+#    /sources/ld \
+#    /usr/local/lib \
+#    /usr/local \
+#    sparc-sun-sunos4.1.3 \
+#    sparc-sun-sunos4.1.3 \
+#    sparc-sun-sunos4.1.3 \
+#    sun4 \
+#    "" \
+#    no \
+#    sun3 \
+#    sparc-sun-sunos4.1.3 \
+#    sparc.sh
+#
+# produces the linker scripts:
+#
+#   sun3.x       [default linker script]
+#   sun3.xbn     [used when the linker is invoked with "-N"]
+#   sun3.xn      [used when the linker is invoked with "-n"]
+#   sun3.xr      [used when the linker is invoked with "-r"]
+#   sun3.xu      [used when the linker is invoked with "-Ur"]
+# and maybe:
+#   sun3.xc      [used when the linker is invoked with "-z combreloc"]
+#   sun3.xsc     [used when the linker is invoked with "--shared"]
+#   sun3.xdc     [used when the linker is invoked with "-pie"]
+#
+# It also produced the C source file:
+#
+#   em_sun3.c
+#
+# which is then compiled into the linker.
+#
+# The linker scripts are created by running the shell script
+# /sources/ld/emulparams/sparc.sh to set the value of ${SCRIPT_NAME}
+# (and any other variables it wants to).  ${SCRIPT_NAME} is then
+# invoked with a variable called ${LD_FLAG} to tell it which version
+# of the linker script to create.
+
+d25 3
+a27 5
+TOOL_LIB=$2
+CUSTOMIZER_SCRIPT=$3
+
+# Can't use ${TOOL_LIB:-$target_alias} here due to an Ultrix shell bug.
+if [ "x${TOOL_LIB}" = "x" ] ; then
+d30 1
+a30 1
+  tool_lib=${exec_prefix}/${TOOL_LIB}/lib
+a32 5
+if [ "x${CUSTOMIZER_SCRIPT}" = "x" ] ; then
+  CUSTOMIZER_SCRIPT=${EMULATION_NAME}
+fi
+CUSTOMIZER_SCRIPT="${srcdir}/emulparams/${CUSTOMIZER_SCRIPT}.sh"
+
+d34 1
+a34 1
+. ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+d77 2
+a78 12
+  LIB_PATH2=
+
+  libs=${NATIVE_LIB_DIRS}
+  if [ "x${use_sysroot}" != "xyes" ] ; then
+    case " ${libs} " in
+      *" ${libdir} "*) ;;
+      *) libs="${libdir} ${libs}" ;;
+    esac
+    case " ${libs} " in
+      *" ${tool_lib} "*) ;;
+      *) libs="${tool_lib} ${libs}" ;;
+    esac
+d80 2
+a81 2
+
+  for lib in ${libs}; do
+d98 1
+a98 1
+      case :${LIB_PATH}:${LIB_PATH2}: in
+d100 1
+a100 2
+	*::) LIB_PATH2=${lib} ;;
+	*) LIB_PATH2=${LIB_PATH2}:${lib} ;;
+d103 4
+a106 4
+      case :${LIB_PATH2}: in
+	*:${lib}:*) ;;
+	::) LIB_PATH2=${lib} ;;
+	*) LIB_PATH2=${LIB_PATH2}:${lib} ;;
+d110 2
+a112 5
+  case :${LIB_PATH}:${LIB_PATH2}: in
+    *:: | ::*) LIB_PATH=${LIB_PATH}${LIB_PATH2} ;;
+    *) LIB_PATH=${LIB_PATH}:${LIB_PATH2} ;;
+  esac
+fi
+d115 1
+a115 1
+# sysrooted configurations and when LIBPATH=":".
+d117 1
+a117 5
+  case :${LIB_PATH}: in
+  ::: | *:${tool_lib}:*) ;;
+  ::) LIB_PATH=${tool_lib} ;;
+  *) LIB_PATH=${tool_lib}:${LIB_PATH} ;;
+  esac
+a121 9
+# We need it for testsuite.
+case " $EMULATION_LIBPATH " in
+  *" ${EMULATION_NAME} "*)
+    test -d tmpdir || mkdir tmpdir
+    test -f tmpdir/libpath.exp || \
+    echo "set libpath \"${LIB_PATH}\"" | sed -e 's/:/ /g' > tmpdir/libpath.exp
+    ;;
+esac
+
+d150 1
+a150 1
+# values specified in the emulparams/<script_to_run>.sh file or default.
+d162 1
+a162 1
+  . ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+d170 1
+a170 1
+  . ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+d178 1
+a178 1
+  . ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+d186 1
+a186 1
+  . ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+d193 1
+a193 1
+  . ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+d202 1
+a202 1
+    . ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+d216 1
+a216 1
+    . ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+d224 1
+a224 1
+      . ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+a229 25
+  unset CREATE_SHLIB
+fi
+
+if test -n "$GENERATE_PIE_SCRIPT"; then
+  LD_FLAG=pie
+  DATA_ALIGNMENT=${DATA_ALIGNMENT_s-${DATA_ALIGNMENT_}}
+  CREATE_PIE=" "
+  # Note that TEXT_START_ADDR is set to NONPAGED_TEXT_START_ADDR.
+  (
+    echo "/* Script for ld -pie: link position independent executable */"
+    . ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+    . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+  ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xd
+  if test -n "$GENERATE_COMBRELOC_SCRIPT"; then
+    LD_FLAG=cpie
+    DATA_ALIGNMENT=${DATA_ALIGNMENT_sc-${DATA_ALIGNMENT}}
+    COMBRELOC=ldscripts/${EMULATION_NAME}.xc.tmp
+    ( echo "/* Script for -pie -z combreloc: position independent executable, combine & sort relocs */"
+      . ${CUSTOMIZER_SCRIPT} ${EMULATION_NAME}
+      . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+    ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xdc
+    rm -f ${COMBRELOC}
+    COMBRELOC=
+  fi
+  unset CREATE_PIE
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d6 1
+a6 1
+#        native_lib_dirs use_sysroot this_emulation tool_dir
+d11 1
+a11 1
+#  "" no sun3 sparc-sun-sunos4.1.3
+d22 1
+a22 1
+use_sysroot=$9
+a23 2
+EMULATION_NAME=$1
+shift
+a39 22
+# Set some flags for the emultempl scripts.  USE_LIBPATH will
+# be set for any libpath-using emulation; NATIVE will be set for a
+# libpath-using emulation where ${host} = ${target}.  NATIVE
+# may already have been set by the emulparams file, but that's OK
+# (it'll just get set to "yes" twice).
+
+case " $EMULATION_LIBPATH " in
+  *" ${EMULATION_NAME} "*)
+    if [ "x${host}" = "x${target}" ] ; then
+      NATIVE=yes
+      USE_LIBPATH=yes
+    elif [ "x${use_sysroot}" = "xyes" ] ; then
+      USE_LIBPATH=yes
+    fi
+    ;;
+esac
+
+# If the emulparams file sets NATIVE, make sure USE_LIBPATH is set also.
+if test "x$NATIVE" = "xyes" ; then
+  USE_LIBPATH=yes
+fi
+
+a45 5
+#
+# If we are using a sysroot, prefix library paths with "=" to indicate this.
+#
+# If the emulparams file set LIBPATH_SUFFIX, prepend an extra copy of
+# the library path with the suffix applied.
+d47 16
+a62 3
+if [ "x${LIB_PATH}" = "x" ] && [ "x${USE_LIBPATH}" = xyes ] ; then
+  if [ x"$use_sysroot" != xyes ] ; then
+    LIB_PATH=${libdir}
+a63 31
+  LIB_PATH2=""
+  for lib in ${NATIVE_LIB_DIRS}; do
+    # The "=" is harmless if we aren't using a sysroot, but also needless.
+    if [ "x${use_sysroot}" = "xyes" ] ; then
+      lib="=${lib}"
+    fi
+    addsuffix=
+    case "${LIBPATH_SUFFIX}:${lib}" in
+      :*) ;;
+      *:*${LIBPATH_SUFFIX}) ;;
+      *) addsuffix=yes ;;
+    esac
+    if test -n "$addsuffix"; then
+      case :${LIB_PATH}: in
+	*:${lib}${LIBPATH_SUFFIX}:*) ;;
+	::) LIB_PATH=${lib}${LIBPATH_SUFFIX} ;;
+	*) LIB_PATH=${LIB_PATH}:${lib}${LIBPATH_SUFFIX} ;;
+      esac
+      case :${LIB_PATH}${LIB_PATH2}: in
+	*:${lib}:*) ;;
+        *) LIB_PATH2=${LIB_PATH2}:${lib} ;;
+      esac
+    else
+      case :${LIB_PATH}: in
+        *:${lib}:*) ;;
+        ::) LIB_PATH=${lib} ;;
+        *) LIB_PATH=${LIB_PATH}:${lib} ;;
+      esac
+    fi
+  done
+  LIB_PATH=${LIB_PATH}${LIB_PATH2}
+d66 4
+a69 1
+LIB_SEARCH_DIRS=`echo ${LIB_PATH} | sed -e 's/:/ /g' -e 's/\([^ ][^ ]*\)/SEARCH_DIR(\\"\1\\");/g'`
+a83 11
+# A .xc script is for linking with -z combreloc; it is only generated if
+#   $GENERATE_COMBRELOC_SCRIPT is set by the emulation parameters or
+#   $SCRIPT_NAME is "elf".
+# A .xsc script is for linking with --shared -z combreloc; it is generated
+#   if $GENERATE_COMBRELOC_SCRIPT is set by the emulation parameters or
+#   $SCRIPT_NAME is "elf" and $GENERATE_SHLIB_SCRIPT is set by the emulation
+#   parameters too.
+
+if [ "x$SCRIPT_NAME" = "xelf" ]; then
+  GENERATE_COMBRELOC_SCRIPT=yes
+fi
+d85 1
+a85 1
+SEGMENT_SIZE=${SEGMENT_SIZE-${MAXPAGESIZE-${TARGET_PAGE_SIZE}}}
+d99 2
+a100 4
+( echo "/* Script for ld -r: link without relocation */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xr
+d105 2
+a106 4
+( echo "/* Script for ld -Ur: link w/out relocation, do create constructors */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xu
+d111 2
+a112 4
+( echo "/* Default linker script, for normal executables */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.x
+d117 2
+a118 4
+( echo "/* Script for -n: mix text and data on same page */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xn
+d122 2
+a123 16
+( echo "/* Script for -N: mix text and data on same page; don't align data */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xbn
+
+if test -n "$GENERATE_COMBRELOC_SCRIPT"; then
+  DATA_ALIGNMENT=${DATA_ALIGNMENT_c-${DATA_ALIGNMENT_}}
+  LD_FLAG=c
+  COMBRELOC=ldscripts/${EMULATION_NAME}.xc.tmp
+  ( echo "/* Script for -z combreloc: combine and sort reloc sections */"
+    . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+    . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+  ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xc
+  rm -f ${COMBRELOC}
+  COMBRELOC=
+fi
+d130 2
+a131 17
+  (
+    echo "/* Script for ld --shared: link shared library */"
+    . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+    . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+  ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xs
+  if test -n "$GENERATE_COMBRELOC_SCRIPT"; then
+    LD_FLAG=cshared
+    DATA_ALIGNMENT=${DATA_ALIGNMENT_sc-${DATA_ALIGNMENT}}
+    COMBRELOC=ldscripts/${EMULATION_NAME}.xc.tmp
+    ( echo "/* Script for --shared -z combreloc: shared library, combine & sort relocs */"
+      . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+      . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+    ) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xsc
+    rm -f ${COMBRELOC}
+    COMBRELOC=
+  fi
+  unset CREATE_SHLIB
+d137 6
+a142 8
+( echo "/* Script for -Z: traditional binaries with no PLT/GOT padding */"
+  . ${srcdir}/emulparams/${EMULATION_NAME}.sh
+  . ${srcdir}/scripttempl/${SCRIPT_NAME}.sc
+) | sed -e '/^ *$/d;s/[ 	]*$//' > ldscripts/${EMULATION_NAME}.xz
+
+case " $EMULATION_LIBPATH " in
+    *" ${EMULATION_NAME} "*) COMPILE_IN=true;;
+esac
+@
+

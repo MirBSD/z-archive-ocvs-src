@@ -1,0 +1,301 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.16.02.37;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.42.06;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.06;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.14.42;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils as well; i386 is our single target,
+and it's ELF; x86-64 will be ELF as well (I hope).
+@
+text
+@/* $OpenBSD: scanlib.c,v 1.5 2002/09/07 01:25:34 marc Exp $ */
+
+/*
+ * Copyright (c) 2001 Marc Espie.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ * This product includes software developed by Marc Espie for the OpenBSD
+ * Project.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OPENBSD PROJECT AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE OPENBSD
+ * PROJECT OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+#include <sys/types.h>
+#include <sys/param.h>
+
+#include <a.out.h>
+#include <err.h>
+#include <fcntl.h>
+#include <link.h>
+#include <stdio.h>
+#include <unistd.h>
+
+extern void scan_library(int, struct exec *, const char *, const char *,
+			 const char *); 
+
+void
+scan_library(int fd, struct exec *hdr, const char *name, const char *fmt1,
+	     const char *fmt2)
+{
+	struct _dynamic			dyn;
+	struct section_dispatch_table	sdt;
+	const char *fmt;
+	char c;
+
+	if (!fmt1 && !fmt2)
+		printf("%s:\n", name);
+	if (!fmt1)
+		fmt1="\t-l%o.%m => %p (%x)\n";
+	if (!fmt2)
+		fmt2="\t%o (%x)\n";
+	/* Assumes DYNAMIC structure starts data segment */
+	if (lseek(fd, N_DATOFF(*hdr), SEEK_SET) == -1) {
+		warn("%s: lseek", name);
+		return;
+	}
+	if (read(fd, &dyn, sizeof dyn) != sizeof dyn) {
+	    warn("%s: premature EOF reading _dynamic", name);
+	    return;
+	}
+
+	/* Check version */
+	switch (dyn.d_version) {
+	default:
+		warnx("%s: unsupported _DYNAMIC version: %d",
+			name, dyn.d_version);
+		return;
+	case LD_VERSION_SUN:
+	case LD_VERSION_BSD:
+		break;
+	}
+
+	if (lseek(fd, (unsigned long)dyn.d_un.d_sdt + N_TXTOFF(*hdr),
+	    SEEK_SET) == -1) {
+		warn("%s: lseek", name);
+		return;
+	}
+	if (read(fd, &sdt, sizeof sdt) != sizeof sdt) {
+		warn("%s: premature EOF reading sdt", name);
+		return;
+	}
+
+	if (sdt.sdt_sods) {
+		struct sod	sod;
+		off_t		offset;
+		char		entry[MAXPATHLEN];
+
+		for (offset = sdt.sdt_sods; offset != 0; 
+		    offset = sod.sod_next) {
+			if (lseek(fd, offset, SEEK_SET) == -1) {
+				warn("%s: bad seek to sod", name);
+				return;
+			}
+			if (read(fd, &sod, sizeof(sod)) != sizeof(sod)) {
+				warnx("%s: premature EOF reading sod", name);
+				return;
+			}
+
+			if (lseek(fd, (off_t)sod.sod_name, SEEK_SET) == -1) {
+				warn("%s: lseek", name);
+				return;
+			}
+			(void)read(fd, entry, sizeof entry);
+			/* make sure this is terminated */
+			entry[MAXPATHLEN-1] = '\0';
+			if (sod.sod_library)
+				fmt = fmt1;
+			else
+				fmt = fmt2;
+			while ((c = *fmt++) != '\0') {
+				switch(c) {
+				default:
+					putchar(c);
+					continue;
+				case '\\':
+					switch (c = *fmt) {
+					case '\0':
+						continue;
+					case 'n':
+						putchar('\n');
+						break;
+					case 't':
+						putchar('\t');
+						break;
+					}
+					fmt++;
+					break;
+				case '%':
+					switch (c = *fmt) {
+					case '\0':
+						continue;
+					case '%':
+					default:
+						putchar(c);
+						break;
+					case 'A':
+						printf("%s", name);
+						break;
+					case 'a':
+						printf("%s", name);
+						break;
+					case 'o':
+						printf("%s", entry);
+						break;
+					case 'm':
+						printf("%d", sod.sod_major);
+						break;
+					case 'n':
+						printf("%d", sod.sod_minor);
+						break;
+					case 'p':
+						putchar('?');
+						break;
+					case 'x':
+						putchar('?');
+						break;
+					}
+					++fmt;
+					break;
+				}
+			}
+
+		}
+	}
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: scanlib.c,v 1.6 2003/06/03 23:24:21 espie Exp $ */
+d14 4
+@
+

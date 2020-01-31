@@ -1,0 +1,368 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.3
+	cvs-200312222040:1.1.1.3
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.29.31;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.06;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.06;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.09.25.16.35.58;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.12.22.21.00.01;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.01.26.18.42.38;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: pmap_table.c,v 1.14 2001/12/22 09:49:39 smurph Exp $	*/
+
+/* 
+ * Mach Operating System
+ * Copyright (c) 1993-1992 Carnegie Mellon University
+ * All Rights Reserved.
+ * 
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ * 
+ *  Software Distribution Coordinator  or  Software.Distribution@@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ * 
+ * any improvements or extensions that they make and grant Carnegie Mellon 
+ * the rights to redistribute these changes.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/types.h>
+#include <machine/board.h>
+#include <machine/cmmu.h>		/* CMMU stuff */
+#include <uvm/uvm_extern.h>
+#include <machine/pmap_table.h>		/* pmap_table.h*/
+
+#define R VM_PROT_READ
+#define RW VM_PROT_READ|VM_PROT_WRITE
+#define CW CACHE_WT
+#define CI CACHE_INH
+#define CG CACHE_GLOBAL
+
+#undef VEQR_ADDR
+#define VEQR_ADDR 0
+/*  phys_start, virt_start, size, prot, cacheability */
+#ifdef MVME187
+static pmap_table_entry m187_board_table[] = {
+	{ BUGROM_START, BUGROM_START, BUGROM_SIZE, RW, CI},
+	{ SRAM_START  , SRAM_START  , SRAM_SIZE  , RW, CG},
+	{ OBIO_START  , OBIO_START  , OBIO_SIZE  , RW, CI},
+	{ 0           , 0           , 0xffffffff , 0 , 0},
+};
+#endif 
+
+#ifdef MVME188
+static pmap_table_entry m188_board_table[] = {
+	{ MVME188_UTILITY, MVME188_UTILITY, MVME188_UTILITY_SIZE, RW, CI},
+	{ 0           , 0           , 0xffffffff , 0,  0},
+};
+#endif 
+
+#ifdef MVME197
+static pmap_table_entry m197_board_table[] = {
+	{ BUGROM_START, BUGROM_START, BUGROM_SIZE, RW, CI},
+	{ OBIO_START  , OBIO_START  , OBIO_SIZE  , RW, CI},
+	{ 0           , 0           , 0xffffffff , 0 , 0},
+};
+#endif 
+
+pmap_table_t 
+pmap_table_build(endoftext)
+	unsigned endoftext;
+{
+	unsigned int i;
+	pmap_table_t bt, pbt;
+
+	switch (brdtyp) {
+#ifdef MVME187
+	case BRD_187:
+		bt = m187_board_table;
+		break;
+#endif 
+#ifdef MVME188
+	case BRD_188:
+		bt = m188_board_table;
+		break;
+#endif 
+#ifdef MVME197
+	case BRD_197:
+		bt = m197_board_table;
+		break;
+#endif 
+	}
+
+	/* round off all entries to nearest segment */
+	pbt = bt;
+	for (i = 0; pbt->size != 0xffffffff; i++) {
+		if (pbt->size>0)
+			pbt->size = (pbt->size + PAGE_MASK) & ~PAGE_MASK;
+		pbt++;
+	}
+	return bt;
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Release Time. Synchronize with OpenBSD 3.4-current (base system).
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: pmap_table.c,v 1.15 2003/09/16 20:52:22 miod Exp $	*/
+d33 1
+a33 1
+#include <machine/cmmu.h>
+d35 1
+a35 1
+#include <machine/pmap_table.h>
+d37 5
+a41 5
+#define	R	VM_PROT_READ
+#define	RW	(VM_PROT_READ | VM_PROT_WRITE)
+#define	CW	CACHE_WT
+#define	CI	CACHE_INH
+#define	CG	CACHE_GLOBAL
+d43 2
+d47 5
+a51 6
+const pmap_table_entry
+m187_board_table[] = {
+	{ BUG187_START, BUG187_START, round_page(BUG187_SIZE), RW, CI },
+	{ SRAM_START  , SRAM_START  , round_page(SRAM_SIZE)  , RW, CG },
+	{ OBIO_START  , OBIO_START  , round_page(OBIO_SIZE)  , RW, CI },
+	{ 0, 0, 0xffffffff, 0, 0 },
+d56 3
+a58 5
+const pmap_table_entry
+m188_board_table[] = {
+	{ MVME188_UTILITY, MVME188_UTILITY,
+	    round_page(MVME188_UTILITY_SIZE), RW, CI },
+	{ 0, 0, 0xffffffff, 0, 0 },
+d63 4
+a66 6
+const pmap_table_entry
+m197_board_table[] = {
+	{ FLASH_START, FLASH_START, round_page(FLASH_SIZE), RW, CI },
+	{ OBIO_START , OBIO_START , round_page(OBIO_SIZE) , RW, CI },
+	/* No need to mention BUG here - it is contained inside OBIO */
+	{ 0, 0, 0xffffffff, 0, 0 },
+d71 2
+a72 1
+pmap_table_build(void)
+d74 3
+d80 2
+a81 1
+		return m187_board_table;
+d85 2
+a86 1
+		return m188_board_table;
+d90 2
+a91 1
+		return m197_board_table;
+a92 2
+	default:
+		return NULL;	/* silence warning */
+d94 9
+@
+
+
+1.1.1.3
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: pmap_table.c,v 1.16 2003/10/11 22:08:57 miod Exp $	*/
+d3 1
+a3 1
+/*
+d7 1
+a7 1
+ *
+d13 1
+a13 1
+ *
+d17 1
+a17 1
+ *
+d19 1
+a19 1
+ *
+d24 2
+a25 2
+ *
+ * any improvements or extensions that they make and grant Carnegie Mellon
+d52 1
+a52 1
+#endif
+d61 1
+a61 1
+#endif
+d71 1
+a71 1
+#endif
+d73 1
+a73 1
+pmap_table_t
+d80 1
+a80 1
+#endif
+d84 1
+a84 1
+#endif
+d88 1
+a88 1
+#endif
+@
+
+
+1.1.1.4
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: pmap_table.c,v 1.17 2004/01/05 20:07:03 miod Exp $	*/
+a78 1
+	case BRD_8120:
+@
+
+

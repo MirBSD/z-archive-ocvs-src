@@ -1,0 +1,524 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.10.40;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.14;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.14;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.28.34;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Low level DECstation interface to ptrace, for GDB when running native.
+   Copyright 1988, 1989, 1991, 1992, 1995 Free Software Foundation, Inc.
+   Contributed by Alessandro Forin(af@@cs.cmu.edu) at CMU
+   and by Per Bothner(bothner@@cs.wisc.edu) at U.Wisconsin.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "defs.h"
+#include "inferior.h"
+#include "gdbcore.h"
+#include <sys/ptrace.h>
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/user.h>
+#undef JB_S0
+#undef JB_S1
+#undef JB_S2
+#undef JB_S3
+#undef JB_S4
+#undef JB_S5
+#undef JB_S6
+#undef JB_S7
+#undef JB_SP
+#undef JB_S8
+#undef JB_PC
+#undef JB_SR
+#undef NJBREGS
+#include <setjmp.h>		/* For JB_XXX.  */
+
+/* Size of elements in jmpbuf */
+
+#define JB_ELEMENT_SIZE 4
+
+/* Map gdb internal register number to ptrace ``address''.
+   These ``addresses'' are defined in DECstation <sys/ptrace.h> */
+
+#define REGISTER_PTRACE_ADDR(regno) \
+   (regno < 32 ? 		GPR_BASE + regno \
+  : regno == PC_REGNUM ?	PC	\
+  : regno == CAUSE_REGNUM ?	CAUSE	\
+  : regno == HI_REGNUM ?	MMHI	\
+  : regno == LO_REGNUM ?	MMLO	\
+  : regno == FCRCS_REGNUM ?	FPC_CSR	\
+  : regno == FCRIR_REGNUM ?	FPC_EIR	\
+  : regno >= FP0_REGNUM ?	FPR_BASE + (regno - FP0_REGNUM) \
+  : 0)
+
+static char zerobuf[MAX_REGISTER_RAW_SIZE] = {0};
+
+static void fetch_core_registers PARAMS ((char *, unsigned, int, CORE_ADDR));
+
+/* Get all registers from the inferior */
+
+void
+fetch_inferior_registers (regno)
+     int regno;
+{
+  register unsigned int regaddr;
+  char buf[MAX_REGISTER_RAW_SIZE];
+  register int i;
+
+  registers_fetched ();
+
+  for (regno = 1; regno < NUM_REGS; regno++)
+    {
+      regaddr = REGISTER_PTRACE_ADDR (regno);
+      for (i = 0; i < REGISTER_RAW_SIZE (regno); i += sizeof (int))
+ 	{
+ 	  *(int *) &buf[i] = ptrace (PT_READ_U, inferior_pid,
+				     (PTRACE_ARG3_TYPE) regaddr, 0);
+ 	  regaddr += sizeof (int);
+ 	}
+      supply_register (regno, buf);
+    }
+
+  supply_register (ZERO_REGNUM, zerobuf);
+  /* Frame ptr reg must appear to be 0; it is faked by stack handling code. */
+  supply_register (FP_REGNUM, zerobuf);
+}
+
+/* Store our register values back into the inferior.
+   If REGNO is -1, do this for all registers.
+   Otherwise, REGNO specifies which register (so we can save time).  */
+
+void
+store_inferior_registers (regno)
+     int regno;
+{
+  register unsigned int regaddr;
+  char buf[80];
+
+  if (regno > 0)
+    {
+      if (regno == ZERO_REGNUM || regno == PS_REGNUM
+	  || regno == BADVADDR_REGNUM || regno == CAUSE_REGNUM
+	  || regno == FCRIR_REGNUM || regno == FP_REGNUM
+	  || (regno >= FIRST_EMBED_REGNUM && regno <= LAST_EMBED_REGNUM))
+	return;
+      regaddr = REGISTER_PTRACE_ADDR (regno);
+      errno = 0;
+      ptrace (PT_WRITE_U, inferior_pid, (PTRACE_ARG3_TYPE) regaddr,
+	      read_register (regno));
+      if (errno != 0)
+	{
+	  sprintf (buf, "writing register number %d", regno);
+	  perror_with_name (buf);
+	}
+    }
+  else
+    {
+      for (regno = 0; regno < NUM_REGS; regno++)
+	store_inferior_registers (regno);
+    }
+}
+
+
+/* Figure out where the longjmp will land.
+   We expect the first arg to be a pointer to the jmp_buf structure from which
+   we extract the pc (JB_PC) that we will land at.  The pc is copied into PC.
+   This routine returns true on success. */
+
+int
+get_longjmp_target(pc)
+     CORE_ADDR *pc;
+{
+  CORE_ADDR jb_addr;
+  char buf[TARGET_PTR_BIT / TARGET_CHAR_BIT];
+
+  jb_addr = read_register (A0_REGNUM);
+
+  if (target_read_memory (jb_addr + JB_PC * JB_ELEMENT_SIZE, buf,
+			  TARGET_PTR_BIT / TARGET_CHAR_BIT))
+    return 0;
+
+  *pc = extract_address (buf, TARGET_PTR_BIT / TARGET_CHAR_BIT);
+
+  return 1;
+}
+
+/* Extract the register values out of the core file and store
+   them where `read_register' will find them.
+
+   CORE_REG_SECT points to the register values themselves, read into memory.
+   CORE_REG_SIZE is the size of that area.
+   WHICH says which set of registers we are handling (0 = int, 2 = float
+         on machines where they are discontiguous).
+   REG_ADDR is the offset from u.u_ar0 to the register values relative to
+            core_reg_sect.  This is used with old-fashioned core files to
+	    locate the registers in a large upage-plus-stack ".reg" section.
+	    Original upage address X is at location core_reg_sect+x+reg_addr.
+ */
+
+static void
+fetch_core_registers (core_reg_sect, core_reg_size, which, reg_addr)
+     char *core_reg_sect;
+     unsigned core_reg_size;
+     int which;
+     CORE_ADDR reg_addr;
+{
+  register int regno;
+  register unsigned int addr;
+  int bad_reg = -1;
+  register reg_ptr = -reg_addr;		/* Original u.u_ar0 is -reg_addr. */
+
+  /* If u.u_ar0 was an absolute address in the core file, relativize it now,
+     so we can use it as an offset into core_reg_sect.  When we're done,
+     "register 0" will be at core_reg_sect+reg_ptr, and we can use
+     register_addr to offset to the other registers.  If this is a modern
+     core file without a upage, reg_ptr will be zero and this is all a big
+     NOP.  */
+  if (reg_ptr > core_reg_size)
+#ifdef KERNEL_U_ADDR
+    reg_ptr -= KERNEL_U_ADDR;
+#else
+    error ("Old mips core file can't be processed on this machine.");
+#endif
+
+  for (regno = 0; regno < NUM_REGS; regno++)
+    {
+      addr = register_addr (regno, reg_ptr);
+      if (addr >= core_reg_size) {
+	if (bad_reg < 0)
+	  bad_reg = regno;
+      } else {
+	supply_register (regno, core_reg_sect + addr);
+      }
+    }
+  if (bad_reg >= 0)
+    {
+      error ("Register %s not found in core file.", reg_names[bad_reg]);
+    }
+  supply_register (ZERO_REGNUM, zerobuf);
+  /* Frame ptr reg must appear to be 0; it is faked by stack handling code. */
+  supply_register (FP_REGNUM, zerobuf);
+}
+
+/* Return the address in the core dump or inferior of register REGNO.
+   BLOCKEND is the address of the end of the user structure.  */
+
+CORE_ADDR
+register_addr (regno, blockend)
+     int regno;
+     CORE_ADDR blockend;
+{
+  CORE_ADDR addr;
+
+  if (regno < 0 || regno >= NUM_REGS)
+    error ("Invalid register number %d.", regno);
+
+  REGISTER_U_ADDR (addr, blockend, regno);
+
+  return addr;
+}
+
+
+/* Register that we are able to handle mips core file formats.
+   FIXME: is this really bfd_target_unknown_flavour? */
+
+static struct core_fns mips_core_fns =
+{
+  bfd_target_unknown_flavour,
+  fetch_core_registers,
+  NULL
+};
+
+void
+_initialize_core_mips ()
+{
+  add_core_fns (&mips_core_fns);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 2
+   Copyright 1988, 1989, 1991, 1992, 1993, 1995, 1996, 1999, 2000, 2001
+   Free Software Foundation, Inc.
+d6 1
+a6 1
+   This file is part of GDB.
+d8 13
+a20 14
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a24 1
+#include "regcache.h"
+d51 12
+a62 13
+static int
+register_ptrace_addr (int regno)
+{
+  return (regno < 32 ? GPR_BASE + regno
+	  : regno == mips_regnum (current_gdbarch)->pc ? PC
+	  : regno == mips_regnum (current_gdbarch)->cause ? CAUSE
+	  : regno == mips_regnum (current_gdbarch)->hi ? MMHI
+	  : regno == mips_regnum (current_gdbarch)->lo ? MMLO
+	  : regno == mips_regnum (current_gdbarch)->fp_control_status ? FPC_CSR
+	  : regno == mips_regnum (current_gdbarch)->fp_implementation_revision ? FPC_EIR
+	  : regno >= FP0_REGNUM ? FPR_BASE + (regno - FP0_REGNUM)
+	  : 0);
+}
+d64 1
+a64 1
+static void fetch_core_registers (char *, unsigned, int, CORE_ADDR);
+d69 2
+a70 1
+fetch_inferior_registers (int regno)
+d72 3
+a74 5
+  unsigned int regaddr;
+  char buf[MAX_REGISTER_SIZE];
+  int i;
+  char zerobuf[MAX_REGISTER_SIZE];
+  memset (zerobuf, 0, MAX_REGISTER_SIZE);
+d76 1
+a76 1
+  deprecated_registers_fetched ();
+d80 4
+a83 4
+      regaddr = register_ptrace_addr (regno);
+      for (i = 0; i < DEPRECATED_REGISTER_RAW_SIZE (regno); i += sizeof (int))
+	{
+	  *(int *) &buf[i] = ptrace (PT_READ_U, PIDGET (inferior_ptid),
+d85 2
+a86 2
+	  regaddr += sizeof (int);
+	}
+d92 1
+a92 1
+  supply_register (DEPRECATED_FP_REGNUM, zerobuf);
+d100 2
+a101 1
+store_inferior_registers (int regno)
+d103 1
+a103 1
+  unsigned int regaddr;
+d109 2
+a110 4
+	  || regno == mips_regnum (current_gdbarch)->badvaddr
+	  || regno == mips_regnum (current_gdbarch)->cause
+	  || regno == mips_regnum (current_gdbarch)->fp_implementation_revision
+	  || regno == DEPRECATED_FP_REGNUM
+d113 1
+a113 1
+      regaddr = register_ptrace_addr (regno);
+d115 1
+a115 1
+      ptrace (PT_WRITE_U, PIDGET (inferior_ptid), (PTRACE_ARG3_TYPE) regaddr,
+d137 2
+a138 1
+get_longjmp_target (CORE_ADDR *pc)
+d141 1
+a141 1
+  char *buf;
+a142 1
+  buf = alloca (TARGET_PTR_BIT / TARGET_CHAR_BIT);
+d149 1
+a149 1
+  *pc = extract_unsigned_integer (buf, TARGET_PTR_BIT / TARGET_CHAR_BIT);
+d160 1
+a160 1
+   on machines where they are discontiguous).
+d162 3
+a164 3
+   core_reg_sect.  This is used with old-fashioned core files to
+   locate the registers in a large upage-plus-stack ".reg" section.
+   Original upage address X is at location core_reg_sect+x+reg_addr.
+d168 5
+a172 2
+fetch_core_registers (char *core_reg_sect, unsigned core_reg_size, int which,
+		      CORE_ADDR reg_addr)
+d174 2
+a175 2
+  int regno;
+  unsigned int addr;
+d177 1
+a177 5
+  reg_ptr = -reg_addr;	/* Original u.u_ar0 is -reg_addr. */
+
+  char zerobuf[MAX_REGISTER_SIZE];
+  memset (zerobuf, 0, MAX_REGISTER_SIZE);
+
+d195 6
+a200 9
+      if (addr >= core_reg_size)
+	{
+	  if (bad_reg < 0)
+	    bad_reg = regno;
+	}
+      else
+	{
+	  supply_register (regno, core_reg_sect + addr);
+	}
+d204 1
+a204 1
+      error ("Register %s not found in core file.", REGISTER_NAME (bad_reg));
+d208 1
+a208 1
+  supply_register (DEPRECATED_FP_REGNUM, zerobuf);
+d215 3
+a217 1
+register_addr (int regno, CORE_ADDR blockend)
+d228 1
+a229 1
+
+d235 3
+a237 5
+  bfd_target_unknown_flavour,		/* core_flavour */
+  default_check_format,			/* check_format */
+  default_core_sniffer,			/* core_sniffer */
+  fetch_core_registers,			/* core_read_registers */
+  NULL					/* next */
+d241 1
+a241 1
+_initialize_core_mips (void)
+@
+

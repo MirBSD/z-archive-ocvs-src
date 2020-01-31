@@ -1,0 +1,986 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.55.54;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.01.02;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.15;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.15;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.27.34;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.39.58;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.02.57;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.03.15;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* addr2line.c -- convert addresses to line number and function name
+   Copyright 1997, 1998, 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+   Contributed by Ulrich Lauther <Ulrich.Lauther@@mchp.siemens.de>
+
+   This file is part of GNU Binutils.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+/* Derived from objdump.c and nm.c by Ulrich.Lauther@@mchp.siemens.de
+
+   Usage:
+   addr2line [options] addr addr ...
+   or
+   addr2line [options]
+
+   both forms write results to stdout, the second form reads addresses
+   to be converted from stdin.  */
+
+#include <string.h>
+
+#include "bfd.h"
+#include "getopt.h"
+#include "libiberty.h"
+#include "demangle.h"
+#include "bucomm.h"
+#include "budemang.h"
+
+static bfd_boolean with_functions;	/* -f, show function names.  */
+static bfd_boolean do_demangle;		/* -C, demangle names.  */
+static bfd_boolean base_names;		/* -s, strip directory names.  */
+
+static int naddr;		/* Number of addresses to process.  */
+static char **addr;		/* Hex addresses to process.  */
+
+static asymbol **syms;		/* Symbol table.  */
+
+static struct option long_options[] =
+{
+  {"basenames", no_argument, NULL, 's'},
+  {"demangle", optional_argument, NULL, 'C'},
+  {"exe", required_argument, NULL, 'e'},
+  {"functions", no_argument, NULL, 'f'},
+  {"target", required_argument, NULL, 'b'},
+  {"help", no_argument, NULL, 'H'},
+  {"version", no_argument, NULL, 'V'},
+  {0, no_argument, 0, 0}
+};
+
+static void usage PARAMS ((FILE *, int));
+static void slurp_symtab PARAMS ((bfd *));
+static void find_address_in_section PARAMS ((bfd *, asection *, PTR));
+static void translate_addresses PARAMS ((bfd *));
+static void process_file PARAMS ((const char *, const char *));
+
+/* Print a usage message to STREAM and exit with STATUS.  */
+
+static void
+usage (stream, status)
+     FILE *stream;
+     int status;
+{
+  fprintf (stream, _("Usage: %s [option(s)] [addr(s)]\n"), program_name);
+  fprintf (stream, _(" Convert addresses into line number/file name pairs.\n"));
+  fprintf (stream, _(" If no addresses are specified on the command line, they will be read from stdin\n"));
+  fprintf (stream, _(" The options are:\n\
+  -b --target=<bfdname>  Set the binary file format\n\
+  -e --exe=<executable>  Set the input file name (default is a.out)\n\
+  -s --basenames         Strip directory names\n\
+  -f --functions         Show function names\n\
+  -C --demangle[=style]  Demangle function names\n\
+  -h --help              Display this information\n\
+  -v --version           Display the program's version\n\
+\n"));
+
+  list_supported_targets (program_name, stream);
+  if (status == 0)
+    fprintf (stream, _("Report bugs to %s\n"), REPORT_BUGS_TO);
+  exit (status);
+}
+
+/* Read in the symbol table.  */
+
+static void
+slurp_symtab (abfd)
+     bfd *abfd;
+{
+  long symcount;
+  unsigned int size;
+
+  if ((bfd_get_file_flags (abfd) & HAS_SYMS) == 0)
+    return;
+
+  symcount = bfd_read_minisymbols (abfd, FALSE, (PTR) &syms, &size);
+  if (symcount == 0)
+    symcount = bfd_read_minisymbols (abfd, TRUE /* dynamic */, (PTR) &syms, &size);
+
+  if (symcount < 0)
+    bfd_fatal (bfd_get_filename (abfd));
+}
+
+/* These global variables are used to pass information between
+   translate_addresses and find_address_in_section.  */
+
+static bfd_vma pc;
+static const char *filename;
+static const char *functionname;
+static unsigned int line;
+static bfd_boolean found;
+
+/* Look for an address in a section.  This is called via
+   bfd_map_over_sections.  */
+
+static void
+find_address_in_section (abfd, section, data)
+     bfd *abfd;
+     asection *section;
+     PTR data ATTRIBUTE_UNUSED;
+{
+  bfd_vma vma;
+  bfd_size_type size;
+
+  if (found)
+    return;
+
+  if ((bfd_get_section_flags (abfd, section) & SEC_ALLOC) == 0)
+    return;
+
+  vma = bfd_get_section_vma (abfd, section);
+  if (pc < vma)
+    return;
+
+  size = bfd_get_section_size_before_reloc (section);
+  if (pc >= vma + size)
+    return;
+
+  found = bfd_find_nearest_line (abfd, section, syms, pc - vma,
+				 &filename, &functionname, &line);
+}
+
+/* Read hexadecimal addresses from stdin, translate into
+   file_name:line_number and optionally function name.  */
+
+static void
+translate_addresses (abfd)
+     bfd *abfd;
+{
+  int read_stdin = (naddr == 0);
+
+  for (;;)
+    {
+      if (read_stdin)
+	{
+	  char addr_hex[100];
+
+	  if (fgets (addr_hex, sizeof addr_hex, stdin) == NULL)
+	    break;
+	  pc = bfd_scan_vma (addr_hex, NULL, 16);
+	}
+      else
+	{
+	  if (naddr <= 0)
+	    break;
+	  --naddr;
+	  pc = bfd_scan_vma (*addr++, NULL, 16);
+	}
+
+      found = FALSE;
+      bfd_map_over_sections (abfd, find_address_in_section, (PTR) NULL);
+
+      if (! found)
+	{
+	  if (with_functions)
+	    printf ("??\n");
+	  printf ("??:0\n");
+	}
+      else
+	{
+	  if (with_functions)
+	    {
+	      const char *name;
+	      char *alloc = NULL;
+
+	      name = functionname;
+	      if (name == NULL || *name == '\0')
+		name = "??";
+	      else if (do_demangle)
+		{
+		  alloc = demangle (abfd, name);
+		  name = alloc;
+		}
+
+	      printf ("%s\n", name);
+
+	      if (alloc != NULL)
+		free (alloc);
+	    }
+
+	  if (base_names && filename != NULL)
+	    {
+	      char *h;
+
+	      h = strrchr (filename, '/');
+	      if (h != NULL)
+		filename = h + 1;
+	    }
+
+	  printf ("%s:%u\n", filename ? filename : "??", line);
+	}
+
+      /* fflush() is essential for using this command as a server
+         child process that reads addresses from a pipe and responds
+         with line number information, processing one address at a
+         time.  */
+      fflush (stdout);
+    }
+}
+
+/* Process a file.  */
+
+static void
+process_file (file_name, target)
+     const char *file_name;
+     const char *target;
+{
+  bfd *abfd;
+  char **matching;
+
+  abfd = bfd_openr (file_name, target);
+  if (abfd == NULL)
+    bfd_fatal (file_name);
+
+  if (bfd_check_format (abfd, bfd_archive))
+    fatal (_("%s: can not get addresses from archive"), file_name);
+
+  if (! bfd_check_format_matches (abfd, bfd_object, &matching))
+    {
+      bfd_nonfatal (bfd_get_filename (abfd));
+      if (bfd_get_error () == bfd_error_file_ambiguously_recognized)
+	{
+	  list_matching_formats (matching);
+	  free (matching);
+	}
+      xexit (1);
+    }
+
+  slurp_symtab (abfd);
+
+  translate_addresses (abfd);
+
+  if (syms != NULL)
+    {
+      free (syms);
+      syms = NULL;
+    }
+
+  bfd_close (abfd);
+}
+
+int main PARAMS ((int, char **));
+
+int
+main (argc, argv)
+     int argc;
+     char **argv;
+{
+  const char *file_name;
+  char *target;
+  int c;
+
+#if defined (HAVE_SETLOCALE) && defined (HAVE_LC_MESSAGES)
+  setlocale (LC_MESSAGES, "");
+#endif
+#if defined (HAVE_SETLOCALE)
+  setlocale (LC_CTYPE, "");
+#endif
+  bindtextdomain (PACKAGE, LOCALEDIR);
+  textdomain (PACKAGE);
+
+  program_name = *argv;
+  xmalloc_set_program_name (program_name);
+
+  bfd_init ();
+  set_default_bfd_target ();
+
+  file_name = NULL;
+  target = NULL;
+  while ((c = getopt_long (argc, argv, "b:Ce:sfHhVv", long_options, (int *) 0))
+	 != EOF)
+    {
+      switch (c)
+	{
+	case 0:
+	  break;		/* We've been given a long option.  */
+	case 'b':
+	  target = optarg;
+	  break;
+	case 'C':
+	  do_demangle = TRUE;
+	  if (optarg != NULL)
+	    {
+	      enum demangling_styles style;
+
+	      style = cplus_demangle_name_to_style (optarg);
+	      if (style == unknown_demangling)
+		fatal (_("unknown demangling style `%s'"),
+		       optarg);
+
+	      cplus_demangle_set_style (style);
+	    }
+	  break;
+	case 'e':
+	  file_name = optarg;
+	  break;
+	case 's':
+	  base_names = TRUE;
+	  break;
+	case 'f':
+	  with_functions = TRUE;
+	  break;
+	case 'v':
+	case 'V':
+	  print_version ("addr2line");
+	  break;
+	case 'h':
+	case 'H':
+	  usage (stdout, 0);
+	  break;
+	default:
+	  usage (stderr, 1);
+	  break;
+	}
+    }
+
+  if (file_name == NULL)
+    file_name = "a.out";
+
+  addr = argv + optind;
+  naddr = argc - optind;
+
+  process_file (file_name, target);
+
+  return 0;
+}
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweißer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1997, 1998, 1999, 2000 Free Software Foundation, Inc.
+d23 1
+a23 1
+   Usage: 
+d26 1
+a26 1
+   addr2line [options] 
+a30 1
+#include <ctype.h>
+d38 1
+d40 3
+a42 5
+extern char *program_version;
+
+static boolean with_functions;	/* -f, show function names.  */
+static boolean do_demangle;	/* -C, demangle names.  */
+static boolean base_names;	/* -s, strip directory names.  */
+d74 13
+a86 5
+  fprintf (stream, _("\
+Usage: %s [-CfsHV] [-b bfdname] [--target=bfdname]\n\
+       [-e executable] [--exe=executable] [--demangle[=style]]\n\
+       [--basenames] [--functions] [addr addr ...]\n"),
+	   program_name);
+a98 1
+  long storage;
+d100 1
+d105 3
+a107 5
+  storage = bfd_get_symtab_upper_bound (abfd);
+  if (storage < 0)
+    bfd_fatal (bfd_get_filename (abfd));
+
+  syms = (asymbol **) xmalloc (storage);
+a108 1
+  symcount = bfd_canonicalize_symtab (abfd, syms);
+d120 1
+a120 1
+static boolean found;
+d179 1
+a179 1
+      found = false;
+d192 7
+a198 5
+	      if (functionname == NULL || *functionname == '\0')
+		printf ("??\n");
+	      else if (! do_demangle)
+		printf ("%s\n", functionname);
+	      else
+d200 5
+a204 1
+		  char *res;
+d206 2
+a207 9
+		  res = cplus_demangle (functionname, DMGL_ANSI | DMGL_PARAMS);
+		  if (res == NULL)
+		    printf ("%s\n", functionname);
+		  else
+		    {
+		      printf ("%s\n", res);
+		      free (res);
+		    }
+		}
+d233 2
+a234 2
+process_file (filename, target)
+     const char *filename;
+d240 1
+a240 1
+  abfd = bfd_openr (filename, target);
+d242 1
+a242 1
+    bfd_fatal (filename);
+d245 1
+a245 1
+    fatal (_("%s: can not get addresses from archive"), filename);
+d271 2
+d278 1
+a278 1
+  const char *filename;
+d285 3
+d297 1
+a297 1
+  filename = NULL;
+d299 1
+a299 1
+  while ((c = getopt_long (argc, argv, "b:Ce:sfHV", long_options, (int *) 0))
+d305 1
+a305 1
+	  break;		/* we've been given a long option */
+d310 1
+a310 1
+	  do_demangle = true;
+d314 1
+a314 1
+	      
+d316 1
+a316 1
+	      if (style == unknown_demangling) 
+d319 1
+a319 1
+	      
+d321 1
+a321 1
+           }
+d324 1
+a324 1
+	  filename = optarg;
+d327 1
+a327 1
+	  base_names = true;
+d330 1
+a330 1
+	  with_functions = true;
+d332 1
+d336 1
+d346 2
+a347 2
+  if (filename == NULL)
+    filename = "a.out";
+d352 1
+a352 1
+  process_file (filename, target);
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1997, 1998, 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+d23 1
+a23 1
+   Usage:
+d26 1
+a26 1
+   addr2line [options]
+d31 1
+a38 1
+#include "budemang.h"
+d40 5
+a44 3
+static bfd_boolean with_functions;	/* -f, show function names.  */
+static bfd_boolean do_demangle;		/* -C, demangle names.  */
+static bfd_boolean base_names;		/* -s, strip directory names.  */
+d76 5
+a80 13
+  fprintf (stream, _("Usage: %s [option(s)] [addr(s)]\n"), program_name);
+  fprintf (stream, _(" Convert addresses into line number/file name pairs.\n"));
+  fprintf (stream, _(" If no addresses are specified on the command line, they will be read from stdin\n"));
+  fprintf (stream, _(" The options are:\n\
+  -b --target=<bfdname>  Set the binary file format\n\
+  -e --exe=<executable>  Set the input file name (default is a.out)\n\
+  -s --basenames         Strip directory names\n\
+  -f --functions         Show function names\n\
+  -C --demangle[=style]  Demangle function names\n\
+  -h --help              Display this information\n\
+  -v --version           Display the program's version\n\
+\n"));
+
+d93 1
+a94 1
+  unsigned int size;
+d99 5
+a103 3
+  symcount = bfd_read_minisymbols (abfd, FALSE, (PTR) &syms, &size);
+  if (symcount == 0)
+    symcount = bfd_read_minisymbols (abfd, TRUE /* dynamic */, (PTR) &syms, &size);
+d105 1
+d117 1
+a117 1
+static bfd_boolean found;
+d176 1
+a176 1
+      found = FALSE;
+d189 7
+a195 2
+	      const char *name;
+	      char *alloc = NULL;
+d197 8
+a204 7
+	      name = functionname;
+	      if (name == NULL || *name == '\0')
+		name = "??";
+	      else if (do_demangle)
+		{
+		  alloc = demangle (abfd, name);
+		  name = alloc;
+a205 5
+
+	      printf ("%s\n", name);
+
+	      if (alloc != NULL)
+		free (alloc);
+d231 2
+a232 2
+process_file (file_name, target)
+     const char *file_name;
+d238 1
+a238 1
+  abfd = bfd_openr (file_name, target);
+d240 1
+a240 1
+    bfd_fatal (file_name);
+d243 1
+a243 1
+    fatal (_("%s: can not get addresses from archive"), file_name);
+a268 2
+int main PARAMS ((int, char **));
+
+d274 1
+a274 1
+  const char *file_name;
+a280 3
+#if defined (HAVE_SETLOCALE)
+  setlocale (LC_CTYPE, "");
+#endif
+d290 1
+a290 1
+  file_name = NULL;
+d292 1
+a292 1
+  while ((c = getopt_long (argc, argv, "b:Ce:sfHhVv", long_options, (int *) 0))
+d298 1
+a298 1
+	  break;		/* We've been given a long option.  */
+d303 1
+a303 1
+	  do_demangle = TRUE;
+d307 1
+a307 1
+
+d309 1
+a309 1
+	      if (style == unknown_demangling)
+d312 1
+a312 1
+
+d314 1
+a314 1
+	    }
+d317 1
+a317 1
+	  file_name = optarg;
+d320 1
+a320 1
+	  base_names = TRUE;
+d323 1
+a323 1
+	  with_functions = TRUE;
+a324 1
+	case 'v':
+a327 1
+	case 'h':
+d337 2
+a338 2
+  if (file_name == NULL)
+    file_name = "a.out";
+d343 1
+a343 1
+  process_file (file_name, target);
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d2 1
+a2 2
+   Copyright 1997, 1998, 1999, 2000, 2001, 2002, 2003
+   Free Software Foundation, Inc.
+d61 5
+a65 5
+static void usage (FILE *, int);
+static void slurp_symtab (bfd *);
+static void find_address_in_section (bfd *, asection *, void *);
+static void translate_addresses (bfd *);
+static void process_file (const char *, const char *);
+d70 3
+a72 1
+usage (FILE *stream, int status)
+d96 2
+a97 1
+slurp_symtab (bfd *abfd)
+d105 1
+a105 1
+  symcount = bfd_read_minisymbols (abfd, FALSE, (void *) &syms, &size);
+d107 1
+a107 1
+    symcount = bfd_read_minisymbols (abfd, TRUE /* dynamic */, (void *) &syms, &size);
+d126 4
+a129 2
+find_address_in_section (bfd *abfd, asection *section,
+			 void *data ATTRIBUTE_UNUSED)
+d156 2
+a157 1
+translate_addresses (bfd *abfd)
+d180 1
+a180 1
+      bfd_map_over_sections (abfd, find_address_in_section, NULL);
+d233 3
+a235 1
+process_file (const char *file_name, const char *target)
+a239 3
+  if (get_file_size (file_name) < 1)
+    return;
+
+d271 1
+a271 1
+int main (int, char **);
+d274 3
+a276 1
+main (int argc, char **argv)
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1997, 1998, 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+d23 1
+a23 1
+   Usage:
+d26 1
+a26 1
+   addr2line [options]
+d31 1
+a38 1
+#include "budemang.h"
+d40 5
+a44 3
+static bfd_boolean with_functions;	/* -f, show function names.  */
+static bfd_boolean do_demangle;		/* -C, demangle names.  */
+static bfd_boolean base_names;		/* -s, strip directory names.  */
+d76 5
+a80 13
+  fprintf (stream, _("Usage: %s [option(s)] [addr(s)]\n"), program_name);
+  fprintf (stream, _(" Convert addresses into line number/file name pairs.\n"));
+  fprintf (stream, _(" If no addresses are specified on the command line, they will be read from stdin\n"));
+  fprintf (stream, _(" The options are:\n\
+  -b --target=<bfdname>  Set the binary file format\n\
+  -e --exe=<executable>  Set the input file name (default is a.out)\n\
+  -s --basenames         Strip directory names\n\
+  -f --functions         Show function names\n\
+  -C --demangle[=style]  Demangle function names\n\
+  -h --help              Display this information\n\
+  -v --version           Display the program's version\n\
+\n"));
+
+d93 1
+a94 1
+  unsigned int size;
+d99 5
+a103 3
+  symcount = bfd_read_minisymbols (abfd, FALSE, (PTR) &syms, &size);
+  if (symcount == 0)
+    symcount = bfd_read_minisymbols (abfd, TRUE /* dynamic */, (PTR) &syms, &size);
+d105 1
+d117 1
+a117 1
+static bfd_boolean found;
+d176 1
+a176 1
+      found = FALSE;
+d189 7
+a195 2
+	      const char *name;
+	      char *alloc = NULL;
+d197 8
+a204 7
+	      name = functionname;
+	      if (name == NULL || *name == '\0')
+		name = "??";
+	      else if (do_demangle)
+		{
+		  alloc = demangle (abfd, name);
+		  name = alloc;
+a205 5
+
+	      printf ("%s\n", name);
+
+	      if (alloc != NULL)
+		free (alloc);
+d231 2
+a232 2
+process_file (file_name, target)
+     const char *file_name;
+d238 1
+a238 1
+  abfd = bfd_openr (file_name, target);
+d240 1
+a240 1
+    bfd_fatal (file_name);
+d243 1
+a243 1
+    fatal (_("%s: can not get addresses from archive"), file_name);
+a268 2
+int main PARAMS ((int, char **));
+
+d274 1
+a274 1
+  const char *file_name;
+a280 3
+#if defined (HAVE_SETLOCALE)
+  setlocale (LC_CTYPE, "");
+#endif
+d290 1
+a290 1
+  file_name = NULL;
+d292 1
+a292 1
+  while ((c = getopt_long (argc, argv, "b:Ce:sfHhVv", long_options, (int *) 0))
+d298 1
+a298 1
+	  break;		/* We've been given a long option.  */
+d303 1
+a303 1
+	  do_demangle = TRUE;
+d307 1
+a307 1
+
+d309 1
+a309 1
+	      if (style == unknown_demangling)
+d312 1
+a312 1
+
+d314 1
+a314 1
+	    }
+d317 1
+a317 1
+	  file_name = optarg;
+d320 1
+a320 1
+	  base_names = TRUE;
+d323 1
+a323 1
+	  with_functions = TRUE;
+a324 1
+	case 'v':
+a327 1
+	case 'h':
+d337 2
+a338 2
+  if (file_name == NULL)
+    file_name = "a.out";
+d343 1
+a343 1
+  process_file (file_name, target);
+@
+

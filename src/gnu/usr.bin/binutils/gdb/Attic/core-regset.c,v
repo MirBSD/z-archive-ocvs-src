@@ -1,0 +1,382 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.07.49;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.09;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.09;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.28.16;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Machine independent GDB support for core files on systems using "regsets".
+   Copyright 1993-1996 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+
+/*			N  O  T  E  S
+
+This file is used by most systems that implement /proc.  For these systems,
+the general registers are laid out the same way in both the core file and
+the gregset_p structure.  The current exception to this is Irix-4.*, where
+the gregset_p structure is split up into two pieces in the core file.
+
+The general register and floating point register sets are manipulated by
+separate ioctl's.  This file makes the assumption that if FP0_REGNUM is
+defined, then support for the floating point register set is desired,
+regardless of whether or not the actual target has floating point hardware.
+
+ */
+
+#include "defs.h"
+
+#include <time.h>
+#ifdef HAVE_SYS_PROCFS_H
+#include <sys/procfs.h>
+#endif
+#include <fcntl.h>
+#include <errno.h>
+#include "gdb_string.h"
+
+#include "inferior.h"
+#include "target.h"
+#include "command.h"
+#include "gdbcore.h"
+
+static void fetch_core_registers PARAMS ((char *, unsigned, int, CORE_ADDR));
+
+/*
+
+GLOBAL FUNCTION
+
+	fetch_core_registers -- fetch current registers from core file
+
+SYNOPSIS
+
+	void fetch_core_registers (char *core_reg_sect,
+					  unsigned core_reg_size,
+					  int which, CORE_ADDR reg_addr)
+
+DESCRIPTION
+
+	Read the values of either the general register set (WHICH equals 0)
+	or the floating point register set (WHICH equals 2) from the core
+	file data (pointed to by CORE_REG_SECT), and update gdb's idea of
+	their current values.  The CORE_REG_SIZE parameter is ignored.
+
+NOTES
+
+	Use the indicated sizes to validate the gregset and fpregset
+	structures.
+*/
+
+static void
+fetch_core_registers (core_reg_sect, core_reg_size, which, reg_addr)
+     char *core_reg_sect;
+     unsigned core_reg_size;
+     int which;
+     CORE_ADDR reg_addr;	/* Unused in this version */
+{
+#if defined (HAVE_GREGSET_T) && defined (HAVE_FPREGSET_T)
+  gregset_t gregset;
+  fpregset_t fpregset;
+
+  if (which == 0)
+    {
+      if (core_reg_size != sizeof (gregset))
+	{
+	  warning ("wrong size gregset struct in core file");
+	}
+      else
+	{
+	  memcpy ((char *) &gregset, core_reg_sect, sizeof (gregset));
+	  supply_gregset (&gregset);
+	}
+    }
+  else if (which == 2)
+    {
+      if (core_reg_size != sizeof (fpregset))
+	{
+	  warning ("wrong size fpregset struct in core file");
+	}
+      else
+	{
+	  memcpy ((char *) &fpregset, core_reg_sect, sizeof (fpregset));
+#if defined (FP0_REGNUM)
+	  supply_fpregset (&fpregset);
+#endif
+	}
+    }
+#endif	/* defined(HAVE_GREGSET_T) && defined (HAVE_FPREGSET_T) */
+}
+
+
+/* Register that we are able to handle ELF file formats using standard
+   procfs "regset" structures.  */
+
+static struct core_fns regset_core_fns =
+{
+  bfd_target_elf_flavour,
+  fetch_core_registers,
+  NULL
+};
+
+void
+_initialize_core_regset ()
+{
+  add_core_fns (&regset_core_fns);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+d4 1
+a4 2
+   Copyright 1993, 1994, 1995, 1996, 1998, 1999, 2000, 2003
+   Free Software Foundation, Inc.
+d6 4
+a9 1
+   This file is part of GDB.
+d11 23
+a33 23
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+
+/* This file is used by most systems that use ELF for their core
+   dumps.  This includes most systems that have SVR4-ish variant of
+   /proc.  For these systems, the registers are laid out the same way
+   in core files as in the gregset_t and fpregset_t structures that
+   are used in the interaction with /proc (Irix 4 is an exception and
+   therefore doesn't use this file).  Quite a few systems without a
+   SVR4-ish /proc define these structures too, and can make use of
+   this code too.  */
+a35 4
+#include "command.h"
+#include "gdbcore.h"
+#include "inferior.h"
+#include "target.h"
+a36 3
+#include <fcntl.h>
+#include <errno.h>
+#include "gdb_string.h"
+d41 14
+d56 1
+a56 2
+/* Prototypes for supply_gregset etc.  */
+#include "gregset.h"
+d58 1
+a58 1
+/* Provide registers to GDB from a core file.
+d60 3
+a62 3
+   CORE_REG_SECT points to an array of bytes, which are the contents
+   of a `note' from a core file which BFD thinks might contain
+   register contents.  CORE_REG_SIZE is its size.
+d64 1
+a64 3
+   WHICH says which register set corelow suspects this is:
+     0 --- the general-purpose register set, in gregset_t format
+     2 --- the floating-point register set, in fpregset_t format
+d66 10
+a75 1
+   REG_ADDR is ignored.  */
+d78 5
+a82 2
+fetch_core_registers (char *core_reg_sect, unsigned core_reg_size, int which,
+		      CORE_ADDR reg_addr)
+d84 3
+a86 2
+  gdb_gregset_t gregset;
+  gdb_fpregset_t fpregset;
+d88 1
+a88 1
+  switch (which)
+a89 1
+    case 0:
+d91 3
+a93 1
+	warning ("Wrong size gregset in core file.");
+d96 1
+a96 1
+	  memcpy (&gregset, core_reg_sect, sizeof (gregset));
+d99 3
+a101 3
+      break;
+
+    case 2:
+d103 3
+a105 1
+	warning ("Wrong size fpregset in core file.");
+d108 4
+a111 3
+	  memcpy (&fpregset, core_reg_sect, sizeof (fpregset));
+	  if (FP0_REGNUM >= 0)
+	    supply_fpregset (&fpregset);
+a112 7
+      break;
+
+    default:
+      /* We've covered all the kinds of registers we know about here,
+         so this must be something we wouldn't know what to do with
+         anyway.  Just ignore it.  */
+      break;
+d114 1
+d116 1
+d118 2
+a119 3
+
+/* Register that we are able to handle ELF core file formats using
+   standard procfs "regset" structures.  */
+d123 3
+a125 5
+  bfd_target_elf_flavour,		/* core_flavour */
+  default_check_format,			/* check_format */
+  default_core_sniffer,			/* core_sniffer */
+  fetch_core_registers,			/* core_read_registers */
+  NULL					/* next */
+a127 3
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+extern void _initialize_core_regset (void);
+
+d129 1
+a129 1
+_initialize_core_regset (void)
+@
+

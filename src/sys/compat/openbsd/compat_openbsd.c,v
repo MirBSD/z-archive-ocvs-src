@@ -1,0 +1,755 @@
+head	1.12;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.12
+	tg-mergefixes-1-branch:1.12.0.4
+	tg-mergefixes-1-base:1.12
+	MIROS_X:1.12.0.2
+	MIROS_X_BASE:1.12
+	tg-mergetmp-3:1.12;
+locks; strict;
+comment	@ * @;
+
+
+1.12
+date	2004.12.05.14.23.17;	author tg;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	2004.12.05.14.03.21;	author tg;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2004.12.05.14.01.38;	author tg;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2004.12.02.18.13.29;	author tg;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2004.12.02.17.59.27;	author tg;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2004.10.28.20.29.57;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2004.10.26.19.07.34;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2004.10.26.16.31.46;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.10.26.16.23.30;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.10.26.15.42.39;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.10.23.02.28.58;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2004.10.23.00.55.37;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.12
+log
+@fix that, we do need stackgap
+@
+text
+@/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.11 2004/12/05 14:03:21 tg Exp $ */
+/* 	$OpenBSD: compat_aout.c,v 1.1 2003/06/24 22:45:33 espie Exp $ */
+
+/*
+ * Copyright (c) 2004
+ *	Thorsten "mirabile" Glaser <tg@@66h.42h.de>
+ * Copyright (c) 2003 Marc Espie
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/syscall.h>
+#include <sys/signalvar.h>
+#include <sys/mount.h>
+#include <sys/fcntl.h>
+#include <sys/exec.h>
+#include <sys/exec_olf.h>
+#include <sys/malloc.h>
+#include <compat/common/compat_util.h>
+#include <compat/openbsd/compat_openbsd.h>
+#include <compat/openbsd/openbsd_syscall.h>
+#include <compat/openbsd/openbsd_syscallargs.h>
+
+void openbsd_compat_setup(struct exec_package *epp);
+
+extern char sigcode[], esigcode[];
+extern struct sysent openbsd_sysent[];
+#ifdef SYSCALL_DEBUG
+extern char *openbsd_syscallnames[];
+#endif
+
+struct emul emul_openbsd_aout = {
+	"openbsd",
+	NULL,
+	sendsig,
+	OPENBSD_SYS_syscall,
+	OPENBSD_SYS_MAXSYSCALL,
+	openbsd_sysent,
+#ifdef SYSCALL_DEBUG
+	openbsd_syscallnames,
+#else
+	NULL,
+#endif
+	0,
+	copyargs,
+	setregs,
+	NULL,
+	sigcode,
+	esigcode,
+};
+
+struct emul emul_openbsd = {
+	"openbsd",
+	NULL,
+	sendsig,
+	OPENBSD_SYS_syscall,
+	OPENBSD_SYS_MAXSYSCALL,
+	openbsd_sysent,
+#ifdef SYSCALL_DEBUG
+	openbsd_syscallnames,
+#else
+	NULL,
+#endif
+	sizeof(AuxInfo) * ELF_AUX_ENTRIES,
+	elf32_copyargs,
+	setregs,
+	exec_elf32_fixup,
+	sigcode,
+	esigcode,
+};
+
+const char openbsd_emul_path[] = "/emul/openbsd";
+
+void
+openbsd_compat_setup(struct exec_package *epp)
+{
+	epp->ep_emul = &emul_openbsd;
+}
+
+int
+exec_openbsd_elf32_makecmds(struct proc *p, struct exec_package *epp)
+{
+	if (!(emul_openbsd.e_flags & EMUL_ENABLED))
+		return (ENOEXEC);
+	return exec_elf32_makecmds(p, epp);
+}
+
+int
+openbsd_elf_probe(struct proc *p, struct exec_package *epp,
+    char *itp, u_long *pos, u_int8_t *os)
+{
+	char *bp;
+	int error;
+	size_t len;
+
+	if (!elf32_os_pt_note(p, epp, epp->ep_hdr, "MirOS OpenBSD", 14, 4))
+		goto emulated;
+
+	if (!elf32_os_pt_note(p, epp, epp->ep_hdr, "OpenBSD", 8, 4))
+		goto emulated;
+
+	return ENOEXEC;
+
+emulated:
+	if (itp[0]) {
+		if ((error = emul_find(p, NULL, openbsd_emul_path, itp, &bp, 0)))
+			return (error);
+		if ((error = copystr(bp, itp, MAXPATHLEN, &len)))
+			return (error);
+		free(bp, M_TEMP);
+	}
+	epp->ep_emul = &emul_openbsd;
+	*pos = ELF32_NO_ADDR;
+	if (*os == OOS_NULL)
+		*os = OOS_OPENBSD;
+	return (0);
+}
+
+#include <sys/sysctl.h>
+
+int
+openbsd_sys___sysctl(struct proc *p, void *v, register_t *retval)
+{
+	extern int sys___sysctl(struct proc *, void *, register_t *);
+	struct openbsd_sys___sysctl_args /* {
+		syscallarg(int *) name;
+		syscallarg(u_int) namelen;
+		syscallarg(void *) old;
+		syscallarg(size_t *) oldlenp;
+		syscallarg(void *) new;
+		syscallarg(size_t) newlen;
+	} */ *uap = v;
+	struct sys___sysctl_args {
+		syscallarg(int *) name;
+		syscallarg(u_int) namelen;
+		syscallarg(void *) old;
+		syscallarg(size_t *) oldlenp;
+		syscallarg(void *) new;
+		syscallarg(size_t) newlen;
+	} bap;
+	int error;
+	int name[CTL_MAXNAME], *namep;
+	caddr_t sg;
+
+	if (SCARG(uap, new) != NULL &&
+	    (error = suser(p, 0)))
+		return (error);
+	/*
+	 * all top-level sysctl names are non-terminal
+	 */
+	if (SCARG(uap, namelen) > CTL_MAXNAME || SCARG(uap, namelen) < 2)
+		return EINVAL;
+	if ((error = copyin(SCARG(uap, name), name,
+	    SCARG(uap, namelen) * sizeof(int))))
+		return error;
+
+	sg = stackgap_init(p->p_emul);
+	namep = stackgap_alloc(&sg, sizeof(name));
+
+	/*
+	 * XXX Translation OpenBSD -> MirOS sysctl numbers
+	 */
+	if ((name[0] == CTL_KERN) && (name[1] == KERN_OSTYPE)
+	    && (SCARG(uap, new) == NULL)) {
+		name[1] = KERN_EMULUNAME;
+	}
+
+	if ((error = copyout(name, namep, sizeof(name))))
+		return error;
+
+	SCARG(&bap, name) = namep;
+	SCARG(&bap, namelen) = SCARG(uap, namelen);
+	SCARG(&bap, old) = SCARG(uap, old);
+	SCARG(&bap, oldlenp) = SCARG(uap, oldlenp);
+	SCARG(&bap, new) = SCARG(uap, new);
+	SCARG(&bap, newlen) = SCARG(uap, newlen);
+
+	return sys___sysctl(p, &bap, retval);
+}
+@
+
+
+1.11
+log
+@add missing includes and regen
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.10 2004/12/05 14:01:38 tg Exp $ */
+d152 8
+d161 2
+a162 1
+	int name[CTL_MAXNAME];
+d171 7
+a177 5
+		return (EINVAL);
+	error = copyin(SCARG(uap, name), name,
+		       SCARG(uap, namelen) * sizeof(int));
+	if (error)
+		return (error);
+d179 3
+a184 4
+		error = copyin(SCARG(uap, name), name,
+		    SCARG(uap, namelen) * sizeof(int));
+		if (error)
+			return (error);
+d187 11
+a197 1
+	return sys___sysctl(p, v, retval);
+@
+
+
+1.10
+log
+@basic emul_uname support for openbsd compat
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.9 2004/12/02 18:13:29 tg Exp $ */
+d138 2
+d143 1
+@
+
+
+1.9
+log
+@clone netbsd_file.c so we get better pathname translation
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.8 2004/12/02 17:59:27 tg Exp $ */
+d136 39
+@
+
+
+1.8
+log
+@sprinkle some more OPENBSD_CHECK_ALT_EXIST(p, &sg, SCARG(uap, path));
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.7 2004/10/28 20:29:57 tg Exp $ */
+a44 5
+int sys_open(struct proc *, void *, register_t *);
+int sys_link(struct proc *, void *, register_t *);
+int sys_unlink(struct proc *, void *, register_t *);
+int sys_rename(struct proc *, void *, register_t *);
+
+a92 2
+/* XXX We just translate enough calls to allow ldconfig and ld.so to work. */
+
+a96 70
+}
+
+int
+openbsd_sys_open(p, v, retval)
+	struct proc *p;
+	void *v;
+	register_t *retval;
+{
+	struct openbsd_sys_open_args /* {
+		syscallarg(char *) path;
+		syscallarg(int) flags;
+		syscallarg(int) mode;
+	} */ *uap = v;
+	caddr_t sg = stackgap_init(p->p_emul);
+
+	if (SCARG(uap, flags) & O_CREAT)
+		OPENBSD_CHECK_ALT_CREAT(p, &sg, SCARG(uap, path));
+	else
+		OPENBSD_CHECK_ALT_EXIST(p, &sg, SCARG(uap, path));
+	return sys_open(p, uap, retval);
+}
+
+int
+openbsd_sys_link(p, v, retval)
+	struct proc *p;
+	void *v;
+	register_t *retval;
+{
+	struct openbsd_sys_link_args /* {
+		syscallarg(char *) path;
+		syscallarg(char *) link;
+	} */ *uap = v;
+	caddr_t sg = stackgap_init(p->p_emul);
+
+	OPENBSD_CHECK_ALT_EXIST(p, &sg, SCARG(uap, path));
+	OPENBSD_CHECK_ALT_CREAT(p, &sg, SCARG(uap, link));
+	return sys_link(p, uap, retval);
+}
+
+int
+openbsd_sys_unlink(p, v, retval)
+	struct proc *p;
+	void *v;
+	register_t *retval;
+{
+	struct openbsd_sys_unlink_args /* {
+		syscallarg(char *) path;
+	} */ *uap = v;
+	caddr_t sg = stackgap_init(p->p_emul);
+
+	OPENBSD_CHECK_ALT_EXIST(p, &sg, SCARG(uap, path));
+	return sys_unlink(p, uap, retval);
+}
+
+
+int
+openbsd_sys_rename(p, v, retval)
+	struct proc *p;
+	void *v;
+	register_t *retval;
+{
+	struct openbsd_sys_rename_args /* {
+		syscallarg(char *) from;
+		syscallarg(char *) to;
+	} */ *uap = v;
+	caddr_t sg = stackgap_init(p->p_emul);
+
+	OPENBSD_CHECK_ALT_EXIST(p, &sg, SCARG(uap, from));
+	OPENBSD_CHECK_ALT_CREAT(p, &sg, SCARG(uap, to));
+	return sys_rename(p, uap, retval);
+@
+
+
+1.7
+log
+@fixup compilage, now it hangs on fstat()
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.6 2004/10/26 19:07:34 tg Exp $ */
+a96 6
+
+#define OPENBSD_CHECK_ALT_EXIST(p, sgp, path) \
+    CHECK_ALT_EXIST(p, sgp, openbsd_emul_path, path)
+
+#define  OPENBSD_CHECK_ALT_CREAT(p, sgp, path) \
+    CHECK_ALT_CREAT(p, sgp, openbsd_emul_path, path)
+@
+
+
+1.6
+log
+@throw in enough supplementary stuff
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.5 2004/10/26 16:31:46 tg Exp $ */
+a50 1
+
+d52 3
+d190 1
+a190 1
+int 
+@
+
+
+1.5
+log
+@regen; fix bugs
+the kernel compiles ;)
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.4 2004/10/26 16:23:30 tg Exp $ */
+d196 1
+a196 1
+	if (!ELFNAME(os_pt_note)(p, epp, epp->ep_hdr, "MirOS OpenBSD", 14, 4))
+d199 1
+a199 1
+	if (!ELFNAME(os_pt_note)(p, epp, epp->ep_hdr, "OpenBSD", 8, 4))
+@
+
+
+1.4
+log
+@first round of compile fixes
+hook it
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.3 2004/10/26 15:42:39 tg Exp $ */
+d45 4
+a48 4
+int	sys_open(struct proc *, void *, register_t *);
+int	sys_link(struct proc *, void *, register_t *);
+int	sys_unlink(struct proc *, void *, register_t *);
+int	sys_rename(struct proc *, void *, register_t *);
+d86 1
+a86 1
+	sizeof (AuxInfo) * ELF_AUX_ENTRIES,
+d188 2
+a189 1
+int openbsd_elf_probe(struct proc *p, struct exec_package *epp,
+@
+
+
+1.3
+log
+@* step a bit further in writing an OpenBSD compat
+* sort Linux entries
+* replace COMPAT_AOUT (which we don't have, since
+  MirOS #2/a.out is approx. the same as OpenBSD/a.out)
+  by hooks for COMPAT_OPENBSD which enable the emul
+  automatically if an a.out executable is about to
+  be started
+* still not ready ;-) wait for me enabling it in GENERIC
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.2 2004/10/23 02:28:58 tg Exp $ */
+a33 1
+#include <sys/syscallargs.h>
+d35 3
+a37 1
+#include <sys/exec_elf.h>
+d40 2
+d45 5
+d94 1
+a94 1
+const char openbsd_path[] = "/emul/openbsd";
+d97 1
+a97 1
+    CHECK_ALT_EXIST(p, sgp, openbsd_path, path)
+d100 1
+a100 1
+    CHECK_ALT_CREAT(p, sgp, openbsd_path, path)
+d191 1
+a191 2
+	Elf32_Ehdr *eh = epp->ep_hdr;
+	char *bp, *brand;
+@
+
+
+1.2
+log
+@some more stuff
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/sys/compat/openbsd/compat_openbsd.c,v 1.1 2004/10/23 00:55:37 tg Exp $ */
+d44 1
+a44 1
+struct sysent openbsd_sysent[SYS_MAXSYSCALL];
+d46 2
+a47 2
+struct emul emul_openbsd = {
+	"OpenBSD",
+d52 1
+a52 1
+	sysent,
+d58 2
+a59 2
+	sizeof (AuxInfo) * ELF_AUX_ENTRIES,
+	ELFNAME(copyargs),
+d61 1
+a61 1
+	ELFNAME2(exec,fixup),
+d66 11
+a76 2
+#ifdef	syscallarg
+#undef	syscallarg
+d78 6
+a83 27
+
+#define	syscallarg(x)							\
+	union {								\
+		register_t pad;						\
+		struct { x datum; } le;					\
+		struct {						\
+			int8_t pad[ (sizeof (register_t) < sizeof (x))	\
+				? 0					\
+				: sizeof (register_t) - sizeof (x)];	\
+			x datum;					\
+		} be;							\
+	}
+
+
+struct openbsd_sys_open_args {
+	syscallarg(char *) path;
+	syscallarg(int) flags;
+	syscallarg(int) mode;
+};
+
+struct openbsd_sys_link_args {
+	syscallarg(char *) path;
+	syscallarg(char *) link;
+};
+
+struct openbsd_sys_unlink_args {
+	syscallarg(char *) path;
+a85 10
+struct openbsd_sys_rename_args {
+	syscallarg(char *) from;
+	syscallarg(char *) to;
+};
+
+int openbsd_sys_open(struct proc *, void *, register_t *);
+int openbsd_sys_link(struct proc *, void *, register_t *);
+int openbsd_sys_unlink(struct proc *, void *, register_t *);
+int openbsd_sys_rename(struct proc *, void *, register_t *);
+
+d88 1
+a88 1
+#define AOUT_CHECK_ALT_EXIST(p, sgp, path) \
+d91 1
+a91 1
+#define  AOUT_CHECK_ALT_CREAT(p, sgp, path) \
+a98 8
+	if (emul_openbsd.e_sysent == NULL) {
+		memcpy(openbsd_sysent, sysent, sizeof openbsd_sysent); 
+		openbsd_sysent[SYS_open].sy_call = openbsd_sys_open;
+		openbsd_sysent[SYS_link].sy_call = openbsd_sys_link;
+		openbsd_sysent[SYS_unlink].sy_call = openbsd_sys_unlink;
+		openbsd_sysent[SYS_rename].sy_call = openbsd_sys_rename;
+		emul_openbsd.e_sysent = openbsd_sysent;
+	}
+d116 1
+a116 1
+		AOUT_CHECK_ALT_CREAT(p, &sg, SCARG(uap, path));
+d118 1
+a118 1
+		AOUT_CHECK_ALT_EXIST(p, &sg, SCARG(uap, path));
+d134 2
+a135 2
+	AOUT_CHECK_ALT_EXIST(p, &sg, SCARG(uap, path));
+	AOUT_CHECK_ALT_CREAT(p, &sg, SCARG(uap, link));
+d150 1
+a150 1
+	AOUT_CHECK_ALT_EXIST(p, &sg, SCARG(uap, path));
+d167 2
+a168 2
+	AOUT_CHECK_ALT_EXIST(p, &sg, SCARG(uap, from));
+	AOUT_CHECK_ALT_CREAT(p, &sg, SCARG(uap, to));
+d170 8
+@
+
+
+1.1
+log
+@clone compat_aout for compat_openbsd development
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD$ */
+d36 1
+d38 1
+d40 1
+a40 1
+void aout_compat_setup(struct exec_package *epp);
+d44 1
+a44 1
+struct sysent aout_sysent[SYS_MAXSYSCALL];
+d46 2
+a47 2
+struct emul emul_aout = {
+	"native",
+d50 3
+a52 3
+	SYS_syscall,
+	SYS_MAXSYSCALL,
+	NULL,
+d54 1
+a54 1
+	syscallnames,
+d58 2
+a59 2
+	0,
+	copyargs,
+d61 1
+a61 1
+	NULL,
+d83 1
+a83 1
+struct aout_sys_open_args {
+d89 1
+a89 1
+struct aout_sys_link_args {
+d94 1
+a94 1
+struct aout_sys_unlink_args {
+d98 1
+a98 1
+struct aout_sys_rename_args {
+d103 4
+a106 4
+int aout_sys_open(struct proc *, void *, register_t *);
+int aout_sys_link(struct proc *, void *, register_t *);
+int aout_sys_unlink(struct proc *, void *, register_t *);
+int aout_sys_rename(struct proc *, void *, register_t *);
+d108 1
+a108 1
+const char aout_path[] = "/emul/a.out";
+d111 1
+a111 1
+    CHECK_ALT_EXIST(p, sgp, aout_path, path)
+d114 1
+a114 1
+    CHECK_ALT_CREAT(p, sgp, aout_path, path)
+d119 1
+a119 1
+aout_compat_setup(struct exec_package *epp)
+d121 7
+a127 7
+	if (emul_aout.e_sysent == NULL) {
+		memcpy(aout_sysent, sysent, sizeof aout_sysent); 
+		aout_sysent[SYS_open].sy_call = aout_sys_open;
+		aout_sysent[SYS_link].sy_call = aout_sys_link;
+		aout_sysent[SYS_unlink].sy_call = aout_sys_unlink;
+		aout_sysent[SYS_rename].sy_call = aout_sys_rename;
+		emul_aout.e_sysent = aout_sysent;
+d129 1
+a129 1
+	epp->ep_emul = &emul_aout;
+d133 1
+a133 1
+aout_sys_open(p, v, retval)
+d138 1
+a138 1
+	struct aout_sys_open_args /* {
+d153 1
+a153 1
+aout_sys_link(p, v, retval)
+d158 1
+a158 1
+	struct aout_sys_link_args /* {
+d170 1
+a170 1
+aout_sys_unlink(p, v, retval)
+d175 1
+a175 1
+	struct aout_sys_unlink_args /* {
+d186 1
+a186 1
+aout_sys_rename(p, v, retval)
+d191 1
+a191 1
+	struct aout_sys_rename_args /* {
+d200 31
+@
+

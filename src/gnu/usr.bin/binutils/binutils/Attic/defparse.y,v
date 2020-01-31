@@ -1,0 +1,422 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.56.20;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.01.10;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.15;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.15;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.27.41;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.01;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.03.00;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.03.36;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@%{ /* defparse.y - parser for .def files */
+
+/*   Copyright 1995, 1997, 1998, 1999 Free Software Foundation, Inc.
+
+This file is part of GNU Binutils.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "bfd.h"
+#include "bucomm.h"
+#include "dlltool.h"
+%}
+
+%union {
+  char *id;
+  int number;
+};
+
+%token NAME, LIBRARY, DESCRIPTION, STACKSIZE, HEAPSIZE, CODE, DATA
+%token SECTIONS, EXPORTS, IMPORTS, VERSIONK, BASE, CONSTANT
+%token READ WRITE EXECUTE SHARED NONSHARED NONAME
+%token SINGLE MULTIPLE INITINSTANCE INITGLOBAL TERMINSTANCE TERMGLOBAL
+%token <id> ID
+%token <number> NUMBER
+%type  <number> opt_base opt_ordinal opt_NONAME opt_CONSTANT opt_DATA
+%type  <number> attr attr_list opt_number
+%type  <id> opt_name opt_equal_name 
+
+%%
+
+start: start command
+	| command
+	;
+
+command: 
+		NAME opt_name opt_base { def_name ($2, $3); }
+	|	LIBRARY opt_name opt_base option_list { def_library ($2, $3); }
+	|	EXPORTS explist 
+	|	DESCRIPTION ID { def_description ($2);}
+	|	STACKSIZE NUMBER opt_number { def_stacksize ($2, $3);}
+	|	HEAPSIZE NUMBER opt_number { def_heapsize ($2, $3);}
+	|	CODE attr_list { def_code ($2);}
+	|	DATA attr_list  { def_data ($2);}
+	|	SECTIONS seclist
+	|	IMPORTS implist
+	|	VERSIONK NUMBER { def_version ($2,0);}
+	|	VERSIONK NUMBER '.' NUMBER { def_version ($2,$4);}
+	;
+
+
+explist:
+		/* EMPTY */
+	|	explist expline
+	;
+
+expline:
+		ID opt_equal_name opt_ordinal opt_NONAME opt_CONSTANT opt_DATA
+			{ def_exports ($1, $2, $3, $4, $5, $6);}
+	;
+implist:	
+		implist impline
+	|	impline
+	;
+
+impline:
+               ID '=' ID '.' ID '.' ID     { def_import ($1,$3,$5,$7, 0); }
+       |       ID '=' ID '.' ID '.' NUMBER { def_import ($1,$3,$5, 0,$7); }
+       |       ID '=' ID '.' ID            { def_import ($1,$3, 0,$5, 0); }
+       |       ID '=' ID '.' NUMBER        { def_import ($1,$3, 0, 0,$5); }
+       |       ID '.' ID '.' ID            { def_import ( 0,$1,$3,$5, 0); }
+       |       ID '.' ID '.' NUMBER        { def_import ( 0,$1,$3, 0,$5); }
+       |       ID '.' ID                   { def_import ( 0,$1, 0,$3, 0); }
+       |       ID '.' NUMBER               { def_import ( 0,$1, 0, 0,$3); }
+;
+
+seclist:
+		seclist secline
+	|	secline
+	;
+
+secline:
+	ID attr_list { def_section ($1,$2);}
+	;
+
+attr_list:
+	attr_list opt_comma attr
+	| attr
+	;
+
+opt_comma:
+	','
+	| 
+	;
+opt_number: ',' NUMBER { $$=$2;}
+	|	   { $$=-1;}
+	;
+	
+attr:
+		READ { $$ = 1; }
+	|	WRITE { $$ = 2; }
+	|	EXECUTE { $$ = 4; }
+	|	SHARED { $$ = 8; }
+	|	NONSHARED { $$ = 0; }
+	|	SINGLE { $$ = 0; }
+	|	MULTIPLE { $$ = 0; }
+	;
+
+opt_CONSTANT:
+		CONSTANT {$$=1;}
+	|		 {$$=0;}
+	;
+
+opt_NONAME:
+		NONAME {$$=1;}
+	|		 {$$=0;}
+	;
+
+opt_DATA:
+		DATA { $$ = 1; }
+	|	     { $$ = 0; }
+	;
+
+opt_name: ID		{ $$ =$1; }
+	| ID '.' ID	
+	  { 
+	    char *name = xmalloc (strlen ($1) + 1 + strlen ($3) + 1);
+	    sprintf (name, "%s.%s", $1, $3);
+	    $$ = name;
+	  }
+	|		{ $$=""; }
+	;
+
+opt_ordinal: 
+	  '@@' NUMBER     { $$=$2;}
+	|                { $$=-1;}
+	;
+
+opt_equal_name:
+          '=' ID	{ $$ = $2; }
+	| '=' ID '.' ID	
+	  { 
+	    char *name = xmalloc (strlen ($2) + 1 + strlen ($4) + 1);
+	    sprintf (name, "%s.%s", $2, $4);
+	    $$ = name;
+	  }
+        | 		{ $$ =  0; }			 
+	;
+
+opt_base: BASE	'=' NUMBER	{ $$= $3;}
+	|	{ $$=-1;}
+	;
+
+option_list:
+		/* empty */
+	|	option_list opt_comma option
+	;
+
+option:
+		INITINSTANCE
+	|	INITGLOBAL
+	|	TERMINSTANCE
+	|	TERMGLOBAL
+	;
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d152 6
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@a151 6
+	| '=' ID '.' ID	
+	  { 
+	    char *name = xmalloc (strlen ($2) + 1 + strlen ($4) + 1);
+	    sprintf (name, "%s.%s", $2, $4);
+	    $$ = name;
+	  }
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d3 1
+a3 2
+/*  Copyright 1995, 1997, 1998, 1999, 2004
+    Free Software Foundation, Inc.
+d5 1
+a5 1
+    This file is part of GNU Binutils.
+d7 13
+a19 13
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+d33 1
+a33 1
+%token READ WRITE EXECUTE SHARED NONSHARED NONAME PRIVATE
+d37 1
+a37 1
+%type  <number> opt_base opt_ordinal opt_NONAME opt_CONSTANT opt_DATA opt_PRIVATE
+d69 2
+a70 2
+		ID opt_equal_name opt_ordinal opt_NONAME opt_CONSTANT opt_DATA opt_PRIVATE
+			{ def_exports ($1, $2, $3, $4, $5, $6, $7);}
+a132 5
+	;
+
+opt_PRIVATE:
+		PRIVATE { $$ = 1; }
+	|		{ $$ = 0; }
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@a151 6
+	| '=' ID '.' ID	
+	  { 
+	    char *name = xmalloc (strlen ($2) + 1 + strlen ($4) + 1);
+	    sprintf (name, "%s.%s", $2, $4);
+	    $$ = name;
+	  }
+@
+

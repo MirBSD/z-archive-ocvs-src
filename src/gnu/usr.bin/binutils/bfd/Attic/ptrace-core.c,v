@@ -1,0 +1,628 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.53.48;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.00.43;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.11;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.11;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.27.02;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.55;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.04.38;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.08.39;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* BFD backend for core files which use the ptrace_user structure
+   Copyright 1993, 1994, 1995, 1996, 1998, 1999, 2001, 2002
+   Free Software Foundation, Inc.
+   The structure of this file is based on trad-core.c written by John Gilmore
+   of Cygnus Support.
+   Modified to work with the ptrace_user structure by Kevin A. Buettner.
+   (Longterm it may be better to merge this file with trad-core.c)
+
+This file is part of BFD, the Binary File Descriptor library.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#ifdef PTRACE_CORE
+
+#include "bfd.h"
+#include "sysdep.h"
+#include "libbfd.h"
+
+#include <sys/param.h>
+#include <sys/dir.h>
+#include <signal.h>
+#include <sys/ptrace.h>
+
+struct trad_core_struct
+  {
+    asection *data_section;
+    asection *stack_section;
+    asection *reg_section;
+    struct ptrace_user u;
+  };
+
+#define core_upage(bfd) (&((bfd)->tdata.trad_core_data->u))
+#define core_datasec(bfd) ((bfd)->tdata.trad_core_data->data_section)
+#define core_stacksec(bfd) ((bfd)->tdata.trad_core_data->stack_section)
+#define core_regsec(bfd) ((bfd)->tdata.trad_core_data->reg_section)
+
+/* forward declarations */
+
+const bfd_target *ptrace_unix_core_file_p PARAMS ((bfd *abfd));
+char * ptrace_unix_core_file_failing_command PARAMS ((bfd *abfd));
+int ptrace_unix_core_file_failing_signal PARAMS ((bfd *abfd));
+bfd_boolean ptrace_unix_core_file_matches_executable_p
+  PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+static void swap_abort PARAMS ((void));
+
+/* ARGSUSED */
+const bfd_target *
+ptrace_unix_core_file_p (abfd)
+     bfd *abfd;
+
+{
+  int val;
+  struct ptrace_user u;
+  struct trad_core_struct *rawptr;
+  bfd_size_type amt;
+
+  val = bfd_bread ((void *)&u, (bfd_size_type) sizeof u, abfd);
+  if (val != sizeof u || u.pt_magic != _BCS_PTRACE_MAGIC
+      || u.pt_rev != _BCS_PTRACE_REV)
+    {
+      /* Too small to be a core file */
+      bfd_set_error (bfd_error_wrong_format);
+      return 0;
+    }
+
+  /* OK, we believe you.  You're a core file (sure, sure).  */
+
+  /* Allocate both the upage and the struct core_data at once, so
+     a single free() will free them both.  */
+  amt = sizeof (struct trad_core_struct);
+  rawptr = (struct trad_core_struct *) bfd_zalloc (abfd, amt);
+
+  if (rawptr == NULL)
+    return 0;
+
+  abfd->tdata.trad_core_data = rawptr;
+
+  rawptr->u = u; /*Copy the uarea into the tdata part of the bfd */
+
+  /* Create the sections.  */
+
+  core_stacksec (abfd) = bfd_make_section_anyway (abfd, ".stack");
+  if (core_stacksec (abfd) == NULL)
+    goto fail;
+  core_datasec (abfd) = bfd_make_section_anyway (abfd, ".data");
+  if (core_datasec (abfd) == NULL)
+    goto fail;
+  core_regsec (abfd) = bfd_make_section_anyway (abfd, ".reg");
+  if (core_regsec (abfd) == NULL)
+    goto fail;
+
+  /* FIXME:  Need to worry about shared memory, library data, and library
+     text.  I don't think that any of these things are supported on the
+     system on which I am developing this for though.  */
+
+  core_stacksec (abfd)->flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+  core_datasec (abfd)->flags = SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS;
+  core_regsec (abfd)->flags = SEC_HAS_CONTENTS;
+
+  core_datasec (abfd)->_raw_size =  u.pt_dsize;
+  core_stacksec (abfd)->_raw_size = u.pt_ssize;
+  core_regsec (abfd)->_raw_size = sizeof (u);
+
+  core_datasec (abfd)->vma = u.pt_o_data_start;
+  core_stacksec (abfd)->vma = USRSTACK - u.pt_ssize;
+  core_regsec (abfd)->vma = 0 - sizeof (u);	/* see trad-core.c */
+
+  core_datasec (abfd)->filepos = (int) u.pt_dataptr;
+  core_stacksec (abfd)->filepos = (int) (u.pt_dataptr + u.pt_dsize);
+  core_regsec (abfd)->filepos = 0; /* Register segment is ptrace_user */
+
+  /* Align to word at least */
+  core_stacksec (abfd)->alignment_power = 2;
+  core_datasec (abfd)->alignment_power = 2;
+  core_regsec (abfd)->alignment_power = 2;
+
+  return abfd->xvec;
+
+ fail:
+  bfd_release (abfd, abfd->tdata.any);
+  abfd->tdata.any = NULL;
+  bfd_section_list_clear (abfd);
+  return NULL;
+}
+
+char *
+ptrace_unix_core_file_failing_command (abfd)
+     bfd *abfd;
+{
+  char *com = abfd->tdata.trad_core_data->u.pt_comm;
+  if (*com)
+    return com;
+  else
+    return 0;
+}
+
+/* ARGSUSED */
+int
+ptrace_unix_core_file_failing_signal (abfd)
+     bfd *abfd;
+{
+  return abfd->tdata.trad_core_data->u.pt_sigframe.sig_num;
+}
+
+/* ARGSUSED */
+bfd_boolean
+ptrace_unix_core_file_matches_executable_p  (core_bfd, exec_bfd)
+     bfd *core_bfd, *exec_bfd;
+{
+  /* FIXME: Use pt_timdat field of the ptrace_user structure to match
+     the date of the executable */
+  return TRUE;
+}
+
+/* If somebody calls any byte-swapping routines, shoot them.  */
+static void
+swap_abort ()
+{
+  abort (); /* This way doesn't require any declaration for ANSI to fuck up */
+}
+#define	NO_GET	((bfd_vma (*) PARAMS ((   const bfd_byte *))) swap_abort )
+#define	NO_PUT	((void    (*) PARAMS ((bfd_vma, bfd_byte *))) swap_abort )
+#define	NO_SIGNED_GET \
+  ((bfd_signed_vma (*) PARAMS ((const bfd_byte *))) swap_abort )
+
+const bfd_target ptrace_core_vec =
+  {
+    "trad-core",
+    bfd_target_unknown_flavour,
+    BFD_ENDIAN_UNKNOWN,		/* target byte order */
+    BFD_ENDIAN_UNKNOWN,		/* target headers byte order */
+    (HAS_RELOC | EXEC_P |	/* object flags */
+     HAS_LINENO | HAS_DEBUG |
+     HAS_SYMS | HAS_LOCALS | WP_TEXT | D_PAGED),
+    (SEC_HAS_CONTENTS | SEC_ALLOC | SEC_LOAD | SEC_RELOC), /* section flags */
+    0,			                                   /* symbol prefix */
+    ' ',						   /* ar_pad_char */
+    16,							   /* ar_max_namelen */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 64 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 32 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 16 bit data */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 64 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 32 bit hdrs */
+    NO_GET, NO_SIGNED_GET, NO_PUT,	/* 16 bit hdrs */
+
+    {				/* bfd_check_format */
+     _bfd_dummy_target,		/* unknown format */
+     _bfd_dummy_target,		/* object file */
+     _bfd_dummy_target,		/* archive */
+     ptrace_unix_core_file_p	/* a core file */
+    },
+    {				/* bfd_set_format */
+     bfd_false, bfd_false,
+     bfd_false, bfd_false
+    },
+    {				/* bfd_write_contents */
+     bfd_false, bfd_false,
+     bfd_false, bfd_false
+    },
+
+       BFD_JUMP_TABLE_GENERIC (_bfd_generic),
+       BFD_JUMP_TABLE_COPY (_bfd_generic),
+       BFD_JUMP_TABLE_CORE (ptrace_unix),
+       BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
+       BFD_JUMP_TABLE_SYMBOLS (_bfd_nosymbols),
+       BFD_JUMP_TABLE_RELOCS (_bfd_norelocs),
+       BFD_JUMP_TABLE_WRITE (_bfd_generic),
+       BFD_JUMP_TABLE_LINK (_bfd_nolink),
+       BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
+
+    NULL,
+
+    (PTR) 0			/* backend_data */
+};
+
+#endif /* PTRACE_CORE */
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 1995, 1996, 1998, 1999, 2001
+d52 5
+a56 5
+char *		ptrace_unix_core_file_failing_command PARAMS ((bfd *abfd));
+int		ptrace_unix_core_file_failing_signal PARAMS ((bfd *abfd));
+boolean		ptrace_unix_core_file_matches_executable_p
+			 PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+static void	swap_abort PARAMS ((void));
+d67 1
+d69 1
+a69 1
+  val = bfd_read ((void *)&u, 1, sizeof u, abfd);
+d82 2
+a83 2
+  rawptr = (struct trad_core_struct *)
+		bfd_zalloc (abfd, sizeof (struct trad_core_struct));
+d92 1
+a92 2
+  /* Create the sections.  This is raunchy, but bfd_close wants to free
+     them separately.  */
+d94 1
+a94 1
+  core_stacksec (abfd) = (asection *) bfd_zalloc (abfd, sizeof (asection));
+d96 2
+a97 2
+    return NULL;
+  core_datasec (abfd) = (asection *) bfd_zalloc (abfd, sizeof (asection));
+d99 2
+a100 2
+    return NULL;
+  core_regsec (abfd) = (asection *) bfd_zalloc (abfd, sizeof (asection));
+d102 1
+a102 5
+    return NULL;
+
+  core_stacksec (abfd)->name = ".stack";
+  core_datasec (abfd)->name = ".data";
+  core_regsec (abfd)->name = ".reg";
+d129 1
+a129 4
+  abfd->sections = core_stacksec (abfd);
+  core_stacksec (abfd)->next = core_datasec (abfd);
+  core_datasec (abfd)->next = core_regsec (abfd);
+  abfd->section_count = 3;
+d131 5
+a135 1
+  return abfd->xvec;
+d158 1
+a158 1
+boolean
+d164 1
+a164 1
+  return true;
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 1995, 1996, 1998, 1999, 2001, 2002
+d52 5
+a56 5
+char * ptrace_unix_core_file_failing_command PARAMS ((bfd *abfd));
+int ptrace_unix_core_file_failing_signal PARAMS ((bfd *abfd));
+bfd_boolean ptrace_unix_core_file_matches_executable_p
+  PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+static void swap_abort PARAMS ((void));
+a66 1
+  bfd_size_type amt;
+d68 1
+a68 1
+  val = bfd_bread ((void *)&u, (bfd_size_type) sizeof u, abfd);
+d81 2
+a82 2
+  amt = sizeof (struct trad_core_struct);
+  rawptr = (struct trad_core_struct *) bfd_zalloc (abfd, amt);
+d91 2
+a92 1
+  /* Create the sections.  */
+d94 1
+a94 1
+  core_stacksec (abfd) = bfd_make_section_anyway (abfd, ".stack");
+d96 2
+a97 2
+    goto fail;
+  core_datasec (abfd) = bfd_make_section_anyway (abfd, ".data");
+d99 2
+a100 2
+    goto fail;
+  core_regsec (abfd) = bfd_make_section_anyway (abfd, ".reg");
+d102 5
+a106 1
+    goto fail;
+d133 5
+a138 6
+
+ fail:
+  bfd_release (abfd, abfd->tdata.any);
+  abfd->tdata.any = NULL;
+  bfd_section_list_clear (abfd);
+  return NULL;
+d161 1
+a161 1
+bfd_boolean
+d167 1
+a167 1
+  return TRUE;
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 1995, 1996, 1998, 1999, 2001, 2002, 2003, 2004
+d58 1
+d149 1
+d157 1
+d173 4
+a176 7
+
+#define	NO_GET ((bfd_vma (*) (const void *)) swap_abort)
+#define	NO_PUT ((void (*) (bfd_vma, void *)) swap_abort)
+#define	NO_GETS ((bfd_signed_vma (*) (const void *)) swap_abort)
+#define	NO_GET64 ((bfd_uint64_t (*) (const void *)) swap_abort)
+#define	NO_PUT64 ((void (*) (bfd_uint64_t, void *)) swap_abort)
+#define	NO_GETS64 ((bfd_int64_t (*) (const void *)) swap_abort)
+d191 6
+a196 6
+    NO_GET64, NO_GETS64, NO_PUT64,	/* 64 bit data */
+    NO_GET, NO_GETS, NO_PUT,		/* 32 bit data */
+    NO_GET, NO_GETS, NO_PUT,		/* 16 bit data */
+    NO_GET64, NO_GETS64, NO_PUT64,	/* 64 bit hdrs */
+    NO_GET, NO_GETS, NO_PUT,		/* 32 bit hdrs */
+    NO_GET, NO_GETS, NO_PUT,		/* 16 bit hdrs */
+d199 4
+a202 4
+      _bfd_dummy_target,		/* unknown format */
+      _bfd_dummy_target,		/* object file */
+      _bfd_dummy_target,		/* archive */
+      ptrace_unix_core_file_p		/* a core file */
+d205 2
+a206 2
+      bfd_false, bfd_false,
+      bfd_false, bfd_false
+d209 2
+a210 2
+      bfd_false, bfd_false,
+      bfd_false, bfd_false
+d213 9
+a221 9
+    BFD_JUMP_TABLE_GENERIC (_bfd_generic),
+    BFD_JUMP_TABLE_COPY (_bfd_generic),
+    BFD_JUMP_TABLE_CORE (ptrace_unix),
+    BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
+    BFD_JUMP_TABLE_SYMBOLS (_bfd_nosymbols),
+    BFD_JUMP_TABLE_RELOCS (_bfd_norelocs),
+    BFD_JUMP_TABLE_WRITE (_bfd_generic),
+    BFD_JUMP_TABLE_LINK (_bfd_nolink),
+    BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
+d226 1
+a226 1
+  };
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 1995, 1996, 1998, 1999, 2001, 2002
+d52 5
+a56 5
+char * ptrace_unix_core_file_failing_command PARAMS ((bfd *abfd));
+int ptrace_unix_core_file_failing_signal PARAMS ((bfd *abfd));
+bfd_boolean ptrace_unix_core_file_matches_executable_p
+  PARAMS ((bfd *core_bfd, bfd *exec_bfd));
+static void swap_abort PARAMS ((void));
+a66 1
+  bfd_size_type amt;
+d68 1
+a68 1
+  val = bfd_bread ((void *)&u, (bfd_size_type) sizeof u, abfd);
+d81 2
+a82 2
+  amt = sizeof (struct trad_core_struct);
+  rawptr = (struct trad_core_struct *) bfd_zalloc (abfd, amt);
+d91 2
+a92 1
+  /* Create the sections.  */
+d94 1
+a94 1
+  core_stacksec (abfd) = bfd_make_section_anyway (abfd, ".stack");
+d96 2
+a97 2
+    goto fail;
+  core_datasec (abfd) = bfd_make_section_anyway (abfd, ".data");
+d99 2
+a100 2
+    goto fail;
+  core_regsec (abfd) = bfd_make_section_anyway (abfd, ".reg");
+d102 5
+a106 1
+    goto fail;
+d133 5
+a138 6
+
+ fail:
+  bfd_release (abfd, abfd->tdata.any);
+  abfd->tdata.any = NULL;
+  bfd_section_list_clear (abfd);
+  return NULL;
+d161 1
+a161 1
+bfd_boolean
+d167 1
+a167 1
+  return TRUE;
+@
+

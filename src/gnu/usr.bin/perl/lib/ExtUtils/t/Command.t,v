@@ -1,0 +1,527 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.14;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.14;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.42;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/usr/bin/perl -w
+
+BEGIN {
+    if( $ENV{PERL_CORE} ) {
+        chdir 't';
+        @@INC = ('../lib', 'lib/');
+    }
+    else {
+        unshift @@INC, 't/lib/';
+    }
+}
+chdir 't';
+
+BEGIN {
+	1 while unlink 'ecmdfile';
+	# forcibly remove ecmddir/temp2, but don't import mkpath
+	use File::Path ();
+	File::Path::rmtree( 'ecmddir' );
+}
+
+BEGIN {
+	use Test::More tests => 24;
+	use File::Spec;
+}
+
+{
+	# bad neighbor, but test_f() uses exit()
+    *CORE::GLOBAL::exit = '';   # quiet 'only once' warning.
+	*CORE::GLOBAL::exit = sub { return @@_ };
+
+	use_ok( 'ExtUtils::Command' );
+
+	# get a file in the current directory, replace last char with wildcard 
+	my $file;
+	{
+		local *DIR;
+		opendir(DIR, File::Spec->curdir());
+		while ($file = readdir(DIR)) {
+			$file =~ s/\.\z// if $^O eq 'VMS';
+			last if $file =~ /^\w/;
+		}
+	}
+
+
+    # % means 'match one character' on VMS.  Everything else is ?
+    my $match_char = $^O eq 'VMS' ? '%' : '?';
+	($ARGV[0] = $file) =~ s/.\z/$match_char/;
+
+	# this should find the file
+	ExtUtils::Command::expand_wildcards();
+
+	is( scalar @@ARGV, 1, 'found one file' );
+	like( $ARGV[0], qr/$file/, 'expanded wildcard ? successfully' );
+
+	# try it with the asterisk now
+	($ARGV[0] = $file) =~ s/.{3}\z/\*/;
+	ExtUtils::Command::expand_wildcards();
+
+	ok( (grep { qr/$file/ } @@ARGV), 'expanded wildcard * successfully' );
+
+	# concatenate this file with itself
+	# be extra careful the regex doesn't match itself
+    use TieOut;
+	my $out = tie *STDOUT, 'TieOut';
+	my $self = $0;
+	unless (-f $self) {
+	    my ($vol, $dirs, $file) = File::Spec->splitpath($self);
+	    my @@dirs = File::Spec->splitdir($dirs);
+	    unshift(@@dirs, File::Spec->updir);
+	    $dirs = File::Spec->catdir(@@dirs);
+	    $self = File::Spec->catpath($vol, $dirs, $file);
+	}
+	@@ARGV = ($self, $self);
+
+	cat();
+	is( scalar( $$out =~ s/use_ok\( 'ExtUtils::Command'//g), 2, 
+		'concatenation worked' );
+
+	# the truth value here is reversed -- Perl true is C false
+	@@ARGV = ( 'ecmdfile' );
+	ok( test_f(), 'testing non-existent file' );
+
+	@@ARGV = ( 'ecmdfile' );
+	cmp_ok( ! test_f(), '==', (-f 'ecmdfile'), 'testing non-existent file' );
+
+	# these are destructive, have to keep setting @@ARGV
+	@@ARGV = ( 'ecmdfile' );
+	touch();
+
+	@@ARGV = ( 'ecmdfile' );
+	ok( test_f(), 'now creating that file' );
+
+	@@ARGV = ( 'ecmdfile' );
+	ok( -e $ARGV[0], 'created!' );
+
+	my ($now) = time;
+	utime ($now, $now, $ARGV[0]);
+    sleep 2;
+
+	# Just checking modify time stamp, access time stamp is set
+	# to the beginning of the day in Win95.
+    # There's a small chance of a 1 second flutter here.
+    my $stamp = (stat($ARGV[0]))[9];
+	cmp_ok( abs($now - $stamp), '<=', 1, 'checking modify time stamp' ) ||
+      diag "mtime == $stamp, should be $now";
+
+    SKIP: {
+        if ($^O eq 'amigaos' || $^O eq 'os2' || $^O eq 'MSWin32' ||
+            $^O eq 'NetWare' || $^O eq 'dos' || $^O eq 'cygwin'  ||
+            $^O eq 'MacOS'
+           ) {
+            skip( "different file permission semantics on $^O", 3);
+        }
+
+        # change a file to execute-only
+        @@ARGV = ( 0100, 'ecmdfile' );
+        ExtUtils::Command::chmod();
+
+        is( ((stat('ecmdfile'))[2] & 07777) & 0700,
+            0100, 'change a file to execute-only' );
+
+        # change a file to read-only
+        @@ARGV = ( 0400, 'ecmdfile' );
+        ExtUtils::Command::chmod();
+
+        is( ((stat('ecmdfile'))[2] & 07777) & 0700,
+            ($^O eq 'vos' ? 0500 : 0400), 'change a file to read-only' );
+
+        # change a file to write-only
+        @@ARGV = ( 0200, 'ecmdfile' );
+        ExtUtils::Command::chmod();
+
+        is( ((stat('ecmdfile'))[2] & 07777) & 0700,
+            ($^O eq 'vos' ? 0700 : 0200), 'change a file to write-only' );
+    }
+
+    # change a file to read-write
+	@@ARGV = ( 0600, 'ecmdfile' );
+	ExtUtils::Command::chmod();
+
+    is( ((stat('ecmdfile'))[2] & 07777) & 0700,
+        ($^O eq 'vos' ? 0700 : 0600), 'change a file to read-write' );
+
+	# mkpath
+	@@ARGV = ( File::Spec->join( 'ecmddir', 'temp2' ) );
+	ok( ! -e $ARGV[0], 'temp directory not there yet' );
+
+	mkpath();
+	ok( -e $ARGV[0], 'temp directory created' );
+
+	# copy a file to a nested subdirectory
+	unshift @@ARGV, 'ecmdfile';
+	cp();
+
+	ok( -e File::Spec->join( 'ecmddir', 'temp2', 'ecmdfile' ), 'copied okay' );
+
+	# cp should croak if destination isn't directory (not a great warning)
+	@@ARGV = ( 'ecmdfile' ) x 3;
+	eval { cp() };
+
+	like( $@@, qr/Too many arguments/, 'cp croaks on error' );
+
+	# move a file to a subdirectory
+	@@ARGV = ( 'ecmdfile', 'ecmddir' );
+	mv();
+
+	ok( ! -e 'ecmdfile', 'moved file away' );
+	ok( -e File::Spec->join( 'ecmddir', 'ecmdfile' ), 'file in new location' );
+
+	# mv should also croak with the same wacky warning
+	@@ARGV = ( 'ecmdfile' ) x 3;
+
+	eval { mv() };
+	like( $@@, qr/Too many arguments/, 'mv croaks on error' );
+
+	# remove some files
+	my @@files = @@ARGV = ( File::Spec->catfile( 'ecmddir', 'ecmdfile' ),
+	File::Spec->catfile( 'ecmddir', 'temp2', 'ecmdfile' ) );
+	rm_f();
+
+	ok( ! -e $_, "removed $_ successfully" ) for (@@ARGV);
+
+	# rm_f dir
+	@@ARGV = my $dir = File::Spec->catfile( 'ecmddir' );
+	rm_rf();
+	ok( ! -e $dir, "removed $dir successfully" );
+}
+
+END {
+	1 while unlink 'ecmdfile';
+	File::Path::rmtree( 'ecmddir' );
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d15 4
+a18 1
+    $Testfile = 'testfile.foo';
+d22 2
+a23 4
+    1 while unlink $Testfile, 'newfile';
+    # forcibly remove ecmddir/temp2, but don't import mkpath
+    use File::Path ();
+    File::Path::rmtree( 'ecmddir' );
+d26 32
+a57 4
+BEGIN {
+    use Test::More tests => 26;
+    use File::Spec;
+}
+d59 1
+a59 6
+BEGIN {
+    # bad neighbor, but test_f() uses exit()
+        *CORE::GLOBAL::exit = '';   # quiet 'only once' warning.
+    *CORE::GLOBAL::exit = sub { return @@_ };
+    use_ok( 'ExtUtils::Command' );
+}
+d61 2
+a62 3
+{
+    # concatenate this file with itself
+    # be extra careful the regex doesn't match itself
+d64 25
+a88 25
+    my $out = tie *STDOUT, 'TieOut';
+    my $self = $0;
+    unless (-f $self) {
+        my ($vol, $dirs, $file) = File::Spec->splitpath($self);
+        my @@dirs = File::Spec->splitdir($dirs);
+        unshift(@@dirs, File::Spec->updir);
+        $dirs = File::Spec->catdir(@@dirs);
+        $self = File::Spec->catpath($vol, $dirs, $file);
+    }
+    @@ARGV = ($self, $self);
+
+    cat();
+    is( scalar( $$out =~ s/use_ok\( 'ExtUtils::Command'//g), 2, 
+        'concatenation worked' );
+
+    # the truth value here is reversed -- Perl true is C false
+    @@ARGV = ( $Testfile );
+    ok( test_f(), 'testing non-existent file' );
+
+    @@ARGV = ( $Testfile );
+    cmp_ok( ! test_f(), '==', (-f $Testfile), 'testing non-existent file' );
+
+    # these are destructive, have to keep setting @@ARGV
+    @@ARGV = ( $Testfile );
+    touch();
+d90 2
+a91 2
+    @@ARGV = ( $Testfile );
+    ok( test_f(), 'now creating that file' );
+d93 2
+a94 2
+    @@ARGV = ( $Testfile );
+    ok( -e $ARGV[0], 'created!' );
+d96 2
+a97 2
+    my ($now) = time;
+    utime ($now, $now, $ARGV[0]);
+d100 2
+a101 2
+    # Just checking modify time stamp, access time stamp is set
+    # to the beginning of the day in Win95.
+d104 1
+a104 1
+    cmp_ok( abs($now - $stamp), '<=', 1, 'checking modify time stamp' ) ||
+a106 21
+    @@ARGV = qw(newfile);
+    touch();
+
+    my $new_stamp = (stat('newfile'))[9];
+    cmp_ok( abs($new_stamp - $stamp), '>=', 2,  'newer file created' );
+
+    @@ARGV = ('newfile', $Testfile);
+    eqtime();
+
+    $stamp = (stat($Testfile))[9];
+    cmp_ok( abs($new_stamp - $stamp), '<=', 1, 'eqtime' );
+
+    # eqtime use to clear the contents of the file being equalized!
+    open(FILE, ">>$Testfile") || die $!;
+    print FILE "Foo";
+    close FILE;
+
+    @@ARGV = ('newfile', $Testfile);
+    eqtime();
+    ok( -s $Testfile, "eqtime doesn't clear the file being equalized" );
+
+d116 1
+a116 1
+        @@ARGV = ( '0100', $Testfile );
+d119 1
+a119 1
+        is( ((stat($Testfile))[2] & 07777) & 0700,
+d123 1
+a123 1
+        @@ARGV = ( '0400', $Testfile );
+d126 1
+a126 1
+        is( ((stat($Testfile))[2] & 07777) & 0700,
+d130 1
+a130 1
+        @@ARGV = ( '0200', $Testfile );
+d133 1
+a133 1
+        is( ((stat($Testfile))[2] & 07777) & 0700,
+d138 2
+a139 2
+    @@ARGV = ( '0600', $Testfile );
+    ExtUtils::Command::chmod();
+d141 1
+a141 1
+    is( ((stat($Testfile))[2] & 07777) & 0700,
+d144 3
+a146 6
+    # mkpath
+    @@ARGV = ( File::Spec->join( 'ecmddir', 'temp2' ) );
+    ok( ! -e $ARGV[0], 'temp directory not there yet' );
+
+    mkpath();
+    ok( -e $ARGV[0], 'temp directory created' );
+d148 2
+a149 3
+    # copy a file to a nested subdirectory
+    unshift @@ARGV, $Testfile;
+    cp();
+d151 3
+a153 1
+    ok( -e File::Spec->join( 'ecmddir', 'temp2', $Testfile ), 'copied okay' );
+d155 1
+a155 3
+    # cp should croak if destination isn't directory (not a great warning)
+    @@ARGV = ( $Testfile ) x 3;
+    eval { cp() };
+d157 3
+a159 1
+    like( $@@, qr/Too many arguments/, 'cp croaks on error' );
+d161 1
+a161 3
+    # move a file to a subdirectory
+    @@ARGV = ( $Testfile, 'ecmddir' );
+    mv();
+d163 3
+a165 2
+    ok( ! -e $Testfile, 'moved file away' );
+    ok( -e File::Spec->join( 'ecmddir', $Testfile ), 'file in new location' );
+d167 2
+a168 2
+    # mv should also croak with the same wacky warning
+    @@ARGV = ( $Testfile ) x 3;
+d170 2
+a171 2
+    eval { mv() };
+    like( $@@, qr/Too many arguments/, 'mv croaks on error' );
+d173 2
+a174 5
+    # Test expand_wildcards()
+    {
+        my $file = $Testfile;
+        @@ARGV = ();
+        chdir 'ecmddir';
+d176 4
+a179 3
+        # % means 'match one character' on VMS.  Everything else is ?
+        my $match_char = $^O eq 'VMS' ? '%' : '?';
+        ($ARGV[0] = $file) =~ s/.\z/$match_char/;
+d181 1
+a181 13
+        # this should find the file
+        ExtUtils::Command::expand_wildcards();
+
+        is_deeply( \@@ARGV, [$file], 'expanded wildcard ? successfully' );
+
+        # try it with the asterisk now
+        ($ARGV[0] = $file) =~ s/.{3}\z/\*/;
+        ExtUtils::Command::expand_wildcards();
+
+        is_deeply( \@@ARGV, [$file], 'expanded wildcard * successfully' );
+
+        chdir File::Spec->updir;
+    }
+d183 4
+a186 11
+    # remove some files
+    my @@files = @@ARGV = ( File::Spec->catfile( 'ecmddir', $Testfile ),
+    File::Spec->catfile( 'ecmddir', 'temp2', $Testfile ) );
+    rm_f();
+
+    ok( ! -e $_, "removed $_ successfully" ) for (@@ARGV);
+
+    # rm_f dir
+    @@ARGV = my $dir = File::Spec->catfile( 'ecmddir' );
+    rm_rf();
+    ok( ! -e $dir, "removed $dir successfully" );
+d190 2
+a191 2
+    1 while unlink $Testfile, 'newfile';
+    File::Path::rmtree( 'ecmddir' );
+@
+

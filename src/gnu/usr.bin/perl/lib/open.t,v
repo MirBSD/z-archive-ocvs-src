@@ -1,0 +1,342 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.09;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.09;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.29;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+
+BEGIN {
+	chdir 't' if -d 't';
+	@@INC = '../lib';
+	push @@INC, "::lib:$MacPerl::Architecture:" if $^O eq 'MacOS';
+	require Config; import Config;
+}
+
+use Test::More tests => 16;
+
+# open::import expects 'open' as its first argument, but it clashes with open()
+sub import {
+	open::import( 'open', @@_ );
+}
+
+# can't use require_ok() here, with a name like 'open'
+ok( require 'open.pm', 'requiring open' );
+
+# this should fail
+eval { import() };
+like( $@@, qr/needs explicit list of PerlIO layers/,
+	'import should fail without args' );
+
+# the hint bits shouldn't be set yet
+is( $^H & $open::hint_bits, 0,
+	'hint bits should not be set in $^H before open import' );
+
+# prevent it from loading I18N::Langinfo, so we can test encoding failures
+my $warn;
+local $SIG{__WARN__} = sub {
+	$warn .= shift;
+};
+
+# and it shouldn't be able to find this layer
+$warn = '';
+eval q{ no warnings 'layer'; use open IN => ':macguffin' ; };
+is( $warn, '',
+	'should not warn about unknown layer with bad layer provided' );
+
+$warn = '';
+eval q{ use warnings 'layer'; use open IN => ':macguffin' ; };
+like( $warn, qr/Unknown PerlIO layer/,
+	'should warn about unknown layer with bad layer provided' );
+
+SKIP: {
+    skip("no perlio, no :utf8", 1) unless (find PerlIO::Layer 'perlio');
+    # now load a real-looking locale
+    $ENV{LC_ALL} = ' .utf8';
+    import( 'IN', 'locale' );
+    like( ${^OPEN}, qr/^(:utf8)?:utf8\0/,
+        'should set a valid locale layer' );
+}
+
+# and see if it sets the magic variables appropriately
+import( 'IN', ':crlf' );
+ok( $^H & $open::hint_bits,
+	'hint bits should be set in $^H after open import' );
+is( $^H{'open_IN'}, 'crlf', 'should have set crlf layer' );
+
+# it should reset them appropriately, too
+import( 'IN', ':raw' );
+is( $^H{'open_IN'}, 'raw', 'should have reset to raw layer' );
+
+# it dies if you don't set IN, OUT, or IO
+eval { import( 'sideways', ':raw' ) };
+like( $@@, qr/Unknown PerlIO layer class/, 'should croak with unknown class' );
+
+# but it handles them all so well together
+import( 'IO', ':raw :crlf' );
+is( ${^OPEN}, ":raw :crlf\0:raw :crlf",
+	'should set multi types, multi layer' );
+is( $^H{'open_IO'}, 'crlf', 'should record last layer set in %^H' );
+
+SKIP: {
+    skip("no perlio, no :utf8", 4) unless (find PerlIO::Layer 'perlio');
+
+    eval <<EOE;
+    use open ':utf8';
+    open(O, ">utf8");
+    print O chr(0x100);
+    close O;
+    open(I, "<utf8");
+    is(ord(<I>), 0x100, ":utf8 single wide character round-trip");
+    close I;
+EOE
+
+    open F, ">a";
+    @@a = map { chr(1 << ($_ << 2)) } 0..5; # 0x1, 0x10, .., 0x100000
+    unshift @@a, chr(0); # ... and a null byte in front just for fun
+    print F @@a;
+    close F;
+
+    sub systell {
+        use Fcntl 'SEEK_CUR';
+        sysseek($_[0], 0, SEEK_CUR);
+    }
+
+    require bytes; # not use
+
+    my $ok;
+
+    open F, "<:utf8", "a";
+    $ok = $a = 0;
+    for (@@a) {
+        unless (
+		($c = sysread(F, $b, 1)) == 1  &&
+		length($b)               == 1  &&
+		ord($b)                  == ord($_) &&
+		systell(F)               == ($a += bytes::length($b))
+		) {
+	    print '# ord($_)           == ', ord($_), "\n";
+	    print '# ord($b)           == ', ord($b), "\n";
+	    print '# length($b)        == ', length($b), "\n";
+	    print '# bytes::length($b) == ', bytes::length($b), "\n";
+	    print '# systell(F)        == ', systell(F), "\n";
+	    print '# $a                == ', $a, "\n";
+	    print '# $c                == ', $c, "\n";
+	    last;
+	}
+	$ok++;
+    }
+    close F;
+    ok($ok == @@a,
+       "on :utf8 streams sysread() should work on characters, not bytes");
+
+    # syswrite() on should work on characters, not bytes
+    open G, ">:utf8", "b";
+    $ok = $a = 0;
+    for (@@a) {
+	unless (
+		($c = syswrite(G, $_, 1)) == 1 &&
+		systell(G)                == ($a += bytes::length($_))
+		) {
+	    print '# ord($_)           == ', ord($_), "\n";
+	    print '# bytes::length($_) == ', bytes::length($_), "\n";
+	    print '# systell(G)        == ', systell(G), "\n";
+	    print '# $a                == ', $a, "\n";
+	    print '# $c                == ', $c, "\n";
+	    print "not ";
+	    last;
+	}
+	$ok++;
+    }
+    close G;
+    ok($ok == @@a,
+       "on :utf8 streams syswrite() should work on characters, not bytes");
+
+    open G, "<:utf8", "b";
+    $ok = $a = 0;
+    for (@@a) {
+	unless (
+		($c = sysread(G, $b, 1)) == 1 &&
+		length($b)               == 1 &&
+		ord($b)                  == ord($_) &&
+		systell(G)               == ($a += bytes::length($_))
+		) {
+	    print '# ord($_)           == ', ord($_), "\n";
+	    print '# ord($b)           == ', ord($b), "\n";
+	    print '# length($b)        == ', length($b), "\n";
+	    print '# bytes::length($b) == ', bytes::length($b), "\n";
+	    print '# systell(G)        == ', systell(G), "\n";
+	    print '# $a                == ', $a, "\n";
+	    print '# $c                == ', $c, "\n";
+	    last;
+	}
+	$ok++;
+    }
+    close G;
+    ok($ok == @@a,
+       "checking syswrite() output on :utf8 streams by reading it back in");
+}
+
+END {
+    1 while unlink "utf8";
+    1 while unlink "a";
+    1 while unlink "b";
+}
+
+# the test cases beyond __DATA__ need to be executed separately
+
+__DATA__
+$ENV{LC_ALL} = 'nonexistent.euc';
+eval { open::_get_locale_encoding() };
+like( $@@, qr/too ambiguous/, 'should die with ambiguous locale encoding' );
+%%%
+# the special :locale layer
+$ENV{LC_ALL} = $ENV{LANG} = 'ru_RU.KOI8-R';
+# the :locale will probe the locale environment variables like LANG
+use open OUT => ':locale';
+open(O, ">koi8");
+print O chr(0x430); # Unicode CYRILLIC SMALL LETTER A = KOI8-R 0xc1
+close O;
+open(I, "<koi8");
+printf "%#x\n", ord(<I>), "\n"; # this should print 0xc1
+close I;
+%%%
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d10 1
+a10 1
+use Test::More tests => 17;
+a47 1
+    skip("no Encode for locale layer", 1) unless eval { require Encode }; 
+a171 10
+}
+
+SKIP: {
+    skip("no perlio", 1) unless (find PerlIO::Layer 'perlio');
+    use open IN => ':non-existent';
+    eval {
+	require Symbol; # Anything that exists but we havn't loaded
+    };
+    like($@@, qr/Can't locate Symbol|Recursive call/i,
+	 "test for an endless loop in PerlIO_find_layer");
+@
+

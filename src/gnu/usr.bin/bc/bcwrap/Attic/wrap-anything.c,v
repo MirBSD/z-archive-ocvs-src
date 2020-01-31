@@ -1,0 +1,247 @@
+head	1.2;
+access;
+symbols
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.09.26.16.51.16;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.38.47;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.38.47;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.06.40;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Nuke GNU bc (and dc)
+Welcome, UNIX® bc and dc
+@
+text
+@/*	$OpenBSD: wrap-anything.c,v 1.4 2002/09/12 06:47:16 deraadt Exp $	*/
+
+/*
+ * Copyright (c) 1996 Theo de Raadt <deraadt@@theos.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Theo de Raadt.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
+ * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+/*
+ * Some programs want to print their copyright, if they are in
+ * interactive mode.  If the program cannot be modified, this program
+ * can solve the issue.  Suddenly the program is never in interactive
+ * mode.
+ * 
+ * ^C blocking is also done, if wanted.
+ */
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <errno.h>
+#include <signal.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <poll.h>
+
+int
+main(int argc, char *argv[])
+{
+	int pd[2];
+	struct pollfd pfd[2];
+	int off, n, res;
+	char buf[1024];
+	int pid, stat;
+
+	if (!(isatty(0) && isatty(1)))
+		execv(WRAP, argv);
+
+	/* Ok, we need to go non-interactive */
+	if (pipe(pd) == -1) {
+		perror("pipe");
+		exit(1);
+	}
+
+#ifdef BLOCK
+	signal(SIGINT, SIG_IGN);
+#endif
+
+	pid = fork();
+	switch(pid) {
+	case -1:
+		perror("fork");
+		exit(1);
+	case 0:
+		dup2(pd[0], 0);		/* stdin = pipe */
+		close(pd[0]);
+
+		close(pd[1]);
+		execv(WRAP, argv);
+		exit(1);
+	default:
+		close(pd[0]);
+		break;
+	}
+
+	pfd[0].fd = 0;
+	pfd[0].events = POLLIN;
+	pfd[1].fd = pd[1];
+	pfd[1].events = POLLIN;
+
+	while (1) {
+		if (waitpid(pid, &stat, WNOHANG) > 0)
+			exit(WEXITSTATUS(stat));
+
+		switch (poll(pfd, 2, INFTIM)) {
+		case -1:
+		case 0:
+			break;
+		default:
+			if (pfd[0].revents == 0)
+				goto done;
+			n = read(0, buf, sizeof buf);
+			if (n == 0)
+				goto done;
+			off = 0;
+			while (off < n) {
+				res = write(pd[1], buf + off, n - off);
+				if (res == -1 && errno != EAGAIN)
+					goto done;
+				off += res;
+			}
+		}
+	}
+done:
+	close(pd[1]);
+	waitpid(pid, &stat, 0);
+	exit(WEXITSTATUS(stat));
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: wrap-anything.c,v 1.5 2003/06/02 04:04:54 deraadt Exp $	*/
+d15 5
+@
+

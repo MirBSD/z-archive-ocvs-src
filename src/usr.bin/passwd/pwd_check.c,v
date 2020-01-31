@@ -1,0 +1,477 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200411031520:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.11;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.11;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.05.16.08.10.25;	author tg;	state Stab;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.11.03.15.30.20;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: pwd_check.c,v 1.6 2002/06/28 22:28:17 deraadt Exp $	*/
+/*
+ * Copyright 2000 Niels Provos <provos@@citi.umich.edu>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed by Niels Provos.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/types.h>
+#include <sys/wait.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <limits.h>
+#include <errno.h>
+#include <err.h>
+#include <regex.h>
+#include <grp.h>
+#include <paths.h>
+#include <pwd.h>
+#include <util.h>
+#include <login_cap.h>
+
+struct pattern {
+	char *match;
+	int flags;
+	char *response;
+};
+
+struct pattern patterns[] = {
+	{
+		"^[0-9]*$",
+		REG_EXTENDED|REG_NOSUB,
+		"Please don't use all-digit passwords."
+	},
+	{
+		"^[a-z]{1,9}$",
+		REG_EXTENDED|REG_NOSUB,
+		"Please don't use an all-lower case password."
+	},
+	{
+		"^[a-z]{1,6}[0-9]+$",
+		REG_EXTENDED|REG_NOSUB|REG_ICASE,
+		"Please use a more complicated password."
+	},
+	{
+		"^([a-z][0-9]){1,4}$",
+		REG_EXTENDED|REG_NOSUB|REG_ICASE,
+		"Please use a more complicated password."
+	},
+	{
+		"^([0-9][a-z]){1,4}$",
+		REG_EXTENDED|REG_NOSUB|REG_ICASE,
+		"Please use a more complicated password."
+	}
+};
+
+int
+pwd_check(struct passwd *pwd, login_cap_t *lc, char *password)
+{
+	regex_t rgx;
+	int i, res, min_len;
+	char *cp, option[LINE_MAX];
+	int pipefds[2];
+
+	min_len = (int) login_getcapnum(lc, "minpasswordlen", 6, 6);
+	if (min_len > 0 && strlen(password) < min_len) {
+		printf("Please enter a longer password.\n");
+		return (0);
+	}
+
+	for (i = 0; i < sizeof(patterns)/sizeof(struct pattern); i++) {
+		if (regcomp(&rgx, patterns[i].match, patterns[i].flags) != 0)
+			continue;
+		res = regexec(&rgx, password, 0, NULL, 0);
+		regfree(&rgx);
+		if (!res) {
+			printf("%s\nUnusual capitalization, control characters or digits are suggested.\n", patterns[i].response);
+			return (0);
+		}
+	}
+
+	/* Okay, now pass control to an external program */
+
+	/*
+	 * Check login.conf, falling back onto the deprecated passwd.conf
+	 */
+	if ((cp = login_getcapstr(lc, "passwordcheck", NULL, NULL)) != NULL) {
+		strlcpy(option, cp, sizeof(option));
+		free(cp);
+	} else {
+		pw_getconf(option, LINE_MAX, pwd->pw_name, "pwdcheck");
+
+		/* Try to find an entry for the group */
+		if (*option == 0) {
+			struct group *grp;
+			char grpkey[LINE_MAX];
+
+			grp = getgrgid(pwd->pw_gid);
+			if (grp != NULL) {
+				snprintf(grpkey, LINE_MAX, ":%s",
+				    grp->gr_name);
+				pw_getconf(option, LINE_MAX, grpkey,
+				    "pwdcheck");
+			}
+			if (grp != NULL && *option == 0 &&
+			    strchr(pwd->pw_name, '.') == NULL) {
+				snprintf(grpkey, LINE_MAX, ".%s",
+				    grp->gr_name);
+				pw_getconf(option, LINE_MAX, grpkey,
+				    "pwdcheck");
+			}
+			if (*option == 0)
+				pw_getconf(option, LINE_MAX, "default",
+				    "pwdcheck");
+		}
+	}
+
+	/* If no checker is specified, we accept the password */
+	if (*option == 0)
+		return (1);
+
+	if (pipe(pipefds) == -1) {
+		warn("pipe");
+		goto out;
+	}
+
+	res = fork();
+	if (res == 0) {
+		char *argp[] = { "sh", "-c", NULL, NULL};
+
+		/* Drop privileges */
+		seteuid(getuid());
+		setuid(getuid());
+
+		if (dup2(pipefds[0], STDIN_FILENO) == -1)
+			exit(1);
+
+		close(pipefds[0]);
+		close(pipefds[1]);
+
+		argp[2] = option;
+		if (execv(_PATH_BSHELL, argp) == -1)
+			exit(1);
+		/* NOT REACHED */
+	} else if (res == -1) {
+		warn("fork");
+		goto out;
+	}
+	close(pipefds[0]);
+
+	/* Send the password to STDIN of child */
+	write(pipefds[1], password, strlen(password) + 1);
+	close(pipefds[1]);
+
+	/* get the return value from the child */
+	wait(&res);
+	if (WIFEXITED(res) && WEXITSTATUS(res) == 0)
+		return (1);
+
+ out:
+	printf("Please use a different password. Unusual capitalization,\n");
+	printf("control characters, or digits are suggested.\n");
+	return (0);
+}
+
+int
+pwd_gettries( struct passwd *pwd, login_cap_t *lc )
+{
+	char option[LINE_MAX];
+	char *ep = option;
+	quad_t ntries;
+	long lval;
+
+	/*
+	 * Check login.conf, falling back onto the deprecated passwd.conf
+	 */
+	if ((ntries = login_getcapnum(lc, "passwordtries", -1, -1)) != -1) {
+		if (ntries > INT_MAX || ntries < 0) {
+			fprintf(stderr,
+			    "Warning: pwdtries out of range in /etc/login.conf");
+			goto out;
+		}
+		return((int)ntries);
+	}
+
+	pw_getconf(option, LINE_MAX, pwd->pw_name, "pwdtries");
+
+	/* Try to find an entry for the group */
+	if (*option == 0) {
+		struct group *grp;
+		char grpkey[LINE_MAX];
+
+		grp = getgrgid(pwd->pw_gid);
+		if (grp != NULL) {
+			snprintf(grpkey, LINE_MAX, ":%s", grp->gr_name);
+			pw_getconf(option, LINE_MAX, grpkey, "pwdtries");
+		}
+		if (grp != NULL && *option == 0 &&
+		    strchr(pwd->pw_name, '.') == NULL) {
+			snprintf(grpkey, LINE_MAX, ".%s", grp->gr_name);
+			pw_getconf(option, LINE_MAX, grpkey, "pwdtries");
+		}
+		if (*option == 0)
+			pw_getconf(option, LINE_MAX, "default", "pwdtries");
+	}
+
+	if (*option == 0)
+		goto out;
+
+	errno = 0;
+	lval = strtol(option, &ep, 10);
+	if (option[0] == '\0' || *ep != '\0') {
+		fprintf(stderr,
+		    "Warning: Bad pwdtries line in /etc/passwd.conf");
+		goto out;
+	}
+	if ((errno == ERANGE && (lval == LONG_MAX || lval == LONG_MIN)) ||
+	    (lval > INT_MAX || lval < 0)) {
+		fprintf(stderr,
+		    "Warning: pwdtries out of range in /etc/passwd.conf");
+		goto out;
+	}
+	return((int) lval);
+
+	/* If no amount of tries is specified, return a default of
+	 * 3, meaning that after 3 attempts where the user is foiled
+	 * by the password checks, it will no longer be checked and
+	 * they can set it to whatever they like.
+	 */
+	out:
+		return (3);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: pwd_check.c,v 1.7 2004/03/14 22:53:18 tedu Exp $	*/
+a89 1
+	pid_t child;
+d153 2
+a154 2
+	child = fork();
+	if (child == 0) {
+d171 1
+a171 1
+	} else if (child == -1) {
+d182 2
+a183 2
+	wait(&child);
+	if (WIFEXITED(child) && WEXITSTATUS(child) == 0)
+d193 1
+a193 1
+pwd_gettries(struct passwd *pwd, login_cap_t *lc)
+@
+
+
+1.1.1.3
+log
+@your daily openbsd bugfix puller
+@
+text
+@d1 1
+a1 2
+/*	$OpenBSD: pwd_check.c,v 1.9 2004/07/13 21:29:12 millert Exp $	*/
+
+d45 2
+d84 1
+a84 1
+pwd_check(login_cap_t *lc, char *password)
+d88 1
+a88 1
+	char *checker;
+d92 1
+a92 1
+	min_len = (int)login_getcapnum(lc, "minpasswordlen", 6, 6);
+d98 1
+a98 1
+	for (i = 0; i < sizeof(patterns) / sizeof(struct pattern); i++) {
+d109 38
+a146 3
+	/* If no external checker is specified, just accept the password */
+	checker = login_getcapstr(lc, "passwordcheck", NULL, NULL);
+	if (checker == NULL)
+a148 1
+	/* Okay, now pass control to an external program */
+d168 1
+a168 1
+		argp[2] = checker;
+d184 1
+a184 2
+	if (WIFEXITED(child) && WEXITSTATUS(child) == 0) {
+		free(checker);
+a185 1
+	}
+a187 1
+	free(checker);
+d194 1
+a194 1
+pwd_gettries(login_cap_t *lc)
+d196 2
+d199 1
+d201 3
+d205 41
+a245 2
+		if (ntries > 0 && ntries <= INT_MAX)
+			return((int)ntries);
+d247 2
+a248 1
+		    "Warning: pwdtries out of range in /etc/login.conf");
+d250 1
+d252 4
+a255 5
+	/*
+	 * If no amount of tries is specified, return a default of 3,
+	 * meaning that after 3 attempts where the user is foiled by the
+	 * password checks, it will no longer be checked and they can set
+	 * it to whatever they like.  This is the historic BSD behavior.
+d257 2
+a258 1
+	return (3);
+@
+
+

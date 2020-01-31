@@ -1,0 +1,256 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.4
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.2
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410141645:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406230735:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200402042200:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.46.29;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.29;	author tg;	state Stab;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.10.14.19.10.54;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+ * Tree search generalized from Knuth (6.2.2) Algorithm T just like
+ * the AT&T man page says.
+ *
+ * The node_t structure is for internal use only, lint doesn't grok it.
+ *
+ * Written by reading the System V Interface Definition, not the code.
+ *
+ * Totally public domain.
+ */
+/*LINTLIBRARY*/
+
+#include <search.h>
+#include <stdlib.h>
+
+typedef struct node_t {
+    char	  *key;
+    struct node_t *left, *right;
+} node;
+
+/* find or insert datum into search tree */
+void *
+tsearch(vkey, vrootp, compar)
+	const void 	*vkey;		/* key to be located */
+	void		**vrootp;	/* address of tree root */
+	int		(*compar)(const void *, const void *);
+{
+    register node *q;
+    char *key = (char *)vkey;
+    node **rootp = (node **)vrootp;
+
+    if (rootp == (struct node_t **)0)
+	return ((void *)0);
+    while (*rootp != (struct node_t *)0) {	/* Knuth's T1: */
+	int r;
+
+	if ((r = (*compar)(key, (*rootp)->key)) == 0)	/* T2: */
+	    return ((void *)*rootp);		/* we found it! */
+	rootp = (r < 0) ?
+	    &(*rootp)->left :		/* T3: follow left branch */
+	    &(*rootp)->right;		/* T4: follow right branch */
+    }
+    q = (node *) malloc(sizeof(node));	/* T5: key not found */
+    if (q != (struct node_t *)0) {	/* make new node */
+	*rootp = q;			/* link new node to old */
+	q->key = key;			/* initialize new node */
+	q->left = q->right = (struct node_t *)0;
+    }
+    return ((void *)q);
+}
+
+/* delete node with given key */
+void *
+tdelete(vkey, vrootp, compar)
+	const void	*vkey;		/* key to be deleted */
+	void		**vrootp;	/* address of the root of tree */
+	int		(*compar)(const void *, const void *);
+{
+    node **rootp = (node **)vrootp;
+    char *key = (char *)vkey;
+    node *p;
+    register node *q;
+    register node *r;
+    int cmp;
+
+    if (rootp == (struct node_t **)0 || (p = *rootp) == (struct node_t *)0)
+	return ((struct node_t *)0);
+    while ((cmp = (*compar)(key, (*rootp)->key)) != 0) {
+	p = *rootp;
+	rootp = (cmp < 0) ?
+	    &(*rootp)->left :		/* follow left branch */
+	    &(*rootp)->right;		/* follow right branch */
+	if (*rootp == (struct node_t *)0)
+	    return ((void *)0);		/* key not found */
+    }
+    r = (*rootp)->right;			/* D1: */
+    if ((q = (*rootp)->left) == (struct node_t *)0)	/* Left (struct node_t *)0? */
+	q = r;
+    else if (r != (struct node_t *)0) {		/* Right link is null? */
+	if (r->left == (struct node_t *)0) {	/* D2: Find successor */
+	    r->left = q;
+	    q = r;
+	} else {			/* D3: Find (struct node_t *)0 link */
+	    for (q = r->left; q->left != (struct node_t *)0; q = r->left)
+		r = q;
+	    r->left = q->right;
+	    q->left = (*rootp)->left;
+	    q->right = (*rootp)->right;
+	}
+    }
+    free((struct node_t *) *rootp);	/* D4: Free node */
+    *rootp = q;				/* link parent to new node */
+    return(p);
+}
+
+/* Walk the nodes of a tree */
+static void
+trecurse(root, action, level)
+	register node	*root;		/* Root of the tree to be walked */
+	register void	(*action)();	/* Function to be called at each node */
+	register int	level;
+{
+    if (root->left == (struct node_t *)0 && root->right == (struct node_t *)0)
+	(*action)(root, leaf, level);
+    else {
+	(*action)(root, preorder, level);
+	if (root->left != (struct node_t *)0)
+	    trecurse(root->left, action, level + 1);
+	(*action)(root, postorder, level);
+	if (root->right != (struct node_t *)0)
+	    trecurse(root->right, action, level + 1);
+	(*action)(root, endorder, level);
+    }
+}
+
+/* Walk the nodes of a tree */
+void
+twalk(vroot, action)
+	const void	*vroot;		/* Root of the tree to be walked */
+	void		(*action)(const void *, VISIT, int);
+{
+    node *root = (node *)vroot;
+
+    if (root != (node *)0 && action != (void(*)())0)
+	trecurse(root, action, 0);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@looks like we need this as well
+@
+text
+@a0 2
+/*	$OpenBSD: tsearch.c,v 1.4 2004/10/01 04:08:45 jsg Exp $	*/
+
+@
+

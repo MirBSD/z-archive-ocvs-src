@@ -1,0 +1,281 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.09.07;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.10;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.10;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.28.25;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Common things used by the various *gnu-nat.c files
+
+   Copyright (C) 1995, 1996 Free Software Foundation, Inc.
+
+   Written by Miles Bader <miles@@gnu.ai.mit.edu>
+
+   The GNU Hurd is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2, or (at
+   your option) any later version.
+
+   The GNU Hurd is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. */
+
+#ifndef __GNU_NAT_H__
+#define __GNU_NAT_H__
+
+#include <unistd.h>
+#include <mach.h>
+
+struct inf;
+
+extern struct inf *current_inferior;
+
+/* Converts a GDB pid to a struct proc.  */
+struct proc *inf_tid_to_thread (struct inf *inf, int tid);
+
+/* A proc is either a thread, or the task (there can only be one task proc
+   because it always has the same TID, PROC_TID_TASK).  */
+struct proc
+{
+  thread_t port;		/* The task or thread port.  */
+  int tid;			/* The GDB pid (actually a thread id).  */
+  int num;			/* An id number for threads, to print.  */
+
+  mach_port_t saved_exc_port;	/* The task/thread's real exception port.  */
+  mach_port_t exc_port;		/* Our replacement, which for.  */
+
+  int sc;			/* Desired suspend count.   */
+  int cur_sc;			/* Implemented suspend count.  */
+  int run_sc;			/* Default sc when the program is running. */
+  int pause_sc;			/* Default sc when gdb has control. */
+  int resume_sc;		/* Sc resulting form the last resume. */
+  int detach_sc;		/* SC to leave around when detaching from program. */
+
+  thread_state_data_t state;	/* Registers, &c. */
+  int state_valid : 1;		/* True if STATE is up to date. */
+  int state_changed : 1;
+
+  int aborted : 1;		/* True if thread_abort has been called.  */
+  int dead : 1;			/* We happen to know it's actually dead. */
+
+  /* Bit mask of registers fetched by gdb.  This is used when we re-fetch
+     STATE after aborting the thread, to detect that gdb may have out-of-date
+     information.  */
+  unsigned long fetched_regs;
+
+  struct inf *inf;		/* Where we come from.  */
+
+  struct proc *next;
+};
+
+/* The task has a thread entry with this TID.  */
+#define PROC_TID_TASK 	(-1)
+
+#define proc_is_task(proc) ((proc)->tid == PROC_TID_TASK)
+#define proc_is_thread(proc) ((proc)->tid != PROC_TID_TASK)
+
+extern int __proc_pid (struct proc *proc);
+
+extern thread_state_t proc_get_state (struct proc *proc, int will_modify);
+
+#define proc_debug(_proc, msg, args...) \
+  do { struct proc *__proc = (_proc); \
+       debug ("{proc %d/%d %p}: " msg, \
+	      __proc_pid (__proc), __proc->tid, __proc , ##args); } while (0)
+
+#if MAINTENANCE_CMDS
+extern int gnu_debug_flag;
+#define debug(msg, args...) \
+ do { if (gnu_debug_flag) \
+        fprintf (stderr, "%s: " msg "\r\n", __FUNCTION__ , ##args); } while (0)
+#else
+#define debug(msg, args...) (void)0
+#endif
+
+#endif /* __GNU_NAT_H__ */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 2
+a3 1
+   Copyright 1995, 1996, 1997, 1999, 2000 Free Software Foundation, Inc.
+d19 1
+a19 2
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a33 3
+/* Makes sure that INF's thread list is synced with the actual process.  */
+int inf_update_procs (struct inf *inf);
+
+d37 26
+a62 27
+  {
+    thread_t port;		/* The task or thread port.  */
+    int tid;			/* The GDB pid (actually a thread id).  */
+    int num;			/* An id number for threads, to print.  */
+
+    mach_port_t saved_exc_port;	/* The task/thread's real exception port.  */
+    mach_port_t exc_port;	/* Our replacement, which for.  */
+
+    int sc;			/* Desired suspend count.   */
+    int cur_sc;			/* Implemented suspend count.  */
+    int run_sc;			/* Default sc when the program is running. */
+    int pause_sc;		/* Default sc when gdb has control. */
+    int resume_sc;		/* Sc resulting from the last resume. */
+    int detach_sc;		/* SC to leave around when detaching
+				   from program. */
+
+    thread_state_data_t state;	/* Registers, &c. */
+    int state_valid:1;		/* True if STATE is up to date. */
+    int state_changed:1;
+
+    int aborted:1;		/* True if thread_abort has been called.  */
+    int dead:1;			/* We happen to know it's actually dead. */
+
+    /* Bit mask of registers fetched by gdb.  This is used when we re-fetch
+       STATE after aborting the thread, to detect that gdb may have out-of-date
+       information.  */
+    unsigned long fetched_regs;
+d64 1
+a64 1
+    struct inf *inf;		/* Where we come from.  */
+d66 2
+a67 2
+    struct proc *next;
+  };
+a76 4
+/* Make sure that the state field in PROC is up to date, and return a
+   pointer to it, or 0 if something is wrong.  If WILL_MODIFY is true,
+   makes sure that the thread is stopped and aborted first, and sets
+   the state_changed field in PROC to true.  */
+a78 3
+/* Return printable description of proc.  */
+extern char *proc_string (struct proc *proc);
+
+d84 1
+a85 1
+
+d88 4
+a91 1
+        fprintf_unfiltered (gdb_stdlog, "%s:%d: " msg "\r\n", __FILE__ , __LINE__ , ##args); } while (0)
+@
+

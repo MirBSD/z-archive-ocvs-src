@@ -1,0 +1,589 @@
+head	1.2;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.01.11.18.16.47;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.01.09;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.01.09;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke some unused, redundant or generated files
+@
+text
+@This is ../p/doc/info/gpc-hr.info, produced by makeinfo version 4.1
+from gpc.texi.
+
+INFO-DIR-SECTION GNU programski alati
+START-INFO-DIR-ENTRY
+* GPC: (gpc-hr).                GNU Pascal prevodilac (compiler).
+END-INFO-DIR-ENTRY
+INFO-DIR-SECTION Pojedini alati
+START-INFO-DIR-ENTRY
+* GPC: (gpc-hr)Pozivanje GPC-a. GNU Pascal prevodilac (compiler).
+END-INFO-DIR-ENTRY
+
+   Ova datoteka dokumentira GPC prevodilac (engl. compiler).
+
+   Permission is granted to make and distribute verbatim copies of this
+manual provided the copyright notice and this permission notice are
+preserved on all copies.
+
+   Copyright (C) 1988-2003 Free Software Foundation, Inc.
+
+   Permission is granted to copy and distribute modified versions of
+this manual under the conditions for verbatim copying, provided also
+that the sections entitled "GNU General Public License", "The GNU
+Project", "The GNU Manifesto" and "Funding for free Software" are
+included exactly as in the original, and provided that the entire
+resulting derived work is distributed under the terms of a permission
+notice identical to this one.
+
+   Permission is granted to copy and distribute translations of this
+manual into another language, under the above conditions for modified
+versions, except that the sections entitled "GNU General Public
+License", "The GNU Project", "The GNU Manifesto" and "Funding for Free
+Software" and this permission notice, may be included in translations
+approved by the Free Software Foundation instead of in the original
+English.
+
+
+File: gpc-hr.info,  Node: Dos,  Next: DosUnix,  Prev: CRT,  Up: GPC Units
+
+BP compatibility: Dos
+---------------------
+
+   The following listing contains the interface of the Dos unit.
+
+   This is a portable implementation of most routines from BP's `Dos'
+unit. A few routines that are Dos - or even IA32 real mode - specific,
+are only available if `__BP_UNPORTABLE_ROUTINES__' is defined, *Note BP
+Incompatibilities::.
+
+   The same functionality and much more is available in the Run Time
+System, *Note Run Time System::. In some cases, the RTS routines have
+the same interface as the routines in this unit (e.g.  `GetEnv',
+`FSplit', `FExpand', `FSearch'), in other cases, they have different
+names and/or easier and less limiting interfaces (e.g. `ReadDir' etc.
+vs. `FindFirst' etc.), and are often more efficient.
+
+   Therefore, using this unit is not recommended in newly written
+programs.
+
+     { Portable BP compatible Dos unit
+     
+       This unit supports most of the routines and declarations of BP's
+       Dos unit.
+     
+       Notes:
+     
+       - The procedures Keep, GetIntVec, SetIntVec are not supported
+         since they make only sense for Dos real-mode programs (and GPC
+         compiled programs do not run in real-mode, even on IA32 under
+         Dos). The procedures Intr and MsDos are only supported under
+         DJGPP if `__BP_UNPORTABLE_ROUTINES__' is defined (with the
+         `-D__BP_UNPORTABLE_ROUTINES__' option). A few other routines are
+         also only supported with this define, but on all platforms (but
+         they are crude hacks, that's why they are not supported without
+         this define).
+     
+       - The internal structure of file variables (FileRec and TextRec)
+         is different in GPC. However, as far as TFDDs are concerned,
+         there are other ways to achieve the same in GPC, see the GPC
+         unit.
+     
+       Copyright (C) 1998-2003 Free Software Foundation, Inc.
+     
+       Authors: Frank Heckenbach <frank@@pascal.gnu.de>
+                Prof. Abimbola A. Olowofoyeku <African_Chief@@bigfoot.com>
+     
+       This file is part of GNU Pascal.
+     
+       GNU Pascal is free software; you can redistribute it and/or modify
+       it under the terms of the GNU General Public License as published
+       by the Free Software Foundation; either version 2, or (at your
+       option) any later version.
+     
+       GNU Pascal is distributed in the hope that it will be useful, but
+       WITHOUT ANY WARRANTY; without even the implied warranty of
+       MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+       General Public License for more details.
+     
+       You should have received a copy of the GNU General Public License
+       along with GNU Pascal; see the file COPYING. If not, write to the
+       Free Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+       02111-1307, USA.
+     
+       As a special exception, if you link this file with files compiled
+       with a GNU compiler to produce an executable, this does not cause
+       the resulting executable to be covered by the GNU General Public
+       License. This exception does not however invalidate any other
+       reasons why the executable file might be covered by the GNU
+       General Public License. }
+     
+     {$gnu-pascal,I-,maximum-field-alignment 0}
+     {$if __GPC_RELEASE__ < 20030412}
+     {$error This unit requires GPC release 20030412 or newer.}
+     {$endif}
+     
+     module Dos;
+     
+     { GPC and this unit use `AnyFile' for different meanings. Export
+       renaming helps us to avoid a conflict here. If you use both units,
+       the meaning of the latter one will be effective, but you always
+       get the built-in meaning by using `GPC_AnyFile'. }
+     export Dos = all (DosAnyFile => AnyFile, FSearch, FExpand, FSplit,
+       GetEnv);
+     
+     import GPC; System;
+     
+     type
+       GPC_AnyFile = AnyFile;
+       Byte8 = Cardinal attribute (Size = 8);
+       Word16 = Cardinal attribute (Size = 16);
+       Word32 = Cardinal attribute (Size = 32);
+       TDosAttr = Word;
+     
+     const
+       { File attribute constants }
+       ReadOnly   = $01;
+       Hidden     = $02;  { set for dot files except '.' and '..' }
+       SysFile    = $04;  { not supported }
+       VolumeID   = $08;  { not supported }
+       Directory  = $10;
+       Archive    = $20;  { means: not executable }
+       DosAnyFile = $3f;
+     
+       { Flag bit masks -- only used by the unportable Dos routines }
+       FCarry     = 1;
+       FParity    = 4;
+       FAuxiliary = $10;
+       FZero      = $40;
+       FSign      = $80;
+       FOverflow  = $800;
+     
+       { DosError codes }
+       DosError_FileNotFound = 2;
+       DosError_PathNotFound = 3;
+       DosError_AccessDenied = 5;
+       DosError_InvalidMem   = 9;
+       DosErorr_InvalidEnv   = 10;
+       DosError_NoMoreFiles  = 18;
+       DosError_IOError      = 29;
+       DosError_ReadFault    = 30;
+     
+     type
+       { String types. Not used in this unit, but declared for
+         compatibility. }
+       ComStr  = String [127];  { Command line string }
+       PathStr = String [79];   { File pathname string }
+       DirStr  = String [67];   { Drive and directory string }
+       NameStr = String [8];    { File name string }
+       ExtStr  = String [4];    { File extension string }
+     
+       TextBuf = array [0 .. 127] of Char;
+     
+       { Search record used by FindFirst and FindNext }
+       SearchRecFill = packed array [1 .. 21] of Byte8;
+       SearchRec = record
+         Fill: SearchRecFill;
+         Attr: Byte8;
+         Time,
+         Size: LongInt;
+         Name: {$ifdef __BP_TYPE_SIZES__}
+               String [12]
+               {$else}
+               TString
+               {$endif}
+       end;
+     
+       { Date and time record used by PackTime and UnpackTime }
+       DateTime = record
+         Year, Month, Day, Hour, Min, Sec: Word
+       end;
+     
+       { 8086 CPU registers -- only used by the unportable Dos routines }
+       Registers = record
+       case Boolean of
+         False: (ax, bx, cx, dx, bp, si, di, ds, es, Flags: Word16);
+         True : (al, ah, bl, bh, cl, ch, dl, dh: Byte8)
+       end;
+     
+     var
+       { Error status variable }
+       DosError: Integer = 0;
+     
+     procedure GetDate (var Year, Month, Day, DayOfWeek: Word); attribute
+       (name = '_p_GetDate');
+     procedure GetTime (var Hour, Minute, Second, Sec100: Word);
+       attribute (name = '_p_GetTime');
+     procedure GetCBreak (var BreakOn: Boolean); attribute (name
+       = '_p_GetCBreak');
+     procedure SetCBreak (BreakOn: Boolean); attribute (name
+       = '_p_SetCBreak');
+     { GetVerify and SetVerify are dummies except for DJGPP (in the
+       assumption that any real OS knows by itself when and how to verify
+       its disks). }
+     procedure GetVerify (var VerifyOn: Boolean); attribute (name
+       = '_p_GetVerify');
+     procedure SetVerify (VerifyOn: Boolean); attribute (name
+       = '_p_SetVerify');
+     function  DiskFree (Drive: Byte): LongInt; attribute (name
+       = '_p_DiskFree');
+     function  DiskSize (Drive: Byte): LongInt; attribute (name
+       = '_p_DiskSize');
+     procedure GetFAttr (var f: GPC_AnyFile; var Attr: TDosAttr);
+       attribute (name = '_p_GetFAttr');
+     procedure SetFAttr (var f: GPC_AnyFile; Attr: TDosAttr); attribute
+       (name = '_p_SetFAttr');
+     procedure GetFTime (var f: GPC_AnyFile; var MTime: LongInt);
+       attribute (name = '_p_GetFTime');
+     procedure SetFTime (var f: GPC_AnyFile; MTime: LongInt); attribute
+       (name = '_p_SetFTime');
+     
+     { FindFirst and FindNext are quite inefficient since they emulate
+       all the brain-dead Dos stuff. If at all possible, the standard
+       routines OpenDir, ReadDir and CloseDir (in the GPC unit) should be
+       used instead. }
+     procedure FindFirst (const Path: String; Attr: TDosAttr; var SR:
+       SearchRec); attribute (name = '_p_FindFirst');
+     procedure FindNext  (var SR: SearchRec); attribute (name
+       = '_p_FindNext');
+     
+     procedure FindClose (var SR: SearchRec); attribute (name
+       = '_p_FindClose');
+     procedure UnpackTime (p: LongInt; var t: DateTime); attribute (name
+       = '_p_UnpackTime');
+     procedure PackTime (const t: DateTime; var p: LongInt); attribute
+       (name = '_p_PackTime');
+     function  EnvCount: Integer;
+     function  EnvStr (EnvIndex: Integer): TString;
+     procedure SwapVectors;
+     { Exec executes a process via Execute, so RestoreTerminal is called
+       with the argument True before and False after executing the
+       process. }
+     procedure Exec (const Path, Params: String);
+     function  DosExitCode: Word;
+     
+     { Unportable Dos-only routines and declarations }
+     
+     {$ifdef __BP_UNPORTABLE_ROUTINES__}
+     {$ifdef __GO32__}
+     { These are unportable Dos-only declarations and routines, since
+       interrupts are Dos and CPU specific (and have no place in a
+       high-level program, anyway). }
+     procedure Intr (IntNo: Byte; var Regs: Registers); attribute (name
+       = '_p_Intr');
+     procedure MsDos (var Regs: Registers); attribute (name
+       = '_p_MsDos');
+     {$endif}
+     
+     { Though probably all non-Dos systems have versions numbers as well,
+       returning them here would usually not do what is expected, e.g.
+       testing if certain Dos features are present by comparing the
+       version number. Therefore, this routine always returns 7 (i.e.,
+       version 7.0) on non-Dos systems, in the assumption that any real
+       OS has at least the features of Dos 7. }
+     function  DosVersion: Word; attribute (name = '_p_DosVersion');
+     
+     { Changing the system date and time is a system administration task,
+       not allowed to a normal process. On non-Dos systems, these
+       routines emulate the changed date/time, but only for GetTime and
+       GetDate (not the RTS date/time routines), and only for this
+       process, not for child processes or even the parent process or
+       system-wide. }
+     procedure SetDate (Year, Month, Day: Word); attribute (name
+       = '_p_SetDate');
+     procedure SetTime (Hour, Minute, Second, Sec100: Word); attribute
+       (name = '_p_SetTime');
+     {$endif}
+
+
+File: gpc-hr.info,  Node: DosUnix,  Next: FileUtils,  Prev: Dos,  Up: GPC Units
+
+Overcome some differences between Dos and Unix
+----------------------------------------------
+
+   The following listing contains the interface of the DosUnix unit.
+
+   This unit is there to overcome some of those differences between Dos
+and Unix systems that are not automatically hidden by GPC and the Run
+Time System. Currently features translation of bash style input/output
+redirections (`foo 2>&1') into `redir' calls for DJGPP (`redir -eo
+foo') and a way to read files with Dos CR/LF pairs on any system.
+
+   When necessary, new features will be added to the unit in future
+releases.
+
+     { Some routines to support writing programs portable between Dos and
+       Unix. Perhaps it would be a good idea not to put features to make
+       Dos programs Unix-compatible (shell redirections) and vice versa
+       (reading Dos files from Unix) together into one unit, but rather
+       into two units, DosCompat and UnixCompat or so -- let's wait and
+       see, perhaps when more routines suited for this/these unit(s) will
+       be found, the design will become clearer ...
+     
+       Copyright (C) 1998-2003 Free Software Foundation, Inc.
+     
+       Author: Frank Heckenbach <frank@@pascal.gnu.de>
+     
+       This file is part of GNU Pascal.
+     
+       GNU Pascal is free software; you can redistribute it and/or modify
+       it under the terms of the GNU General Public License as published
+       by the Free Software Foundation; either version 2, or (at your
+       option) any later version.
+     
+       GNU Pascal is distributed in the hope that it will be useful, but
+       WITHOUT ANY WARRANTY; without even the implied warranty of
+       MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+       General Public License for more details.
+     
+       You should have received a copy of the GNU General Public License
+       along with GNU Pascal; see the file COPYING. If not, write to the
+       Free Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+       02111-1307, USA.
+     
+       As a special exception, if you link this file with files compiled
+       with a GNU compiler to produce an executable, this does not cause
+       the resulting executable to be covered by the GNU General Public
+       License. This exception does not however invalidate any other
+       reasons why the executable file might be covered by the GNU
+       General Public License. }
+     
+     {$gnu-pascal,I-}
+     {$if __GPC_RELEASE__ < 20030412}
+     {$error This unit requires GPC release 20030412 or newer.}
+     {$endif}
+     
+     unit DosUnix;
+     
+     interface
+     
+     uses GPC;
+     
+     { This function is meant to be used when you want to invoke a system
+       shell command (e.g. via Execute or Exec from the Dos unit) and
+       want to specify input/output redirections for the command invoked.
+       It caters for the different syntax between DJGPP (with the `redir'
+       utility) and other systems.
+     
+       To use it, code your redirections in bash style (see the table
+       below) in your command line string, pass this string to this
+       function, and the function's result to Execute or the other
+       routines.
+     
+       The function translates the following bash style redirections
+       (characters in brackets are optional) into a redir call under Dos
+       systems except EMX, and leave them unchanged under other systems.
+       Note: `redir' comes with DJGPP, but it should be possible to
+       install it on other Dos systems as well. OS/2's shell, however,
+       supports bash style redirections, I was told, so we don't
+       translate on EMX.
+     
+       [0]<     file      redirect standard input from file
+       [1]>[|]  file      redirect standard output to file
+       [1]>>    file      append standard output to file
+       [1]>&2             redirect standard output to standard error
+       2>[|]    file      redirect standard error to file
+       2>>      file      append standard error to file
+       2>&1               redirect standard error to standard output
+       &> file            redirect both standard output and standard
+                          error to file }
+     function  TranslateRedirections (const Command: String): TString;
+       attribute (name = '_p_TranslateRedirections');
+     
+     { Under Unix, translates CR/LF pairs to single LF characters when
+       reading from f, and back when writing to f. Under Dos, does
+       nothing because the run time system alrady does this job. In the
+       result, you can read both Dos and Unix files, and files written
+       will be Dos. }
+     procedure AssignDos (var f: AnyFile; const FileName: String);
+       attribute (name = '_p_AssignDos');
+     
+     { Translates a character from the "OEM" charset used under Dos to
+       the ISO-8859-1 (AKA Latin1) character set. }
+     function  OEM2Latin1 (ch: Char): Char; attribute (name
+       = '_p_OEM2Latin1');
+     
+     { Translates a character from the ISO-8859-1 (AKA Latin1) character
+       set to the "OEM" charset used under Dos. }
+     function  Latin12OEM (ch: Char): Char; attribute (name
+       = '_p_Latin12OEM');
+
+
+File: gpc-hr.info,  Node: FileUtils,  Next: GMP,  Prev: DosUnix,  Up: GPC Units
+
+Higher level file and directory handling
+----------------------------------------
+
+   The following listing contains the interface of the FileUtils unit.
+
+   This unit provides some routines for file and directory handling on
+a higher level than those provided by the RTS.
+
+     { Some routines for file and directory handling on a higher level
+       than those provided by the RTS.
+     
+       Copyright (C) 2000-2003 Free Software Foundation, Inc.
+     
+       Author: Frank Heckenbach <frank@@pascal.gnu.de>
+     
+       This file is part of GNU Pascal.
+     
+       GNU Pascal is free software; you can redistribute it and/or modify
+       it under the terms of the GNU General Public License as published
+       by the Free Software Foundation; either version 2, or (at your
+       option) any later version.
+     
+       GNU Pascal is distributed in the hope that it will be useful, but
+       WITHOUT ANY WARRANTY; without even the implied warranty of
+       MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+       General Public License for more details.
+     
+       You should have received a copy of the GNU General Public License
+       along with GNU Pascal; see the file COPYING. If not, write to the
+       Free Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+       02111-1307, USA.
+     
+       As a special exception, if you link this file with files compiled
+       with a GNU compiler to produce an executable, this does not cause
+       the resulting executable to be covered by the GNU General Public
+       License. This exception does not however invalidate any other
+       reasons why the executable file might be covered by the GNU
+       General Public License. }
+     
+     {$gnu-pascal,I-}
+     {$if __GPC_RELEASE__ < 20030412}
+     {$error This unit requires GPC release 20030412 or newer.}
+     {$endif}
+     
+     unit FileUtils;
+     
+     interface
+     
+     uses GPC;
+     
+     type
+       TStringProc = procedure (const s: String);
+     
+     { Finds all files matching the given Mask in the given Directory and
+       all subdirectories of it. The matching is done using all wildcards
+       and brace expansion, like MultiFileNameMatch does. For each file
+       found, FileAction is executed. For each directory found (including
+       `.' and `..' if they match the Mask!), DirAction is executed. If
+       MainDirFirst is True, this happens before processing the files in
+       the directory and below, otherwise afterwards. (The former is
+       useful, e.g., if this is used to copy a directory tree and
+       DirAction does a MkDir, while the latter behaviour is required
+       when removing a directory tree and DirAction does a RmDir.) Both
+       FileAction and DirAction can be nil in which case nothing is done
+       for files or directories found, respectively. (If DirAction is
+       nil, the value of DirsFirst does not matter.) Of course,
+       FileAction and DirAction may also be identical. The procedure
+       leaves InOutRes set in case of any error. If FileAction or
+       DirAction return with InOutRes set, FindFiles recognizes this and
+       returns immediately. }
+     procedure FindFiles (const Directory, Mask: String; MainDirFirst:
+       Boolean;
+                          FileAction, DirAction: TStringProc); attribute
+       (iocritical, name = '_p_FindFiles');
+     
+     { Creates the directory given by Path and all directories in between
+       that are necessary. Does not report an error if Path already
+       exists and is a directory, but, of course, if it cannot be created
+       because of missing permissions or because Path already exists as a
+       file. }
+     procedure MkDirs (const Path: String); attribute (iocritical, name
+       = '_p_MkDirs');
+     
+     { Removes Path if empty as well as any empty parent directories.
+       Does not report an error if Path is not empty. }
+     procedure RmDirs (const Path: String); attribute (iocritical, name
+       = '_p_RmDirs');
+     
+     { Copies the file Source to Dest, overwriting Dest if it exists and
+       can be written to. Returns any errors in IOResult. If Mode >= 0,
+       it will change the permissions of Dest to Mode immediately after
+       creating it and before writing any data to it. That's useful,
+       e.g., if Dest is not meant to be world-readable, because if you'd
+       do a ChMod after FileCopy, you would leave the data readable
+       (depending on the umask) during the copying. If Mode < 0, Dest
+       will be set to the same permissions Source has. In any case, Dest
+       will be set to the modification time of Source after copying. On
+       any error, the destination file is erased. This is to avoid
+       leaving partial files in case of full file systems (one of the
+       most common reasons for errors). }
+     procedure FileCopy (const Source, Dest: String; Mode: Integer);
+       attribute (iocritical, name = '_p_FileCopy');
+     
+     { Creates a backup of FileName in the directory BackupDirectory or,
+       if BackupDirectory is empty, in the directory of FileName. Errors
+       are returned in IOResult (and on any error, no partial backup file
+       is left), but if FileName does not exist, this does *not* count as
+       an error (i.e., BackupFile will just return without setting
+       IOResult then). If OnlyUserReadable is True, the backup file will
+       be given only user-read permissions, nothing else.
+     
+       The name chosen for the backup depends on the Simple and Short
+       parameters. The short names will fit into 8+3 characters (whenever
+       possible), while the long ones conform to the conventions used by
+       most GNU tools. If Simple is True, a simple backup file name will
+       be used, and previous backups under the same name will be
+       overwritten (if possible). Otherwise, backups will be numbered,
+       where the number is chosen to be larger than all existing backups,
+       so it will be unique and increasing in chronological order. In
+       particular:
+     
+       Simple  Short  Backup name
+       True    True   Base name of FileName plus '.bak'
+       False   True   Base name of FileName plus '.b' plus a number
+       True    False  Base name plus extension of FileName plus '~'
+       False   False  Base name plus extension of FileName plus '.~', a
+                      number and '~' }
+     procedure BackupFile (const FileName, BackupDirectory: String;
+       Simple, Short, OnlyUserReadable: Boolean); attribute (iocritical,
+       name = '_p_BackupFile');
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

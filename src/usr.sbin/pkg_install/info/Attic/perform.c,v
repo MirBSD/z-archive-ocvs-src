@@ -1,0 +1,710 @@
+head	1.5;
+access;
+symbols
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.5
+	MIRBSD_7:1.2.0.2
+	cvs-200401271800:1.1.1.5
+	cvs-200401261630:1.1.1.5
+	cvs-200401021645:1.1.1.5
+	MIRBSD_7_ALPHA:1.1.1.5.0.6
+	cvs-200312222040:1.1.1.5
+	MIRBSD_7ter:1.1.1.5
+	MIRBSD_7_DEV:1.1.1.5.0.2
+	cvs-200310020700:1.1.1.5
+	cvs-200309271030:1.1.1.5
+	cvs-200309251530:1.1.1.5
+	cvs-200308302005:1.1.1.5
+	cvs-200308221505:1.1.1.4
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	MIRBSD_4:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.5
+date	2004.10.10.21.12.00;	author tg;	state dead;
+branches;
+next	1.4;
+
+1.4
+date	2004.09.20.16.39.32;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.07.21.10.24.35;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.28.15.09.28;	author tg;	state Exp;
+branches
+	1.2.2.1;
+next	1.1;
+
+1.1
+date	2003.03.22.17.55.49;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.55.49;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.15.01.00;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.07.06.15.56.45;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.08.22.15.36.21;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2003.08.30.23.58.07;	author tg;	state Exp;
+branches;
+next	;
+
+1.2.2.1
+date	2004.12.25.16.43.51;	author tg;	state dead;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@package tools in base is dead
+
+agreed bsiegert@@
+@
+text
+@/*	$OpenBSD: perform.c,v 1.16 2003/08/23 09:14:43 tedu Exp $	*/
+
+/* This is MirPorts pkg_install, based on:
+ *
+ * FreeBSD install - a package for the installation and maintainance
+ * of non-core utilities.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * Jordan K. Hubbard
+ * 23 Aug 1993
+ *
+ * This is the main body of the info module.
+ */
+
+#include "lib.h"
+#include "info.h"
+
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#include <err.h>
+#include <signal.h>
+#include <dirent.h>
+#include <ctype.h>
+
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/info/perform.c,v 1.4 2004/09/20 16:39:32 tg Exp $");
+
+static char    *Home;
+
+/* retrieve info on installed packages from the base name:
+ * find a full name of the form pkg-xxx.
+ */
+static char *
+find_prefix(char *buffer, int bufsize, char *base, char *pkg)
+{
+	DIR 		*dirp;
+	struct dirent 	*dp;
+	char 		*res;
+	int 		 pkg_length = strlen(pkg);
+
+
+	if (! (dirp = opendir(base)) )
+		return 0;
+	while ( (dp = readdir(dirp)) ) {
+		if (strncmp(dp->d_name, pkg, pkg_length) == 0
+		    && dp->d_name[pkg_length] == '-') {
+			snprintf(buffer, bufsize, "%s/%s", base, dp->d_name);
+			  /* pedantic: need to dup res before closedir() */
+			res = strdup(dp->d_name);
+			(void)closedir(dirp);
+			return res;
+		}
+	}
+	(void)closedir(dirp);
+	return 0;
+}
+
+static int
+pkg_do(char *pkg)
+{
+	Boolean         installed = FALSE, isTMP = FALSE;
+	char            log_dir[FILENAME_MAX];
+	char            fname[FILENAME_MAX];
+	package_t       plist;
+	FILE           *fp;
+	struct stat     sb;
+	char           *cp = NULL;
+	int             code = 0;
+	char           *pkg2 = 0; /* hold full name of package, storage to free */
+	int             len;
+	int		isurl = 0;
+
+	set_pkg(pkg);
+
+	if (AllInstalled)
+		goto installed;
+
+	if (isURL(pkg)) {
+		if ((cp = fileGetURL(NULL, pkg)) != NULL) {
+			strlcpy(fname, cp, sizeof(fname));
+			isTMP = TRUE;
+		}
+		isurl = 1;
+	} else if (fexists(pkg) && isfile(pkg)) {
+
+		if (*pkg != '/') {
+			if (!getcwd(fname, sizeof(fname))) {
+			    cleanup(0);
+			    err(1, "fatal error during execution: getcwd");
+			}
+			len = strlen(fname);
+			snprintf(&fname[len], sizeof(fname) - len, "/%s", pkg);
+		} else
+			strlcpy(fname, pkg, sizeof(fname));
+		cp = fname;
+	} else {
+		if ((cp = fileFindByPath(NULL, pkg)) != NULL) {
+			strlcpy(fname, cp, sizeof(fname));
+			if (isURL(fname) && (cp = fileGetURL(NULL, fname))
+			    != NULL) {
+				strlcpy(fname, cp, sizeof(fname));
+				isTMP = TRUE;
+				isurl = 1;
+			} else if (*cp != '/') {
+				if (!getcwd(fname, sizeof(fname))) {
+				    	cleanup(0);
+					err(1, "fatal error during execution: "
+					    "getcwd");
+				}
+				len = strlen(fname);
+				snprintf(&fname[len], sizeof(fname) - len,
+				    "/%s", cp);
+			}
+		}
+	}
+	if (cp) {
+		if (isurl) {
+			/* file is already unpacked by fileGetURL() */
+			strlcpy(PlayPen, cp, PlayPenSize);
+		} else {
+			/*
+			 * Apply a crude heuristic to see how much space the package will
+			 * take up once it's unpacked.  I've noticed that most packages
+			 * compress an average of 75%, but we're only unpacking the + files so
+			 * be very optimistic.
+			 */
+			if (stat(fname, &sb) == FAIL) {
+				pwarnx("can't stat package file '%s'", fname);
+				code = 1;
+				goto bail;
+			}
+			Home = make_playpen(PlayPen, PlayPenSize, sb.st_size / 2);
+			if (unpack(fname, "+*")) {
+				pwarnx("error during unpacking, no info for '%s' available", pkg);
+				code = 1;
+				goto bail;
+			}
+		}
+	}
+	/*
+	 * It's not an uninstalled package, try and find it among the
+	 * installed
+	 */
+	else
+installed:
+	{
+		char           *tmp;
+
+		if (!(tmp = getenv(PKG_DBDIR)))
+			tmp = DEF_LOG_DIR;
+
+		(void) snprintf(log_dir, sizeof(log_dir), "%s/%s", tmp,
+			pkg);
+		if (!fexists(log_dir) &&
+			! (pkg2 = find_prefix(log_dir, sizeof(log_dir), tmp, pkg))) {
+			pwarnx("can't find package `%s' installed or in a file!", pkg);
+			return 1;
+		}
+		if (pkg2)
+			pkg = pkg2;
+		if (chdir(log_dir) == FAIL) {
+			pwarnx("can't change directory to '%s'!", log_dir);
+			free(pkg2);
+			return 1;
+		}
+		installed = TRUE;
+	}
+
+	/*
+         * Index is special info type that has to override all others to make
+         * any sense.
+         */
+	if (Flags & SHOW_INDEX) {
+		show_index(pkg, COMMENT_FNAME);
+	} else {
+		/* Suck in the contents list */
+		plist.head = plist.tail = NULL;
+		fp = fopen(CONTENTS_FNAME, "r");
+		if (!fp) {
+			pwarnx("unable to open %s file", CONTENTS_FNAME);
+			if (isurl) /* file not on server, check installed */
+				goto installed;
+			code = 1;
+			goto bail;
+		}
+		/* If we have a prefix, add it now */
+		read_plist(&plist, fp);
+		fclose(fp);
+
+		/* Start showing the package contents */
+		if (!Quiet)
+			printf("%sInformation for %s:\n\n", InfoPrefix, pkg);
+		if (Flags & SHOW_COMMENT)
+			show_file("Comment:\n", COMMENT_FNAME);
+		if ((Flags & SHOW_REQBY) && !isemptyfile(REQUIRED_BY_FNAME))
+			show_file("Required by:\n", REQUIRED_BY_FNAME);
+		if (Flags & SHOW_DESC)
+			show_file("Description:\n", DESC_FNAME);
+		if ((Flags & SHOW_DISPLAY) && fexists(DISPLAY_FNAME))
+			show_file("Install notice:\n", DISPLAY_FNAME);
+		if (Flags & SHOW_PLIST)
+			show_plist("Packing list:\n", &plist, PLIST_SHOW_ALL);
+		if ((Flags & SHOW_INSTALL) && fexists(INSTALL_FNAME))
+			show_file("Install script:\n", INSTALL_FNAME);
+		if ((Flags & SHOW_DEINSTALL) && fexists(DEINSTALL_FNAME))
+			show_file("De-Install script:\n", DEINSTALL_FNAME);
+		if ((Flags & SHOW_MTREE) && fexists(MTREE_FNAME))
+			show_file("mtree file:\n", MTREE_FNAME);
+		if (Flags & SHOW_PREFIX)
+			show_plist("Prefix(s):\n", &plist, PLIST_CWD);
+		if (Flags & SHOW_FILES)
+			show_files("Files:\n", &plist);
+		if (Flags & SHOW_SAMPLE)
+			show_plist("Configuration file(s):\n", &plist, PLIST_SAMPLE);
+		if (!Quiet)
+			puts(InfoPrefix);
+		free_plist(&plist);
+	}
+bail:
+	free(pkg2);
+	leave_playpen(Home);
+	if (isTMP)
+		unlink(fname);
+	return code;
+}
+
+/* fn to be called for pkgs found */
+static int
+foundpkg(const char *found, char *data, int unused)
+{
+    if(!Quiet)
+	printf("%s\n", found);
+    return 0;
+}
+
+/* check if a package "pkgspec" (which can be a pattern) is installed */
+/* return 0 if found, 1 otherwise (indicating an error). */
+static int
+check4pkg(char *pkgspec, char *dbdir)
+{
+	if (strpbrk(pkgspec, "<>[]?*{")) {
+	    /* expensive (pattern) match */
+	    int found;
+
+	    found=findmatchingname(dbdir, pkgspec, foundpkg, NULL, 0);
+	    return !found;
+	} else {
+		/* simple match */
+	char            buf[FILENAME_MAX];
+	int             error;
+		struct stat     st;
+
+		snprintf(buf, sizeof(buf), "%s/%s", dbdir, pkgspec);
+		error = (stat(buf, &st) < 0);
+		if (!error && !Quiet)
+		printf("%s\n", pkgspec);
+
+	return error;
+	}
+}
+
+void
+cleanup(int sig)
+{
+	leave_playpen(Home);		/* XXX signal race */
+	_exit(1);
+}
+
+int
+pkg_perform(char **pkgs)
+{
+	int             i, err_cnt = 0;
+	char           *tmp;
+
+	signal(SIGINT, cleanup);
+
+	tmp = getenv(PKG_DBDIR);
+	if (!tmp)
+		tmp = DEF_LOG_DIR;
+	/* Overriding action? */
+	if (CheckPkg) {
+		err_cnt += check4pkg(CheckPkg, tmp);
+	} else if (AllInstalled) {
+		struct dirent  *dp;
+		DIR            *dirp;
+
+		if (!(isdir(tmp) || islinktodir(tmp)))
+			return 1;
+		if (chdir(tmp) != 0)
+			return 1;
+		if ((dirp = opendir(".")) != (DIR *) NULL) {
+			while ((dp = readdir(dirp)) != (struct dirent *) NULL) {
+				if (strcmp(dp->d_name, ".") && strcmp(dp->d_name, "..")) {
+					err_cnt += pkg_do(dp->d_name);
+				}
+			}
+			(void) closedir(dirp);
+		}
+	} else {
+		for (i = 0; pkgs[i]; i++) {
+			err_cnt += pkg_do(pkgs[i]);
+		}
+	}
+	return err_cnt;
+}
+@
+
+
+1.4
+log
+@ci on behalf of bsiegert@@: teach pkgtools about @@sample (basic support);
+add show flag; optimise internal processing of show; break lines better
+@
+text
+@d34 1
+a34 1
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/info/perform.c,v 1.3 2004/07/21 10:24:35 tg Stab $");
+@
+
+
+1.3
+log
+@sync with mpsup module
+@
+text
+@d34 1
+a34 1
+__RCSID("$MirBSD: mpsup/pkgtools/info/perform.c,v 1.2 2004/06/25 11:48:39 tg Exp $");
+d221 2
+@
+
+
+1.2
+log
+@MirOSify:
+* fix and unify Makefiles
+* move preprocessor options from CFLAGS to CPPFLAGS
+* make pkg_sign build, at least
+* nuke whitespace at end of line and end of file
+* use new-style MirOS RCS IDs
+* nuke some junk
+@
+text
+@a22 3
+#include <sys/cdefs.h>
+__RCSID("$MirBSD$");
+
+d33 2
+@
+
+
+1.2.2.1
+log
+@remove old MirPorts tools from #7quinquies-to-be
+agreed bsiegert@@
+@
+text
+@d24 1
+a24 1
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/info/perform.c,v 1.2 2004/02/28 15:09:28 tg Exp $");
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.11 2001/11/26 05:04:33 deraadt Exp $	*/
+d3 1
+a3 5
+#ifndef lint
+static const char *rcsid = "$OpenBSD: perform.c,v 1.11 2001/11/26 05:04:33 deraadt Exp $";
+#endif
+
+/* This is OpenBSD pkg_install, based on:
+a20 1
+ *
+d23 3
+d80 1
+d84 3
+d89 1
+a89 1
+			strcpy(fname, cp);
+d92 1
+d96 1
+a96 1
+			if (!getcwd(fname, FILENAME_MAX)) {
+d101 1
+a101 1
+			snprintf(&fname[len], FILENAME_MAX - len, "/%s", pkg);
+d103 1
+a103 1
+			strcpy(fname, pkg);
+d107 15
+a121 5
+		    strncpy(fname, cp, FILENAME_MAX);
+		    if (*cp != '/') {
+			if (!getcwd(fname, FILENAME_MAX)) {
+			    cleanup(0);
+			    err(1, "fatal error during execution: getcwd");
+a122 3
+			len = strlen(fname);
+			snprintf(&fname[len], FILENAME_MAX - len, "/%s", cp);
+		    }
+d126 1
+a126 1
+		if (isURL(pkg)) {
+d128 1
+a128 1
+			strcpy(PlayPen, cp);
+d153 3
+a155 1
+	else {
+d163 1
+a163 1
+		if (!fexists(log_dir) && 
+d168 1
+a168 1
+		if (pkg2) 
+d190 2
+d236 1
+a236 1
+foundpkg(const char *found, char *data)
+d252 1
+a252 1
+	    found=findmatchingname(dbdir, pkgspec, foundpkg, NULL);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.12 2003/04/04 08:56:01 avsm Exp $	*/
+d4 1
+a4 1
+static const char *rcsid = "$OpenBSD: perform.c,v 1.12 2003/04/04 08:56:01 avsm Exp $";
+d87 1
+a87 1
+			strlcpy(fname, cp, sizeof(fname));
+d100 1
+a100 1
+			strlcpy(fname, pkg, sizeof(fname));
+d118 1
+a118 1
+			strlcpy(PlayPen, cp, PlayPenSize);
+d222 1
+a222 1
+foundpkg(const char *found, char *data, int unused)
+d238 1
+a238 1
+	    found=findmatchingname(dbdir, pkgspec, foundpkg, NULL, 0);
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD base system minus kerberos from CTM,
+kernel source from CVS right now (no diffs though)
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.14 2003/07/04 17:31:19 avsm Exp $	*/
+d4 1
+a4 1
+static const char rcsid[] = "$OpenBSD: perform.c,v 1.14 2003/07/04 17:31:19 avsm Exp $";
+d93 1
+a93 1
+			if (!getcwd(fname, sizeof(fname))) {
+d98 1
+a98 1
+			snprintf(&fname[len], sizeof(fname) - len, "/%s", pkg);
+d104 1
+a104 1
+		    strlcpy(fname, cp, sizeof(fname));
+d106 1
+a106 1
+			if (!getcwd(fname, sizeof(fname))) {
+d111 1
+a111 1
+			snprintf(&fname[len], sizeof(fname) - len, "/%s", cp);
+@
+
+
+1.1.1.4
+log
+@Pull in a bit of current OpenBSD, to the least
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.15 2003/08/18 16:56:02 tedu Exp $	*/
+d4 1
+a4 1
+static const char rcsid[] = "$OpenBSD: perform.c,v 1.15 2003/08/18 16:56:02 tedu Exp $";
+a81 1
+	int		isurl = 0;
+a84 3
+	if (AllInstalled)
+		goto installed;
+
+a89 1
+		isurl = 1;
+d104 5
+a108 15
+			strlcpy(fname, cp, sizeof(fname));
+			if (isURL(fname) && (cp = fileGetURL(NULL, fname))
+			    != NULL) {
+				strlcpy(fname, cp, sizeof(fname));
+				isTMP = TRUE;
+				isurl = 1;
+			} else if (*cp != '/') {
+				if (!getcwd(fname, sizeof(fname))) {
+				    	cleanup(0);
+					err(1, "fatal error during execution: "
+					    "getcwd");
+				}
+				len = strlen(fname);
+				snprintf(&fname[len], sizeof(fname) - len,
+				    "/%s", cp);
+d110 3
+d116 1
+a116 1
+		if (isurl) {
+d143 1
+a143 3
+	else
+installed:
+	{
+@
+
+
+1.1.1.5
+log
+@Synchronize with OpenBSD 3.4-beta
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.16 2003/08/23 09:14:43 tedu Exp $	*/
+d4 1
+a4 1
+static const char rcsid[] = "$OpenBSD: perform.c,v 1.16 2003/08/23 09:14:43 tedu Exp $";
+a191 2
+			if (isurl) /* file not on server, check installed */
+				goto installed;
+@
+
+

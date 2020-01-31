@@ -1,0 +1,215 @@
+head	1.3;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.6
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.4
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	cvs-200412031430:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.2
+	cvs-200406230735:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.11.13.21.05.46;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.05.22.14.07.36;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.47.01;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.01;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@shave some off my work for the first MirHackathon and let
+the zombies walk around for bsiegert@@'s voodoo
+@
+text
+@/*	$OpenBSD: uthread_machdep.c,v 1.4 2003/01/27 21:45:24 drahn Exp $	*/
+/* David Leonard, <d@@csee.uq.edu.au>. Public domain */
+
+#include <pthread.h>
+#include "pthread_private.h"
+
+#define ALIGNBYTES	0xf
+
+/* Register save frame as it appears on the stack */
+struct frame {
+	int     r1;
+	int     reserved;
+	int     gp[32-14];
+	int     lr, cr, ctr, xer;
+	double    fp[32];
+	double    fs;
+	/* The rest are only valid in the initial frame */
+	int     next_r1;
+	int     next_lr;
+};
+
+/*
+ * Given a stack and an entry function, initialise a state
+ * structure that can be later switched to.
+ */
+void
+_thread_machdep_init(statep, base, len, entry)
+	struct _machdep_state* statep;
+	void *base;
+	int len;
+	void (*entry)(void);
+{
+	struct frame *f;
+
+	/* Locate the initial frame, aligned at the top of the stack */
+	f = (struct frame *)(((int)base + len - sizeof *f) & ~ALIGNBYTES);
+	
+	f->r1 = (int)&f->next_r1;
+	f->reserved = 0;
+	f->lr = (int)entry;
+	f->next_r1 = 0;		/* for gdb */
+	f->next_lr = 0;		/* for gdb */
+
+	/* Initialise the new thread with all the state from this thread. */
+
+#define copyreg(x) __asm__ volatile ("stw " #x ", %0" : "=m"(f->gp[x-14]))
+	copyreg(14); copyreg(15); copyreg(16); copyreg(17); copyreg(18);
+	copyreg(19); copyreg(20); copyreg(21); copyreg(22); copyreg(23);
+	copyreg(24); copyreg(25); copyreg(26); copyreg(27); copyreg(28);
+	copyreg(29); copyreg(30); copyreg(31);
+
+#define copysreg(nm) __asm__ volatile ("mf" #nm " %0" : "=r"(f->nm))
+	copysreg(cr); copysreg(ctr); copysreg(xer);
+
+#define copyfreg(x) __asm__ volatile ("stfd " #x ", %0" : "=m"(f->fp[x]))
+	copyfreg(0);  copyfreg(1);  copyfreg(2);  copyfreg(3);
+	copyfreg(4);  copyfreg(5);  copyfreg(6);  copyfreg(7);
+	copyfreg(8);  copyfreg(9);  copyfreg(10); copyfreg(11);
+	copyfreg(12); copyfreg(13); copyfreg(14); copyfreg(15);
+	copyfreg(16); copyfreg(17); copyfreg(18); copyfreg(19);
+	copyfreg(20); copyfreg(21); copyfreg(22); copyfreg(23);
+	copyfreg(24); copyfreg(25); copyfreg(26); copyfreg(27);
+	copyfreg(28); copyfreg(29); copyfreg(30); copyfreg(31);
+
+	__asm__ volatile ("mffs 0; stfd 0, %0" : "=m"(f->fs));
+
+	statep->frame = (int)f;
+}
+
+
+/*
+ * No-op float saves.
+ * (Floating point registers were saved in _thread_machdep_switch())
+ */
+
+void
+_thread_machdep_save_float_state(statep)
+	struct _machdep_state* statep;
+{
+}
+
+void
+_thread_machdep_restore_float_state(statep)
+	struct _machdep_state* statep;
+{
+}
+@
+
+
+1.2
+log
+@merge CVS import stuff
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,131 @@
+head	1.2;
+access;
+symbols;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.12.19.16.51.29;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.12.01.19.49.47;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@current bootstrap tree:
+ * debugging is on for (current, to be replaced) srt0.S
+ * /boot works
+ * dosboot.com goes away, /boot will be a MS-DOS .COM compatible
+   programme soon enough, and so nobody tries to load a kernel
+   from msdosfs right now (though that might come as well)
+ * booting from floppy in bochs works (tested)
+ * pbr_ffs is incompatible with prior versions, because /boot
+   now comes as binary, not ELF32 file
+@
+text
+@/* $MirBSD: dosboot.S,v 1.1 2003/12/01 19:49:47 tg Exp $
+ *-
+ * Copyright (c) 2003
+ *	Thorsten Glaser <x86@@ePost.de>, for the MirOS Project
+ *
+ * Subject to these terms, everybody who obtained a copy of this work
+ * is hereby permitted to deal in the work without restriction inclu-
+ * ding without limitation the rights to use, distribute, sell, modi-
+ * fy, publically perform, give away, merge or sublicense it provided
+ * this notice is kept and the authors and contributors are given due
+ * credit in derivates or accompanying documents.
+ *
+ * This work is provided "as is" with no explicit or implicit warran-
+ * ties whatsoever to the maximum extend permitted by applicable law;
+ * in no event may an author or contributor be held liable for damage
+ * that is, directly or indirectly, caused by the work, even if advi-
+ * sed of the possibility of such damage.
+ *-
+ * Small MS-DOS .com programme which loads BSD /boot and jumps into it.
+ */
+
+	.intel_syntax noprefix
+	.text
+	.code16
+
+	.globl	_start
+_start:	/* Program Segment Prefix */
+
+	. = _start + 0x0100
+_init:	xor	ax,ax
+	push	ax
+	popf
+	mov	ax,cs
+	mov	ss,ax
+	mov	sp,0x0100
+	mov	ds,ax
+	sti
+	call	_hello
+	.ascii	"MirOS dosboot.com "
+	.ascii	__BOOT_VER
+	.ascii	"\r\n$"
+_hello:	pop	dx
+	mov	ah,9
+	int	0x21
+	mov	ax,cs
+	mov	bx,SA_LOADSEG
+	cmp	ax,bx
+	je	_boot
+	jb	_move
+	call	_err
+	.ascii	"Load address too high, expect "
+	.ascii	LOADSEG
+	.ascii	" or below.\r\n$"
+_err:	pop	dx
+	mov	ah,9
+	int	0x21
+	mov	ah,0x4C
+	int	0x21
+	jmp	0xF000,0xFFF0
+
+_move:	mov	si,0xFFFC
+	mov	di,si
+	sub	di,offset _init		/* PSP */
+	mov	es,bx
+	mov	cx,0x3F80
+	std
+	rep
+	movsd
+
+_boot:	mov	dx,0x0080
+	mov	ax,0x0120
+	push	bx
+	push	ax
+	lret
+
+#ifdef	CHECK
+/* ensure it doesn't grow too large */
+	. = _init + 0x011F
+#endif
+@
+
+
+1.1
+log
+@add "dosboot.com", a /boot with the ELF header replaced
+with a small MS-DOS executable chaining into the boot
+loader after relocating itself (TESTED)
+
+a pity that my CD-ROM drive doesn't want to boot
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.7 2003/12/01 16:18:24 tg Exp $
+@
+

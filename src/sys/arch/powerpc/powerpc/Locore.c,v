@@ -1,0 +1,285 @@
+head	1.3;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.6
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.4
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.2
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	cvs-200312222040:1.1.1.3
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.11.13.21.06.44;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.04.06.04.29.48;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.10;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.10;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.21.19.06.23;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.12.22.21.00.09;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@shave some off my work for the first MirHackathon and let
+the zombies walk around for bsiegert@@'s voodoo
+@
+text
+@/*	$OpenBSD: Locore.c,v 1.10 2003/10/15 02:43:09 drahn Exp $	*/
+
+/*
+ * Copyright (C) 1995, 1996 Wolfgang Solfrank.
+ * Copyright (C) 1995, 1996 TooLs GmbH.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by TooLs GmbH.
+ * 4. The name of TooLs GmbH may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY TOOLS GMBH ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL TOOLS GMBH BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * Some additional routines that happened to be in locore.S traditionally,
+ * but have no need to be coded in assembly.
+ */
+
+#include <sys/param.h>
+#include <sys/proc.h>
+#include <sys/systm.h>
+
+extern int whichqs;
+
+/*
+ * Put process p on the run queue, given by its priority.
+ * Calls should be made at splstatclock(), and p->p_stat should be SRUN.
+ */
+void
+setrunqueue(struct proc *p)
+{
+	struct  prochd *q;
+	struct proc *oldlast;
+	int which = p->p_priority >> 2;
+	
+#ifdef	DIAGNOSTIC
+	if (p->p_back)
+		panic("setrunqueue");
+#endif
+	q = &qs[which];
+	whichqs |= 0x80000000 >> which;
+	p->p_forw = (struct proc *)q;
+	p->p_back = oldlast = q->ph_rlink;
+	q->ph_rlink = p;
+	oldlast->p_forw = p;
+}
+
+/*
+ * Remove process p from its run queue, given by its priority.
+ * Calls should be made at splstatclock().
+ */
+void
+remrunqueue(struct proc *p)
+{
+	int which = p->p_priority >> 2;
+	struct prochd *q;
+
+#ifdef	DIAGNOSTIC	
+	if (!(whichqs & (0x80000000 >> which)))
+		panic("remrunqueue");
+#endif
+	p->p_forw->p_back = p->p_back;
+	p->p_back->p_forw = p->p_forw;
+	p->p_back = NULL;
+	q = &qs[which];
+	if (q->ph_link == (struct proc *)q)
+		whichqs &= ~(0x80000000 >> which);
+}
+@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: Locore.c,v 1.8 2002/09/15 09:01:59 deraadt Exp $	*/
+d43 1
+a43 1
+int whichqs;
+d50 1
+a50 2
+setrunqueue(p)
+	struct proc *p;
+d73 1
+a73 2
+remrunqueue(p)
+	struct proc *p;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync MirBSD main source tree against OpenBSD-current,
+which should be fairly stable after the Hackathon now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: Locore.c,v 1.9 2003/05/12 08:46:05 jason Exp $	*/
+d43 1
+a43 1
+extern int whichqs;
+@
+
+
+1.1.1.3
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: Locore.c,v 1.10 2003/10/15 02:43:09 drahn Exp $	*/
+d50 2
+a51 1
+setrunqueue(struct proc *p)
+d74 2
+a75 1
+remrunqueue(struct proc *p)
+@
+
+

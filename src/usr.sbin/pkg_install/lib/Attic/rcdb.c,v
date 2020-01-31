@@ -1,0 +1,1626 @@
+head	1.11;
+access;
+symbols
+	MIRBSD_7quater:1.8.2.2
+	MIRBSD_7:1.8.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.11
+date	2004.10.10.21.12.02;	author tg;	state dead;
+branches;
+next	1.10;
+
+1.10
+date	2004.10.09.01.26.08;	author tg;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2004.10.09.01.18.31;	author tg;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2004.01.14.15.59.38;	author tg;	state dead;
+branches
+	1.8.2.1;
+next	1.7;
+
+1.7
+date	2004.01.12.19.06.40;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2004.01.12.07.57.10;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2004.01.11.22.38.20;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.01.09.19.55.59;	author tg;	state Exp;
+branches
+	1.4.2.1;
+next	1.3;
+
+1.3
+date	2004.01.09.19.51.42;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.01.09.19.49.44;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.02.02.53.26;	author tg;	state Exp;
+branches;
+next	;
+
+1.4.2.1
+date	2004.01.14.15.22.57;	author tg;	state Exp;
+branches;
+next	1.4.2.2;
+
+1.4.2.2
+date	2004.01.16.00.18.00;	author tg;	state Exp;
+branches;
+next	1.4.2.3;
+
+1.4.2.3
+date	2004.01.31.02.48.07;	author tg;	state Exp;
+branches;
+next	;
+
+1.8.2.1
+date	2004.02.28.15.15.42;	author tg;	state Exp;
+branches;
+next	1.8.2.2;
+
+1.8.2.2
+date	2004.02.28.17.02.53;	author tg;	state Exp;
+branches;
+next	1.8.2.3;
+
+1.8.2.3
+date	2004.12.25.16.43.52;	author tg;	state dead;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.11
+log
+@package tools in base is dead
+
+agreed bsiegert@@
+@
+text
+@/**	$MirBSD: src/usr.sbin/pkg_install/lib/rcdb.c,v 1.10 2004/10/09 01:26:08 tg Exp $ */
+
+/*-
+ * Copyright (c) 2004
+ *	Thorsten "mirabile" Glaser <tg@@66h.42h.de>
+ *
+ * Licensee is hereby permitted to deal in this work without restric-
+ * tion, including unlimited rights to use, publically perform, modi-
+ * fy, merge, distribute, sell, give away or sublicence, provided the
+ * above copyright notices, these terms and the disclaimer are retai-
+ * ned in all redistributions, or reproduced in accompanying documen-
+ * tation or other materials provided with binary redistributions.
+ *
+ * All advertising materials mentioning features or use of this soft-
+ * ware must display the following acknowledgement:
+ *	This product includes material provided by Thorsten Glaser.
+ *
+ * Licensor hereby provides this work "AS IS" and WITHOUT WARRANTY of
+ * any kind, expressed or implied, to the maximum extent permitted by
+ * applicable law, but with the warranty of being written without ma-
+ * licious intent or gross negligence; in no event shall licensor, an
+ * author or contributor be held liable for any damage, direct, indi-
+ * rect or other, however caused, arising in any way out of the usage
+ * of covered work, even if advised of the possibility of such damage.
+ *-
+ * Frontend for Berkeley db (version 1.85 - integrated in libc) mana-
+ * ging a database with recno back-end (for easy shell access) saving
+ * a (key, value) pair separated by a char (by default, '|'), as well
+ * as simple raw data.
+ *
+ * Specification:
+ * The data is saved as "<value><separator><key><newline>", where the
+ * numeric value is saved in a format recognizable by strtoll(3), and
+ * the key is a plain text in which any character, excluding newline,
+ * can appear. The value ranges within a signed 64-bit integer.
+ * Transparent operation is only guaranteed for data records as shown
+ * above which range in chars from 1 to 126 (ISO_646.irv:1991 compli-
+ * ant), and the separator is checked to be in that range. Applicati-
+ * ons wanting to encode any Unicode character are urged to use utf-7
+ * (mostly because transparent operation on utf-8 strings is not gua-
+ * ranteed in all C environments).
+ */
+
+#include <sys/param.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <err.h>
+#include <fcntl.h>
+#include <limits.h>
+
+#include "lib.h"
+#define __DBINTERFACE_PRIVATE
+#include "rcdb.h"
+
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/lib/rcdb.c,v 1.10 2004/10/09 01:26:08 tg Exp $");
+
+DBT *
+rcdb_alloc(void *item, const size_t length)
+{
+	DBT *res = malloc(sizeof(DBT));
+
+	if (res != NULL) {
+		res->data = item;
+		res->size = length;
+	}
+	return res;
+}
+
+DBT *
+rcdb_string(char *text)
+{
+	if (text == NULL) {
+		errno = EINVAL;
+		return NULL;
+	}
+	return rcdb_alloc(text, strlen(text));
+}
+
+int
+rcdb_split(RCDB *handle, int64_t *value, char **key)
+{
+	char sepstr[2];
+	char *src, *dst;
+	int len;
+
+	if (key != NULL)
+		*key = NULL;
+
+	if ((handle == NULL) || (key == NULL)) {
+		errno = EINVAL;
+		return -1;
+	}
+	if ((handle->sep < 1) || (handle->sep > 126)) {
+		errno = EDOM;
+		return -1;
+	}
+	sepstr[0] = handle->sep;
+	sepstr[1] = '\0';
+
+	if ((src = (char *)(handle->dbt_data.data)) == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	len = handle->dbt_data.size;
+	if ((dst = malloc(len + 1)) == NULL)
+		return -1;
+	memcpy(dst, src, len);	/* don't use strlcpy(), src is no C string */
+	dst[len] = '\0';
+	src = dst;
+
+	dst = strsep(&src, sepstr);
+	if (src == NULL) {
+		free(dst);
+		errno = EFTYPE;
+		return -1;
+	}
+	*value = strtoll(dst, (char **)NULL, 0);
+	len = strlen(src) + 1;
+	if ((*key = malloc(len)) != NULL)
+		strlcpy(*key, src, len);
+	free(dst);
+	return 0;
+}
+
+RCDB *
+rcdb_open(const char *const dbfile)
+{
+	RECNOINFO dbinfo;
+	RCDB *handle = malloc(sizeof(RCDB));
+
+	if ((handle == NULL) || (dbfile == NULL)) {
+		free(handle);
+		if (dbfile == NULL)
+			errno = EINVAL;
+		return NULL;
+	}
+	handle->database = NULL;
+	handle->dbt_key.data = &(handle->key);
+	handle->dbt_key.size = sizeof(recno_t);
+	handle->dbt_data.data = NULL;
+	handle->dbt_data.size = 0;
+	handle->lastrec = handle->currec = 0;
+	handle->sep = '|';
+
+	memset(&dbinfo, 0, sizeof(RECNOINFO));
+	dbinfo.flags = R_NOKEY;
+	dbinfo.cachesize = 131072;
+	dbinfo.bval = '\n';
+	dbinfo.bfname = NULL;
+
+	if ((handle->database = dbopen(dbfile,
+	    O_RDWR | O_CREAT | O_EXLOCK, 0644,
+	    DB_RECNO, (void *)&dbinfo)) == NULL) {
+		free(handle);
+		handle = NULL;
+	}
+	return handle;
+}
+
+int
+rcdb_close(RCDB *handle)
+{
+	int rv = -1;
+
+	if (handle != NULL) {
+		if (handle->database != NULL)
+			if (!(handle->database->close(handle->database)))
+				rv = 0;
+		free(handle);
+	}
+	return rv;
+}
+
+int
+rcdb_rawread(RCDB *handle, recno_t nr, char **bstr)
+{
+	int rv;
+	size_t len;
+
+	if (bstr != NULL)
+		*bstr = NULL;
+
+	if ((handle == NULL) || (!nr)) {
+		errno = EINVAL;
+		return -1;
+	}
+	handle->key = nr;
+	rv = handle->database->get(handle->database,
+	    &(handle->dbt_key), &(handle->dbt_data), 0);
+
+	if (!rv)
+		handle->currec = nr;
+
+	if (bstr == NULL)
+		return rv;
+
+	if (!rv)
+		if ((*bstr = malloc(1 + (len = handle->dbt_data.size)))
+		    != NULL) {
+			memcpy(*bstr, handle->dbt_data.data, len);
+			(*bstr)[len] = '\0';
+		}
+	return ((*bstr == NULL) ? -1 : rv);
+}
+
+int
+rcdb_rawrite(RCDB *handle, recno_t nr, char **bstr)
+{
+	DBT *dbt;
+	int rv;
+
+	if ((handle == NULL) || (bstr == NULL)) {
+		errno = EINVAL;
+		return -1;
+	}
+	if ((dbt = rcdb_string(*bstr)) == NULL)
+		return -1;
+
+	handle->key = nr;
+	rv = handle->database->put(handle->database,
+	    &(handle->dbt_key), dbt, (nr ? 0 : R_IAFTER));
+	free(dbt);
+	if (!rv)
+		handle->currec = nr;
+	return rv;
+}
+
+int
+rcdb_delete(RCDB *handle, recno_t nr)
+{
+	if (handle == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	handle->key = nr;
+	handle->lastrec = handle->currec = 0;
+	return handle->database->del(handle->database,
+	    &(handle->dbt_key), 0);
+}
+
+recno_t
+rcdb_lookup(RCDB *handle, const char *const searchkey)
+{
+	int64_t value;
+	char *key;
+	recno_t curno = 0;
+	int rv;
+
+	if ((handle == NULL) || (searchkey == NULL)) {
+		errno = EINVAL;
+		goto bad;
+	}
+retr:
+	rv = handle->database->seq(handle->database,
+	    &(handle->dbt_key), &(handle->dbt_data),
+	    (curno ? R_NEXT : R_FIRST));
+	if (rv == -1)
+		goto bad;
+	else if (rv == 1) {
+		handle->lastrec = curno - 1;
+		return (handle->currec = 0);
+	}
+	++curno;
+
+	if (rcdb_split(handle, &value, &key)) {
+		if (errno == EFTYPE)
+			goto retr;
+		else
+			goto bad;
+	}
+	if (key == NULL)
+		goto retr;
+
+	value = strcmp(key, searchkey);
+	free(key);
+	if (value)
+		goto retr;
+
+	return curno;
+
+bad:
+	handle->lastrec = handle->currec = 0;
+	return (recno_t)-1;
+}
+
+int
+rcdb_retrieve(RCDB *handle, recno_t nr, int64_t *value, char **key)
+{
+	int rv = 0;
+
+	if (key != NULL)
+		*key = NULL;
+
+	if ((handle == NULL) || (value == NULL) || (key == NULL)) {
+		errno = EINVAL;
+		rv = -1;
+	} else if (rcdb_rawread(handle, nr, NULL)) {
+		rv = -1;
+	} else if (rcdb_split(handle, value, key)) {
+		rv = -1;
+	} else if (*key == NULL)
+		rv = -1;
+
+	return rv;
+}
+
+int
+rcdb_read(RCDB *handle, recno_t nr, int64_t *value)
+{
+	int rv;
+	char *buf;
+
+	rv = rcdb_retrieve(handle, nr, value, &buf);
+	free(buf);
+	return rv;
+}
+
+int
+rcdb_modify(RCDB *handle, recno_t nr, int64_t value, const char *const key)
+{
+	size_t len;
+	char *buf;
+	int rv;
+
+	if ((handle == NULL) || (key == NULL)) {
+		errno = EINVAL;
+		return -1;
+	}
+	if ((handle->sep < 1) || (handle->sep > 126)) {
+		errno = EDOM;
+		return -1;
+	}
+	len = strlen(key) + 20;
+	if ((buf = malloc(len)) == NULL)
+		return -1;
+	snprintf(buf, len, "0x%llX%c%s", value, handle->sep, key);
+
+	rv = rcdb_rawrite(handle, nr, &buf);
+	free(buf);
+	return rv;
+}
+
+int
+rcdb_write(RCDB *handle, recno_t nr, int64_t value)
+{
+	int rv;
+	int64_t tmpv;
+	char *tmpk;
+
+	if (rcdb_retrieve(handle, nr, &tmpv, &tmpk))
+		rv = -1;
+	else
+		rv = rcdb_modify(handle, nr, value, tmpk);
+	free(tmpk);
+	return rv;
+}
+
+recno_t
+rcdb_store(RCDB *handle, int64_t value, const char *const key)
+{
+	recno_t nr;
+
+	if ((nr = rcdb_lookup(handle, key)) == (recno_t)-1)
+		return (recno_t)-1;
+	if (rcdb_modify(handle, nr, value, key))
+		return (recno_t)-1;
+	return nr;
+}
+@
+
+
+1.10
+log
+@time to remove some cruft
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/usr.sbin/pkg_install/lib/rcdb.c,v 1.9 2004/10/09 01:18:31 tg Exp $ */
+d57 1
+a57 1
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/lib/rcdb.c,v 1.9 2004/10/09 01:18:31 tg Exp $");
+@
+
+
+1.9
+log
+@* copy over
+  * rcdb.h from ports/infrastructure/stools/lib
+  * rcdb.c from src/lib/libc/db/db
+* simplify
+
+MirOS package tools are now
+a) self-hosting
+b) the same between ports/infrastructure/stools (-stable)
+   and src/usr.sbin/pkg_install (-current)
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/lib/libc/db/db/rcdb.c,v 1.11 2004/10/09 00:48:13 tg Stab $ */
+a52 3
+#ifndef	USE_LOCAL_RCDB_COPY
+#include <db.h>
+#else
+d54 1
+a55 11
+#endif
+
+__RCSID("$MirBSD: src/lib/libc/db/db/rcdb.c,v 1.11 2004/10/09 00:48:13 tg Stab $");
+
+#if !defined(_DB_RCDB_API)
+#error	db.h too old and does not support RCDB!
+#elif !defined(_DB_RCDB_MAJOR)
+#error	db.h belongs to an too old version of RCDB!
+#elif (_DB_RCDB_API < 3) || (_DB_RCDB_MAJOR > 3)
+#error	The RCDB API in db.h is different from the API supplied!
+#endif
+d57 1
+@
+
+
+1.8
+log
+@fearless attempt to place rcdb into libc
+(no functional changes from the last version in pkg_install/lib)
+
+bump version numbers of libc and libpthread (depends on libc) so to make
+them in sync, as well
+
+start writing a preliminary rcdb man page (to be extended RSN)
+
+bsiegert@@ wbx@@ please read through the code once again, six eyes
+see more than two with glasses ;-)
+@
+text
+@d1 3
+a3 2
+/* $MirBSD: rcdb.c,v 1.7 2004/01/12 19:06:40 tg Exp $
+ *-
+d5 8
+a12 1
+ *	Thorsten "mirabile" Glaser <x86@@ePost.de>
+d14 3
+a16 6
+ * Subject to these terms, everybody who obtained a copy of this work
+ * is hereby permitted to deal in the work without restriction inclu-
+ * ding without limitation the rights to use, distribute, sell, modi-
+ * fy, publically perform, give away, merge or sublicence it provided
+ * this notice is kept and the authors and contributors are given due
+ * credit in derivates or accompanying documents.
+d18 7
+a24 5
+ * This work is provided "as is" with no explicit or implicit warran-
+ * ties whatsoever to the maximum extent permitted by applicable law;
+ * in no event may an author or contributor be held liable for damage
+ * that is, directly or indirectly, caused by the work, even if advi-
+ * sed of the possibility of such damage.
+d26 16
+a41 7
+ * Frontend for Berkeley db (version 1.85 in libc) managing a database
+ * for reference counters (or, for what it's worth, any integer number)
+ * using a recno back-end and a more "easy" and not so powerful inter-
+ * face, yet exposing the internals if it should be ever needed.
+ * Okay, this thing started out as a reference counter database, but
+ * now allows the user basically to transparently store a single signed
+ * 64 bit integer number value along with a C string.
+d52 2
+d55 2
+a56 1
+#define	__DBINTERFACE_PRIVATE
+d58 55
+d114 24
+d140 1
+a140 1
+rcdb_open(const char *const fname)
+d143 1
+a143 1
+	RCDB *handle = malloc(sizeof (RCDB));
+d145 4
+a148 2
+	if ((handle == NULL) || (fname == NULL)) {
+		errno = EINVAL;
+a150 1
+
+d153 1
+a153 1
+	handle->dbt_key.size = sizeof (recno_t);
+d156 2
+a157 1
+	handle->lastrec = 0;
+d159 1
+a159 1
+	memset(&dbinfo, 0, sizeof (RECNOINFO));
+d165 7
+a171 6
+	if ((handle->database = dbopen(fname, O_RDWR | O_CREAT | O_SYNC | O_EXLOCK,
+	    0644, DB_RECNO, (void *)&dbinfo)) != NULL)
+		return handle;
+
+	free(handle);
+	return NULL;
+a173 1
+
+d177 1
+a177 1
+	int rv = 1;
+d188 5
+d194 2
+a195 4
+DBT *
+rcdb_alloc(void *item, const size_t length)
+{
+	DBT *res = malloc(sizeof (DBT));
+d197 3
+a199 3
+	if (res != NULL) {
+		res->data = item;
+		res->size = length;
+d201 3
+d205 2
+a206 2
+	return res;
+}
+d208 2
+d211 7
+a217 4
+DBT *
+rcdb_string(char *text)
+{
+	return rcdb_alloc(text, (text == NULL) ? 0 : strlen(text));
+d220 2
+a221 3
+
+recno_t
+rcdb_lookup(RCDB *handle, const char *const pname)
+d223 1
+a223 1
+	recno_t curno = 1;
+a224 3
+	u_int cflag = R_FIRST;
+	char *rtext;
+	int64_t rcount;
+d226 1
+a226 1
+	if ((handle == NULL) || (pname == NULL)) {
+d228 1
+a228 1
+		return (recno_t)-1;
+d230 2
+d233 7
+a239 18
+retr:	rv = handle->database->seq(handle->database, &(handle->dbt_key),
+	    &(handle->dbt_data), cflag);
+	if (rv == -1) {
+		return (recno_t)-1;
+	} else if (rv == 1) {
+		handle->lastrec = curno - 1;
+		return 0;
+	}
+	rcdb_split(&(handle->dbt_data), &rcount, &rtext);
+	if ((rtext != NULL) && (!strcmp(rtext, pname))) {
+		free(rtext);
+		return curno;
+	}
+	free(rtext);
+	++curno;
+	cflag = R_NEXT;
+	goto retr;
+	/* NOTREACHED */
+d242 2
+a243 3
+
+recno_t
+rcdb_write(RCDB *handle, int64_t pcount, const char *const pname)
+d245 2
+a246 3
+	recno_t id;
+
+	if ((id = rcdb_lookup(handle, pname)) == (recno_t)-1)
+d248 5
+a252 3
+	if (rcdb_modify(handle, id, pcount, pname, (id ? 0 : 1)))
+		return -1;
+	return id;
+d255 2
+a256 3
+
+int
+rcdb_read(RCDB *handle, recno_t id, int64_t *pcount)
+d258 3
+a261 1
+	char *pname;
+d263 24
+a286 2
+	rv = rcdb_retrieve(handle, id, pcount, &pname);
+	free(pname);
+d288 10
+a297 1
+	return rv;
+a299 1
+
+d301 1
+a301 1
+rcdb_delete(RCDB *handle, recno_t id)
+d303 6
+a308 1
+	if (handle == NULL) {
+d310 7
+a316 2
+		return -1;
+	}
+d318 1
+a318 5
+	handle->key = id;
+	if (handle->database->del(handle->database,
+	    &(handle->dbt_key), 0) == -1)
+		return -1;
+	return 0;
+a320 1
+
+d322 1
+a322 1
+rcdb_retrieve(RCDB *handle, recno_t id, int64_t *pcount, char **pname)
+d325 1
+d327 2
+a328 14
+	*pname = NULL;
+
+	if ((handle == NULL) || (pcount == NULL) || (pname == NULL)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	handle->key = id;
+	rv = handle->database->get(handle->database,
+	    &(handle->dbt_key), &(handle->dbt_data), 0);
+
+	if (!rv) rcdb_split(&(handle->dbt_data), pcount, pname);
+	if (*pname == NULL)
+		rv = -1;
+a331 1
+
+d333 1
+a333 2
+rcdb_modify(RCDB *handle, recno_t id, int64_t pcount,
+    const char *const pname, int do_app)
+d335 3
+a337 3
+	int slen;
+	char *keyval;
+	DBT *dbt;
+d339 1
+a339 1
+	if ((handle == NULL) || (pname == NULL)) {
+d343 8
+d352 3
+a354 11
+	slen = 20 + strlen(pname);
+	keyval = malloc(slen);
+	snprintf(keyval, slen, "0x%llX|%s", pcount, pname);
+	dbt = rcdb_alloc(keyval, slen);
+	free(keyval);
+
+	handle->key = (do_app ? 0 : id);
+	slen = handle->database->put(handle->database, &(handle->dbt_key),
+	    dbt, (do_app ? R_IAFTER : 0));
+	free(dbt);
+	return slen;
+a356 1
+
+d358 1
+a358 1
+rcdb_modify_count(RCDB *handle, recno_t id, int64_t pcount)
+d361 2
+a362 2
+	int64_t tmpc;
+	char *tmpn;
+d364 1
+a364 1
+	if (rcdb_retrieve(handle, id, &tmpc, &tmpn))
+d366 3
+a368 3
+	  else
+		rv = rcdb_modify(handle, id, pcount, tmpn, 0);
+	free(tmpn);
+d372 2
+a373 3
+
+void
+rcdb_split(DBT *dbt, int64_t *pcount, char **pname)
+d375 1
+a375 2
+	char *pptr, *tptr;
+	size_t len;
+d377 5
+a381 19
+	*pname = NULL;
+
+	if (dbt == NULL)
+		return;
+
+	if ((pptr = (char *)(dbt->data)) == NULL)
+		return;
+	len  = 1 + strlen(pptr);
+	if ((tptr = malloc(len)) == NULL)
+		return;
+	strlcpy(tptr, pptr, len);
+	pptr = tptr;
+
+	*pcount = strtoll(strsep(&pptr, "|"), (char **)NULL, 0);
+	len  = 1 + strlen(pptr);
+	if ((*pname = malloc(len)) != NULL)
+		strlcpy(*pname, pptr, len);
+	free(tptr);
+	return;
+@
+
+
+1.8.2.1
+log
+@MFC back pkgtools to #7-stable, including latest rcdb
+(the other files have been retagged)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: rcdb.c,v 1.5 2004/02/11 16:34:07 tg Exp $
+d19 7
+a25 16
+ * Frontend for Berkeley db (version 1.85 - integrated in libc) mana-
+ * ging a database with recno back-end (for easy shell access) saving
+ * a (key, value) pair separated by a char (by default, '|'), as well
+ * as simple raw data.
+ *
+ * Specification:
+ * The data is saved as "<value><separator><key><newline>", where the
+ * numeric value is saved in a format recognizable by strtoll(3), and
+ * the key is a plain text in which any character, excluding newline,
+ * can appear. The value ranges within a signed 64-bit integer.
+ * Transparent operation is only guaranteed for data records as shown
+ * above which range in chars from 1 to 126 (ISO_646.irv:1991 compli-
+ * ant), and the separator is checked to be in that range. Applicati-
+ * ons wanting to encode any Unicode character are urged to use utf-7
+ * (mostly because transparent operation on utf-8 strings is not gua-
+ * ranteed in all C environments).
+d37 2
+a39 80
+#if !defined(_DB_RCDB_API)
+# error	db.h too old and does not support RCDB!
+#elif !defined(_DB_RCDB_MAJOR)
+# error	db.h belongs to an too old version of RCDB!
+#elif (_DB_RCDB_API < 3) || (_DB_RCDB_MAJOR > 3)
+# error	The RCDB API in db.h is different from the API supplied!
+#endif
+
+
+DBT *
+rcdb_alloc(void *item, const size_t length)
+{
+	DBT *res = malloc(sizeof (DBT));
+
+	if (res != NULL) {
+		res->data = item;
+		res->size = length;
+	}
+
+	return res;
+}
+
+DBT *
+rcdb_string(char *text)
+{
+	if (text == NULL) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	return rcdb_alloc(text, strlen(text));
+}
+
+int
+rcdb_split(RCDB *handle, int64_t *value, char **key)
+{
+	char sepstr[2];
+	char *src, *dst;
+	int len;
+
+	if (key != NULL)
+		*key = NULL;
+
+	if ((handle == NULL) || (key == NULL)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if ((handle->sep < 1) || (handle->sep > 126)) {
+		errno = EDOM;
+		return -1;
+	}
+
+	sepstr[0] = handle->sep;
+	sepstr[1] = '\0';
+
+	if ((src = (char *)(handle->dbt_data.data)) == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	len = handle->dbt_data.size + 1;
+	if ((dst = malloc(len)) == NULL)
+		return -1;
+	strlcpy(dst, src, len);
+	src = dst;
+
+	dst = strsep(&src, sepstr);
+	if (src == NULL) {
+		free(dst);
+		errno = EFTYPE;
+		return -1;
+	}
+
+	*value = strtoll(dst, (char **)NULL, 0);
+	len = strlen(src) + 1;
+	if ((*key = malloc(len)) != NULL)
+		strlcpy(*key, src, len);
+	free(dst);
+	return 0;
+}
+d42 1
+a42 1
+rcdb_open(const char *const dbfile)
+d47 2
+a48 4
+	if ((handle == NULL) || (dbfile == NULL)) {
+		free(handle);
+		if (dbfile == NULL)
+			errno = EINVAL;
+d57 1
+a57 2
+	handle->lastrec = handle->currec = 0;
+	handle->sep = '|';
+d65 6
+a70 7
+	if ((handle->database = dbopen(dbfile,
+	    O_RDWR | O_CREAT | O_SYNC | O_EXLOCK, 0644,
+	    DB_RECNO, (void *)&dbinfo)) == NULL) {
+		free(handle);
+		handle = NULL;
+	}
+	return handle;
+d73 1
+d77 1
+a77 1
+	int rv = -1;
+d88 24
+a111 2
+int
+rcdb_rawread(RCDB *handle, recno_t nr, char **bstr)
+d113 1
+d115 3
+a117 4
+	size_t len;
+
+	if (bstr != NULL)
+		*bstr = NULL;
+d119 1
+a119 1
+	if ((handle == NULL) || (!nr)) {
+d121 1
+a121 1
+		return -1;
+d124 19
+a142 3
+	handle->key = nr;
+	rv = handle->database->get(handle->database,
+	    &(handle->dbt_key), &(handle->dbt_data), 0);
+a143 2
+	if (!rv)
+		handle->currec = nr;
+d145 4
+a148 2
+	if (bstr == NULL)
+		return rv;
+d150 6
+a155 5
+	if (!rv) {
+		len = handle->dbt_data.size + 1;
+		if ((*bstr = malloc(len)) != NULL)
+			strlcpy(*bstr, handle->dbt_data.data, len);
+	}
+a156 2
+	return ((*bstr == NULL) ? -1 : rv);
+}
+d159 1
+a159 1
+rcdb_rawrite(RCDB *handle, recno_t nr, char **bstr)
+a160 1
+	DBT *dbt;
+d162 1
+d164 2
+a165 7
+	if ((handle == NULL) || (bstr == NULL)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if ((dbt = rcdb_string(*bstr)) == NULL)
+		return -1;
+a166 6
+	handle->key = nr;
+	rv = handle->database->put(handle->database,
+	    &(handle->dbt_key), dbt, (nr ? 0 : R_IAFTER));
+	free(dbt);
+	if (!rv)
+		handle->currec = nr;
+d170 1
+d172 1
+a172 1
+rcdb_delete(RCDB *handle, recno_t nr)
+d179 5
+a183 4
+	handle->key = nr;
+	handle->lastrec = handle->currec = 0;
+	return handle->database->del(handle->database,
+	    &(handle->dbt_key), 0);
+d186 3
+a188 2
+recno_t
+rcdb_lookup(RCDB *handle, const char *const searchkey)
+a189 3
+	int64_t value;
+	char *key;
+	recno_t curno = 0;
+d192 3
+a194 1
+	if ((handle == NULL) || (searchkey == NULL)) {
+d196 1
+a196 1
+		goto bad;
+d199 3
+a201 30
+ retr:	rv = handle->database->seq(handle->database,
+	    &(handle->dbt_key), &(handle->dbt_data),
+	    (curno ? R_NEXT : R_FIRST));
+	if (rv == -1)
+		goto bad;
+	  else if (rv == 1) {
+		handle->lastrec = curno - 1;
+		return (handle->currec = 0);
+	}
+	++curno;
+
+	if (rcdb_split(handle, &value, &key)) {
+		if (errno == EFTYPE)
+			goto retr;
+		  else	goto bad;
+	}
+	if (key == NULL)
+		goto retr;
+
+	value = strcmp(key, searchkey);
+	free(key);
+	if (value)
+		goto retr;
+
+	return curno;
+
+ bad:
+	handle->lastrec = handle->currec = 0;
+	return (recno_t)-1;
+}
+d203 2
+a204 10
+int
+rcdb_retrieve(RCDB *handle, recno_t nr, int64_t *value, char **key)
+{
+	int rv = 0;
+
+	if (key != NULL)
+		*key = NULL;
+
+	if ((handle == NULL) || (value == NULL) || (key == NULL)) {
+		errno = EINVAL;
+a205 7
+	} else if (rcdb_rawread(handle, nr, NULL)) {
+		rv = -1;
+	} else if (rcdb_split(handle, value, key)) {
+		rv = -1;
+	} else if (*key == NULL)
+		rv = -1;
+
+a208 10
+int
+rcdb_read(RCDB *handle, recno_t nr, int64_t *value)
+{
+	int rv;
+	char *buf;
+
+	rv = rcdb_retrieve(handle, nr, value, &buf);
+	free(buf);
+	return rv;
+}
+d211 2
+a212 1
+rcdb_modify(RCDB *handle, recno_t nr, int64_t value, const char *const key)
+d214 3
+a216 3
+	size_t len;
+	char *buf;
+	int rv;
+d218 1
+a218 1
+	if ((handle == NULL) || (key == NULL)) {
+d223 12
+a234 4
+	if ((handle->sep < 1) || (handle->sep > 126)) {
+		errno = EDOM;
+		return -1;
+	}
+a235 9
+	len = strlen(key) + 20;
+	if ((buf = malloc(len)) == NULL)
+		return -1;
+	snprintf(buf, len, "0x%llX%c%s", value, handle->sep, key);
+
+	rv = rcdb_rawrite(handle, nr, &buf);
+	free(buf);
+	return rv;
+}
+d238 1
+a238 1
+rcdb_write(RCDB *handle, recno_t nr, int64_t value)
+d241 2
+a242 2
+	int64_t tmpv;
+	char *tmpk;
+d244 1
+a244 1
+	if (rcdb_retrieve(handle, nr, &tmpv, &tmpk))
+d247 2
+a248 2
+		rv = rcdb_modify(handle, nr, value, tmpk);
+	free(tmpk);
+d252 3
+a254 2
+recno_t
+rcdb_store(RCDB *handle, int64_t value, const char *const key)
+d256 2
+a257 1
+	recno_t nr;
+d259 19
+a277 5
+	if ((nr = rcdb_lookup(handle, key)) == (recno_t)-1)
+		return (recno_t)-1;
+	if (rcdb_modify(handle, nr, value, key))
+		return (recno_t)-1;
+	return nr;
+@
+
+
+1.8.2.2
+log
+@use "rcdb.h" for <db.h> here too
+thanks to Thomas Kopp for noticing
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: rcdb.c,v 1.8.2.1 2004/02/28 15:15:42 tg Exp $
+d45 1
+a45 1
+#include "rcdb.h"
+@
+
+
+1.8.2.3
+log
+@remove old MirPorts tools from #7quinquies-to-be
+agreed bsiegert@@
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/usr.sbin/pkg_install/lib/rcdb.c,v 1.8.2.2 2004/02/28 17:02:53 tg Exp $
+@
+
+
+1.7
+log
+@for now, commit the change to rcdb v2 (using signed int64_t),
+the diff is still being reviewed at our libdb guy, but this
+way people can play with it
+new entries are written out in hexadecimal by default; the old
+code (v0/v1) is uncapable of this because I used atoi(3) and
+not strtol(3) at first.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: rcdb.c,v 1.6 2004/01/12 07:57:10 tg Exp $
+@
+
+
+1.6
+log
+@tedu@@openbsd kindly looked over this code and found a
+possibility to have a junk pointer freed. He also
+proposed a fix (same which I already use in rcdb_split).
+Thanks.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: rcdb.c,v 1.5 2004/01/11 22:38:20 tg Exp $
+d23 3
+d114 1
+a114 1
+	int rv, rn;
+d117 1
+d121 1
+a121 1
+		return -1;
+d127 1
+a127 1
+		return -1;
+d132 1
+a132 1
+	rcdb_split(&(handle->dbt_data), &rn, &rtext);
+d146 1
+a146 1
+rcdb_write(RCDB *handle, int pcount, const char *const pname)
+d150 1
+a150 1
+	if ((id = rcdb_lookup(handle, pname)) == -1)
+d159 1
+a159 1
+rcdb_read(RCDB *handle, recno_t id)
+d161 1
+a161 1
+	int pcount, rv;
+d164 1
+a164 1
+	rv = rcdb_retrieve(handle, id, &pcount, &pname);
+d167 1
+a167 1
+	return (rv == -1) ? -1 : pcount;
+d188 1
+a188 1
+rcdb_retrieve(RCDB *handle, recno_t id, int *pcount, char **pname)
+d194 1
+a194 1
+	if (handle == NULL) {
+d211 1
+a211 1
+rcdb_modify(RCDB *handle, recno_t id, int pcount,
+d223 1
+a223 1
+	slen = 12 + strlen(pname);
+d225 1
+a225 1
+	snprintf(keyval, slen, "%d|%s", pcount, pname);
+d238 1
+a238 1
+rcdb_modify_count(RCDB *handle, recno_t id, int pcount)
+d240 2
+a241 1
+	int tmpc, rv;
+d254 1
+a254 1
+rcdb_split(DBT *dbt, int *pcount, char **pname)
+d272 1
+a272 1
+	*pcount = atoi(strsep(&pptr, "|"));
+@
+
+
+1.5
+log
+@some steps further in the development of rcdb:
+ * more descriptive text
+ * no globals any more, use thread-local storage (aka, handle)
+   (will help intrigation of rcdb into libc-db)
+ * nuke test programmes
+   (will be rewritten as a mini toolchain later)
+ * more stringent checking for
+   - return values
+   - failures
+   - NULL pointers
+ * fix some minor bugs
+ * remove an irrelevant API (changing the primary key isn't good)
+
+the diffs to lib/plist.c, lib/rcdb.c and lib/rcdb.h ok'd by bsiegert@@
+lib and pkg_add compile with -Wall -Werror again, like before
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.8 2003/12/17 14:35:00 tg Exp $
+d187 2
+@
+
+
+1.4
+log
+@bsiegert@@ notified that I cast a (const void * const foo) to (void *foo).
+this is obviously bogus, although it was more bogus than he thought. d'oh
+
+also, fix -Wall -Werror cleanness
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: rcdb.c,v 1.3 2004/01/09 19:51:42 tg Exp $
+d4 1
+a4 1
+ *	Thorsten Glaser <x86@@ePost.de> for the MirOS Project
+d19 4
+a22 1
+ * Routines for managing a reference counter database using libc-db
+d34 1
+a36 3
+DB *rcdb_database = NULL;
+recno_t rcdb_key, rcdb_lastrec;
+DBT rcdb_dkey, rcdb_ddat;
+d38 2
+a39 3
+
+int
+rcdb_open(const char *const name)
+d42 1
+d44 3
+a46 3
+	if (rcdb_database != NULL) {
+		errno = EALREADY;
+		return -1;
+d49 8
+a56 1
+	memset(&dbinfo, 0, sizeof dbinfo);
+d62 3
+a64 2
+	rcdb_dkey.data = &rcdb_key;
+	rcdb_dkey.size = sizeof rcdb_key;
+d66 2
+a67 4
+	if ((rcdb_database = dbopen(name, O_RDWR | O_CREAT | O_SYNC | O_EXLOCK,
+	    0644, DB_RECNO, (void *)&dbinfo)) == NULL)
+		return -1;
+	return 0;
+a69 4
+#define	D_B	rcdb_database
+#define	D_K	rcdb_dkey
+#define	D_D	rcdb_ddat
+#define	D_X(x)	rcdb_database->x
+d71 4
+d76 7
+a82 7
+void
+rcdb_close(void)
+{
+	if (D_X(close)(D_B))
+		err(1, "rcdb_close");
+	rcdb_database = NULL;
+	return;
+d89 6
+a94 3
+	DBT *res = malloc(sizeof(DBT));
+	res->data = item;
+	res->size = length;
+d103 1
+a103 1
+	return rcdb_alloc(text, strlen(text));
+d108 1
+a108 1
+rcdb_lookup(const char *const item)
+d115 7
+a121 1
+retr:	rv = D_X(seq)(D_B, &D_K, &D_D, cflag);
+d125 1
+a125 1
+		rcdb_lastrec = curno - 1;
+d128 2
+a129 2
+	rcdb_split(&D_D, &rn, &rtext);
+	if (!strcmp(rtext, item)) {
+d142 1
+a142 1
+rcdb_write(int rc, const char *const rp)
+d144 1
+a144 1
+	recno_t cx;
+d146 1
+a146 2
+	cx = rcdb_lookup(rp);
+	if (rcdb_modify(cx, rc, rp, (cx ? 0 : 1)))
+d148 3
+a150 1
+	return cx;
+d155 1
+a155 1
+rcdb_read(recno_t num)
+d157 5
+a161 4
+	int rk, rv;
+	char *rtext;
+	rv = rcdb_retrieve(num, &rk, &rtext);
+	free(rtext);
+d163 1
+a163 2
+	if (rv == -1) return -1;
+	return rk;
+d168 1
+a168 1
+rcdb_delete(recno_t num)
+d170 8
+a177 2
+	rcdb_key = num;
+	if (D_X(del)(D_B, &D_K, 0) == -1)
+d184 1
+a184 1
+rcdb_retrieve(recno_t num, int *rn, char **rtext)
+d188 4
+a191 2
+	rcdb_key = num;
+	rv = D_X(get)(D_B, &D_K, &D_D, 0);
+d193 7
+a199 1
+	if (!rv) rcdb_split(&D_D, rn, rtext);
+d205 2
+a206 1
+rcdb_modify(recno_t num, int rn, const char *const rp, int do_app)
+d208 2
+a209 2
+	int rl;
+	char *kv;
+d212 4
+a215 5
+	rl = 12 + strlen(rp);
+	kv = malloc(rl);
+	snprintf(kv, rl, "%d|%s", rn, rp);
+	dbt = rcdb_alloc(kv, rl);
+	free(kv);
+d217 9
+a225 2
+	rcdb_key = (do_app ? 0 : num);
+	rl = D_X(put)(D_B, &D_K, dbt, (do_app ? R_IAFTER : 0));
+d227 1
+a227 1
+	return rl;
+d232 1
+a232 1
+rcdb_modify_count(recno_t num, int cnt)
+d234 2
+a235 2
+	int rn, rv;
+	char *rp;
+d237 5
+a241 4
+	if (rcdb_retrieve(num, &rn, &rp))
+		return -1;
+	rv = rcdb_modify(num, cnt, rp, 0);
+	free(rp);
+a245 13
+int
+rcdb_modify_pathname(recno_t num, const char *const pn)
+{
+	int rn;
+	char *rp;
+
+	if (rcdb_retrieve(num, &rn, &rp))
+		return -1;
+	free(rp);
+	return rcdb_modify(num, rn, pn, 0);
+}
+
+
+d247 1
+a247 1
+rcdb_split(DBT *dbt, int *cnt, char **pathname)
+d252 7
+a258 1
+	pptr = (char *)dbt->data;
+d260 2
+a261 1
+	tptr = malloc(len);
+d265 1
+a265 1
+	*cnt = atoi(strsep(&pptr, "|"));
+d267 2
+a268 2
+	*pathname = malloc(len);
+	strlcpy(*pathname, pptr, len);
+@
+
+
+1.4.2.1
+log
+@back-port cchange from atoi to strtol(l), so that the v0 api in this
+implementation is forward- and backward-compatible with both the v0
+databases and the v2 databases (if the values are within the shorter
+int range)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: rcdb.c,v 1.4 2004/01/09 19:55:59 tg Exp $
+d232 1
+a232 1
+	*cnt = (int)strtol(strsep(&pptr, "|"), (char **)NULL, 0);
+@
+
+
+1.4.2.2
+log
+@MFC: plug a severe memory allocation failure, and make the database plain text
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: rcdb.c,v 1.4.2.1 2004/01/14 15:22:57 tg Exp $
+d183 2
+a184 1
+	dbt = rcdb_string(kv);
+a188 1
+	free(kv);
+@
+
+
+1.4.2.3
+log
+@MFC: Crucial bug fix
+
+Avoid memory poisoning or copying too much data while
+trying to compare two strings, thus enabling
+any RCDB which updates existing entries to work correctly.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: rcdb.c,v 1.4.2.2 2004/01/16 00:18:00 tg Exp $
+d227 1
+a227 1
+	len  = 1 + dbt->size;
+@
+
+
+1.3
+log
+@use err(3) instead of rolling our own
+thanks bsiegert@@
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: rcdb.c,v 1.2 2004/01/09 19:49:44 tg Exp $
+d27 1
+d80 1
+a80 1
+rcdb_alloc(const char *const item, const size_t length)
+d83 1
+a83 1
+	res->data = (void *)item;
+d91 1
+a91 1
+rcdb_string(const char *const text)
+@
+
+
+1.2
+log
+@apparently, results of malloc(3) aren't casted to something.
+from waldi via bsiegert@@
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: rcdb.c,v 1.1 2004/01/02 02:53:26 tg Exp $
+d71 2
+a72 4
+	if (D_X(close)(D_B)) {
+		fprintf(stderr, "died during database close\n");
+		exit(1);
+	}
+@
+
+
+1.1
+log
+@implement a database facility recording shared directories
+for the "old" pkgtools, to accomodate changes done in the
+"new" OpenBSD pkgtools.
+
+as of now, shared directories (ie, these with a @@dirrm)
+have to be owned by all packages using them, just as
+with OpenBSD Ports Tree.
+In contrast to them, MirPorts will use a more-or-less
+plaintext database counting references on them; you
+may even manually increase or decrease the count with
+a text editor (just be sure to not anger recno).
+
+Thanks for some help with Berzerkeley DB to bsiegert@@
+Thanks for discussing to bsiegert@@ and wbx@@ and some others
+Thanks for making me this work to espie@@openbsd
+ (but hey, it's cool now)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.8 2003/12/17 14:35:00 tg Exp $
+d83 1
+a83 1
+	DBT *res = (DBT *)malloc(sizeof(DBT));
+d182 1
+a182 1
+	kv = (char *)malloc(rl);
+@
+

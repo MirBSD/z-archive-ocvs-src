@@ -1,0 +1,433 @@
+head	1.3;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.3
+	tg-mergefixes-1-branch:1.3.0.8
+	tg-mergefixes-1-base:1.3
+	MIROS_X:1.3.0.6
+	MIROS_X_BASE:1.3
+	tg-mergetmp-3:1.3
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309261655:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308221505:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	cvs-200307072125:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200307021520:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.3
+	cvs-200306082100:1.1.1.3
+	ctm-3316:1.1.1.3
+	ctm-3272:1.1.1.2
+	cvs-200305131800:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.2
+	ctm-3229:1.1.1.2
+	MIRBSD_4:1.2
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.3
+date	2004.06.20.13.43.08;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2003.03.23.21.52.15;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.34;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.34;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.24.09.05.28;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.05.17.34.19;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@This is still scary, but now it shows a real date.
+@
+text
+@/*	$MirBSD$ */
+/*	$OpenBSD: microtime.s,v 1.19 2003/06/04 16:36:14 deraadt Exp $	*/
+/*	$NetBSD: microtime.s,v 1.16 1995/04/17 12:06:47 cgd Exp $	*/
+
+/*-
+ * Copyright (c) 1993 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WArRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include <machine/asm.h>
+#include <dev/isa/isareg.h>
+#include <i386/isa/timerreg.h>
+
+#define	IRQ_BIT(irq_num)	(1 << ((irq_num) % 8))
+#define	IRQ_BYTE(irq_num)	((irq_num) / 8)
+
+/*
+ * Use a higher resolution version of microtime if HZ is not
+ * overridden (i.e. it is 100Hz).
+ */
+#ifndef HZ
+ENTRY(microtime)
+
+#if defined(I586_CPU) || defined(I686_CPU)
+	movl	_C_LABEL(pentium_mhz), %ecx
+	testl	%ecx, %ecx
+	jne	pentium_microtime
+#else
+	xorl	%ecx,%ecx
+#endif
+	movb	$(TIMER_SEL0|TIMER_LATCH),%al
+
+	pushl	%ebp
+	pushfl
+	cli				# disable interrupts
+
+	outb	%al,$TIMER_MODE		# latch timer 0's counter
+
+	# Read counter value into ecx, LSB first
+	xorl	%ecx,%ecx
+	inb	$TIMER_CNTR0,%al
+	movb	%al,%cl
+	inb	$TIMER_CNTR0,%al
+	movb	%al,%ch
+
+	# Now check for counter overflow.  This is tricky because the
+	# timer chip doesn't let us atomically read the current counter
+	# value and the output state (i.e., overflow state).  We have
+	# to read the ICU interrupt request register (IRR) to see if the
+	# overflow has occurred.  Because we lack atomicity, we use
+	# the (very accurate) heuristic that we do not check for
+	# overflow if the value read is close to 0.
+	# E.g., if we just checked the IRR, we might read a non-overflowing
+	# value close to 0, experience overflow, then read this overflow
+	# from the IRR, and mistakenly add a correction to the "close
+	# to zero" value.
+	#
+	# We compare the counter value to the heuristic constant 12.
+	# If the counter value is less than this, we assume the counter
+	# didn't overflow between disabling clock interrupts and latching
+	# the counter value above.  For example, we assume that the first 3
+	# instructions take less than 12 microseconds to execute.
+	#
+	# (We used to check for overflow only if the value read was close to
+	# the timer limit, but this doesn't work very well if we're at the
+	# clock's ipl or higher.)
+	#
+	# Otherwise, the counter might have overflowed.  We check for this
+	# condition by reading the interrupt request register out of the ICU.
+	# If it overflowed, we add in one clock period.
+
+	movl	$11932,%edx	# counter limit
+
+	testb	$IRQ_BIT(0),_C_LABEL(ipending) + IRQ_BYTE(0)
+	jnz	1f
+
+	cmpl	$12,%ecx	# check for potential overflow
+	jbe	2f
+	
+	inb	$IO_ICU1,%al	# read IRR in ICU
+	testb	$IRQ_BIT(0),%al	# is a timer interrupt pending?
+	jz	2f
+
+1:	subl	%edx,%ecx	# add another tick
+	
+2:	subl	%ecx,%edx	# subtract counter value from counter limit
+
+	# Divide by 1193280/1000000.  We use a fast approximation of 4096/3433.
+	# For values of hz more than 100, this has a maximum error of 2us.
+
+	leal	(%edx,%edx,2),%eax	# a = 3d
+	leal	(%edx,%eax,4),%eax	# a = 4a + d = 13d
+	movl	%eax,%ecx
+	shll	$5,%ecx
+	addl	%ecx,%eax		# a = 33a    = 429d
+	leal	(%edx,%eax,8),%eax	# a = 8a + d = 3433d
+	shrl	$12,%eax		# a = a/4096 = 3433d/4096
+
+common_microtime:
+	.intel_syntax noprefix
+	mov	edx,[_C_LABEL(time)]	# get time.tv_sec lower
+	mov	ebp,[_C_LABEL(time)+4]	# get time.tv_sec upper
+	add	eax,[_C_LABEL(time)+8]	# add time.tv_usec
+
+	popfd			# enable interrupts
+
+	cmp	eax,1000000	# carry in timeval?
+	jb	3f
+	sub	eax,1000000	# adjust usec
+	add	edx,1		# bump second
+	adc	ebp,0		# carry over
+
+3:	mov	ecx,[esp+8]	# load timeval pointer arg
+	mov	[ecx],edx	# tvp->tv_sec = sec (lower)
+	mov	[ecx+4],ebp	# tvp->tv_sec = sec (upper)
+	mov	[ecx+8],eax	# tvp->tv_usec = usec
+	pop	ebp
+	
+	.att_syntax
+	ret
+
+#if defined(I586_CPU) || defined(I686_CPU)
+	.data
+	.globl	_C_LABEL(pentium_base_tsc)
+	.comm	_C_LABEL(pentium_base_tsc),8
+	.text
+
+	.align	2, 0x90
+pentium_microtime:
+	pushl	%ebp
+	pushfl
+	cli
+	rdtsc
+	subl	_C_LABEL(pentium_base_tsc),%eax
+	sbbl	_C_LABEL(pentium_base_tsc)+4,%edx
+	/*
+	 * correct the high word first so we won't
+	 * receive a result overflow aka div/0 fault
+	 */
+	pushl	%eax
+	movl	%edx, %eax
+	shll	$16, %edx
+	divw	%cx
+	movzwl	%dx, %edx
+	popl	%eax
+	divl	%ecx
+	jmp	common_microtime
+#endif
+
+#endif
+@
+
+
+1.2
+log
+@Merge MirBSD-old entirely
+Remove krb, yp, afs, GPL'd stuff in kernel
+Adjust some other stuff
+
+Not to be compiled yet...
+@
+text
+@d1 2
+a2 1
+/*	$OpenBSD: microtime.s,v 1.16 2002/09/24 00:06:22 nordin Exp $	*/
+d17 1
+a17 5
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed by the University of
+ *      California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+d57 1
+d124 4
+a127 2
+	movl	_C_LABEL(time),%edx	# get time.tv_sec
+	addl	_C_LABEL(time)+4,%eax	# add time.tv_usec
+d129 3
+a131 3
+	popfl			# enable interrupts
+	
+	cmpl	$1000000,%eax	# carry in timeval?
+d133 9
+a141 2
+	subl	$1000000,%eax	# adjust usec
+	incl	%edx		# bump sec
+d143 1
+a143 4
+3:	movl	4(%esp),%ecx	# load timeval pointer arg
+	movl	%edx,(%ecx)	# tvp->tv_sec = sec
+	movl	%eax,4(%ecx)	# tvp->tv_usec = usec
+
+d154 1
+d157 1
+a157 1
+	.byte	0x0f, 0x31	# RDTSC
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d52 1
+a52 1
+	movl	_pentium_mhz, %ecx
+d100 1
+a100 1
+	testb	$IRQ_BIT(0),_ipending + IRQ_BYTE(0)
+d126 2
+a127 2
+	movl	_time,%edx	# get time.tv_sec
+	addl	_time+4,%eax	# add time.tv_usec
+d144 2
+a145 2
+	.globl	_pentium_base_tsc
+	.comm	_pentium_base_tsc,8
+d153 2
+a154 2
+	subl	_pentium_base_tsc,%eax
+	sbbl	_pentium_base_tsc+4,%edx
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import some parts of OpenBSD-current (after their ELF switch) to ease future merging and reduce diffs against their codebase
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: microtime.s,v 1.17 2003/04/17 03:42:14 drahn Exp $	*/
+d52 1
+a52 1
+	movl	_C_LABEL(pentium_mhz), %ecx
+d100 1
+a100 1
+	testb	$IRQ_BIT(0),_C_LABEL(ipending) + IRQ_BYTE(0)
+d126 2
+a127 2
+	movl	_C_LABEL(time),%edx	# get time.tv_sec
+	addl	_C_LABEL(time)+4,%eax	# add time.tv_usec
+d144 2
+a145 2
+	.globl	_C_LABEL(pentium_base_tsc)
+	.comm	_C_LABEL(pentium_base_tsc),8
+d153 2
+a154 2
+	subl	_C_LABEL(pentium_base_tsc),%eax
+	sbbl	_C_LABEL(pentium_base_tsc)+4,%edx
+@
+
+
+1.1.1.3
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: microtime.s,v 1.19 2003/06/04 16:36:14 deraadt Exp $	*/
+d16 5
+a20 1
+ * 3. Neither the name of the University nor the names of its contributors
+d152 1
+a152 1
+	rdtsc
+@
+
+

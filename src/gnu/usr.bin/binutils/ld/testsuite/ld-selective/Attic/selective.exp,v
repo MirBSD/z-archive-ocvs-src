@@ -1,0 +1,426 @@
+head	1.2;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.05.16.17.43.24;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.09;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.09;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.43.30;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.09.14;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.20.27;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@# Expect script for LD selective linking tests
+#   Copyright 1998, 1999, 2000, 2001 Free Software Foundation, Inc.
+#
+# This file is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+#
+# Written by Catherine Moore (clm@@cygnus.com)
+# Make sure that constructors are handled correctly.
+
+
+# COFF based ports do not support selective linking
+if {[istarget "*-*-coff"]} {
+    return
+}
+if {[istarget "*-*-pe"]} {
+    return
+}
+
+# selective linking is not yet implemented for 68hc11/68hc12
+if {[istarget "m6811-*-*"] || [istarget "m6812-*-*"]} {
+    return
+}
+
+# List contains test-items with three items followed by four lists:
+# 1:name 2:test-type (CC or C++; add as needed) 3:filename 4:ld-flags
+# 5:must-have-symbols 6:must-not-have-symbols 7:xfail-targets.
+#
+# If a must(-not)-have symbol is a list, then that list must have two
+# items; the symbol name and a value the symbol must (not) have.
+#
+# Note: ld_nm trims leading `_' from _start
+#
+# FIXME: Instead of table, read settings from each source-file.
+set seltests {
+  {selective1 C 1.c {} {} {dropme1 dropme2} {}}
+  {selective2 C 2.c {} {} {foo} {mips*-*}}
+  {selective3 C 2.c {-u foo} {foo} {{foo 0}} {mips*-*}}
+  {selective4 C++ 3.cc {} {start foo__1A foo__1B} {bar__1A} {mips*-*}}
+  {selective5 C++ 4.cc {} {} {foo__1B foo__1A} {mips*-*}}
+  {selective6 C++ 5.cc {} {} {foo__1B foo__1A dropme1__Fv dropme2__Fv} {*-*-*}}
+}
+
+set cflags "-w -O -ffunction-sections -fdata-sections"
+set cxxflags "-fvtable-gc -fno-exceptions -fno-rtti"
+set ldflags "--gc-sections -Bstatic"
+
+# If we don't have g++ for the target, mark all tests as untested.
+if { [which $CXX] == 0 } {
+    foreach testitem $seltests {
+	untested "[lindex $testitem 0]"
+    }
+    return
+}
+
+foreach testitem $seltests {
+    set testname [lindex $testitem 0]
+    set testtype [lindex $testitem 1]
+    set testfile [lindex $testitem 2]
+    set objfile "tmpdir/[file rootname $testfile].o"
+    set ldfile "tmpdir/[file rootname $testfile].x"
+    set failed 0
+
+    set ldargs [lindex $testitem 3]
+    set mustsyms [lindex $testitem 4]
+    set mustnotsyms [lindex $testitem 5]
+    set xfails [lindex $testitem 6]
+
+    foreach xfail_target $xfails {
+	setup_xfail $xfail_target
+    }
+
+    # It's either C or C++ at the moment.
+    if { $testtype == "C++" } {
+	set testflags "$cflags $cxxflags"
+    } {
+	set testflags "$cflags"
+    }
+
+    # Note that we do not actually *use* CXX; we just add cxxflags for C++
+    # tests.  It might have been a buglet originally; now I think better
+    # leave as is.
+    if { ![ld_compile "$CC $testflags" $srcdir/$subdir/$testfile $objfile] } {
+	unresolved $testname
+	return
+    }
+
+    # V850 targets need libgcc.a
+    if [istarget v850*-*-elf] {
+	set objfile "$objfile -L ../gcc -lgcc"
+    }
+    
+    # m6811/m6812 code has references to soft registers.
+    if {[istarget m6811-*-*] || [istarget m6812-*-*]} {
+	set objfile "$objfile --defsym _.frame=0 --defsym _.d1=0"
+	set objfile "$objfile --defsym _.d2=0"
+    }
+
+    if ![ld_simple_link $ld $ldfile "$ldflags [join $ldargs] $objfile"] {
+	fail $testname
+	continue
+    }
+
+    if ![ld_nm $nm $ldfile] {
+	unresolved $testname
+	continue
+    }
+
+    # Check each mandated symbol and optionally mandated values. 
+    foreach mustsym $mustsyms {
+	if { [llength [concat $mustsym]] == 1 } {
+	    if { ![info exists nm_output($mustsym)] } {
+		verbose -log "$testname: missing $mustsym"
+		fail $testname
+		set failed 1
+		break
+	    }
+	} {
+	    set mustsymname [lindex $mustsym 0]
+	    set mustsymvalue [lindex $mustsym 1]
+	    if { ![info exists nm_output($mustsymname)] } {
+		verbose -log "$testname: missing $mustsymname"
+		fail $testname
+		set failed 1
+		break
+	    } {
+		if { $nm_output($mustsymname) != $mustsymvalue } {
+		    verbose -log "$testname: $mustsymname != $mustsymvalue"
+		    verbose -log "is instead $nm_output($mustsymname)"
+		    fail $testname
+		    set failed 1
+		    break
+		}
+	    }
+	}
+    }
+
+    if { $failed != 0 } {
+	continue
+    }
+
+    # Check each unwanted symbol, or that symbols do not have specific
+    # values.
+    foreach mustnotsym $mustnotsyms {
+	if { [llength [concat $mustnotsym]] == 1 } {
+	    if { [info exists nm_output($mustnotsym)] } {
+		verbose -log "$testname: $mustnotsym == $nm_output($mustnotsym)"
+		fail $testname
+		set failed 1
+		break
+	    }
+	} {
+	    set mustnotsymname [lindex $mustnotsym 0]
+	    set mustnotsymvalue [lindex $mustnotsym 1]
+	    if { [info exists nm_output($mustnotsymname)] \
+		    && $nm_output($mustnotsymname) == $mustnotsymvalue} {
+		verbose -log "$testname: $mustnotsymname == $mustnotsymvalue"
+		fail $testname
+		set failed 1
+		break
+	    }
+	}
+    }
+
+    if { $failed == 0 } {
+	pass $testname
+    }
+}
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+#   Copyright 1998, 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+d8 1
+a8 1
+#
+d13 1
+a13 1
+#
+a21 7
+# AOUT based ports do not support selective linking
+if {[istarget "*-*-*aout*"] \
+    || [istarget "*-*-*bout*"] \
+    || [istarget "vax-*-ultrix*"]} {
+    return
+}
+
+d30 2
+a31 7
+# Alpha does not support selective linking
+if {[istarget "alpha*-*-*"]} {
+    return
+}
+
+# s390 does not support selective linking
+if {[istarget "s390*-*-*"]} {
+d46 6
+a51 7
+  {selective1 C   1.c  {}       {}    {dropme1 dropme2} {alpha*-*}}
+  {selective2 C   2.c  {}       {}    {foo} {alpha*-* mips*-*}}
+  {selective3 C   2.c  {-u foo} {foo} {{foo 0}} {mips*-*}}
+  {selective4 C++ 3.cc {}       {start a A::foo() B::foo()} {A::bar()} {alpha*-*  mips*-*}}
+  {selective5 C++ 4.cc {}       {start a A::bar()} {A::foo() B::foo()} {alpha*-*  mips*-*}}
+  {selective6 C++ 5.cc {}       {start a A::bar()}
+    {A::foo() B::foo() dropme1() dropme2()} {*-*-*}}
+a57 7
+if [istarget sh64*-*-elf] {
+    # This is what gcc passes to ld by default, plus switch to the
+    # "usual" ELF _start (shelf32 normally uses just `start' for COFF
+    # compatibility)
+    set ldflags "-e _start -mshelf32 $ldflags"
+}
+
+d95 1
+a95 1
+	continue
+a98 1
+    # FIXME: This does not work with installed toolchains!
+d102 1
+a102 13
+
+    # ARM targets need libgcc.a in THUMB mode so that __call_via_r3 is provided
+    # FIXME: This does not work with installed toolchains!
+    if {[istarget arm-*-*] || [istarget xscale-*-*]} {
+	set objfile "$objfile -L ../gcc -lgcc"
+    }
+
+    # HPPA linux targets need libgcc.a for millicode routines ($$dyncall).
+    if [istarget hppa*-*-linux*] {
+    	catch "exec $CC -print-libgcc-file-name" libgcc
+	set objfile "$objfile $libgcc"
+    }
+
+d114 1
+a114 1
+    if ![ld_nm $nm --demangle $ldfile] {
+d119 1
+a119 8
+    # Must make V2 demangled names look like V3
+    foreach nm_output_key [array names nm_output] {
+	if [regsub \\(void\\) $nm_output_key () new_nm_output_key] {
+	    set nm_output($new_nm_output_key) nm_output($nm_output_key)
+	}
+    }
+
+    # Check each mandated symbol and optionally mandated values.
+d179 1
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d21 18
+a38 2
+# Only ELF based ports support selective linking
+if ![is_elf_format] {
+d42 2
+a43 2
+# IA64 does not support selective linking
+if {[istarget "ia64-*-*"]} {
+d58 2
+a59 2
+  {selective1 C   1.c  {}       {}    {dropme1 dropme2} {}}
+  {selective2 C   2.c  {}       {}    {foo} {mips*-*}}
+d61 2
+a62 2
+  {selective4 C++ 3.cc {}       {start a A::foo() B::foo()} {A::bar()} {mips*-*}}
+  {selective5 C++ 4.cc {}       {start a A::bar()} {A::foo() B::foo()} {mips*-*}}
+a101 2
+    setup_xfail "alpha*-*" "arc*-*" "d30v*-*" "dlx*-*" "i370*-*" "i860*-*"
+    setup_xfail "i960*-*" "mn10200-*" "or32-*" "pj-*" "sparc64*-*"
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

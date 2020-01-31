@@ -1,0 +1,280 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.05;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.05;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.15;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@
+
+#
+# The reason this does not use a Test module is that
+# they mess up test numbers between threads
+#
+# And even when that will be fixed, this is a basic
+# test and should not rely on shared variables
+#
+# This will test the basic API, it will not use any coderefs
+# as they are more advanced
+#
+#########################
+
+
+BEGIN {
+    chdir 't' if -d 't';
+    @@INC = '../lib';
+    require Config; import Config;
+    unless ($Config{'useithreads'}) {
+	print "1..0 # Skip: no useithreads\n";
+ 	exit 0;	
+    }
+}
+
+use ExtUtils::testlib;
+use strict;
+BEGIN { $| = 1; print "1..15\n" };
+use threads;
+
+
+
+print "ok 1\n";
+
+
+#########################
+
+
+
+
+sub ok {	
+    my ($id, $ok, $name) = @@_;
+
+    # You have to do it this way or VMS will get confused.
+    print $ok ? "ok $id - $name\n" : "not ok $id - $name\n";
+
+    printf "# Failed test at line %d\n", (caller)[2] unless $ok;
+
+    return $ok;
+}
+
+
+
+sub test1 {
+	ok(2,'bar' eq $_[0],"Test that argument passing works");
+}
+threads->create('test1','bar')->join();
+
+sub test2 {
+	ok(3,'bar' eq $_[0]->[0]->{foo},"Test that passing arguments as references work");
+}
+
+threads->create('test2',[{foo => 'bar'}])->join();
+
+
+#test execuion of normal sub
+sub test3 { ok(4,shift() == 1,"Test a normal sub") }
+threads->create('test3',1)->join();
+
+
+#check Config
+ok(5, 1 == $threads::threads,"Check that threads::threads is true");
+
+#test trying to detach thread
+
+sub test4 { ok(6,1,"Detach test") }
+
+my $thread1 = threads->create('test4');
+
+$thread1->detach();
+threads->yield; # help out non-preemptive thread implementations
+sleep 2;
+ok(7,1,"Detach test");
+
+
+
+sub test5 {
+	threads->create('test6')->join();
+	ok(9,1,"Nested thread test");
+}
+
+sub test6 {
+	ok(8,1,"Nested thread test");
+}
+
+threads->create('test5')->join();
+
+sub test7 {
+	my $self = threads->self();
+	ok(10, $self->tid == 7, "Wanted 7, got ".$self->tid);
+	ok(11, threads->tid() == 7, "Wanted 7, got ".threads->tid());
+}
+
+threads->create('test7')->join;
+
+sub test8 {
+	my $self = threads->self();
+	ok(12, $self->tid == 8, "Wanted 8, got ".$self->tid);
+	ok(13, threads->tid() == 8, "Wanted 8, got ".threads->tid());
+}
+
+threads->create('test8')->join;
+
+
+#check support for threads->self() in main thread
+ok(14, 0 == threads->self->tid(),"Check so that tid for threads work for main thread");
+ok(15, 0 == threads->tid(),"Check so that tid for threads work for main thread");
+
+1;
+
+
+
+
+
+
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d18 1
+a18 1
+    push @@INC, '../lib';
+d28 1
+a28 1
+BEGIN { $| = 1; print "1..19\n" };
+a118 18
+{
+	no warnings;
+    local *CLONE = sub { ok(16, threads->tid() == 9, "Tid should be correct in the clone")};
+    threads->create(sub { ok(17, threads->tid() == 9, "And tid be 9 here too") })->join();
+}
+
+{ 
+
+    sub Foo::DESTROY { 
+	ok(19, threads->tid() == 10, "In destroy it should be correct too" )
+	}
+    my $foo;
+    threads->create(sub { ok(18, threads->tid() == 10, "And tid be 10 here");
+			  $foo = bless {}, 'Foo';			  
+			  return undef;
+		      })->join();
+
+}
+@
+

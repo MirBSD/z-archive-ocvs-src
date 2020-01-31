@@ -1,0 +1,551 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.4
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.2
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410222320:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200309171845:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	cvs-20030329-2200:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.44.37;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.37;	author tg;	state Stab;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.10.22.23.26.41;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+ *  Copyright (c) 1999-2003 Sendmail, Inc. and its suppliers.
+ *	All rights reserved.
+ *
+ * By using this file, you agree to the terms and conditions set
+ * forth in the LICENSE file which can be found at the top level of
+ * the sendmail distribution.
+ *
+ */
+
+#include <sm/gen.h>
+SM_RCSID("@@(#)$Sendmail: comm.c,v 8.54.2.6 2003/01/03 22:14:40 ca Exp $")
+
+#include "libmilter.h"
+#include <sm/errstring.h>
+
+/*
+**  MI_RD_CMD -- read a command
+**
+**	Parameters:
+**		sd -- socket descriptor
+**		timeout -- maximum time to wait
+**		cmd -- single character command read from sd
+**		rlen -- pointer to length of result
+**		name -- name of milter
+**
+**	Returns:
+**		buffer with rest of command
+**		(malloc()ed here, should be free()d)
+**		hack: encode error in cmd
+*/
+
+char *
+mi_rd_cmd(sd, timeout, cmd, rlen, name)
+	socket_t sd;
+	struct timeval *timeout;
+	char *cmd;
+	size_t *rlen;
+	char *name;
+{
+	ssize_t len;
+	mi_int32 expl;
+	ssize_t i;
+	FD_RD_VAR(rds, excs);
+	int ret;
+	int save_errno;
+	char *buf;
+	char data[MILTER_LEN_BYTES + 1];
+
+	*cmd = '\0';
+	*rlen = 0;
+
+	i = 0;
+	for (;;)
+	{
+		FD_RD_INIT(sd, rds, excs);
+		ret = FD_RD_READY(sd, rds, excs, timeout);
+		if (ret == 0)
+			break;
+		else if (ret < 0)
+		{
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		if (FD_IS_RD_EXC(sd, rds, excs))
+		{
+			*cmd = SMFIC_SELECT;
+			return NULL;
+		}
+
+		len = MI_SOCK_READ(sd, data + i, sizeof data - i);
+		if (MI_SOCK_READ_FAIL(len))
+		{
+			smi_log(SMI_LOG_ERR,
+				"%s, mi_rd_cmd: read returned %d: %s",
+				name, (int) len, sm_errstring(errno));
+			*cmd = SMFIC_RECVERR;
+			return NULL;
+		}
+		if (len == 0)
+		{
+			*cmd = SMFIC_EOF;
+			return NULL;
+		}
+		if (len >= (ssize_t) sizeof data - i)
+			break;
+		i += len;
+	}
+	if (ret == 0)
+	{
+		*cmd = SMFIC_TIMEOUT;
+		return NULL;
+	}
+	else if (ret < 0)
+	{
+		smi_log(SMI_LOG_ERR,
+			"%s: mi_rd_cmd: select returned %d: %s",
+			name, ret, sm_errstring(errno));
+		*cmd = SMFIC_RECVERR;
+		return NULL;
+	}
+
+	*cmd = data[MILTER_LEN_BYTES];
+	data[MILTER_LEN_BYTES] = '\0';
+	(void) memcpy((void *) &expl, (void *) &(data[0]), MILTER_LEN_BYTES);
+	expl = ntohl(expl) - 1;
+	if (expl <= 0)
+		return NULL;
+	if (expl > MILTER_CHUNK_SIZE)
+	{
+		*cmd = SMFIC_TOOBIG;
+		return NULL;
+	}
+#if _FFR_ADD_NULL
+	buf = malloc(expl + 1);
+#else /* _FFR_ADD_NULL */
+	buf = malloc(expl);
+#endif /* _FFR_ADD_NULL */
+	if (buf == NULL)
+	{
+		*cmd = SMFIC_MALLOC;
+		return NULL;
+	}
+
+	i = 0;
+	for (;;)
+	{
+		FD_RD_INIT(sd, rds, excs);
+		ret = FD_RD_READY(sd, rds, excs, timeout);
+		if (ret == 0)
+			break;
+		else if (ret < 0)
+		{
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		if (FD_IS_RD_EXC(sd, rds, excs))
+		{
+			*cmd = SMFIC_SELECT;
+			free(buf);
+			return NULL;
+		}
+		len = MI_SOCK_READ(sd, buf + i, expl - i);
+		if (MI_SOCK_READ_FAIL(len))
+		{
+			smi_log(SMI_LOG_ERR,
+				"%s: mi_rd_cmd: read returned %d: %s",
+				name, (int) len, sm_errstring(errno));
+			ret = -1;
+			break;
+		}
+		if (len == 0)
+		{
+			*cmd = SMFIC_EOF;
+			free(buf);
+			return NULL;
+		}
+		if (len > expl - i)
+		{
+			*cmd = SMFIC_RECVERR;
+			free(buf);
+			return NULL;
+		}
+		if (len >= expl - i)
+		{
+			*rlen = expl;
+#if _FFR_ADD_NULL
+			/* makes life simpler for common string routines */
+			buf[expl] = '\0';
+#endif /* _FFR_ADD_NULL */
+			return buf;
+		}
+		i += len;
+	}
+
+	save_errno = errno;
+	free(buf);
+
+	/* select returned 0 (timeout) or < 0 (error) */
+	if (ret == 0)
+	{
+		*cmd = SMFIC_TIMEOUT;
+		return NULL;
+	}
+	if (ret < 0)
+	{
+		smi_log(SMI_LOG_ERR,
+			"%s: mi_rd_cmd: select returned %d: %s",
+			name, ret, sm_errstring(save_errno));
+		*cmd = SMFIC_RECVERR;
+		return NULL;
+	}
+	*cmd = SMFIC_UNKNERR;
+	return NULL;
+}
+/*
+**  MI_WR_CMD -- write a cmd to sd
+**
+**	Parameters:
+**		sd -- socket descriptor
+**		timeout -- maximum time to wait (currently unused)
+**		cmd -- single character command to write
+**		buf -- buffer with further data
+**		len -- length of buffer (without cmd!)
+**
+**	Returns:
+**		MI_SUCCESS/MI_FAILURE
+*/
+
+/*
+**  we don't care much about the timeout here, it's very long anyway
+**  FD_SETSIZE is checked when socket is created.
+**  XXX l == 0 ?
+*/
+
+#define MI_WR(data)	\
+	while (sl > 0)							\
+	{								\
+		FD_WR_INIT(sd, wrs);					\
+		ret = FD_WR_READY(sd, wrs, timeout);			\
+		if (ret == 0)						\
+			return MI_FAILURE;				\
+		if (ret < 0)						\
+		{							\
+			if (errno == EINTR)				\
+				continue;				\
+			else						\
+				return MI_FAILURE;			\
+		}							\
+		l = MI_SOCK_WRITE(sd, (void *) ((data) + i), sl);	\
+		if (l < 0)						\
+		{							\
+			if (errno == EINTR)				\
+				continue;				\
+			else						\
+				return MI_FAILURE;			\
+		}							\
+		i += l;							\
+		sl -= l;						\
+	}
+
+int
+mi_wr_cmd(sd, timeout, cmd, buf, len)
+	socket_t sd;
+	struct timeval *timeout;
+	int cmd;
+	char *buf;
+	size_t len;
+{
+	size_t sl, i;
+	ssize_t l;
+	mi_int32 nl;
+	int ret;
+	FD_WR_VAR(wrs);
+	char data[MILTER_LEN_BYTES + 1];
+
+	if (len > MILTER_CHUNK_SIZE)
+		return MI_FAILURE;
+	nl = htonl(len + 1);	/* add 1 for the cmd char */
+	(void) memcpy(data, (void *) &nl, MILTER_LEN_BYTES);
+	data[MILTER_LEN_BYTES] = (char) cmd;
+	i = 0;
+	sl = MILTER_LEN_BYTES + 1;
+
+	/* use writev() instead to send the whole stuff at once? */
+
+	MI_WR(data);
+	if (len > 0 && buf == NULL)
+		return MI_FAILURE;
+	if (len == 0 || buf == NULL)
+		return MI_SUCCESS;
+	i = 0;
+	sl = len;
+	MI_WR(buf);
+	return MI_SUCCESS;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@update to sendmail 8.13.1/8.13.1
+@
+text
+@d2 1
+a2 1
+ *  Copyright (c) 1999-2004 Sendmail, Inc. and its suppliers.
+d12 1
+a12 1
+SM_RCSID("@@(#)$Sendmail: comm.c,v 8.65 2004/07/07 21:41:30 ca Exp $")
+a15 26
+#include <sys/uio.h>
+
+static size_t Maxdatasize = MILTER_MAX_DATA_SIZE;
+
+#if _FFR_MAXDATASIZE
+/*
+**  SMFI_SETMAXDATASIZE -- set limit for milter data read/write.
+**
+**	Parameters:
+**		sz -- new limit.
+**
+**	Returns:
+**		old limit
+*/
+
+size_t
+smfi_setmaxdatasize(sz)
+	size_t sz;
+{
+	size_t old;
+
+	old = Maxdatasize;
+	Maxdatasize = sz;
+	return old;
+}
+#endif /* _FFR_MAXDATASIZE */
+d110 1
+a110 1
+	if (expl > Maxdatasize)
+a197 82
+
+/*
+**  RETRY_WRITEV -- Keep calling the writev() system call
+**	until all the data is written out or an error occurs.
+**
+**	Parameters:
+**		fd -- socket descriptor
+**		iov -- io vector
+**		iovcnt -- number of elements in io vector
+**			must NOT exceed UIO_MAXIOV.
+**		timeout -- maximum time to wait
+**
+**	Returns:
+**		success: number of bytes written
+**		otherwise: MI_FAILURE
+*/
+
+static ssize_t
+retry_writev(fd, iov, iovcnt, timeout)
+	socket_t fd;
+	struct iovec *iov;
+	int iovcnt;
+	struct timeval *timeout;
+{
+	int i;
+	ssize_t n, written;
+	FD_WR_VAR(wrs);
+
+	written = 0;
+	for (;;)
+	{
+		while (iovcnt > 0 && iov[0].iov_len == 0)
+		{
+			iov++;
+			iovcnt--;
+		}
+		if (iovcnt <= 0)
+			return written;
+
+		/*
+		**  We don't care much about the timeout here,
+		**  it's very long anyway; correct solution would be
+		**  to take the time before the loop and reduce the
+		**  timeout after each invocation.
+		**  FD_SETSIZE is checked when socket is created.
+		*/
+
+		FD_WR_INIT(fd, wrs);
+		i = FD_WR_READY(fd, wrs, timeout);
+		if (i == 0)
+			return MI_FAILURE;
+		if (i < 0)
+		{
+			if (errno == EINTR || errno == EAGAIN)
+				continue;
+			return MI_FAILURE;
+		}
+		n = writev(fd, iov, iovcnt);
+		if (n == -1)
+		{
+			if (errno == EINTR || errno == EAGAIN)
+				continue;
+			return MI_FAILURE;
+		}
+
+		written += n;
+		for (i = 0; i < iovcnt; i++)
+		{
+			if (iov[i].iov_len > (unsigned int) n)
+			{
+				iov[i].iov_base = (char *)iov[i].iov_base + n;
+				iov[i].iov_len -= (unsigned int) n;
+				break;
+			}
+			n -= (int) iov[i].iov_len;
+			iov[i].iov_len = 0;
+		}
+		if (i == iovcnt)
+			return written;
+	}
+}
+
+d203 1
+a203 1
+**		timeout -- maximum time to wait
+d212 32
+d255 2
+a256 2
+	int iovcnt;
+	struct iovec iov[2];
+d259 1
+a259 1
+	if (len > Maxdatasize || (len > 0 && buf == NULL))
+a260 1
+
+d267 4
+a270 13
+	/* set up the vector for the size / command */
+	iov[0].iov_base = (void *) data;
+	iov[0].iov_len  = sl;
+	iovcnt = 1;
+	if (len >= 0 && buf != NULL)
+	{
+		iov[1].iov_base = (void *) buf;
+		iov[1].iov_len  = len;
+		iovcnt = 2;
+	}
+    
+	l = retry_writev(sd, iov, iovcnt, timeout);
+	if (l == MI_FAILURE)
+d272 5
+@
+

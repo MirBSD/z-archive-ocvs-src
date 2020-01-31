@@ -1,0 +1,498 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.42.41;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.41;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.53.42;	author tg;	state Stab;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.10.23.18.37.38;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*    xsutils.c
+ *
+ *    Copyright (c) 1999-2002, Larry Wall
+ *
+ *    You may distribute under the terms of either the GNU General Public
+ *    License or the Artistic License, as specified in the README file.
+ *
+ */
+
+/*
+ * "Perilous to us all are the devices of an art deeper than we possess
+ * ourselves." --Gandalf
+ */
+
+
+#include "EXTERN.h"
+#define PERL_IN_XSUTILS_C
+#include "perl.h"
+
+/*
+ * Contributed by Spider Boardman (spider.boardman@@orb.nashua.nh.us).
+ */
+
+/* package attributes; */
+void XS_attributes__warn_reserved(pTHX_ CV *cv);
+void XS_attributes_reftype(pTHX_ CV *cv);
+void XS_attributes__modify_attrs(pTHX_ CV *cv);
+void XS_attributes__guess_stash(pTHX_ CV *cv);
+void XS_attributes__fetch_attrs(pTHX_ CV *cv);
+void XS_attributes_bootstrap(pTHX_ CV *cv);
+
+
+/*
+ * Note that only ${pkg}::bootstrap definitions should go here.
+ * This helps keep down the start-up time, which is especially
+ * relevant for users who don't invoke any features which are
+ * (partially) implemented here.
+ *
+ * The various bootstrap definitions can take care of doing
+ * package-specific newXS() calls.  Since the layout of the
+ * bundled *.pm files is in a version-specific directory,
+ * version checks in these bootstrap calls are optional.
+ */
+
+void
+Perl_boot_core_xsutils(pTHX)
+{
+    char *file = __FILE__;
+
+    newXS("attributes::bootstrap",	XS_attributes_bootstrap,	file);
+}
+
+#include "XSUB.h"
+
+static int
+modify_SV_attributes(pTHX_ SV *sv, SV **retlist, SV **attrlist, int numattrs)
+{
+    SV *attr;
+    char *name;
+    STRLEN len;
+    bool negated;
+    int nret;
+
+    for (nret = 0 ; numattrs && (attr = *attrlist++); numattrs--) {
+	name = SvPV(attr, len);
+	if ((negated = (*name == '-'))) {
+	    name++;
+	    len--;
+	}
+	switch (SvTYPE(sv)) {
+	case SVt_PVCV:
+	    switch ((int)len) {
+	    case 6:
+		switch (*name) {
+		case 'l':
+#ifdef CVf_LVALUE
+		    if (strEQ(name, "lvalue")) {
+			if (negated)
+			    CvFLAGS((CV*)sv) &= ~CVf_LVALUE;
+			else
+			    CvFLAGS((CV*)sv) |= CVf_LVALUE;
+			continue;
+		    }
+#endif /* defined CVf_LVALUE */
+		    if (strEQ(name, "locked")) {
+			if (negated)
+			    CvFLAGS((CV*)sv) &= ~CVf_LOCKED;
+			else
+			    CvFLAGS((CV*)sv) |= CVf_LOCKED;
+			continue;
+		    }
+		    break;
+		case 'm':
+		    if (strEQ(name, "method")) {
+			if (negated)
+			    CvFLAGS((CV*)sv) &= ~CVf_METHOD;
+			else
+			    CvFLAGS((CV*)sv) |= CVf_METHOD;
+			continue;
+		    }
+		    break;
+		case 'u':
+		    if (strEQ(name, "unique")) {
+			if (negated)
+			    GvUNIQUE_off(CvGV((CV*)sv));
+			else
+			    GvUNIQUE_on(CvGV((CV*)sv));
+			continue;
+		    }
+		    break;
+		}
+		break;
+	    }
+	    break;
+	default:
+	    switch ((int)len) {
+	    case 6:
+		switch (*name) {
+		case 's':
+		    if (strEQ(name, "shared")) {
+			if (negated)
+			    Perl_croak(aTHX_ "A variable may not be unshared");
+			SvSHARE(sv);
+                        continue;
+                    }
+		    break;
+		case 'u':
+		    if (strEQ(name, "unique")) {
+			if (SvTYPE(sv) == SVt_PVGV) {
+			    if (negated)
+				GvUNIQUE_off(sv);
+			    else
+				GvUNIQUE_on(sv);
+			}
+			/* Hope this came from toke.c if not a GV. */
+                        continue;
+                    }
+                }
+            }
+	    break;
+	}
+	/* anything recognized had a 'continue' above */
+	*retlist++ = attr;
+	nret++;
+    }
+
+    return nret;
+}
+
+
+
+/* package attributes; */
+
+XS(XS_attributes_bootstrap)
+{
+    dXSARGS;
+    char *file = __FILE__;
+
+    if( items > 1 )
+        Perl_croak(aTHX_ "Usage: attributes::bootstrap $module");
+
+    newXSproto("attributes::_warn_reserved", XS_attributes__warn_reserved, file, "");
+    newXS("attributes::_modify_attrs",	XS_attributes__modify_attrs,	file);
+    newXSproto("attributes::_guess_stash", XS_attributes__guess_stash, file, "$");
+    newXSproto("attributes::_fetch_attrs", XS_attributes__fetch_attrs, file, "$");
+    newXSproto("attributes::reftype",	XS_attributes_reftype,	file, "$");
+
+    XSRETURN(0);
+}
+
+XS(XS_attributes__modify_attrs)
+{
+    dXSARGS;
+    SV *rv, *sv;
+
+    if (items < 1) {
+usage:
+	Perl_croak(aTHX_
+		   "Usage: attributes::_modify_attrs $reference, @@attributes");
+    }
+
+    rv = ST(0);
+    if (!(SvOK(rv) && SvROK(rv)))
+	goto usage;
+    sv = SvRV(rv);
+    if (items > 1)
+	XSRETURN(modify_SV_attributes(aTHX_ sv, &ST(0), &ST(1), items-1));
+
+    XSRETURN(0);
+}
+
+XS(XS_attributes__fetch_attrs)
+{
+    dXSARGS;
+    SV *rv, *sv;
+    cv_flags_t cvflags;
+
+    if (items != 1) {
+usage:
+	Perl_croak(aTHX_
+		   "Usage: attributes::_fetch_attrs $reference");
+    }
+
+    rv = ST(0);
+    SP -= items;
+    if (!(SvOK(rv) && SvROK(rv)))
+	goto usage;
+    sv = SvRV(rv);
+
+    switch (SvTYPE(sv)) {
+    case SVt_PVCV:
+	cvflags = CvFLAGS((CV*)sv);
+	if (cvflags & CVf_LOCKED)
+	    XPUSHs(sv_2mortal(newSVpvn("locked", 6)));
+#ifdef CVf_LVALUE
+	if (cvflags & CVf_LVALUE)
+	    XPUSHs(sv_2mortal(newSVpvn("lvalue", 6)));
+#endif
+	if (cvflags & CVf_METHOD)
+	    XPUSHs(sv_2mortal(newSVpvn("method", 6)));
+        if (GvUNIQUE(CvGV((CV*)sv)))
+	    XPUSHs(sv_2mortal(newSVpvn("unique", 6)));
+	break;
+    case SVt_PVGV:
+	if (GvUNIQUE(sv))
+	    XPUSHs(sv_2mortal(newSVpvn("unique", 6)));
+	break;
+    default:
+	break;
+    }
+
+    PUTBACK;
+}
+
+XS(XS_attributes__guess_stash)
+{
+    dXSARGS;
+    SV *rv, *sv;
+#ifdef dXSTARGET
+    dXSTARGET;
+#else
+    SV * TARG = sv_newmortal();
+#endif
+
+    if (items != 1) {
+usage:
+	Perl_croak(aTHX_
+		   "Usage: attributes::_guess_stash $reference");
+    }
+
+    rv = ST(0);
+    ST(0) = TARG;
+    if (!(SvOK(rv) && SvROK(rv)))
+	goto usage;
+    sv = SvRV(rv);
+
+    if (SvOBJECT(sv))
+	sv_setpv(TARG, HvNAME(SvSTASH(sv)));
+#if 0	/* this was probably a bad idea */
+    else if (SvPADMY(sv))
+	sv_setsv(TARG, &PL_sv_no);	/* unblessed lexical */
+#endif
+    else {
+	HV *stash = Nullhv;
+	switch (SvTYPE(sv)) {
+	case SVt_PVCV:
+	    if (CvGV(sv) && isGV(CvGV(sv)) && GvSTASH(CvGV(sv)))
+		stash = GvSTASH(CvGV(sv));
+	    else if (/* !CvANON(sv) && */ CvSTASH(sv))
+		stash = CvSTASH(sv);
+	    break;
+	case SVt_PVMG:
+	    if (!(SvFAKE(sv) && SvTIED_mg(sv, PERL_MAGIC_glob)))
+		break;
+	    /*FALLTHROUGH*/
+	case SVt_PVGV:
+	    if (GvGP(sv) && GvESTASH((GV*)sv))
+		stash = GvESTASH((GV*)sv);
+	    break;
+	default:
+	    break;
+	}
+	if (stash)
+	    sv_setpv(TARG, HvNAME(stash));
+    }
+
+#ifdef dXSTARGET
+    SvSETMAGIC(TARG);
+#endif
+    XSRETURN(1);
+}
+
+XS(XS_attributes_reftype)
+{
+    dXSARGS;
+    SV *rv, *sv;
+#ifdef dXSTARGET
+    dXSTARGET;
+#else
+    SV * TARG = sv_newmortal();
+#endif
+
+    if (items != 1) {
+usage:
+	Perl_croak(aTHX_
+		   "Usage: attributes::reftype $reference");
+    }
+
+    rv = ST(0);
+    ST(0) = TARG;
+    if (SvGMAGICAL(rv))
+	mg_get(rv);
+    if (!(SvOK(rv) && SvROK(rv)))
+	goto usage;
+    sv = SvRV(rv);
+    sv_setpv(TARG, sv_reftype(sv, 0));
+#ifdef dXSTARGET
+    SvSETMAGIC(TARG);
+#endif
+
+    XSRETURN(1);
+}
+
+XS(XS_attributes__warn_reserved)
+{
+    dXSARGS;
+#ifdef dXSTARGET
+    dXSTARGET;
+#else
+    SV * TARG = sv_newmortal();
+#endif
+
+    if (items != 0) {
+	Perl_croak(aTHX_
+		   "Usage: attributes::_warn_reserved ()");
+    }
+
+    EXTEND(SP,1);
+    ST(0) = TARG;
+    sv_setiv(TARG, ckWARN(WARN_RESERVED) != 0);
+#ifdef dXSTARGET
+    SvSETMAGIC(TARG);
+#endif
+
+    XSRETURN(1);
+}
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d3 1
+a3 1
+ *    Copyright (C) 1999, 2000, 2001, 2002, 2003, by Larry Wall and others
+@
+
+
+1.1.1.3
+log
+@5.8.5
+@
+text
+@d3 1
+a3 2
+ *    Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004,
+ *    by Larry Wall and others
+d99 9
+@
+
+

@@ -1,0 +1,1111 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.16.54;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.33;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.33;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.29.25;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Remote utility routines for the remote server for GDB.
+   Copyright (C) 1986, 1989, 1993 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "server.h"
+#include <stdio.h>
+#include <sys/ioctl.h>
+#include <sys/file.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/tcp.h>
+#include <sys/ioctl.h>
+#include <signal.h>
+
+static int kiodebug = 0;
+static int remote_desc;
+
+/* Open a connection to a remote debugger.
+   NAME is the filename used for communication.  */
+
+void
+remote_open (name)
+     char *name;
+{
+  if (!strchr (name, ':'))
+    {
+      remote_desc = open (name, O_RDWR);
+      if (remote_desc < 0)
+	perror_with_name ("Could not open remote device");
+
+#ifdef HAVE_TERMIOS
+      {
+	struct termios termios;
+	tcgetattr(remote_desc, &termios);
+
+	termios.c_iflag = 0;
+	termios.c_oflag = 0;
+	termios.c_lflag = 0;
+	termios.c_cflag &= ~(CSIZE|PARENB);
+	termios.c_cflag |= CLOCAL | CS8;
+	termios.c_cc[VMIN] = 0;
+	termios.c_cc[VTIME] = 0;
+
+	tcsetattr(remote_desc, TCSANOW, &termios);
+      }
+#endif
+
+#ifdef HAVE_TERMIO
+      {
+	struct termio termio;
+	ioctl (remote_desc, TCGETA, &termio);
+
+	termio.c_iflag = 0;
+	termio.c_oflag = 0;
+	termio.c_lflag = 0;
+	termio.c_cflag &= ~(CSIZE|PARENB);
+	termio.c_cflag |= CLOCAL | CS8;
+	termio.c_cc[VMIN] = 0;
+	termio.c_cc[VTIME] = 0;
+
+	ioctl (remote_desc, TCSETA, &termio);
+      }
+#endif
+
+#ifdef HAVE_SGTTY
+      {
+	struct sgttyb sg;
+
+	ioctl (remote_desc, TIOCGETP, &sg);
+	sg.sg_flags = RAW;
+	ioctl (remote_desc, TIOCSETP, &sg);
+      }
+#endif
+
+
+    }
+  else
+    {
+      char *port_str;
+      int port;
+      struct sockaddr_in sockaddr;
+      int tmp;
+      struct protoent *protoent;
+      int tmp_desc;
+
+      port_str = strchr (name, ':');
+
+      port = atoi (port_str + 1);
+
+      tmp_desc = socket (PF_INET, SOCK_STREAM, 0);
+      if (tmp_desc < 0)
+	perror_with_name ("Can't open socket");
+
+      /* Allow rapid reuse of this port. */
+      tmp = 1;
+      setsockopt (tmp_desc, SOL_SOCKET, SO_REUSEADDR, (char *)&tmp,
+		  sizeof(tmp));
+
+      sockaddr.sin_family = PF_INET;
+      sockaddr.sin_port = htons(port);
+      sockaddr.sin_addr.s_addr = INADDR_ANY;
+
+      if (bind (tmp_desc, (struct sockaddr *)&sockaddr, sizeof (sockaddr))
+	  || listen (tmp_desc, 1))
+	perror_with_name ("Can't bind address");
+
+      tmp = sizeof (sockaddr);
+      remote_desc = accept (tmp_desc, (struct sockaddr *)&sockaddr, &tmp);
+      if (remote_desc == -1)
+	perror_with_name ("Accept failed");
+
+      protoent = getprotobyname ("tcp");
+      if (!protoent)
+	perror_with_name ("getprotobyname");
+
+      /* Enable TCP keep alive process. */
+      tmp = 1;
+      setsockopt (tmp_desc, SOL_SOCKET, SO_KEEPALIVE, (char *)&tmp, sizeof(tmp));
+
+      /* Tell TCP not to delay small packets.  This greatly speeds up
+	 interactive response. */
+      tmp = 1;
+      setsockopt (remote_desc, protoent->p_proto, TCP_NODELAY,
+		  (char *)&tmp, sizeof(tmp));
+
+      close (tmp_desc);		/* No longer need this */
+
+      signal (SIGPIPE, SIG_IGN); /* If we don't do this, then gdbserver simply
+				    exits when the remote side dies.  */
+    }
+
+  fcntl (remote_desc, F_SETFL, FASYNC);
+
+  fprintf (stderr, "Remote debugging using %s\n", name);
+}
+
+void
+remote_close()
+{
+  close (remote_desc);
+}
+
+/* Convert hex digit A to a number.  */
+
+static int
+fromhex (a)
+     int a;
+{
+  if (a >= '0' && a <= '9')
+    return a - '0';
+  else if (a >= 'a' && a <= 'f')
+    return a - 'a' + 10;
+  else
+    error ("Reply contains invalid hex digit");
+}
+
+/* Convert number NIB to a hex digit.  */
+
+static int
+tohex (nib)
+     int nib;
+{
+  if (nib < 10)
+    return '0' + nib;
+  else
+    return 'a' + nib - 10;
+}
+
+/* Send a packet to the remote machine, with error checking.
+   The data of the packet is in BUF.  Returns >= 0 on success, -1 otherwise. */
+
+int
+putpkt (buf)
+     char *buf;
+{
+  int i;
+  unsigned char csum = 0;
+  char buf2[2000];
+  char buf3[1];
+  int cnt = strlen (buf);
+  char *p;
+
+  /* Copy the packet into buffer BUF2, encapsulating it
+     and giving it a checksum.  */
+
+  p = buf2;
+  *p++ = '$';
+
+  for (i = 0; i < cnt; i++)
+    {
+      csum += buf[i];
+      *p++ = buf[i];
+    }
+  *p++ = '#';
+  *p++ = tohex ((csum >> 4) & 0xf);
+  *p++ = tohex (csum & 0xf);
+
+  /* Send it over and over until we get a positive ack.  */
+
+  do
+    {
+      int cc;
+
+      if (write (remote_desc, buf2, p - buf2) != p - buf2)
+	{
+	  perror ("putpkt(write)");
+	  return -1;
+	}
+
+      cc = read (remote_desc, buf3, 1);
+      if (cc <= 0)
+	{
+	  if (cc == 0)
+	    fprintf (stderr, "putpkt(read): Got EOF\n");
+	  else
+	    perror ("putpkt(read)");
+
+	  return -1;
+	}
+    }
+  while (buf3[0] != '+');
+
+  return 1;			/* Success! */
+}
+
+/* Come here when we get an input interrupt from the remote side.  This
+   interrupt should only be active while we are waiting for the child to do
+   something.  About the only thing that should come through is a ^C, which
+   will cause us to send a SIGINT to the child.  */
+
+static void
+input_interrupt()
+{
+  int cc;
+  char c;
+
+  cc = read (remote_desc, &c, 1);
+
+  if (cc != 1 || c != '\003')
+    {
+      fprintf(stderr, "input_interrupt, cc = %d c = %d\n", cc, c);
+      return;
+    }
+
+  kill (inferior_pid, SIGINT);
+}
+
+void
+enable_async_io()
+{
+  signal (SIGIO, input_interrupt);
+}
+
+void
+disable_async_io()
+{
+  signal (SIGIO, SIG_IGN);
+}
+
+/* Returns next char from remote GDB.  -1 if error.  */
+
+static int
+readchar ()
+{
+  static char buf[BUFSIZ];
+  static int bufcnt = 0;
+  static char *bufp;
+
+  if (bufcnt-- > 0)
+    return *bufp++ & 0x7f;
+
+  bufcnt = read (remote_desc, buf, sizeof (buf));
+
+  if (bufcnt <= 0)
+    {
+      if (bufcnt == 0)
+	fprintf (stderr, "readchar: Got EOF\n");
+      else
+	perror ("readchar");
+
+      return -1;
+    }
+
+  bufp = buf;
+  bufcnt--;
+  return *bufp++ & 0x7f;
+}
+
+/* Read a packet from the remote machine, with error checking,
+   and store it in BUF.  Returns length of packet, or negative if error. */
+
+int
+getpkt (buf)
+     char *buf;
+{
+  char *bp;
+  unsigned char csum, c1, c2;
+  int c;
+
+  while (1)
+    {
+      csum = 0;
+
+      while (1)
+	{
+	  c = readchar ();
+	  if (c == '$')
+	    break;
+	  if (c < 0)
+	    return -1;
+	}
+
+      bp = buf;
+      while (1)
+	{
+	  c = readchar ();
+	  if (c < 0)
+	    return -1;
+	  if (c == '#')
+	    break;
+	  *bp++ = c;
+	  csum += c;
+	}
+      *bp = 0;
+
+      c1 = fromhex (readchar ());
+      c2 = fromhex (readchar ());
+      if (csum == (c1 << 4) + c2)
+	break;
+
+      fprintf (stderr, "Bad checksum, sentsum=0x%x, csum=0x%x, buf=%s\n",
+	       (c1 << 4) + c2, csum, buf);
+      write (remote_desc, "-", 1);
+    }
+
+  write (remote_desc, "+", 1);
+  return bp - buf;
+}
+
+void
+write_ok (buf)
+     char *buf;
+{
+  buf[0] = 'O';
+  buf[1] = 'K';
+  buf[2] = '\0';
+}
+
+void
+write_enn (buf)
+     char *buf;
+{
+  buf[0] = 'E';
+  buf[1] = 'N';
+  buf[2] = 'N';
+  buf[3] = '\0';
+}
+
+void
+convert_int_to_ascii (from, to, n)
+     char *from, *to;
+     int n;
+{
+  int nib;
+  char ch;
+  while (n--)
+    {
+      ch = *from++;
+      nib = ((ch & 0xf0) >> 4) & 0x0f;
+      *to++ = tohex (nib);
+      nib = ch & 0x0f;
+      *to++ = tohex (nib);
+    }
+  *to++ = 0;
+}
+
+
+void
+convert_ascii_to_int (from, to, n)
+     char *from, *to;
+     int n;
+{
+  int nib1, nib2;
+  while (n--)
+    {
+      nib1 = fromhex (*from++);
+      nib2 = fromhex (*from++);
+      *to++ = (((nib1 & 0x0f) << 4) & 0xf0) | (nib2 & 0x0f);
+    }
+}
+
+static char *
+outreg(regno, buf)
+     int regno;
+     char *buf;
+{
+  extern char registers[];
+
+  *buf++ = tohex (regno >> 4);
+  *buf++ = tohex (regno & 0xf);
+  *buf++ = ':';
+  convert_int_to_ascii (&registers[REGISTER_BYTE (regno)], buf, 4);
+  buf += 8;
+  *buf++ = ';';
+
+  return buf;
+}
+
+void
+prepare_resume_reply (buf, status, signal)
+     char *buf;
+     char status;
+     unsigned char signal;
+{
+  int nib;
+  char ch;
+
+  *buf++ = status;
+
+  /* FIXME!  Should be converting this signal number (numbered
+     according to the signal numbering of the system we are running on)
+     to the signal numbers used by the gdb protocol (see enum target_signal
+     in gdb/target.h).  */
+  nib = ((signal & 0xf0) >> 4);
+  *buf++ = tohex (nib);
+  nib = signal & 0x0f;
+  *buf++ = tohex (nib);
+
+  if (status == 'T')
+    {
+      buf = outreg (PC_REGNUM, buf);
+      buf = outreg (FP_REGNUM, buf);
+      buf = outreg (SP_REGNUM, buf);
+#ifdef NPC_REGNUM
+      buf = outreg (NPC_REGNUM, buf);
+#endif
+#ifdef O7_REGNUM
+      buf = outreg (O7_REGNUM, buf);
+#endif
+
+      /* If the debugger hasn't used any thread features, don't burden it with
+	 threads.  If we didn't check this, GDB 4.13 and older would choke.  */
+      if (cont_thread != 0)
+	{
+	  if (old_thread_from_wait != thread_from_wait)
+	    {
+	      sprintf (buf, "thread:%x;", thread_from_wait);
+	      buf += strlen (buf);
+	      old_thread_from_wait = thread_from_wait;
+	    }
+	}
+    }
+  /* For W and X, we're done.  */
+  *buf++ = 0;
+}
+
+void
+decode_m_packet (from, mem_addr_ptr, len_ptr)
+     char *from;
+     unsigned int *mem_addr_ptr, *len_ptr;
+{
+  int i = 0, j = 0;
+  char ch;
+  *mem_addr_ptr = *len_ptr = 0;
+
+  while ((ch = from[i++]) != ',')
+    {
+      *mem_addr_ptr = *mem_addr_ptr << 4;
+      *mem_addr_ptr |= fromhex (ch) & 0x0f;
+    }
+
+  for (j = 0; j < 4; j++)
+    {
+      if ((ch = from[i++]) == 0)
+	break;
+      *len_ptr = *len_ptr << 4;
+      *len_ptr |= fromhex (ch) & 0x0f;
+    }
+}
+
+void
+decode_M_packet (from, mem_addr_ptr, len_ptr, to)
+     char *from, *to;
+     unsigned int *mem_addr_ptr, *len_ptr;
+{
+  int i = 0, j = 0;
+  char ch;
+  *mem_addr_ptr = *len_ptr = 0;
+
+  while ((ch = from[i++]) != ',')
+    {
+      *mem_addr_ptr = *mem_addr_ptr << 4;
+      *mem_addr_ptr |= fromhex (ch) & 0x0f;
+    }
+
+  while ((ch = from[i++]) != ':')
+    {
+      *len_ptr = *len_ptr << 4;
+      *len_ptr |= fromhex (ch) & 0x0f;
+    }
+
+  convert_ascii_to_int (&from[i++], to, *len_ptr);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 17
+a18 20
+   Copyright 1986, 1989, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001,
+   2002, 2003, 2004
+   Free Software Foundation, Inc.
+
+   This file is part of GDB.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a20 1
+#include "terminal.h"
+a21 1
+#include <string.h>
+a29 7
+#include <fcntl.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+int remote_debug = 0;
+struct ui_file *gdb_stdlog;
+d31 1
+a33 4
+/* FIXME headerize? */
+extern int using_threads;
+extern int debug_threads;
+
+d38 2
+a39 1
+remote_open (char *name)
+a40 2
+  int save_fcntl_flags;
+  
+d50 1
+a50 1
+	tcgetattr (remote_desc, &termios);
+d55 1
+a55 1
+	termios.c_cflag &= ~(CSIZE | PARENB);
+d57 1
+a57 1
+	termios.c_cc[VMIN] = 1;
+d60 1
+a60 1
+	tcsetattr (remote_desc, TCSANOW, &termios);
+d72 1
+a72 1
+	termio.c_cflag &= ~(CSIZE | PARENB);
+d74 1
+a74 1
+	termio.c_cc[VMIN] = 1;
+d91 1
+a91 1
+      fprintf (stderr, "Remote debugging using %s\n", name);
+d99 1
+d112 2
+a113 2
+      setsockopt (tmp_desc, SOL_SOCKET, SO_REUSEADDR, (char *) &tmp,
+		  sizeof (tmp));
+d116 1
+a116 1
+      sockaddr.sin_port = htons (port);
+d119 1
+a119 1
+      if (bind (tmp_desc, (struct sockaddr *) &sockaddr, sizeof (sockaddr))
+a122 2
+      fprintf (stderr, "Listening on port %d\n", port);
+
+d124 1
+a124 1
+      remote_desc = accept (tmp_desc, (struct sockaddr *) &sockaddr, &tmp);
+d128 4
+d134 1
+a134 1
+      setsockopt (tmp_desc, SOL_SOCKET, SO_KEEPALIVE, (char *) &tmp, sizeof (tmp));
+d137 1
+a137 1
+         interactive response. */
+d139 2
+a140 2
+      setsockopt (remote_desc, IPPROTO_TCP, TCP_NODELAY,
+		  (char *) &tmp, sizeof (tmp));
+d144 3
+a146 2
+      signal (SIGPIPE, SIG_IGN);	/* If we don't do this, then gdbserver simply
+					   exits when the remote side dies.  */
+d148 1
+a148 4
+      /* Convert IP address to string.  */
+      fprintf (stderr, "Remote debugging from host %s\n", 
+         inet_ntoa (sockaddr.sin_addr));
+    }
+d150 1
+a150 8
+#if defined(F_SETFL) && defined (FASYNC)
+  save_fcntl_flags = fcntl (remote_desc, F_GETFL, 0);
+  fcntl (remote_desc, F_SETFL, save_fcntl_flags | FASYNC);
+#if defined (F_SETOWN)
+  fcntl (remote_desc, F_SETOWN, getpid ());
+#endif
+#endif
+  disable_async_io ();
+d154 1
+a154 1
+remote_close (void)
+d162 2
+a163 1
+fromhex (int a)
+a170 37
+  return 0;
+}
+
+int
+unhexify (char *bin, const char *hex, int count)
+{
+  int i;
+
+  for (i = 0; i < count; i++)
+    {
+      if (hex[0] == 0 || hex[1] == 0)
+        {
+          /* Hex string is short, or of uneven length.
+             Return the count that has been converted so far. */
+          return i;
+        }
+      *bin++ = fromhex (hex[0]) * 16 + fromhex (hex[1]);
+      hex += 2;
+    }
+  return i;
+}
+
+static void
+decode_address (CORE_ADDR *addrp, const char *start, int len)
+{
+  CORE_ADDR addr;
+  char ch;
+  int i;
+
+  addr = 0;
+  for (i = 0; i < len; i++)
+    {
+      ch = start[i];
+      addr = addr << 4;
+      addr = addr | (fromhex (ch) & 0x0f);
+    }
+  *addrp = addr;
+d176 2
+a177 1
+tohex (int nib)
+a184 18
+int
+hexify (char *hex, const char *bin, int count)
+{
+  int i;
+
+  /* May use a length, or a nul-terminated string as input. */
+  if (count == 0)
+    count = strlen (bin);
+
+  for (i = 0; i < count; i++)
+    {
+      *hex++ = tohex ((*bin >> 4) & 0xf);
+      *hex++ = tohex (*bin++ & 0xf);
+    }
+  *hex = 0;
+  return i;
+}
+
+d189 2
+a190 1
+putpkt (char *buf)
+d194 1
+a194 1
+  char *buf2;
+a198 2
+  buf2 = malloc (PBUFSIZ);
+
+a213 2
+  *p = '\0';
+
+a225 5
+      if (remote_debug)
+	{
+	  fprintf (stderr, "putpkt (\"%s\"); [looking for ack]\n", buf2);
+	  fflush (stderr);
+	}
+a226 6
+      if (remote_debug)
+	{
+	  fprintf (stderr, "[received '%c' (0x%x)]\n", buf3[0], buf3[0]);
+	  fflush (stderr);
+	}
+
+a233 1
+	  free (buf2);
+a235 4
+
+      /* Check for an input interrupt while we're here.  */
+      if (buf3[0] == '\003')
+	(*the_target->send_signal) (SIGINT);
+a238 1
+  free (buf2);
+d248 1
+a248 1
+input_interrupt (int unused)
+d250 2
+a251 2
+  fd_set readset;
+  struct timeval immediate = { 0, 0 };
+d253 1
+a253 2
+  /* Protect against spurious interrupts.  This has been observed to
+     be a problem under NetBSD 1.4 and 1.5.  */
+d255 1
+a255 3
+  FD_ZERO (&readset);
+  FD_SET (remote_desc, &readset);
+  if (select (remote_desc + 1, &readset, 0, 0, &immediate) > 0)
+d257 2
+a258 12
+      int cc;
+      char c;
+      
+      cc = read (remote_desc, &c, 1);
+
+      if (cc != 1 || c != '\003')
+	{
+	  fprintf (stderr, "input_interrupt, cc = %d c = %d\n", cc, c);
+	  return;
+	}
+      
+      (*the_target->send_signal) (SIGINT);
+a259 1
+}
+d261 1
+a261 7
+void
+block_async_io (void)
+{
+  sigset_t sigio_set;
+  sigemptyset (&sigio_set);
+  sigaddset (&sigio_set, SIGIO);
+  sigprocmask (SIG_BLOCK, &sigio_set, NULL);
+d265 1
+a265 10
+unblock_async_io (void)
+{
+  sigset_t sigio_set;
+  sigemptyset (&sigio_set);
+  sigaddset (&sigio_set, SIGIO);
+  sigprocmask (SIG_UNBLOCK, &sigio_set, NULL);
+}
+
+void
+enable_async_io (void)
+d271 1
+a271 1
+disable_async_io (void)
+d279 1
+a279 1
+readchar (void)
+d309 2
+a310 1
+getpkt (char *buf)
+a324 6
+	  if (remote_debug)
+	    {
+	      fprintf (stderr, "[getpkt: discarding char '%c']\n", c);
+	      fflush (stderr);
+	    }
+
+a343 1
+
+a351 6
+  if (remote_debug)
+    {
+      fprintf (stderr, "getpkt (\"%s\");  [sending ack] \n", buf);
+      fflush (stderr);
+    }
+
+a352 7
+
+  if (remote_debug)
+    {
+      fprintf (stderr, "[sent ack]\n");
+      fflush (stderr);
+    }
+
+d357 2
+a358 1
+write_ok (char *buf)
+d366 2
+a367 1
+write_enn (char *buf)
+a368 1
+  /* Some day, we should define the meanings of the error codes... */
+d370 2
+a371 2
+  buf[1] = '0';
+  buf[2] = '1';
+d376 3
+a378 1
+convert_int_to_ascii (char *from, char *to, int n)
+d395 3
+a397 1
+convert_ascii_to_int (char *from, char *to, int n)
+d409 3
+a411 1
+outreg (int regno, char *buf)
+d413 3
+a415 5
+  if ((regno >> 12) != 0)
+    *buf++ = tohex ((regno >> 12) & 0xf);
+  if ((regno >> 8) != 0)
+    *buf++ = tohex ((regno >> 8) & 0xf);
+  *buf++ = tohex ((regno >> 4) & 0xf);
+d418 2
+a419 2
+  collect_register_as_string (regno, buf);
+  buf += 2 * register_size (regno);
+d426 4
+a429 1
+new_thread_notify (int id)
+d431 2
+a432 34
+  char own_buf[256];
+
+  /* The `n' response is not yet part of the remote protocol.  Do nothing.  */
+  if (1)
+    return;
+
+  if (server_waiting == 0)
+    return;
+
+  sprintf (own_buf, "n%x", id);
+  disable_async_io ();
+  putpkt (own_buf);
+  enable_async_io ();
+}
+
+void
+dead_thread_notify (int id)
+{
+  char own_buf[256];
+
+  /* The `x' response is not yet part of the remote protocol.  Do nothing.  */
+  if (1)
+    return;
+
+  sprintf (own_buf, "x%x", id);
+  disable_async_io ();
+  putpkt (own_buf);
+  enable_async_io ();
+}
+
+void
+prepare_resume_reply (char *buf, char status, unsigned char signo)
+{
+  int nib, sig;
+d436 5
+a440 3
+  sig = (int)target_signal_from_host (signo);
+
+  nib = ((sig & 0xf0) >> 4);
+d442 1
+a442 1
+  nib = sig & 0x0f;
+d447 9
+a455 14
+      const char **regp = gdbserver_expedite_regs;
+      while (*regp)
+	{
+	  buf = outreg (find_regno (*regp), buf);
+	  regp ++;
+	}
+
+      /* Formerly, if the debugger had not used any thread features we would not
+	 burden it with a thread status response.  This was for the benefit of
+	 GDB 4.13 and older.  However, in recent GDB versions the check
+	 (``if (cont_thread != 0)'') does not have the desired effect because of
+	 sillyness in the way that the remote protocol handles specifying a thread.
+	 Since thread support relies on qSymbol support anyway, assume GDB can handle
+	 threads.  */
+d457 3
+a459 1
+      if (using_threads)
+d461 1
+a461 9
+	  /* FIXME right place to set this? */
+	  thread_from_wait = ((struct inferior_list_entry *)current_inferior)->id;
+	  if (debug_threads)
+	    fprintf (stderr, "Writing resume reply for %d\n\n", thread_from_wait);
+	  /* This if (1) ought to be unnecessary.  But remote_wait in GDB
+	     will claim this event belongs to inferior_ptid if we do not
+	     specify a thread, and there's no way for gdbserver to know
+	     what inferior_ptid is.  */
+	  if (1 || old_thread_from_wait != thread_from_wait)
+a462 1
+	      general_thread = thread_from_wait;
+d474 3
+a476 1
+decode_m_packet (char *from, CORE_ADDR *mem_addr_ptr, unsigned int *len_ptr)
+d498 3
+a500 2
+decode_M_packet (char *from, CORE_ADDR *mem_addr_ptr, unsigned int *len_ptr,
+		 char *to)
+d502 1
+a502 1
+  int i = 0;
+a519 43
+
+int
+look_up_one_symbol (const char *name, CORE_ADDR *addrp)
+{
+  char own_buf[266], *p, *q;
+  int len;
+
+  /* Send the request.  */
+  strcpy (own_buf, "qSymbol:");
+  hexify (own_buf + strlen ("qSymbol:"), name, strlen (name));
+  if (putpkt (own_buf) < 0)
+    return -1;
+
+  /* FIXME:  Eventually add buffer overflow checking (to getpkt?)  */
+  len = getpkt (own_buf);
+  if (len < 0)
+    return -1;
+
+  if (strncmp (own_buf, "qSymbol:", strlen ("qSymbol:")) != 0)
+    {
+      /* Malformed response.  */
+      if (remote_debug)
+	{
+	  fprintf (stderr, "Malformed response to qSymbol, ignoring.\n");
+	  fflush (stderr);
+	}
+
+      return -1;
+    }
+
+  p = own_buf + strlen ("qSymbol:");
+  q = p;
+  while (*q && *q != ':')
+    q++;
+
+  /* Make sure we found a value for the symbol.  */
+  if (p == q || *q == '\0')
+    return 0;
+
+  decode_address (addrp, p, q - p);
+  return 1;
+}
+
+@
+

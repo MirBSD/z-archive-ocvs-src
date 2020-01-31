@@ -1,0 +1,771 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.12.17;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.18;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.28.46;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Remote target glue for the Hitachi SH-3 ROM monitor.
+   Copyright 1995, 1996 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "defs.h"
+#include "gdbcore.h"
+#include "target.h"
+#include "monitor.h"
+#include "serial.h"
+#include "srec.h"
+
+static serial_t parallel;
+static int parallel_in_use;
+
+static void sh3_open PARAMS ((char *args, int from_tty));
+
+static void
+sh3_supply_register (regname, regnamelen, val, vallen)
+     char *regname;
+     int regnamelen;
+     char *val;
+     int vallen;
+{
+  int numregs;
+  int regno;
+
+  numregs = 1;
+  regno = -1;
+
+  if (regnamelen == 2)
+    {
+      switch (regname[0])
+	{
+	case 'S':
+	  if (regname[1] == 'R')
+	    regno = SR_REGNUM;
+	  break;
+	case 'P':
+	  if (regname[1] == 'C')
+	    regno = PC_REGNUM;
+	  else if (regname[1] == 'R')
+	    regno = PR_REGNUM;
+	  break;
+	}
+    }
+  else if (regnamelen == 3)
+    {
+      switch (regname[0])
+	{
+	case 'G':
+	case 'V':
+	  if (regname[1] == 'B' && regname[2] == 'R')
+	    if (regname[0] == 'G')
+	      regno = VBR_REGNUM;
+	    else
+	      regno = GBR_REGNUM;
+	  break;
+	case 'S':
+	  if (regname[1] == 'S' && regname[2] == 'R')
+	    regno = SSR_REGNUM;
+	  else if (regname[1] == 'P' && regname[2] == 'C')
+	    regno = SPC_REGNUM;
+	  break;
+	}
+    }
+  else if (regnamelen == 4)
+    {
+      switch (regname[0])
+	{
+	case 'M':
+	  if (regname[1] == 'A' && regname[2] == 'C')
+	    if (regname[3] == 'H')
+	      regno = MACH_REGNUM;
+	    else if (regname[3] == 'L')
+	      regno = MACL_REGNUM;
+	  break;
+	case 'R':
+	  if (regname[1] == '0' && regname[2] == '-' && regname[3] == '7')
+	    {
+	      regno = R0_REGNUM;
+	      numregs = 8;
+	    }
+	}
+    }
+  else if (regnamelen == 5)
+    {
+      if (regname[1] == '8' && regname[2] == '-' && regname[3] == '1'
+	  && regname[4] =='5')
+	{
+	  regno = R0_REGNUM + 8;
+	  numregs = 8;
+	}
+    }
+  else if (regnamelen == 17)
+    {
+    }
+
+  if (regno >= 0)
+    while (numregs-- > 0)
+      val = monitor_supply_register (regno++, val);
+}
+
+static void
+sh3_load (desc, file, hashmark)
+     serial_t desc;
+     char *file;
+     int hashmark;
+{
+  if (parallel_in_use) 
+    {
+      monitor_printf("pl;s\r");
+      load_srec (parallel, file, 80, SREC_ALL, hashmark, NULL);
+      monitor_expect_prompt (NULL, 0);
+    }
+  else 
+    {
+      monitor_printf ("il;s:x\r");
+      monitor_expect ("\005", NULL, 0); /* Look for ENQ */
+      SERIAL_WRITE (desc, "\006", 1); /* Send ACK */
+      monitor_expect ("LO x\r", NULL, 0); /* Look for filename */
+
+      load_srec (desc, file, 80, SREC_ALL, hashmark, NULL);
+
+      monitor_expect ("\005", NULL, 0); /* Look for ENQ */
+      SERIAL_WRITE (desc, "\006", 1); /* Send ACK */
+      monitor_expect_prompt (NULL, 0);
+    }
+}
+
+/* This array of registers need to match the indexes used by GDB.
+   This exists because the various ROM monitors use different strings
+   than does GDB, and don't necessarily support all the registers
+   either. So, typing "info reg sp" becomes a "r30".  */
+
+static char *sh3_regnames[NUM_REGS] = {
+  "R0", "R1", "R2",  "R3", "R4",  "R5",   "R6",  "R7",
+  "R8", "R9", "R10", "R11","R12", "R13",  "R14", "R15",
+  "PC", "PR", "GBR", "VBR","MACH","MACL", "SR",
+  NULL, NULL,
+  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+  "SSR", "SPC",
+  "R0_BANK0", "R1_BANK0", "R2_BANK0", "R3_BANK0",
+  "R4_BANK0", "R5_BANK0", "R6_BANK0", "R7_BANK0",
+  "R0_BANK1", "R1_BANK1", "R2_BANK1", "R3_BANK1",
+  "R4_BANK1", "R5_BANK1", "R6_BANK1", "R7_BANK1"
+};
+
+static char *sh3e_regnames[NUM_REGS] = {
+  "R0", "R1", "R2",  "R3", "R4",  "R5",   "R6",  "R7",
+  "R8", "R9", "R10", "R11","R12", "R13",  "R14", "R15",
+  "PC", "PR", "GBR", "VBR","MACH","MACL", "SR",
+  "FPUL", "FPSCR",
+  "FR0", "FR1", "FR2", "FR3", "FR4", "FR5", "FR6", "FR7",
+  "FR8", "FR9", "FR10", "FR11", "FR12", "FR13", "FR14", "FR15",
+  "SSR","SPC",
+  "R0_BANK0", "R1_BANK0", "R2_BANK0", "R3_BANK0",
+  "R4_BANK0", "R5_BANK0", "R6_BANK0", "R7_BANK0",
+  "R0_BANK1", "R1_BANK1", "R2_BANK1", "R3_BANK1",
+  "R4_BANK1", "R5_BANK1", "R6_BANK1", "R7_BANK1"
+};
+
+/* Define the monitor command strings. Since these are passed directly
+   through to a printf style function, we may include formatting
+   strings. We also need a CR or LF on the end.  */
+
+static struct target_ops sh3_ops, sh3e_ops;
+
+static char *sh3_inits[] = {"\003", NULL}; /* Exits sub-command mode & download cmds */
+
+static struct monitor_ops sh3_cmds =
+{
+  MO_CLR_BREAK_USES_ADDR
+    | MO_GETMEM_READ_SINGLE,	/* flags */
+  sh3_inits,			/* monitor init string */
+  "g\r",			/* continue command */
+  "s\r",			/* single step */
+  "\003",			/* Interrupt program */
+  "b %x\r",			/* set a breakpoint */
+  "b -%x\r",			/* clear a breakpoint */
+  "b -\r",			/* clear all breakpoints */
+  "f %x @@%x %x\r",		/* fill (start len val) */
+  {
+    "m %x %x\r",		/* setmem.cmdb (addr, value) */
+    "m %x %x;w\r",		/* setmem.cmdw (addr, value) */
+    "m %x %x;l\r",		/* setmem.cmdl (addr, value) */
+    NULL,			/* setmem.cmdll (addr, value) */
+    NULL,			/* setreg.resp_delim */
+    NULL,			/* setreg.term */
+    NULL,			/* setreg.term_cmd */
+  },
+  {
+    "m %x\r",			/* getmem.cmdb (addr, len) */
+    "m %x;w\r",			/* getmem.cmdw (addr, len) */
+    "m %x;l\r",			/* getmem.cmdl (addr, len) */
+    NULL,			/* getmem.cmdll (addr, len) */
+    "^ [0-9A-F]+ ",		/* getmem.resp_delim */
+    "? ",			/* getmem.term */
+    ".\r",			/* getmem.term_cmd */
+  },
+  {
+    ".%s %x\r",			/* setreg.cmd (name, value) */
+    NULL,			/* setreg.resp_delim */
+    NULL,			/* setreg.term */
+    NULL			/* setreg.term_cmd */
+  },
+  {
+    ".%s\r",			/* getreg.cmd (name) */
+    "=",			/* getreg.resp_delim */
+    "? ",			/* getreg.term */
+    ".\r"			/* getreg.term_cmd */
+  },
+  "r\r",			/* dump_registers */
+				/* register_pattern */
+  "\\(\\w+\\)=\\([0-9a-fA-F]+\\( +[0-9a-fA-F]+\\b\\)*\\)",
+  sh3_supply_register,		/* supply_register */
+  sh3_load,			/* load_routine */
+  NULL,				/* download command */
+  NULL,				/* Load response */
+  "\n:",			/* monitor command prompt */
+  "\r",				/* end-of-line terminator */
+  ".\r",			/* optional command terminator */
+  &sh3_ops,			/* target operations */
+  SERIAL_1_STOPBITS,		/* number of stop bits */
+  sh3_regnames,			/* registers names */
+  MONITOR_OPS_MAGIC		/* magic */
+};
+
+/* This monitor structure is identical except for a couple slots, so
+   we will fill it in from the base structure when needed.  */
+
+static struct monitor_ops sh3e_cmds;
+
+static void
+sh3_open (args, from_tty)
+     char *args;
+     int from_tty;
+{
+  char *serial_port_name = args;
+  char *parallel_port_name = 0;
+
+  if (args) 
+    {
+      char *cursor = serial_port_name = strsave (args);
+
+      while (*cursor && *cursor != ' ')
+ 	cursor++;
+
+      if (*cursor)
+	*cursor++ = 0;
+
+      while (*cursor == ' ')
+	cursor++;
+
+      if (*cursor)
+	parallel_port_name = cursor;
+    }
+
+  monitor_open (serial_port_name, &sh3_cmds, from_tty);
+
+  if (parallel_port_name)
+    {
+      parallel = SERIAL_OPEN (parallel_port_name);
+
+      if (!parallel)
+	perror_with_name ("Unable to open parallel port.");
+
+      parallel_in_use = 1;
+    }
+
+  /* If we connected successfully, we know the processor is an SH3.  */
+  sh_set_processor_type ("sh3");
+}
+
+
+static void
+sh3e_open (args, from_tty)
+     char *args;
+     int from_tty;
+{
+  char *serial_port_name = args;
+  char *parallel_port_name = 0;
+
+  if (args) 
+    {
+      char *cursor = serial_port_name = strsave (args);
+
+      while (*cursor && *cursor != ' ')
+ 	cursor++;
+
+      if (*cursor)
+	*cursor++ = 0;
+
+      while (*cursor == ' ')
+	cursor++;
+
+      if (*cursor)
+	parallel_port_name = cursor;
+    }
+
+  /* Set up the SH-3E monitor commands structure.  */
+
+  memcpy (&sh3e_cmds, &sh3_cmds, sizeof (struct monitor_ops));
+
+  sh3e_cmds.target = &sh3e_ops;
+  sh3e_cmds.regnames = sh3e_regnames;
+
+  monitor_open (serial_port_name, &sh3e_cmds, from_tty);
+
+  if (parallel_port_name)
+    {
+      parallel = SERIAL_OPEN (parallel_port_name);
+
+      if (!parallel)
+	perror_with_name ("Unable to open parallel port.");
+
+      parallel_in_use = 1;
+    }
+
+  /* If we connected successfully, we know the processor is an SH3E.  */
+  sh_set_processor_type ("sh3e");
+}
+
+static void
+sh3_close (quitting)
+     int quitting;
+{
+  monitor_close (quitting);
+  if (parallel_in_use) {
+    SERIAL_CLOSE (parallel);
+    parallel_in_use = 0;
+  }
+}
+
+void
+_initialize_sh3_rom ()
+{
+  init_monitor_ops (&sh3_ops);
+
+  sh3_ops.to_shortname = "sh3";
+  sh3_ops.to_longname = "Hitachi SH-3 rom monitor";
+
+  sh3_ops.to_doc = 
+#ifdef _WINDOWS
+  /* On windows we can talk through the parallel port too. */
+    "Debug on a Hitachi eval board running the SH-3 rom monitor.\n"
+    "Specify the serial device it is connected to (e.g. com2).\n"
+    "If you want to use the parallel port to download to it, specify that\n"
+    "as the second argument. (e.g. lpt1)";
+#else
+    "Debug on a Hitachi eval board running the SH-3 rom monitor.\n\
+Specify the serial device it is connected to (e.g. /dev/ttya).";
+#endif
+
+  sh3_ops.to_open = sh3_open;
+  sh3_ops.to_close = sh3_close;
+
+  add_target (&sh3_ops);
+
+  /* Setup the SH3e, which has float registers.  */
+
+  init_monitor_ops (&sh3e_ops);
+
+  sh3e_ops.to_shortname = "sh3e";
+  sh3e_ops.to_longname = "Hitachi SH-3E rom monitor";
+
+  sh3e_ops.to_doc = 
+#ifdef _WINDOWS
+  /* On windows we can talk through the parallel port too. */
+    "Debug on a Hitachi eval board running the SH-3E rom monitor.\n"
+    "Specify the serial device it is connected to (e.g. com2).\n"
+    "If you want to use the parallel port to download to it, specify that\n"
+    "as the second argument. (e.g. lpt1)";
+#else
+    "Debug on a Hitachi eval board running the SH-3E rom monitor.\n\
+Specify the serial device it is connected to (e.g. /dev/ttya).";
+#endif
+
+  sh3e_ops.to_open = sh3e_open;
+  sh3e_ops.to_close = sh3_close;
+
+  add_target (&sh3e_ops);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d1 18
+a18 20
+/* Remote target glue for the Renesas SH-3 ROM monitor.
+   Copyright 1995, 1996, 1997, 1998, 1999, 2000, 2001
+   Free Software Foundation, Inc.
+
+   This file is part of GDB.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a25 3
+#include "arch-utils.h"
+#include "regcache.h"
+#include "gdb_string.h"
+d27 1
+a27 3
+#include "sh-tdep.h"
+
+static struct serial *parallel;
+d30 1
+a30 1
+static void sh3_open (char *args, int from_tty);
+d33 5
+a37 1
+sh3_supply_register (char *regname, int regnamelen, char *val, int vallen)
+d68 4
+a71 6
+	    {
+	      if (regname[0] == 'G')
+		regno = VBR_REGNUM;
+	      else
+		regno = GBR_REGNUM;
+	    }
+d87 4
+a90 6
+	    {
+	      if (regname[3] == 'H')
+		regno = MACH_REGNUM;
+	      else if (regname[3] == 'L')
+		regno = MACL_REGNUM;
+	    }
+d103 1
+a103 1
+	  && regname[4] == '5')
+d119 4
+a122 1
+sh3_load (struct serial *desc, char *file, int hashmark)
+d124 1
+a124 1
+  if (parallel_in_use)
+d126 2
+a127 2
+      monitor_printf ("pl;s\r");
+      load_srec (parallel, file, 0, 80, SREC_ALL, hashmark, NULL);
+d130 1
+a130 1
+  else
+d133 3
+a135 3
+      monitor_expect ("\005", NULL, 0);		/* Look for ENQ */
+      serial_write (desc, "\006", 1);	/* Send ACK */
+      monitor_expect ("LO x\r", NULL, 0);	/* Look for filename */
+d137 1
+a137 1
+      load_srec (desc, file, 0, 80, SREC_ALL, hashmark, NULL);
+d139 2
+a140 2
+      monitor_expect ("\005", NULL, 0);		/* Look for ENQ */
+      serial_write (desc, "\006", 1);	/* Send ACK */
+d150 4
+a153 5
+static char *sh3_regnames[] =
+{
+  "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7",
+  "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15",
+  "PC", "PR", "GBR", "VBR", "MACH", "MACL", "SR",
+d164 4
+a167 5
+static char *sh3e_regnames[] =
+{
+  "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7",
+  "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15",
+  "PC", "PR", "GBR", "VBR", "MACH", "MACL", "SR",
+d171 1
+a171 1
+  "SSR", "SPC",
+d184 1
+a184 4
+static char *sh3_inits[] =
+{"\003", NULL};			/* Exits sub-command mode & download cmds */
+
+static struct monitor_ops sh3_cmds;
+d186 1
+a186 2
+static void
+init_sh3_cmds (void)
+d188 55
+a242 45
+  sh3_cmds.flags = MO_CLR_BREAK_USES_ADDR | MO_GETMEM_READ_SINGLE;	/* flags */
+  sh3_cmds.init = sh3_inits;	/* monitor init string */
+  sh3_cmds.cont = "g\r";	/* continue command */
+  sh3_cmds.step = "s\r";	/* single step */
+  sh3_cmds.stop = "\003";	/* Interrupt program */
+  sh3_cmds.set_break = "b %x\r";	/* set a breakpoint */
+  sh3_cmds.clr_break = "b -%x\r";	/* clear a breakpoint */
+  sh3_cmds.clr_all_break = "b -\r";	/* clear all breakpoints */
+  sh3_cmds.fill = "f %x @@%x %x\r";	/* fill (start len val) */
+  sh3_cmds.setmem.cmdb = "m %x %x\r";	/* setmem.cmdb (addr, value) */
+  sh3_cmds.setmem.cmdw = "m %x %x;w\r";		/* setmem.cmdw (addr, value) */
+  sh3_cmds.setmem.cmdl = "m %x %x;l\r";		/* setmem.cmdl (addr, value) */
+  sh3_cmds.setmem.cmdll = NULL;	/* setmem.cmdll (addr, value) */
+  sh3_cmds.setmem.resp_delim = NULL;	/* setreg.resp_delim */
+  sh3_cmds.setmem.term = NULL;	/* setreg.term */
+  sh3_cmds.setmem.term_cmd = NULL;	/* setreg.term_cmd */
+  sh3_cmds.getmem.cmdb = "m %x\r";	/* getmem.cmdb (addr, len) */
+  sh3_cmds.getmem.cmdw = "m %x;w\r";	/* getmem.cmdw (addr, len) */
+  sh3_cmds.getmem.cmdl = "m %x;l\r";	/* getmem.cmdl (addr, len) */
+  sh3_cmds.getmem.cmdll = NULL;	/* getmem.cmdll (addr, len) */
+  sh3_cmds.getmem.resp_delim = "^ [0-9A-F]+ ";	/* getmem.resp_delim */
+  sh3_cmds.getmem.term = "? ";	/* getmem.term */
+  sh3_cmds.getmem.term_cmd = ".\r";	/* getmem.term_cmd */
+  sh3_cmds.setreg.cmd = ".%s %x\r";	/* setreg.cmd (name, value) */
+  sh3_cmds.setreg.resp_delim = NULL;	/* setreg.resp_delim */
+  sh3_cmds.setreg.term = NULL;	/* setreg.term */
+  sh3_cmds.setreg.term_cmd = NULL;	/* setreg.term_cmd */
+  sh3_cmds.getreg.cmd = ".%s\r";	/* getreg.cmd (name) */
+  sh3_cmds.getreg.resp_delim = "=";	/* getreg.resp_delim */
+  sh3_cmds.getreg.term = "? ";	/* getreg.term */
+  sh3_cmds.getreg.term_cmd = ".\r";	/* getreg.term_cmd */
+  sh3_cmds.dump_registers = "r\r";	/* dump_registers */
+  sh3_cmds.register_pattern = "\\(\\w+\\)=\\([0-9a-fA-F]+\\( +[0-9a-fA-F]+\\b\\)*\\)";
+  sh3_cmds.supply_register = sh3_supply_register;	/* supply_register */
+  sh3_cmds.load_routine = sh3_load;	/* load_routine */
+  sh3_cmds.load = NULL;		/* download command */
+  sh3_cmds.loadresp = NULL;	/* Load response */
+  sh3_cmds.prompt = "\n:";	/* monitor command prompt */
+  sh3_cmds.line_term = "\r";	/* end-of-line terminator */
+  sh3_cmds.cmd_end = ".\r";	/* optional command terminator */
+  sh3_cmds.target = &sh3_ops;	/* target operations */
+  sh3_cmds.stopbits = SERIAL_1_STOPBITS;	/* number of stop bits */
+  sh3_cmds.regnames = sh3_regnames;	/* registers names */
+  sh3_cmds.magic = MONITOR_OPS_MAGIC;	/* magic */
+}				/* init_sh3_cmds */
+d250 3
+a252 1
+sh3_open (char *args, int from_tty)
+d257 1
+a257 1
+  if (args)
+d259 1
+a259 1
+      char *cursor = serial_port_name = xstrdup (args);
+d262 1
+a262 1
+	cursor++;
+d278 1
+a278 1
+      parallel = serial_open (parallel_port_name);
+a285 1
+
+d287 1
+a287 7
+  {
+    struct gdbarch_info info;
+    gdbarch_info_init (&info);
+    info.bfd_arch_info = bfd_lookup_arch (bfd_arch_sh, bfd_mach_sh3);
+    if (!gdbarch_update_p (info))
+      error ("Target is not an SH3");
+  }
+d292 3
+a294 1
+sh3e_open (char *args, int from_tty)
+d299 1
+a299 1
+  if (args)
+d301 1
+a301 1
+      char *cursor = serial_port_name = xstrdup (args);
+d304 1
+a304 1
+	cursor++;
+d327 1
+a327 1
+      parallel = serial_open (parallel_port_name);
+d336 1
+a336 7
+  {
+    struct gdbarch_info info;
+    gdbarch_info_init (&info);
+    info.bfd_arch_info = bfd_lookup_arch (bfd_arch_sh, bfd_mach_sh3);
+    if (!gdbarch_update_p (info))
+      error ("Target is not an SH3");
+  }
+d340 2
+a341 1
+sh3_close (int quitting)
+d344 4
+a347 5
+  if (parallel_in_use)
+    {
+      serial_close (parallel);
+      parallel_in_use = 0;
+    }
+a349 2
+extern initialize_file_ftype _initialize_sh3_rom; /* -Wmissing-prototypes */
+
+d351 1
+a351 1
+_initialize_sh3_rom (void)
+a352 1
+  init_sh3_cmds ();
+d356 1
+a356 1
+  sh3_ops.to_longname = "Renesas SH-3 rom monitor";
+d358 5
+a362 4
+  sh3_ops.to_doc =
+  /* We can download through the parallel port too. */
+    "Debug on a Renesas eval board running the SH-3E rom monitor.\n"
+    "Specify the serial device it is connected to.\n"
+d364 5
+a368 1
+    "as an additional second argument.";
+d380 1
+a380 1
+  sh3e_ops.to_longname = "Renesas SH-3E rom monitor";
+d382 5
+a386 4
+  sh3e_ops.to_doc =
+  /* We can download through the parallel port too. */
+    "Debug on a Renesas eval board running the SH-3E rom monitor.\n"
+    "Specify the serial device it is connected to.\n"
+d388 5
+a392 1
+    "as an additional second argument.";
+@
+

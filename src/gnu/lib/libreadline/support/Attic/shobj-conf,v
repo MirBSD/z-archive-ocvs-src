@@ -1,0 +1,680 @@
+head	1.3;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.3
+date	2004.06.10.16.47.35;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.14.22.23.45;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.38.44;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.38.44;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.05.16.08.06.21;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@merge OpenBSD
+@
+text
+@#! /bin/sh
+#
+# shobj-conf -- output a series of variable assignments to be substituted
+#		into a Makefile by configure which specify system-dependent
+#		information for creating shared objects that may be loaded
+#		into bash with `enable -f'
+#
+# usage: shobj-conf [-C compiler] -c host_cpu -o host_os -v host_vendor
+#
+# Chet Ramey
+# chet@@po.cwru.edu
+
+#
+# defaults
+#
+SHOBJ_STATUS=supported
+SHLIB_STATUS=supported
+
+SHOBJ_CC=cc
+SHOBJ_CFLAGS=
+SHOBJ_LD=
+SHOBJ_LDFLAGS=
+SHOBJ_XLDFLAGS=
+SHOBJ_LIBS=
+
+SHLIB_XLDFLAGS=
+SHLIB_LIBS=
+SHLIB_LIBSUFF='so'
+
+SHLIB_LIBVERSION='$(SHLIB_LIBSUFF)'
+
+PROGNAME=`basename $0`
+USAGE="$PROGNAME [-C compiler] -c host_cpu -o host_os -v host_vendor"
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-C)	shift; SHOBJ_CC="$1"; shift ;;
+	-c)	shift; host_cpu="$1"; shift ;;
+	-o)	shift; host_os="$1"; shift ;;
+	-v)	shift; host_vendor="$1"; shift ;;
+	*)	echo "$USAGE" >&2 ; exit 2;;
+	esac
+done
+
+case "${host_os}-${SHOBJ_CC}" in
+sunos4*-gcc*)
+	SHOBJ_CFLAGS=-fpic
+	SHOBJ_LD=/usr/bin/ld
+	SHOBJ_LDFLAGS='-assert pure-text'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)$(SHLIB_MINOR)'
+	;;
+
+sunos4*)
+	SHOBJ_CFLAGS=-pic
+	SHOBJ_LD=/usr/bin/ld
+	SHOBJ_LDFLAGS='-assert pure-text'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)$(SHLIB_MINOR)'
+	;;
+
+sunos5*-gcc*|solaris2*-gcc*)
+	SHOBJ_CFLAGS=-fpic
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared -Wl,-i -Wl,-h,$@@'
+
+#	SHLIB_XLDFLAGS='-R $(libdir)'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+sunos5*|solaris2*)
+	SHOBJ_CFLAGS='-K pic'
+	SHOBJ_LD=/usr/ccs/bin/ld
+	SHOBJ_LDFLAGS='-G -dy -z text -i -h $@@'
+
+#	SHLIB_XLDFLAGS='-R $(libdir)'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+freebsd2* | netbsd* | openbsd*)
+	SHOBJ_CFLAGS=-fpic
+	SHOBJ_LD=ld
+	SHOBJ_LDFLAGS='-x -Bshareable'
+
+	SHLIB_XLDFLAGS='-R$(libdir)'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)$(SHLIB_MINOR)'
+	;;
+
+# FreeBSD-3.x can have either a.out or ELF object files
+#freebsd3*)
+#	SHOBJ_CFLAGS=-fpic
+#	SHOBJ_LD='${CC}'
+#	SHOBJ_LDFLAGS='-shared'
+#
+#	SHLIB_XLDFLAGS='-R$(libdir)'
+#	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)$(SHLIB_MINOR)'
+#	;;
+
+# FreeBSD-3.x ELF
+freebsd3*)
+	SHOBJ_CFLAGS=-fpic
+	SHOBJ_LD='${CC}'
+
+	if [ -x /usr/bin/objformat ] && [ "`/usr/bin/objformat`" = "elf" ]; then
+		SHOBJ_LDFLAGS='-shared -Wl,-soname,$@@'
+
+		SHLIB_XLDFLAGS='-Wl,-rpath,$(libdir)'
+		SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	else
+		SHOBJ_LDFLAGS='-shared'
+
+		SHLIB_XLDFLAGS='-R$(libdir)'
+		SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)$(SHLIB_MINOR)'
+	fi
+	;;
+
+linux*)
+	SHOBJ_CFLAGS=-fPIC
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared -Wl,-soname,$@@'
+
+	SHLIB_XLDFLAGS='-Wl,-rpath,$(libdir)'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)$(SHLIB_MINOR)'
+	;;
+
+bsdi2*)
+	SHOBJ_CC=shlicc2
+	SHOBJ_CFLAGS=
+	SHOBJ_LD=ld
+	SHOBJ_LDFLAGS=-r
+	SHOBJ_LIBS=-lc_s.2.1.0
+
+	# BSD/OS 2.x and 3.x `shared libraries' are too much of a pain in
+	# the ass -- they require changing {/usr/lib,etc}/shlib.map on
+	# each system, and the library creation process is byzantine
+	SHLIB_STATUS=unsupported
+	;;
+
+bsdi3*)
+	SHOBJ_CC=shlicc2
+	SHOBJ_CFLAGS=
+	SHOBJ_LD=ld
+	SHOBJ_LDFLAGS=-r
+	SHOBJ_LIBS=-lc_s.3.0.0
+
+	# BSD/OS 2.x and 3.x `shared libraries' are too much of a pain in
+	# the ass -- they require changing {/usr/lib,etc}/shlib.map on
+	# each system, and the library creation process is byzantine
+	SHLIB_STATUS=unsupported
+	;;
+
+bsdi4*)
+	# BSD/OS 4.x now supports ELF and SunOS-style dynamically-linked
+	# shared libraries.  gcc 2.x is the standard compiler, and the
+	# `normal' gcc options should work as they do in Linux.
+
+	SHOBJ_CFLAGS=-fPIC
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared -Wl,-soname,$@@'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)$(SHLIB_MINOR)'
+	;;
+
+osf*-gcc*)
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared -Wl,-soname,$@@'
+
+	SHLIB_XLDFLAGS='-rpath $(libdir)'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+osf*)
+	SHOBJ_LD=ld
+	SHOBJ_LDFLAGS='-shared -soname $@@ -expect_unresolved "*"'
+
+	SHLIB_XLDFLAGS='-rpath $(libdir)'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+aix4.[2-9]*-gcc*)		# lightly tested by jik@@cisco.com
+	SHOBJ_CFLAGS=-fpic
+	SHOBJ_LD='ld'
+	SHOBJ_LDFLAGS='-bdynamic -bnoentry -bexpall'
+	SHOBJ_XLDFLAGS='-G'
+
+	SHLIB_XLDFLAGS='-bM:SRE'
+	SHLIB_LIBS='-lcurses -lc'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+aix4.[2-9]*)
+	SHOBJ_CFLAGS=-K
+	SHOBJ_LD='ld'
+	SHOBJ_LDFLAGS='-bdynamic -bnoentry -bexpall'
+	SHOBJ_XLDFLAGS='-G'
+
+	SHLIB_XLDFLAGS='-bM:SRE'
+	SHLIB_LIBS='-lcurses -lc'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+#
+# THE FOLLOWING ARE UNTESTED -- and some may not support the dlopen interface
+#
+irix[56]*-gcc*)
+	SHOBJ_CFLAGS='-fpic'
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared -Wl,-soname,$@@'
+
+	SHLIB_XLDFLAGS='-Wl,-rpath,$(libdir)'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+irix[56]*)
+	SHOBJ_CFLAGS='-K PIC'
+	SHOBJ_LD=ld
+#	SHOBJ_LDFLAGS='-call_shared -hidden_symbol -no_unresolved -soname $@@'
+#	Change from David Kaelbling <drk@@sgi.com>
+	SHOBJ_LDFLAGS='-shared -no_unresolved -soname $@@'
+
+	SHLIB_XLDFLAGS='-rpath $(libdir)'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+hpux9*-gcc*)
+	# must use gcc; the bundled cc cannot compile PIC code
+	SHOBJ_CFLAGS='-fpic'
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared -Wl,-b -Wl,+s'
+
+	SHLIB_XLDFLAGS='-Wl,+b,$(libdir)'
+	SHLIB_LIBSUFF='sl'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+hpux9*)
+	SHOBJ_STATUS=unsupported
+	SHLIB_STATUS=unsupported
+	;;
+
+hpux10*-gcc*)
+	# must use gcc; the bundled cc cannot compile PIC code
+	SHOBJ_CFLAGS='-fpic'
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared -Wl,-b -Wl,+s'
+
+	SHLIB_XLDFLAGS='-Wl,+h,$@@ -Wl,+b,$(libdir)'
+	SHLIB_LIBSUFF='sl'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+hpux10*)
+	SHOBJ_STATUS=unsupported
+	SHLIB_STATUS=unsupported
+	;;
+
+hpux11*-gcc*)
+	# must use gcc; the bundled cc cannot compile PIC code
+	SHOBJ_CFLAGS='-fpic'
+	SHOBJ_LD='${CC}'
+#	SHOBJ_LDFLAGS='-shared -Wl,-b -Wl,-B,symbolic -Wl,+s -Wl,+std -Wl,+h,$@@'
+	SHOBJ_LDFLAGS='-shared -Wl,-b -Wl,+s -Wl,+h,$@@'
+
+	SHLIB_XLDFLAGS='-Wl,+b,$(libdir)'
+	SHLIB_LIBSUFF='sl'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+hpux11*)
+	SHOBJ_STATUS=unsupported
+	SHLIB_STATUS=unsupported
+	;;
+
+sysv4*-gcc*)
+	SHOBJ_CFLAGS=-shared
+	SHOBJ_LDFLAGS='-shared -h $@@'
+	SHOBJ_LD='${CC}'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+sysv4*)
+	SHOBJ_CFLAGS='-K PIC'
+	SHOBJ_LD=ld
+	SHOBJ_LDFLAGS='-dy -z text -G -h $@@'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+sco3.2v5*-gcc*)
+	SHOBJ_CFLAGS='-fpic'		# DEFAULTS TO ELF
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+sco3.2v5*)
+	SHOBJ_CFLAGS='-K pic -b elf'
+	SHOBJ_LD=ld
+	SHOBJ_LDFLAGS='-G -b elf -dy -z text -h $@@'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+sysv5uw7*-gcc*)
+	SHOBJ_CFLAGS='-fpic'
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+sysv5uw7*)
+	SHOBJ_CFLAGS='-K PIC'
+	SHOBJ_LD=ld
+	SHOBJ_LDFLAGS='-G -dy -z text -h $@@'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+	
+dgux*-gcc*)
+	SHOBJ_CFLAGS=-fpic
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+dgux*)
+	SHOBJ_CFLAGS='-K pic'
+	SHOBJ_LD=ld
+	SHOBJ_LDFLAGS='-G -dy -h $@@'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+msdos*)
+	SHOBJ_STATUS=unsupported
+	SHLIB_STATUS=unsupported
+	;;
+
+#
+# Rely on correct gcc configuration for everything else
+#
+*-gcc*)
+	SHOBJ_CFLAGS=-fpic
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared'
+
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+	;;
+
+*)
+	SHOBJ_STATUS=unsupported
+	SHLIB_STATUS=unsupported
+	;;
+
+esac
+
+echo SHOBJ_CC=\'"$SHOBJ_CC"\'
+echo SHOBJ_CFLAGS=\'"$SHOBJ_CFLAGS"\'
+echo SHOBJ_LD=\'"$SHOBJ_LD"\'
+echo SHOBJ_LDFLAGS=\'"$SHOBJ_LDFLAGS"\'
+echo SHOBJ_XLDFLAGS=\'"$SHOBJ_XLDFLAGS"\'
+echo SHOBJ_LIBS=\'"$SHOBJ_LIBS"\'
+
+echo SHLIB_XLDFLAGS=\'"$SHLIB_XLDFLAGS"\'
+echo SHLIB_LIBS=\'"$SHLIB_LIBS"\'
+echo SHLIB_LIBSUFF=\'"$SHLIB_LIBSUFF"\'
+echo SHLIB_LIBVERSION=\'"$SHLIB_LIBVERSION"\'
+
+echo SHOBJ_STATUS=\'"$SHOBJ_STATUS"\'
+echo SHLIB_STATUS=\'"$SHLIB_STATUS"\'
+
+exit 0
+@
+
+
+1.2
+log
+@remove references to a non-existing city
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@a164 1
+	# Fix to use gcc linker driver from bfischer@@TechFak.Uni-Bielefeld.DE
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@a12 16
+# Copyright (C) 1996-2002 Free Software Foundation, Inc.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2, or (at your option)
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111 USA.
+
+d46 1
+a46 1
+sunos4*-*gcc*)
+d62 1
+a62 1
+sunos5*-*gcc*|solaris2*-*gcc*)
+a64 1
+	# This line works for the Solaris linker in /usr/ccs/bin/ld
+a65 2
+	# This line works for the GNU ld
+#	SHOBJ_LDFLAGS='-shared -Wl,-h,$@@'
+d80 1
+a80 11
+# All versions of Linux or the semi-mythical GNU Hurd.
+linux*|gnu*)
+	SHOBJ_CFLAGS=-fPIC
+	SHOBJ_LD='${CC}'
+	SHOBJ_LDFLAGS='-shared -Wl,-soname,$@@'
+
+	SHLIB_XLDFLAGS='-Wl,-rpath,$(libdir) -Wl,-soname,`basename $@@ $(SHLIB_MINOR)`'
+	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)$(SHLIB_MINOR)'
+	;;
+
+freebsd2* | netbsd*)
+d89 10
+d100 1
+a100 1
+freebsd[3-9]*|freebsdelf[3-9]*|freebsdaout[3-9]*)
+d117 1
+a117 19
+# Darwin/MacOS X
+darwin*|macosx*)
+	SHOBJ_STATUS=unsupported
+	SHLIB_STATUS=supported
+
+	SHOBJ_CFLAGS='-dynamic -fno-common'
+
+	SHOBJ_LD=/usr/bin/libtool
+
+	SHLIB_LIBVERSION='$(SHLIB_MAJOR)$(SHLIB_MINOR).$(SHLIB_LIBSUFF)'
+	SHLIB_LIBSUFF='dylib'
+
+	SHOBJ_LDFLAGS='-dynamic'
+	SHLIB_XLDFLAGS='-arch_only `/usr/bin/arch` -install_name $(libdir)/$@@ -current_version $(SHLIB_MAJOR)$(SHLIB_MINOR) -compatibility_version $(SHLIB_MAJOR) -v'
+
+	SHLIB_LIBS='-lSystem'
+	;;
+
+openbsd*)
+d120 1
+a120 1
+	SHOBJ_LDFLAGS='-shared'
+d122 1
+a122 1
+	SHLIB_XLDFLAGS='-R$(libdir)'
+a160 1
+	SHLIB_XLDFLAGS='-Wl,-soname,`basename $@@ $(SHLIB_MINOR)`'
+d164 1
+a164 1
+osf*-*gcc*)
+d181 1
+a181 1
+aix4.[2-9]*-*gcc*)		# lightly tested by jik@@cisco.com
+d206 1
+a206 1
+irix[56]*-*gcc*)
+d219 1
+a219 2
+#	Change from David Kaelbling <drk@@sgi.com>.  If you have problems,
+#	remove the `-no_unresolved'
+d226 1
+a226 1
+hpux9*-*gcc*)
+a239 14
+
+	# If you are using the HP ANSI C compiler, you can uncomment and use
+	# this code (I have not tested it)
+#	SHOBJ_STATUS=supported
+#	SHLIB_STATUS=supported
+#
+#	SHOBJ_CFLAGS='+z'
+#	SHOBJ_LD='ld'
+#	SHOBJ_LDFLAGS='-b +s'
+#
+#	SHLIB_XLDFLAGS='+b $(libdir)'
+#	SHLIB_LIBSUFF='sl'
+#	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'	
+
+d242 1
+a242 1
+hpux10*-*gcc*)
+a255 14
+
+	# If you are using the HP ANSI C compiler, you can uncomment and use
+	# this code (I have not tested it)
+#	SHOBJ_STATUS=supported
+#	SHLIB_STATUS=supported
+#
+#	SHOBJ_CFLAGS='+z'
+#	SHOBJ_LD='ld'
+#	SHOBJ_LDFLAGS='-b +s +h $@@'
+#
+#	SHLIB_XLDFLAGS='+b $(libdir)'
+#	SHLIB_LIBSUFF='sl'
+#	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'	
+
+d258 1
+a258 1
+hpux11*-*gcc*)
+d263 1
+a263 1
+	SHOBJ_LDFLAGS='-shared -fpic -Wl,-b -Wl,+s -Wl,+h,$@@'
+a272 14
+
+	# If you are using the HP ANSI C compiler, you can uncomment and use
+	# this code (I have not tested it)
+#	SHOBJ_STATUS=supported
+#	SHLIB_STATUS=supported
+#
+#	SHOBJ_CFLAGS='+z'
+#	SHOBJ_LD='ld'
+#	SHOBJ_LDFLAGS='-b +s +h $@@'
+#
+#	SHLIB_XLDFLAGS='+b $(libdir)'
+#	SHLIB_LIBSUFF='sl'
+#	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'	
+
+d275 1
+a275 1
+sysv4*-*gcc*)
+d291 1
+a291 1
+sco3.2v5*-*gcc*)
+d307 1
+a307 1
+sysv5uw7*-*gcc*)
+d323 1
+a323 1
+dgux*-*gcc*)
+d347 1
+a347 1
+*-*gcc*)
+@
+

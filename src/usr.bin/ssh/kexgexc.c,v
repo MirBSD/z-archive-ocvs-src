@@ -1,0 +1,336 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	cvs-200412111650:1.1.1.2
+	cvs-200412031430:1.1.1.2
+	cvs-200411261545:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200411131700:1.1.1.2
+	cvs-200410311900:1.1.1.2
+	cvs-200410222040:1.1.1.2
+	tg-mergetmp-1:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200410012000:1.1.1.2
+	cvs-200408281215:1.1.1.2
+	cvs-200408220030:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200403222025:1.1.1.2
+	cvs-200403101630:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310021412:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200309162245:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.23;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.23;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.21.14.09;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+ * Copyright (c) 2000 Niels Provos.  All rights reserved.
+ * Copyright (c) 2001 Markus Friedl.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include "includes.h"
+RCSID("$OpenBSD: kexgexc.c,v 1.1 2003/02/16 17:09:57 markus Exp $");
+
+#include "xmalloc.h"
+#include "key.h"
+#include "kex.h"
+#include "log.h"
+#include "packet.h"
+#include "dh.h"
+#include "ssh2.h"
+#include "compat.h"
+
+void
+kexgex_client(Kex *kex)
+{
+	BIGNUM *dh_server_pub = NULL, *shared_secret = NULL;
+	BIGNUM *p = NULL, *g = NULL;
+	Key *server_host_key;
+	u_char *kbuf, *hash, *signature = NULL, *server_host_key_blob = NULL;
+	u_int klen, kout, slen, sbloblen;
+	int min, max, nbits;
+	DH *dh;
+
+	nbits = dh_estimate(kex->we_need * 8);
+
+	if (datafellows & SSH_OLD_DHGEX) {
+		debug("SSH2_MSG_KEX_DH_GEX_REQUEST_OLD sent");
+
+		/* Old GEX request */
+		packet_start(SSH2_MSG_KEX_DH_GEX_REQUEST_OLD);
+		packet_put_int(nbits);
+		min = DH_GRP_MIN;
+		max = DH_GRP_MAX;
+	} else {
+		debug("SSH2_MSG_KEX_DH_GEX_REQUEST sent");
+
+		/* New GEX request */
+		min = DH_GRP_MIN;
+		max = DH_GRP_MAX;
+		packet_start(SSH2_MSG_KEX_DH_GEX_REQUEST);
+		packet_put_int(min);
+		packet_put_int(nbits);
+		packet_put_int(max);
+	}
+#ifdef DEBUG_KEXDH
+	fprintf(stderr, "\nmin = %d, nbits = %d, max = %d\n",
+	    min, nbits, max);
+#endif
+	packet_send();
+
+	debug("expecting SSH2_MSG_KEX_DH_GEX_GROUP");
+	packet_read_expect(SSH2_MSG_KEX_DH_GEX_GROUP);
+
+	if ((p = BN_new()) == NULL)
+		fatal("BN_new");
+	packet_get_bignum2(p);
+	if ((g = BN_new()) == NULL)
+		fatal("BN_new");
+	packet_get_bignum2(g);
+	packet_check_eom();
+
+	if (BN_num_bits(p) < min || BN_num_bits(p) > max)
+		fatal("DH_GEX group out of range: %d !< %d !< %d",
+		    min, BN_num_bits(p), max);
+
+	dh = dh_new_group(g, p);
+	dh_gen_key(dh, kex->we_need * 8);
+
+#ifdef DEBUG_KEXDH
+	DHparams_print_fp(stderr, dh);
+	fprintf(stderr, "pub= ");
+	BN_print_fp(stderr, dh->pub_key);
+	fprintf(stderr, "\n");
+#endif
+
+	debug("SSH2_MSG_KEX_DH_GEX_INIT sent");
+	/* generate and send 'e', client DH public key */
+	packet_start(SSH2_MSG_KEX_DH_GEX_INIT);
+	packet_put_bignum2(dh->pub_key);
+	packet_send();
+
+	debug("expecting SSH2_MSG_KEX_DH_GEX_REPLY");
+	packet_read_expect(SSH2_MSG_KEX_DH_GEX_REPLY);
+
+	/* key, cert */
+	server_host_key_blob = packet_get_string(&sbloblen);
+	server_host_key = key_from_blob(server_host_key_blob, sbloblen);
+	if (server_host_key == NULL)
+		fatal("cannot decode server_host_key_blob");
+	if (server_host_key->type != kex->hostkey_type)
+		fatal("type mismatch for decoded server_host_key_blob");
+	if (kex->verify_host_key == NULL)
+		fatal("cannot verify server_host_key");
+	if (kex->verify_host_key(server_host_key) == -1)
+		fatal("server_host_key verification failed");
+
+	/* DH paramter f, server public DH key */
+	if ((dh_server_pub = BN_new()) == NULL)
+		fatal("dh_server_pub == NULL");
+	packet_get_bignum2(dh_server_pub);
+
+#ifdef DEBUG_KEXDH
+	fprintf(stderr, "dh_server_pub= ");
+	BN_print_fp(stderr, dh_server_pub);
+	fprintf(stderr, "\n");
+	debug("bits %d", BN_num_bits(dh_server_pub));
+#endif
+
+	/* signed H */
+	signature = packet_get_string(&slen);
+	packet_check_eom();
+
+	if (!dh_pub_is_valid(dh, dh_server_pub))
+		packet_disconnect("bad server public DH value");
+
+	klen = DH_size(dh);
+	kbuf = xmalloc(klen);
+	kout = DH_compute_key(kbuf, dh_server_pub, dh);
+#ifdef DEBUG_KEXDH
+	dump_digest("shared secret", kbuf, kout);
+#endif
+	if ((shared_secret = BN_new()) == NULL)
+		fatal("kexgex_client: BN_new failed");
+	BN_bin2bn(kbuf, kout, shared_secret);
+	memset(kbuf, 0, klen);
+	xfree(kbuf);
+
+	if (datafellows & SSH_OLD_DHGEX)
+		min = max = -1;
+
+	/* calc and verify H */
+	hash = kexgex_hash(
+	    kex->client_version_string,
+	    kex->server_version_string,
+	    buffer_ptr(&kex->my), buffer_len(&kex->my),
+	    buffer_ptr(&kex->peer), buffer_len(&kex->peer),
+	    server_host_key_blob, sbloblen,
+	    min, nbits, max,
+	    dh->p, dh->g,
+	    dh->pub_key,
+	    dh_server_pub,
+	    shared_secret
+	);
+	/* have keys, free DH */
+	DH_free(dh);
+	xfree(server_host_key_blob);
+	BN_clear_free(dh_server_pub);
+
+	if (key_verify(server_host_key, signature, slen, hash, 20) != 1)
+		fatal("key_verify failed for server_host_key");
+	key_free(server_host_key);
+	xfree(signature);
+
+	/* save session id */
+	if (kex->session_id == NULL) {
+		kex->session_id_len = 20;
+		kex->session_id = xmalloc(kex->session_id_len);
+		memcpy(kex->session_id, hash, kex->session_id_len);
+	}
+	kex_derive_keys(kex, hash, shared_secret);
+	BN_clear_free(shared_secret);
+
+	kex_finish(kex);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d27 1
+a27 1
+RCSID("$OpenBSD: kexgexc.c,v 1.2 2003/12/08 11:00:47 markus Exp $");
+d52 2
+d59 2
+a61 2
+		debug("SSH2_MSG_KEX_DH_GEX_REQUEST_OLD(%u) sent", nbits);
+	} else {
+a68 3
+
+		debug("SSH2_MSG_KEX_DH_GEX_REQUEST(%u<%u<%u) sent",
+		    min, nbits, max);
+@
+

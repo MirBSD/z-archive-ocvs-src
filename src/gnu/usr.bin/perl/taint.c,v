@@ -1,0 +1,284 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.42.41;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.41;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.53.39;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*    taint.c
+ *
+ *    Copyright (c) 1997-2002, Larry Wall
+ *
+ *    You may distribute under the terms of either the GNU General Public
+ *    License or the Artistic License, as specified in the README file.
+ *
+ */
+
+/*
+ * "...we will have peace, when you and all your works have perished--and
+ * the works of your dark master to whom you would deliver us.  You are a
+ * liar, Saruman, and a corrupter of men's hearts."  --Theoden
+ */
+
+#include "EXTERN.h"
+#define PERL_IN_TAINT_C
+#include "perl.h"
+
+void
+Perl_taint_proper(pTHX_ const char *f, const char *s)
+{
+    char *ug;
+
+#if defined(HAS_SETEUID) && defined(DEBUGGING)
+#   if Uid_t_size == 1
+    {
+	 UV  uid = PL_uid;
+	 UV euid = PL_euid;
+
+	 DEBUG_u(PerlIO_printf(Perl_debug_log,
+			       "%s %d %"UVuf" %"UVuf"\n",
+			       s, PL_tainted, uid, euid));
+    }
+#   else
+    {
+	 IV  uid = PL_uid;
+	 IV euid = PL_euid;
+
+	 DEBUG_u(PerlIO_printf(Perl_debug_log,
+			       "%s %d %"IVdf" %"IVdf"\n",
+			       s, PL_tainted, uid, euid));
+    }
+#   endif
+#endif
+
+    if (PL_tainted) {
+	if (!f)
+	    f = PL_no_security;
+	if (PL_euid != PL_uid)
+	    ug = " while running setuid";
+	else if (PL_egid != PL_gid)
+	    ug = " while running setgid";
+	else if (PL_taint_warn)
+            ug = " while running with -t switch";
+        else
+	    ug = " while running with -T switch";
+	if (PL_unsafe || PL_taint_warn) {
+            if(ckWARN(WARN_TAINT))
+                Perl_warner(aTHX_ packWARN(WARN_TAINT), f, s, ug);
+        }
+        else {
+            Perl_croak(aTHX_ f, s, ug);
+        }
+    }
+}
+
+void
+Perl_taint_env(pTHX)
+{
+    SV** svp;
+    MAGIC* mg;
+    char** e;
+    static char* misc_env[] = {
+	"IFS",		/* most shells' inter-field separators */
+	"CDPATH",	/* ksh dain bramage #1 */
+	"ENV",		/* ksh dain bramage #2 */
+	"BASH_ENV",	/* bash dain bramage -- I guess it's contagious */
+	NULL
+    };
+
+    if (!PL_envgv)
+	return;
+
+#ifdef VMS
+    {
+    int i = 0;
+    char name[10 + TYPE_DIGITS(int)] = "DCL$PATH";
+
+    while (1) {
+	if (i)
+	    (void)sprintf(name,"DCL$PATH;%d", i);
+	svp = hv_fetch(GvHVn(PL_envgv), name, strlen(name), FALSE);
+	if (!svp || *svp == &PL_sv_undef)
+	    break;
+	if (SvTAINTED(*svp)) {
+	    TAINT;
+	    taint_proper("Insecure %s%s", "$ENV{DCL$PATH}");
+	}
+	if ((mg = mg_find(*svp, PERL_MAGIC_envelem)) && MgTAINTEDDIR(mg)) {
+	    TAINT;
+	    taint_proper("Insecure directory in %s%s", "$ENV{DCL$PATH}");
+	}
+	i++;
+    }
+  }
+#endif /* VMS */
+
+    svp = hv_fetch(GvHVn(PL_envgv),"PATH",4,FALSE);
+    if (svp && *svp) {
+	if (SvTAINTED(*svp)) {
+	    TAINT;
+	    taint_proper("Insecure %s%s", "$ENV{PATH}");
+	}
+	if ((mg = mg_find(*svp, PERL_MAGIC_envelem)) && MgTAINTEDDIR(mg)) {
+	    TAINT;
+	    taint_proper("Insecure directory in %s%s", "$ENV{PATH}");
+	}
+    }
+
+#ifndef VMS
+    /* tainted $TERM is okay if it contains no metachars */
+    svp = hv_fetch(GvHVn(PL_envgv),"TERM",4,FALSE);
+    if (svp && *svp && SvTAINTED(*svp)) {
+	STRLEN n_a;
+	bool was_tainted = PL_tainted;
+	char *t = SvPV(*svp, n_a);
+	char *e = t + n_a;
+	PL_tainted = was_tainted;
+	if (t < e && isALNUM(*t))
+	    t++;
+	while (t < e && (isALNUM(*t) || *t == '-' || *t == ':'))
+	    t++;
+	if (t < e) {
+	    TAINT;
+	    taint_proper("Insecure $ENV{%s}%s", "TERM");
+	}
+    }
+#endif /* !VMS */
+
+    for (e = misc_env; *e; e++) {
+	svp = hv_fetch(GvHVn(PL_envgv), *e, strlen(*e), FALSE);
+	if (svp && *svp != &PL_sv_undef && SvTAINTED(*svp)) {
+	    TAINT;
+	    taint_proper("Insecure $ENV{%s}%s", *e);
+	}
+    }
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d3 1
+a3 2
+ *    Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999,
+ *    2000, 2001, 2002, by Larry Wall and others
+d132 1
+a132 1
+	while (t < e && (isALNUM(*t) || strchr("-_.+", *t)))
+@
+

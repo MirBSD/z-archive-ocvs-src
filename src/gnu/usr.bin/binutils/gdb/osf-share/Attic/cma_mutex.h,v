@@ -1,0 +1,344 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.06.10.19.02.23;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.43;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.43;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@/* 
+ * (c) Copyright 1990-1996 OPEN SOFTWARE FOUNDATION, INC.
+ * (c) Copyright 1990-1996 HEWLETT-PACKARD COMPANY
+ * (c) Copyright 1990-1996 DIGITAL EQUIPMENT CORPORATION
+ * (c) Copyright 1991, 1992 Siemens-Nixdorf Information Systems
+ * To anyone who acknowledges that this file is provided "AS IS" without
+ * any express or implied warranty: permission to use, copy, modify, and
+ * distribute this file for any purpose is hereby granted without fee,
+ * provided that the above copyright notices and this notice appears in
+ * all source code copies, and that none of the names listed above be used
+ * in advertising or publicity pertaining to distribution of the software
+ * without specific, written prior permission.  None of these organizations
+ * makes any representations about the suitability of this software for
+ * any purpose.
+ */
+/*
+ *	Header file for mutex operations
+ */
+
+#ifndef CMA_MUTEX
+#define CMA_MUTEX
+
+/*
+ *  INCLUDE FILES
+ */
+
+#include <cma.h>
+#include <cma_attr.h>
+#include <cma_defs.h>
+#include <cma_semaphore_defs.h>
+#include <cma_sequence.h>
+#include <cma_tcb_defs.h>
+#include <cma_stack.h>
+
+/*
+ * CONSTANTS AND MACROS
+ */
+
+/*
+ * TYPEDEFS
+ */
+
+typedef struct CMA__T_INT_MUTEX {
+    cma__t_object	header;		/* Common header (sequence, type) */
+    cma__t_int_attr	*attributes;	/* Back link */
+    cma__t_int_tcb	*owner;		/* Current owner (if any) */
+    cma_t_integer	nest_count;	/* Nesting level for recursive mutex */
+    cma__t_atomic_bit	*unlock;	/* Pointer used for unlock operation */
+    cma__t_atomic_bit	lock;		/* Set if currently locked */
+    struct CMA__T_INT_MUTEX *int_lock;	/* Internal protection for mutex */
+    cma__t_atomic_bit	event;		/* Clear when unlock requires action */
+    cma__t_atomic_bit	waiters;	/* Clear when threads are waiting */
+    cma__t_atomic_bit	bitbucket;	/* Fake bit to keep friendlies locked */
+    cma_t_mutex_kind	mutex_kind;	/* Kind of mutex */
+    cma__t_semaphore	semaphore;	/* Semaphore for low-level wait */
+    } cma__t_int_mutex;
+
+
+/*
+ *  FUNCTIONAL DESCRIPTION:
+ *
+ *	Lock a mutex (internal)
+ *
+ *  FORMAL PARAMETERS:
+ *
+ *	mutex		Pointer to mutex object to lock
+ *
+ *  IMPLICIT INPUTS:
+ *
+ *	none
+ *
+ *  IMPLICIT OUTPUTS:
+ *
+ *	none
+ *
+ *  FUNCTION VALUE:
+ *
+ *	none
+ *
+ *  SIDE EFFECTS:
+ *
+ *	none
+ */
+#ifdef NDEBUG
+# define cma__int_lock(mutex) { \
+    if (cma__test_and_set (&((cma__t_int_mutex *)mutex)->lock)) { \
+	cma_t_status	res;\
+	res = cma__int_mutex_block ((cma__t_int_mutex *)mutex); \
+	if (res != cma_s_normal) cma__error (res); \
+	} \
+    }
+#else
+# define cma__int_lock(mutex) { \
+    cma__t_int_tcb *__ltcb__; \
+    __ltcb__ = cma__get_self_tcb (); \
+    if (cma__test_and_set (&((cma__t_int_mutex *)mutex)->lock)) { \
+	cma_t_status	res;\
+	res = cma__int_mutex_block ((cma__t_int_mutex *)mutex); \
+	if (res != cma_s_normal) cma__error (res); \
+	} \
+    ((cma__t_int_mutex *)mutex)->owner = __ltcb__; \
+    }
+#endif
+
+/*
+ *  FUNCTIONAL DESCRIPTION:
+ *
+ *	Unlock a mutex (internal)
+ *
+ *  FORMAL PARAMETERS:
+ *
+ *	mutex		Pointer to mutex object to unlock
+ *
+ *  IMPLICIT INPUTS:
+ *
+ *	none
+ *
+ *  IMPLICIT OUTPUTS:
+ *
+ *	none
+ *
+ *  FUNCTION VALUE:
+ *
+ *	none
+ *
+ *  SIDE EFFECTS:
+ *
+ *	none
+ */
+#ifdef NDEBUG
+# define cma__int_unlock(mutex) { \
+    cma__unset (((cma__t_int_mutex *)mutex)->unlock); \
+    if (!cma__test_and_set (&((cma__t_int_mutex *)mutex)->event)) { \
+	cma_t_status	res;\
+	res = cma__int_mutex_unblock ((cma__t_int_mutex *)mutex); \
+	if (res != cma_s_normal) cma__error (res); \
+	} \
+    }
+#else
+# define cma__int_unlock(mutex) { \
+    cma__t_int_tcb	*__utcb__; \
+    __utcb__ = cma__get_self_tcb (); \
+    if (((cma__t_int_mutex *)mutex)->mutex_kind == cma_c_mutex_fast) { \
+	cma__assert_warn ( \
+		(__utcb__ == ((cma__t_int_mutex *)mutex)->owner), \
+		"attempt to release mutx owned by another thread"); \
+	((cma__t_int_mutex *)mutex)->owner = (cma__t_int_tcb *)cma_c_null_ptr; \
+	} \
+    cma__unset (((cma__t_int_mutex *)mutex)->unlock); \
+    if (!cma__test_and_set (&((cma__t_int_mutex *)mutex)->event)) { \
+	cma_t_status	res;\
+	res = cma__int_mutex_unblock ((cma__t_int_mutex *)mutex); \
+	if (res != cma_s_normal) cma__error (res); \
+	} \
+    }
+#endif
+
+/*
+ *  FUNCTIONAL DESCRIPTION:
+ *
+ *	cma__int_mutex_delete - Performs work for cma_mutex_delete
+ *
+ *  FORMAL PARAMETERS:
+ *
+ *	cma__t_mutex	    _mutex_	- Mutex to be deleted
+ *
+ *  IMPLICIT INPUTS:
+ *
+ *	none
+ *
+ *  IMPLICIT OUTPUTS:
+ *
+ *	none
+ *
+ *  FUNCTION VALUE:
+ *
+ *	none
+ *
+ *  SIDE EFFECTS:
+ *
+ *	none
+ */
+#define cma__int_mutex_delete(_mutex_) { \
+    cma__t_int_mutex    *_int_mutex_; \
+    _int_mutex_ = cma__validate_null_mutex (_mutex_); \
+    if (_int_mutex_ == (cma__t_int_mutex *)cma_c_null_ptr) \
+        return; \
+    if (cma__int_mutex_locked (_int_mutex_)) \
+        cma__error (cma_s_in_use); \
+    cma__free_mutex (_int_mutex_); \
+    cma__clear_handle (_mutex_); \
+    }
+
+
+/*
+ *  GLOBAL DATA
+ */
+
+extern cma__t_sequence	cma__g_mutex_seq;
+extern cma__t_int_mutex	*cma__g_global_lock;
+
+/*
+ * INTERNAL INTERFACES
+ */
+
+extern void cma__destroy_mutex  (cma__t_int_mutex *);
+
+extern void cma__free_mutex  (cma__t_int_mutex *);
+
+extern void cma__free_mutex_nolock  (cma__t_int_mutex *);
+
+extern cma__t_int_mutex * cma__get_first_mutex  (cma__t_int_attr *);
+
+extern cma__t_int_mutex * cma__get_mutex  (cma__t_int_attr *);
+
+extern void cma__init_mutex  (void);
+
+extern cma_t_status cma__int_mutex_block  (cma__t_int_mutex *);
+
+extern cma_t_boolean cma__int_mutex_locked  (cma__t_int_mutex *);
+
+extern cma_t_boolean cma__int_try_lock  (cma__t_int_mutex *);
+
+extern cma_t_status cma__int_mutex_unblock  (cma__t_int_mutex *);
+
+extern cma_t_boolean cma__mutex_locked  (cma_t_mutex);
+
+extern void cma__reinit_mutex  (cma_t_integer);
+
+#endif
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

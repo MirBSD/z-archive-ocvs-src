@@ -1,0 +1,326 @@
+head	1.3;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.6
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.4
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.11.13.21.06.06;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.04.06.04.28.59;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.50;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.50;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@shave some off my work for the first MirHackathon and let
+the zombies walk around for bsiegert@@'s voodoo
+@
+text
+@/*	$OpenBSD: gpio.c,v 1.1 2001/09/01 15:50:00 drahn Exp $	*/
+/*	$NetBSD: gpio.c,v 1.2 2001/02/27 05:16:33 matt Exp $	*/
+
+/*-
+ * Copyright (C) 1998	Internet Research Institute, Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by
+ *	Internet Research Institute, Inc.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/device.h>
+#include <sys/malloc.h>
+
+#include <dev/ofw/openfirm.h>
+
+#include <machine/autoconf.h>
+#include <machine/pio.h>
+
+#include "adb.h"
+
+static void gpio_obio_attach (struct device *, struct device *, void *);
+static int gpio_obio_match (struct device *, void *, void *);
+static int gpio_obio_print (void *aux, const char *gpio);
+
+static void gpio_gpio_attach (struct device *, struct device *, void *);
+static int gpio_gpio_match (struct device *, void *, void *);
+static int gpio_intr (void *);
+
+struct gpio_softc {
+	struct device sc_dev;
+	u_int8_t *sc_port;
+};
+
+struct cfattach gpio_obio_ca = {
+	sizeof(struct gpio_softc), gpio_obio_match, gpio_obio_attach
+};
+
+struct cfattach gpio_gpio_ca = {
+	sizeof(struct gpio_softc), gpio_gpio_match, gpio_gpio_attach
+};
+
+struct cfdriver gpio_cd = {
+	NULL, "gpio_obio", DV_DULL
+};
+
+int
+gpio_obio_match(struct device *parent, void *cf, void *aux)
+{
+	struct confargs *ca = aux;
+
+	if (strcmp(ca->ca_name, "gpio") != 0)
+		return 0;
+
+	if (ca->ca_nreg == 0)
+		return 0;
+
+	return 1;
+}
+
+void
+gpio_obio_attach(struct device *parent, struct device *self, void *aux)
+{
+	struct gpio_softc *sc = (struct gpio_softc *)self;
+	struct confargs *ca = aux, ca2;
+	int child;
+	int namelen;
+	int intr[6];
+	u_int reg[20];
+	char name[32];
+
+	printf("\n");
+
+	sc->sc_port = mapiodev(ca->ca_baseaddr + ca->ca_reg[0], ca->ca_reg[1]);
+
+	ca2.ca_baseaddr = ca->ca_baseaddr;
+	for (child = OF_child(ca->ca_node); child; child = OF_peer(child)) {
+		namelen = OF_getprop(child, "name", name, sizeof(name));
+		if (namelen < 0)
+			continue;
+		if (namelen >= sizeof(name))
+			continue;
+
+		name[namelen] = 0;
+		ca2.ca_name = name;
+		ca2.ca_node = child;
+
+		ca2.ca_nreg  = OF_getprop(child, "reg", reg, sizeof(reg));
+		ca2.ca_nintr = OF_getprop(child, "AAPL,interrupts", intr,
+				sizeof(intr));
+		if (ca2.ca_nintr == -1)
+			ca2.ca_nintr = OF_getprop(child, "interrupts", intr,
+					sizeof(intr));
+
+		ca2.ca_reg = reg;
+		ca2.ca_intr = intr;
+
+		config_found(self, &ca2, gpio_obio_print);
+	}
+}
+
+int
+gpio_obio_print(void *aux, const char *gpio)
+{
+	struct confargs *ca = aux;
+
+	if (gpio)
+		printf("%s at %s", ca->ca_name, gpio);
+
+	if (ca->ca_nreg > 0)
+		printf(" offset 0x%x", ca->ca_reg[0]);
+
+	return UNCONF;
+}
+
+int
+gpio_gpio_match(struct device *parent, void *cf, void *aux)
+{
+	struct confargs *ca = aux;
+
+	if (strcmp(ca->ca_name, "extint-gpio1") != 0)
+		return 0;
+
+	if (ca->ca_nintr < 0)
+		return 0;
+
+	return 1;
+}
+
+void
+gpio_gpio_attach(struct device *parent, struct device *self, void *aux)
+{
+	struct gpio_softc *sc = (struct gpio_softc *)self;
+	struct confargs *ca = aux;
+
+
+	sc->sc_port = ((struct gpio_softc *) parent)->sc_port;
+	mac_intr_establish(parent, ca->ca_intr[0], IST_LEVEL, IPL_HIGH,
+	gpio_intr, sc, "gpio/adb");
+
+	printf(" irq %d\n", ca->ca_intr[0]);
+}
+
+#if NADB > 0
+extern int adb_intr (void *);
+extern struct cfdriver adb_cd;
+#endif
+
+int
+gpio_intr(void *arg)
+{
+	int rv = 0;
+
+#if NADB > 0
+	if (adb_cd.cd_devs[0] != NULL)
+		rv = adb_intr(adb_cd.cd_devs[0]);
+#endif
+
+	return rv;
+}
+@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

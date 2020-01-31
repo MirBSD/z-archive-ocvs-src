@@ -1,0 +1,201 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.40;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.40;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/bin/sh
+
+#
+# testall.atom
+# 
+# This script creates all.Counts file that can be fed to prof(1)
+# to produce various basic block counting profiles.
+#
+# This script needs to be run at the top level of the Perl build
+# directory after the "make all" and "make test" targets have been run.
+#
+# You will also need to have perl.pixie built,
+# which means that you will also have Configured with -Doptimize=-g.
+#
+# After the script has been run (this will take several minutes)
+# you will have a file called all.Counts, which contains the cumulative
+# basic block counting results over the whole Perl test suite.
+# You can produce various reports using prof(1);
+#
+#   prof -pixie               -all -L. perl all.Counts
+#   prof -pixie -heavy        -all -L. perl all.Counts
+#   prof -pixie -invocations  -all -L. perl all.Counts
+#   prof -pixie -lines        -all -L. perl all.Counts
+#   prof -pixie -testcoverage -all -L. perl all.Counts
+#   prof -pixie -zero         -all -L. perl all.Counts
+#
+# io/openpid and op/fork core on me, I don't know why and haven't
+# taken a look yet.
+#
+# jhi@@iki.fi
+#
+
+if test ! -f /usr/bin/atom
+then
+    echo "$0: no /usr/bin/atom"
+    exit 1
+fi
+
+if test ! -f perl;       then echo "$0: no perl";      exit 1; fi
+if test ! -f perl.pixie; then echo "$0: no perl.pixie; exit 1; fi
+if test ! -f t/perl;     then echo "$0: no t/perl;     exit 1; fi
+
+LD_LIBRARY_PATH=`pwd`
+export LD_LIBRARY_PATH
+
+cd t || exit 1
+
+ln -sf ../perl.pixie .
+
+if test $# = 0; then
+  the_t=`echo base/*.t comp/*.t cmd/*.t run/*.t io/*.t; echo op/*.t uni/*.t pod/*.t x2p/*.t; find ../ext ../lib -name '*.t' -print`
+else
+  the_t=$@@
+fi
+
+PERL_DESTRUCT_LEVEL=2
+export PERL_DESTRUCT_LEVEL
+PERL_CORE=1
+export PERL_CORE
+
+rm -f all.Counts
+
+for t in $the_t
+do
+    case "$t" in
+    ext/*|lib/*) t=../$t ;;
+    t/*) t=`echo $t|sed 's:^t/::'` ;;
+    esac
+    echo $t|sed 's:\.t$::'
+    sw=''
+    case "`head -1 $t|egrep -e '^#.* -.*T'`" in
+    *-*T*) sw="$sw -T" ;;
+    esac
+    case "`head -1 $t|egrep -e '^#.* -.*t'`" in
+    *-*t*) sw="$sw -t" ;;
+    esac
+    ./perl.pixie -I../lib $sw $t > /dev/null
+    if cd ..
+    then
+        if test -f all.Counts
+        then
+            prof -pixie -merge new.Counts -L. -incobj libperl.so perl t/perl.Counts all.Counts
+            mv new.Counts all.Counts
+        else
+            mv t/perl.Counts all.Counts
+        fi
+        cd t
+    fi
+done
+
+exit 0
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

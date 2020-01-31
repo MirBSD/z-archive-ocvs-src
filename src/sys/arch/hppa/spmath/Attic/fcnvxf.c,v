@@ -1,0 +1,500 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.2
+	ctm-3229:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.28.29;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.33;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.33;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.15.17.39.25;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: fcnvxf.c,v 1.6 2002/05/07 22:19:30 mickey Exp $	*/
+/*
+  (c) Copyright 1986 HEWLETT-PACKARD COMPANY
+  To anyone who acknowledges that this file is provided "AS IS"
+  without any express or implied warranty:
+      permission to use, copy, modify, and distribute this file
+  for any purpose is hereby granted without fee, provided that
+  the above copyright notice and this notice appears in all
+  copies, and that the name of Hewlett-Packard Company not be
+  used in advertising or publicity pertaining to distribution
+  of the software without specific, written prior permission.
+  Hewlett-Packard Company makes no representations about the
+  suitability of this software for any purpose.
+*/
+/* @@(#)fcnvxf.c: Revision: 2.7.88.1 Date: 93/12/07 15:06:16 */
+
+#include "float.h"
+#include "sgl_float.h"
+#include "dbl_float.h"
+#include "cnv_float.h"
+
+/*
+ *  Convert single fixed-point to single floating-point format
+ */
+int
+sgl_to_sgl_fcnvxf(srcptr,dstptr,status)
+	int *srcptr;
+	sgl_floating_point *dstptr;
+	unsigned int *status;
+{
+	register int src, dst_exponent;
+	register unsigned int result = 0;
+
+	src = *srcptr;
+	/*
+	 * set sign bit of result and get magnitude of source
+	 */
+	if (src < 0) {
+		Sgl_setone_sign(result);
+		Int_negate(src);
+	}
+	else {
+		Sgl_setzero_sign(result);
+		/* Check for zero */
+		if (src == 0) {
+			Sgl_setzero(result);
+			*dstptr = result;
+			return(NOEXCEPTION);
+		}
+	}
+	/*
+	 * Generate exponent and normalized mantissa
+	 */
+	dst_exponent = 16;    /* initialize for normalization */
+	/*
+	 * Check word for most significant bit set.  Returns
+	 * a value in dst_exponent indicating the bit position,
+	 * between -1 and 30.
+	 */
+	Find_ms_one_bit(src,dst_exponent);
+	/*  left justify source, with msb at bit position 1  */
+	if (dst_exponent >= 0) src <<= dst_exponent;
+	else src = 1 << 30;
+	Sgl_set_mantissa(result, src >> (SGL_EXP_LENGTH-1));
+	Sgl_set_exponent(result, 30+SGL_BIAS - dst_exponent);
+
+	/* check for inexact */
+	if (Int_isinexact_to_sgl(src)) {
+		switch (Rounding_mode()) {
+			case ROUNDPLUS:
+				if (Sgl_iszero_sign(result))
+					Sgl_increment(result);
+				break;
+			case ROUNDMINUS:
+				if (Sgl_isone_sign(result))
+					Sgl_increment(result);
+				break;
+			case ROUNDNEAREST:
+				Sgl_roundnearest_from_int(src,result);
+		}
+		if (Is_inexacttrap_enabled()) {
+			*dstptr = result;
+			return(INEXACTEXCEPTION);
+		}
+		else Set_inexactflag();
+	}
+	*dstptr = result;
+	return(NOEXCEPTION);
+}
+
+/*
+ *  Single Fixed-point to Double Floating-point
+ */
+int
+sgl_to_dbl_fcnvxf(srcptr,dstptr,status)
+	int *srcptr;
+	dbl_floating_point *dstptr;
+	unsigned int *status;
+{
+	register int src, dst_exponent;
+	register unsigned int resultp1 = 0, resultp2 = 0;
+
+	src = *srcptr;
+	/*
+	 * set sign bit of result and get magnitude of source
+	 */
+	if (src < 0) {
+		Dbl_setone_sign(resultp1);
+		Int_negate(src);
+	}
+	else {
+		Dbl_setzero_sign(resultp1);
+		/* Check for zero */
+		if (src == 0) {
+			Dbl_setzero(resultp1,resultp2);
+			Dbl_copytoptr(resultp1,resultp2,dstptr);
+			return(NOEXCEPTION);
+		}
+	}
+	/*
+	 * Generate exponent and normalized mantissa
+	 */
+	dst_exponent = 16;    /* initialize for normalization */
+	/*
+	 * Check word for most significant bit set.  Returns
+	 * a value in dst_exponent indicating the bit position,
+	 * between -1 and 30.
+	 */
+	Find_ms_one_bit(src,dst_exponent);
+	/*  left justify source, with msb at bit position 1  */
+	if (dst_exponent >= 0) src <<= dst_exponent;
+	else src = 1 << 30;
+	Dbl_set_mantissap1(resultp1, (src >> (DBL_EXP_LENGTH - 1)));
+	Dbl_set_mantissap2(resultp2, (src << (33-DBL_EXP_LENGTH)));
+	Dbl_set_exponent(resultp1, (30+DBL_BIAS) - dst_exponent);
+	Dbl_copytoptr(resultp1,resultp2,dstptr);
+	return(NOEXCEPTION);
+}
+
+/*
+ *  Double Fixed-point to Single Floating-point
+ */
+int
+dbl_to_sgl_fcnvxf(srcptr,dstptr,status)
+	dbl_integer *srcptr;
+	sgl_floating_point *dstptr;
+	unsigned int *status;
+{
+	int dst_exponent, srcp1;
+	unsigned int result = 0, srcp2;
+
+	Dint_copyfromptr(srcptr,srcp1,srcp2);
+	/*
+	 * set sign bit of result and get magnitude of source
+	 */
+	if (srcp1 < 0) {
+		Sgl_setone_sign(result);
+		Dint_negate(srcp1,srcp2);
+	}
+	else {
+		Sgl_setzero_sign(result);
+		/* Check for zero */
+		if (srcp1 == 0 && srcp2 == 0) {
+			Sgl_setzero(result);
+			*dstptr = result;
+			return(NOEXCEPTION);
+		}
+	}
+	/*
+	 * Generate exponent and normalized mantissa
+	 */
+	dst_exponent = 16;    /* initialize for normalization */
+	if (srcp1 == 0) {
+		/*
+		 * Check word for most significant bit set.  Returns
+		 * a value in dst_exponent indicating the bit position,
+		 * between -1 and 30.
+		 */
+		Find_ms_one_bit(srcp2,dst_exponent);
+		/*  left justify source, with msb at bit position 1  */
+		if (dst_exponent >= 0) {
+			srcp1 = srcp2 << dst_exponent;
+			srcp2 = 0;
+		}
+		else {
+			srcp1 = srcp2 >> 1;
+			srcp2 <<= 31;
+		}
+		/*
+		 *  since msb set is in second word, need to
+		 *  adjust bit position count
+		 */
+		dst_exponent += 32;
+	}
+	else {
+		/*
+		 * Check word for most significant bit set.  Returns
+		 * a value in dst_exponent indicating the bit position,
+		 * between -1 and 30.
+		 *
+		 */
+		Find_ms_one_bit(srcp1,dst_exponent);
+		/*  left justify source, with msb at bit position 1  */
+		if (dst_exponent > 0) {
+			Variable_shift_double(srcp1,srcp2,(32-dst_exponent),
+			 srcp1);
+			srcp2 <<= dst_exponent;
+		}
+		/*
+		 * If dst_exponent = 0, we don't need to shift anything.
+		 * If dst_exponent = -1, src = - 2**63 so we won't need to
+		 * shift srcp2.
+		 */
+		else srcp1 >>= -(dst_exponent);
+	}
+	Sgl_set_mantissa(result, (srcp1 >> (SGL_EXP_LENGTH - 1)));
+	Sgl_set_exponent(result, (62+SGL_BIAS) - dst_exponent);
+
+	/* check for inexact */
+	if (Dint_isinexact_to_sgl(srcp1,srcp2)) {
+		switch (Rounding_mode()) {
+			case ROUNDPLUS:
+				if (Sgl_iszero_sign(result))
+					Sgl_increment(result);
+				break;
+			case ROUNDMINUS:
+				if (Sgl_isone_sign(result))
+					Sgl_increment(result);
+				break;
+			case ROUNDNEAREST:
+				Sgl_roundnearest_from_dint(srcp1,srcp2,result);
+		}
+		if (Is_inexacttrap_enabled()) {
+			*dstptr = result;
+			return(INEXACTEXCEPTION);
+		}
+		else Set_inexactflag();
+	}
+	*dstptr = result;
+	return(NOEXCEPTION);
+}
+
+/*
+ *  Double Fixed-point to Double Floating-point
+ */
+int
+dbl_to_dbl_fcnvxf(srcptr,dstptr,status)
+	dbl_integer *srcptr;
+	dbl_floating_point *dstptr;
+	unsigned int *status;
+{
+	register int srcp1, dst_exponent;
+	register unsigned int srcp2, resultp1 = 0, resultp2 = 0;
+
+	Dint_copyfromptr(srcptr,srcp1,srcp2);
+	/*
+	 * set sign bit of result and get magnitude of source
+	 */
+	if (srcp1 < 0) {
+		Dbl_setone_sign(resultp1);
+		Dint_negate(srcp1,srcp2);
+	}
+	else {
+		Dbl_setzero_sign(resultp1);
+		/* Check for zero */
+		if (srcp1 == 0 && srcp2 ==0) {
+			Dbl_setzero(resultp1,resultp2);
+			Dbl_copytoptr(resultp1,resultp2,dstptr);
+			return(NOEXCEPTION);
+		}
+	}
+	/*
+	 * Generate exponent and normalized mantissa
+	 */
+	dst_exponent = 16;    /* initialize for normalization */
+	if (srcp1 == 0) {
+		/*
+		 * Check word for most significant bit set.  Returns
+		 * a value in dst_exponent indicating the bit position,
+		 * between -1 and 30.
+		 */
+		Find_ms_one_bit(srcp2,dst_exponent);
+		/*  left justify source, with msb at bit position 1  */
+		if (dst_exponent >= 0) {
+			srcp1 = srcp2 << dst_exponent;
+			srcp2 = 0;
+		}
+		else {
+			srcp1 = srcp2 >> 1;
+			srcp2 <<= 31;
+		}
+		/*
+		 *  since msb set is in second word, need to
+		 *  adjust bit position count
+		 */
+		dst_exponent += 32;
+	}
+	else {
+		/*
+		 * Check word for most significant bit set.  Returns
+		 * a value in dst_exponent indicating the bit position,
+		 * between -1 and 30.
+		 */
+		Find_ms_one_bit(srcp1,dst_exponent);
+		/*  left justify source, with msb at bit position 1  */
+		if (dst_exponent > 0) {
+			Variable_shift_double(srcp1,srcp2,(32-dst_exponent),
+			 srcp1);
+			srcp2 <<= dst_exponent;
+		}
+		/*
+		 * If dst_exponent = 0, we don't need to shift anything.
+		 * If dst_exponent = -1, src = - 2**63 so we won't need to
+		 * shift srcp2.
+		 */
+		else srcp1 >>= -(dst_exponent);
+	}
+	Dbl_set_mantissap1(resultp1, srcp1 >> (DBL_EXP_LENGTH-1));
+	Shiftdouble(srcp1,srcp2,DBL_EXP_LENGTH-1,resultp2);
+	Dbl_set_exponent(resultp1, (62+DBL_BIAS) - dst_exponent);
+
+	/* check for inexact */
+	if (Dint_isinexact_to_dbl(srcp2)) {
+		switch (Rounding_mode()) {
+			case ROUNDPLUS:
+				if (Dbl_iszero_sign(resultp1)) {
+					Dbl_increment(resultp1,resultp2);
+				}
+				break;
+			case ROUNDMINUS:
+				if (Dbl_isone_sign(resultp1)) {
+					Dbl_increment(resultp1,resultp2);
+				}
+				break;
+			case ROUNDNEAREST:
+				Dbl_roundnearest_from_dint(srcp2,resultp1,
+				resultp2);
+		}
+		if (Is_inexacttrap_enabled()) {
+			Dbl_copytoptr(resultp1,resultp2,dstptr);
+			return(INEXACTEXCEPTION);
+		}
+		else Set_inexactflag();
+	}
+	Dbl_copytoptr(resultp1,resultp2,dstptr);
+	return(NOEXCEPTION);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD source with the "new" command line as well,
+in order to be able to provide a MirBSD release which bases
+upon a fairly current OpenBSD base source code tree deemed
+stable enough.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: fcnvxf.c,v 1.7 2003/04/10 17:27:58 mickey Exp $	*/
+d26 2
+a27 2
+sgl_to_sgl_fcnvxf(srcptr, null, dstptr, status)
+	int *srcptr, *null;
+d95 2
+a96 2
+sgl_to_dbl_fcnvxf(srcptr, null, dstptr, status)
+	int *srcptr, *null;
+d144 2
+a145 2
+dbl_to_sgl_fcnvxf(srcptr, null, dstptr, status)
+	dbl_integer *srcptr, *null;
+d247 2
+a248 2
+dbl_to_dbl_fcnvxf(srcptr, null, dstptr, status)
+	dbl_integer *srcptr, *null;
+@
+

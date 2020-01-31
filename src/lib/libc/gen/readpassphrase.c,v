@@ -1,0 +1,368 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.14
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.12
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	cvs-200412031430:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.10
+	cvs-200410252005:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.8
+	cvs-200406230735:1.1.1.3
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.3
+	cvs-200402042200:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309261655:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.46.16;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.16;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.24.31;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.19.12.37.39;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: readpassphrase.c,v 1.14 2002/06/28 01:43:58 millert Exp $	*/
+
+/*
+ * Copyright (c) 2000-2002 Todd C. Miller <Todd.Miller@@courtesan.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+ * AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL
+ * THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#if defined(LIBC_SCCS) && !defined(lint)
+static const char rcsid[] = "$OpenBSD: readpassphrase.c,v 1.14 2002/06/28 01:43:58 millert Exp $";
+#endif /* LIBC_SCCS and not lint */
+
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <paths.h>
+#include <pwd.h>
+#include <signal.h>
+#include <string.h>
+#include <termios.h>
+#include <unistd.h>
+#include <readpassphrase.h>
+
+static volatile sig_atomic_t signo;
+
+static void handler(int);
+
+char *
+readpassphrase(const char *prompt, char *buf, size_t bufsiz, int flags)
+{
+	ssize_t nr;
+	int input, output, save_errno;
+	char ch, *p, *end;
+	struct termios term, oterm;
+	struct sigaction sa, savealrm, saveint, savehup, savequit, saveterm;
+	struct sigaction savetstp, savettin, savettou, savepipe;
+
+	/* I suppose we could alloc on demand in this case (XXX). */
+	if (bufsiz == 0) {
+		errno = EINVAL;
+		return(NULL);
+	}
+
+restart:
+	signo = 0;
+	/*
+	 * Read and write to /dev/tty if available.  If not, read from
+	 * stdin and write to stderr unless a tty is required.
+	 */
+	if ((flags & RPP_STDIN) ||
+	    (input = output = open(_PATH_TTY, O_RDWR)) == -1) {
+		if (flags & RPP_REQUIRE_TTY) {
+			errno = ENOTTY;
+			return(NULL);
+		}
+		input = STDIN_FILENO;
+		output = STDERR_FILENO;
+	}
+
+	/*
+	 * Catch signals that would otherwise cause the user to end
+	 * up with echo turned off in the shell.  Don't worry about
+	 * things like SIGXCPU and SIGVTALRM for now.
+	 */
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;		/* don't restart system calls */
+	sa.sa_handler = handler;
+	(void)sigaction(SIGALRM, &sa, &savealrm);
+	(void)sigaction(SIGHUP, &sa, &savehup);
+	(void)sigaction(SIGINT, &sa, &saveint);
+	(void)sigaction(SIGPIPE, &sa, &savepipe);
+	(void)sigaction(SIGQUIT, &sa, &savequit);
+	(void)sigaction(SIGTERM, &sa, &saveterm);
+	(void)sigaction(SIGTSTP, &sa, &savetstp);
+	(void)sigaction(SIGTTIN, &sa, &savettin);
+	(void)sigaction(SIGTTOU, &sa, &savettou);
+
+	/* Turn off echo if possible. */
+	if (input != STDIN_FILENO && tcgetattr(input, &oterm) == 0) {
+		memcpy(&term, &oterm, sizeof(term));
+		if (!(flags & RPP_ECHO_ON))
+			term.c_lflag &= ~(ECHO | ECHONL);
+		if (term.c_cc[VSTATUS] != _POSIX_VDISABLE)
+			term.c_cc[VSTATUS] = _POSIX_VDISABLE;
+		(void)tcsetattr(input, TCSAFLUSH|TCSASOFT, &term);
+	} else {
+		memset(&term, 0, sizeof(term));
+		term.c_lflag |= ECHO;
+		memset(&oterm, 0, sizeof(oterm));
+		oterm.c_lflag |= ECHO;
+	}
+
+	if (!(flags & RPP_STDIN))
+		(void)write(output, prompt, strlen(prompt));
+	end = buf + bufsiz - 1;
+	for (p = buf; (nr = read(input, &ch, 1)) == 1 && ch != '\n' && ch != '\r';) {
+		if (p < end) {
+			if ((flags & RPP_SEVENBIT))
+				ch &= 0x7f;
+			if (isalpha(ch)) {
+				if ((flags & RPP_FORCELOWER))
+					ch = tolower(ch);
+				if ((flags & RPP_FORCEUPPER))
+					ch = toupper(ch);
+			}
+			*p++ = ch;
+		}
+	}
+	*p = '\0';
+	save_errno = errno;
+	if (!(term.c_lflag & ECHO))
+		(void)write(output, "\n", 1);
+
+	/* Restore old terminal settings and signals. */
+	if (memcmp(&term, &oterm, sizeof(term)) != 0)
+		(void)tcsetattr(input, TCSANOW|TCSASOFT, &oterm);
+	(void)sigaction(SIGALRM, &savealrm, NULL);
+	(void)sigaction(SIGHUP, &savehup, NULL);
+	(void)sigaction(SIGINT, &saveint, NULL);
+	(void)sigaction(SIGQUIT, &savequit, NULL);
+	(void)sigaction(SIGPIPE, &savepipe, NULL);
+	(void)sigaction(SIGTERM, &saveterm, NULL);
+	(void)sigaction(SIGTSTP, &savetstp, NULL);
+	(void)sigaction(SIGTTIN, &savettin, NULL);
+	(void)sigaction(SIGTTOU, &savettou, NULL);
+	if (input != STDIN_FILENO)
+		(void)close(input);
+
+	/*
+	 * If we were interrupted by a signal, resend it to ourselves
+	 * now that we have restored the signal handlers.
+	 */
+	if (signo) {
+		kill(getpid(), signo);
+		switch (signo) {
+		case SIGTSTP:
+		case SIGTTIN:
+		case SIGTTOU:
+			goto restart;
+		}
+	}
+
+	errno = save_errno;
+	return(nr == -1 ? NULL : buf);
+}
+
+char *
+getpass(const char *prompt)
+{
+	static char buf[_PASSWORD_LEN + 1];
+
+	return(readpassphrase(prompt, buf, sizeof(buf), RPP_ECHO_OFF));
+}
+
+static void handler(int s)
+{
+
+	signo = s;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: readpassphrase.c,v 1.15 2003/06/03 01:52:39 millert Exp $	*/
+d5 1
+d7 10
+a16 3
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+d18 10
+a27 7
+ * THE SOFTWARE IS PROVIDED "AS IS" AND TODD C. MILLER DISCLAIMS ALL
+ * WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL TODD C. MILLER BE LIABLE
+ * FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
+ * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+d31 1
+a31 1
+static const char rcsid[] = "$OpenBSD: readpassphrase.c,v 1.15 2003/06/03 01:52:39 millert Exp $";
+@
+
+
+1.1.1.3
+log
+@sync with OpenBSD, this gives us a fair amount of fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: readpassphrase.c,v 1.16 2003/06/17 21:56:23 millert Exp $	*/
+d10 7
+a16 11
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *
+ * Sponsored in part by the Defense Advanced Research Projects
+ * Agency (DARPA) and Air Force Research Laboratory, Air Force
+ * Materiel Command, USAF, under agreement number F39502-99-1-0512.
+d20 1
+a20 1
+static const char rcsid[] = "$OpenBSD: readpassphrase.c,v 1.16 2003/06/17 21:56:23 millert Exp $";
+@
+
+

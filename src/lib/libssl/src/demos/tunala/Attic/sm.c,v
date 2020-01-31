@@ -1,0 +1,289 @@
+head	1.2;
+access;
+symbols
+	cvs-200408220000:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	openssl-0_9_7d:1.1.3.1
+	cvs-200405160640:1.1.1.1
+	cvs-200403222025:1.1.1.1
+	cvs-200403181737:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	openssl-0_9_7c:1.1.3.1
+	openssl-0_9_7b:1.1.3.1
+	tg:1.1.3
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.10.29.18.37.35;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.47.43;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.43;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2003.10.29.16.05.19;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke a small bunch of files considered unused
+also, note that RC5 (TM?) is only patented in U.S.of.A.
+@
+text
+@#include "tunala.h"
+
+#ifndef NO_TUNALA
+
+void state_machine_init(state_machine_t *machine)
+{
+	machine->ssl = NULL;
+	machine->bio_intossl = machine->bio_fromssl = NULL;
+	buffer_init(&machine->clean_in);
+	buffer_init(&machine->clean_out);
+	buffer_init(&machine->dirty_in);
+	buffer_init(&machine->dirty_out);
+}
+
+void state_machine_close(state_machine_t *machine)
+{
+	if(machine->ssl)
+		SSL_free(machine->ssl);
+/* SSL_free seems to decrement the reference counts already so doing this goes
+ * kaboom. */
+#if 0
+	if(machine->bio_intossl)
+		BIO_free(machine->bio_intossl);
+	if(machine->bio_fromssl)
+		BIO_free(machine->bio_fromssl);
+#endif
+	buffer_close(&machine->clean_in);
+	buffer_close(&machine->clean_out);
+	buffer_close(&machine->dirty_in);
+	buffer_close(&machine->dirty_out);
+	state_machine_init(machine);
+}
+
+buffer_t *state_machine_get_buffer(state_machine_t *machine, sm_buffer_t type)
+{
+	switch(type) {
+	case SM_CLEAN_IN:
+		return &machine->clean_in;
+	case SM_CLEAN_OUT:
+		return &machine->clean_out;
+	case SM_DIRTY_IN:
+		return &machine->dirty_in;
+	case SM_DIRTY_OUT:
+		return &machine->dirty_out;
+	default:
+		break;
+	}
+	/* Should never get here */
+	abort();
+	return NULL;
+}
+
+SSL *state_machine_get_SSL(state_machine_t *machine)
+{
+	return machine->ssl;
+}
+
+int state_machine_set_SSL(state_machine_t *machine, SSL *ssl, int is_server)
+{
+	if(machine->ssl)
+		/* Shouldn't ever be set twice */
+		abort();
+	machine->ssl = ssl;
+	/* Create the BIOs to handle the dirty side of the SSL */
+	if((machine->bio_intossl = BIO_new(BIO_s_mem())) == NULL)
+		abort();
+	if((machine->bio_fromssl = BIO_new(BIO_s_mem())) == NULL)
+		abort();
+	/* Hook up the BIOs on the dirty side of the SSL */
+	SSL_set_bio(machine->ssl, machine->bio_intossl, machine->bio_fromssl);
+	if(is_server)
+		SSL_set_accept_state(machine->ssl);
+	else
+		SSL_set_connect_state(machine->ssl);
+	/* If we're the first one to generate traffic - do it now otherwise we
+	 * go into the next select empty-handed and our peer will not send data
+	 * but will similarly wait for us. */
+	return state_machine_churn(machine);
+}
+
+/* Performs the data-IO loop and returns zero if the machine should close */
+int state_machine_churn(state_machine_t *machine)
+{
+	unsigned int loop;
+	if(machine->ssl == NULL) {
+		if(buffer_empty(&machine->clean_out))
+			/* Time to close this state-machine altogether */
+			return 0;
+		else
+			/* Still buffered data on the clean side to go out */
+			return 1;
+	}
+	/* Do this loop twice to cover any dependencies about which precise
+	 * order of reads and writes is required. */
+	for(loop = 0; loop < 2; loop++) {
+		buffer_to_SSL(&machine->clean_in, machine->ssl);
+		buffer_to_BIO(&machine->dirty_in, machine->bio_intossl);
+		buffer_from_SSL(&machine->clean_out, machine->ssl);
+		buffer_from_BIO(&machine->dirty_out, machine->bio_fromssl);
+	}
+	/* We close on the SSL side if the info callback noticed some problems
+	 * or an SSL shutdown was underway and shutdown traffic had all been
+	 * sent. */
+	if(SSL_get_app_data(machine->ssl) || (SSL_get_shutdown(machine->ssl) &&
+				buffer_empty(&machine->dirty_out))) {
+		/* Great, we can seal off the dirty side completely */
+		if(!state_machine_close_dirty(machine))
+			return 0;
+	}
+	/* Either the SSL is alive and well, or the closing process still has
+	 * outgoing data waiting to be sent */
+	return 1;
+}
+
+/* Called when the clean side of the SSL has lost its connection */
+int state_machine_close_clean(state_machine_t *machine)
+{
+	/* Well, first thing to do is null out the clean-side buffers - they're
+	 * no use any more. */
+	buffer_close(&machine->clean_in);
+	buffer_close(&machine->clean_out);
+	/* And start an SSL shutdown */
+	if(machine->ssl)
+		SSL_shutdown(machine->ssl);
+	/* This is an "event", so flush the SSL of any generated traffic */
+	state_machine_churn(machine);
+	if(buffer_empty(&machine->dirty_in) &&
+			buffer_empty(&machine->dirty_out))
+		return 0;
+	return 1;
+}
+
+/* Called when the dirty side of the SSL has lost its connection. This is pretty
+ * terminal as all that can be left to do is send any buffered output on the
+ * clean side - after that, we're done. */
+int state_machine_close_dirty(state_machine_t *machine)
+{
+	buffer_close(&machine->dirty_in);
+	buffer_close(&machine->dirty_out);
+	buffer_close(&machine->clean_in);
+	if(machine->ssl)
+		SSL_free(machine->ssl);
+	machine->ssl = NULL;
+	machine->bio_intossl = machine->bio_fromssl = NULL;
+	if(buffer_empty(&machine->clean_out))
+		return 0;
+	return 1;
+}
+
+#endif /* !defined(NO_TUNALA) */
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.3.1
+log
+@for the damned sixth time: try to import (stock) OpenSSL 0.9.7b (on which
+the OpenBSD-openssl and our libcrypto and libssl are based) into a vendor
+branch in order to schedule an update to OpenSSL.
+
+CVS hates me today.
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

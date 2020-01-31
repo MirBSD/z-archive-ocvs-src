@@ -1,0 +1,513 @@
+head	1.2;
+access;
+symbols
+	cvs-1_12_11:1.1.2.1
+	cvs-1_12_10:1.1.2.1
+	FSF:1.1.2
+	cvs-200406091940:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200404170130:1.1.1.1
+	cvs-1_11_12:1.1.3.1
+	cvs-1_11_1p1:1.1.3.1
+	tg:1.1.3
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@// @;
+
+
+1.2
+date	2003.05.16.17.43.49;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.36;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.36;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2004.12.02.11.59.33;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.02.12.19.23.30;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@
+#include <memory.h>
+#include "zfstream.h"
+
+gzfilebuf::gzfilebuf() :
+  file(NULL),
+  mode(0),
+  own_file_descriptor(0)
+{ }
+
+gzfilebuf::~gzfilebuf() {
+
+  sync();
+  if ( own_file_descriptor )
+    close();
+
+}
+
+gzfilebuf *gzfilebuf::open( const char *name,
+			    int io_mode ) {
+
+  if ( is_open() )
+    return NULL;
+
+  char char_mode[10];
+  char *p;
+  memset(char_mode,'\0',10);
+  p = char_mode;
+
+  if ( io_mode & ios::in ) {
+    mode = ios::in;
+    *p++ = 'r';
+  } else if ( io_mode & ios::app ) {
+    mode = ios::app;
+    *p++ = 'a';
+  } else {
+    mode = ios::out;
+    *p++ = 'w';
+  }
+
+  if ( io_mode & ios::binary ) {
+    mode |= ios::binary;
+    *p++ = 'b';
+  }
+
+  // Hard code the compression level
+  if ( io_mode & (ios::out|ios::app )) {
+    *p++ = '9';
+  }
+
+  if ( (file = gzopen(name, char_mode)) == NULL )
+    return NULL;
+
+  own_file_descriptor = 1;
+
+  return this;
+
+}
+
+gzfilebuf *gzfilebuf::attach( int file_descriptor,
+			      int io_mode ) {
+
+  if ( is_open() )
+    return NULL;
+
+  char char_mode[10];
+  char *p;
+  memset(char_mode,'\0',10);
+  p = char_mode;
+
+  if ( io_mode & ios::in ) {
+    mode = ios::in;
+    *p++ = 'r';
+  } else if ( io_mode & ios::app ) {
+    mode = ios::app;
+    *p++ = 'a';
+  } else {
+    mode = ios::out;
+    *p++ = 'w';
+  }
+
+  if ( io_mode & ios::binary ) {
+    mode |= ios::binary;
+    *p++ = 'b';
+  }
+
+  // Hard code the compression level
+  if ( io_mode & (ios::out|ios::app )) {
+    *p++ = '9';
+  }
+
+  if ( (file = gzdopen(file_descriptor, char_mode)) == NULL )
+    return NULL;
+
+  own_file_descriptor = 0;
+
+  return this;
+
+}
+
+gzfilebuf *gzfilebuf::close() {
+
+  if ( is_open() ) {
+
+    sync();
+    gzclose( file );
+    file = NULL;
+
+  }
+
+  return this;
+
+}
+
+int gzfilebuf::setcompressionlevel( short comp_level ) {
+
+  return gzsetparams(file, comp_level, -2);
+
+}
+
+int gzfilebuf::setcompressionstrategy( short comp_strategy ) {
+
+  return gzsetparams(file, -2, comp_strategy);
+
+}
+
+
+streampos gzfilebuf::seekoff( streamoff off, ios::seek_dir dir, int which ) {
+
+  return streampos(EOF);
+
+}
+
+int gzfilebuf::underflow() {
+
+  // If the file hasn't been opened for reading, error.
+  if ( !is_open() || !(mode & ios::in) )
+    return EOF;
+
+  // if a buffer doesn't exists, allocate one.
+  if ( !base() ) {
+
+    if ( (allocate()) == EOF )
+      return EOF;
+    setp(0,0);
+
+  } else {
+
+    if ( in_avail() )
+      return (unsigned char) *gptr();
+
+    if ( out_waiting() ) {
+      if ( flushbuf() == EOF )
+	return EOF;
+    }
+
+  }
+
+  // Attempt to fill the buffer.
+
+  int result = fillbuf();
+  if ( result == EOF ) {
+    // disable get area
+    setg(0,0,0);
+    return EOF;
+  }
+
+  return (unsigned char) *gptr();
+
+}
+
+int gzfilebuf::overflow( int c ) {
+
+  if ( !is_open() || !(mode & ios::out) )
+    return EOF;
+
+  if ( !base() ) {
+    if ( allocate() == EOF )
+      return EOF;
+    setg(0,0,0);
+  } else {
+    if (in_avail()) {
+	return EOF;
+    }
+    if (out_waiting()) {
+      if (flushbuf() == EOF)
+	return EOF;
+    }
+  }
+
+  int bl = blen();
+  setp( base(), base() + bl);
+
+  if ( c != EOF ) {
+
+    *pptr() = c;
+    pbump(1);
+
+  }
+
+  return 0;
+
+}
+
+int gzfilebuf::sync() {
+
+  if ( !is_open() )
+    return EOF;
+
+  if ( out_waiting() )
+    return flushbuf();
+
+  return 0;
+
+}
+
+int gzfilebuf::flushbuf() {
+
+  int n;
+  char *q;
+
+  q = pbase();
+  n = pptr() - q;
+
+  if ( gzwrite( file, q, n) < n )
+    return EOF;
+
+  setp(0,0);
+
+  return 0;
+
+}
+
+int gzfilebuf::fillbuf() {
+
+  int required;
+  char *p;
+
+  p = base();
+
+  required = blen();
+
+  int t = gzread( file, p, required );
+
+  if ( t <= 0) return EOF;
+
+  setg( base(), base(), base()+t);
+
+  return t;
+
+}
+
+gzfilestream_common::gzfilestream_common() :
+  ios( gzfilestream_common::rdbuf() )
+{ }
+
+gzfilestream_common::~gzfilestream_common()
+{ }
+
+void gzfilestream_common::attach( int fd, int io_mode ) {
+
+  if ( !buffer.attach( fd, io_mode) )
+    clear( ios::failbit | ios::badbit );
+  else
+    clear();
+
+}
+
+void gzfilestream_common::open( const char *name, int io_mode ) {
+
+  if ( !buffer.open( name, io_mode ) )
+    clear( ios::failbit | ios::badbit );
+  else
+    clear();
+
+}
+
+void gzfilestream_common::close() {
+
+  if ( !buffer.close() )
+    clear( ios::failbit | ios::badbit );
+
+}
+
+gzfilebuf *gzfilestream_common::rdbuf() {
+
+  return &buffer;
+
+}
+     
+gzifstream::gzifstream() :
+  ios( gzfilestream_common::rdbuf() )
+{
+  clear( ios::badbit );
+}
+
+gzifstream::gzifstream( const char *name, int io_mode ) :
+  ios( gzfilestream_common::rdbuf() )
+{
+  gzfilestream_common::open( name, io_mode );
+}
+
+gzifstream::gzifstream( int fd, int io_mode ) :
+  ios( gzfilestream_common::rdbuf() )
+{
+  gzfilestream_common::attach( fd, io_mode );
+}
+
+gzifstream::~gzifstream() { }
+
+gzofstream::gzofstream() :
+  ios( gzfilestream_common::rdbuf() )
+{
+  clear( ios::badbit );
+}
+
+gzofstream::gzofstream( const char *name, int io_mode ) :
+  ios( gzfilestream_common::rdbuf() )
+{
+  gzfilestream_common::open( name, io_mode );
+}
+
+gzofstream::gzofstream( int fd, int io_mode ) :
+  ios( gzfilestream_common::rdbuf() )
+{
+  gzfilestream_common::attach( fd, io_mode );
+}
+
+gzofstream::~gzofstream() { }
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@vendor-branch-ify new cvs 1.12
+@
+text
+@d2 1
+d20 1
+a20 1
+                            int io_mode ) {
+d26 3
+a28 1
+  char *p = char_mode;
+a50 3
+  // Put the end-of-string indicator
+  *p = '\0';
+
+d61 1
+a61 1
+                              int io_mode ) {
+d67 3
+a69 1
+  char *p = char_mode;
+a91 3
+  // Put the end-of-string indicator
+  *p = '\0';
+
+d115 1
+a115 1
+int gzfilebuf::setcompressionlevel( int comp_level ) {
+d121 1
+a121 1
+int gzfilebuf::setcompressionstrategy( int comp_strategy ) {
+d154 1
+a154 1
+        return EOF;
+d183 1
+a183 1
+        return EOF;
+d187 1
+a187 1
+        return EOF;
+d285 2
+a286 2
+gzfilebuf *gzfilestream_common::rdbuf()
+{
+d288 1
+d290 1
+a290 1
+
+@
+
+
+1.1.3.1
+log
+@our CVS is currently at 1.11.1p1, thus import that version into vendor branch
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

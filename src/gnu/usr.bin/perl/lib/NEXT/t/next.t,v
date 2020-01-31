@@ -1,0 +1,216 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.21;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.21;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@BEGIN {
+    if ($ENV{PERL_CORE}) {
+        chdir('t') if -d 't';
+        @@INC = qw(../lib);
+    }
+}
+
+BEGIN { print "1..25\n"; }
+
+use NEXT;
+
+print "ok 1\n";
+
+package A;
+sub A::method   { return ( 3, $_[0]->NEXT::method() ) }
+sub A::DESTROY  { $_[0]->NEXT::DESTROY() }
+
+package B;
+use base qw( A );
+sub B::AUTOLOAD { return ( 9, $_[0]->NEXT::AUTOLOAD() )
+			if $AUTOLOAD =~ /.*(missing_method|secondary)/ }
+sub B::DESTROY  { $_[0]->NEXT::DESTROY() }
+
+package C;
+sub C::DESTROY  { print "ok 23\n"; $_[0]->NEXT::DESTROY() }
+
+package D;
+@@D::ISA = qw( B C E );
+sub D::method   { return ( 2, $_[0]->NEXT::method() ) }
+sub D::AUTOLOAD { return ( 8, $_[0]->NEXT::AUTOLOAD() ) }
+sub D::DESTROY  { print "ok 22\n"; $_[0]->NEXT::DESTROY() }
+sub D::oops     { $_[0]->NEXT::method() }
+sub D::secondary { return ( 17, 18, map { $_+10 } $_[0]->NEXT::secondary() ) }
+
+package E;
+@@E::ISA = qw( F G );
+sub E::method   { return ( 4,  $_[0]->NEXT::method(), $_[0]->NEXT::method() ) }
+sub E::AUTOLOAD { return ( 10, $_[0]->NEXT::AUTOLOAD() ) 
+			if $AUTOLOAD =~ /.*(missing_method|secondary)/ }
+sub E::DESTROY  { print "ok 24\n"; $_[0]->NEXT::DESTROY() }
+
+package F;
+sub F::method   { return ( 5  ) }
+sub F::AUTOLOAD { return ( 11 ) if $AUTOLOAD =~ /.*(missing_method|secondary)/ }
+sub F::DESTROY  { print "ok 25\n" }
+
+package G;
+sub G::method   { return ( 6 ) }
+sub G::AUTOLOAD { print "not "; return }
+sub G::DESTROY  { print "not ok 21"; return }
+
+package main;
+
+my $obj = bless {}, "D";
+
+my @@vals;
+
+# TEST NORMAL REDISPATCH (ok 2..6)
+@@vals = $obj->method();
+print map "ok $_\n", @@vals;
+
+# RETEST NORMAL REDISPATCH SHOULD BE THE SAME (ok 7)
+@@vals = $obj->method();
+print "not " unless join("", @@vals) == "23456";
+print "ok 7\n";
+
+# TEST AUTOLOAD REDISPATCH (ok 8..11)
+@@vals = $obj->missing_method();
+print map "ok $_\n", @@vals;
+
+# NAMED METHOD CAN'T REDISPATCH TO NAMED METHOD OF DIFFERENT NAME (ok 12)
+eval { $obj->oops() } && print "not ";
+print "ok 12\n";
+
+# AUTOLOAD'ED METHOD CAN'T REDISPATCH TO NAMED METHOD (ok 13)
+
+eval {
+	local *C::AUTOLOAD = sub { $_[0]->NEXT::method() };
+	*C::AUTOLOAD = *C::AUTOLOAD;
+	eval { $obj->missing_method(); } && print "not ";
+};
+print "ok 13\n";
+
+# NAMED METHOD CAN'T REDISPATCH TO AUTOLOAD'ED METHOD (ok 14)
+eval { 
+	*C::method = sub{ $_[0]->NEXT::AUTOLOAD() };
+	*C::method = *C::method;
+	eval { $obj->method(); } && print "not ";
+};
+print "ok 14\n";
+
+# BASE CLASS METHODS ONLY REDISPATCHED WITHIN HIERARCHY (ok 15..16)
+my $ob2 = bless {}, "B";
+@@val = $ob2->method();         
+print "not " unless @@val==1 && $val[0]==3;
+print "ok 15\n";
+
+@@val = $ob2->missing_method(); 
+print "not " unless @@val==1 && $val[0]==9;
+print "ok 16\n";
+
+# TEST SECONDARY AUTOLOAD REDISPATCH (ok 17..21)
+@@vals = $obj->secondary();
+print map "ok $_\n", @@vals;
+
+# CAN REDISPATCH DESTRUCTORS (ok 22..25)
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

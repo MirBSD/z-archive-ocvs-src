@@ -1,0 +1,261 @@
+head	1.3;
+access;
+symbols
+	cvs-200501080000:1.1.2.1
+	tg-mergetmp-mirosx-1:1.3
+	tg-mergefixes-1-branch:1.3.0.8
+	tg-mergefixes-1-base:1.3
+	MIROS_X:1.3.0.6
+	MIROS_X_BASE:1.3
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	cvs-200409160000:1.1.2.1
+	FSF:1.1.2
+	testing_SYNC_D:1.2
+	testing_SYNC_C:1.1.3.1
+	testing_SYNC_B:1.1.3.1
+	testing_SYNC_A:1.1.3.1
+	tg:1.1.3;
+locks; strict;
+comment	@# @;
+
+
+1.3
+date	2004.09.16.22.28.15;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.08.22.03.23.39;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2004.08.11.20.41.06;	author tg;	state Exp;
+branches
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.2.1
+date	2004.09.16.21.31.12;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.08.11.20.41.06;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@update to most recent copy of binutils, based upon the vendor import branch cvs-200409160000 and our binutils port
+@
+text
+@# $MirBSD: testing/binutils/ld/scripttempl/tic4xcoff.sc,v 1.2 2004/09/16 21:19:35 tg Exp $
+#
+# In microcomputer (MC) mode, the vectors are mapped into the on-chip ROM,
+# otherwise in microprocessor (MP) mode the vectors are mapped to address 0
+# on the external bus.  In MC mode, the on-chip ROM contains a bootloader program
+# that loads the internal RAM from the serial port or external ROM.
+#
+# Common configurations:
+# 1. MC mode, no external memory (serial boot).
+# 2. MC mode, external RAM (serial boot).
+# 3. MC mode, external ROM.
+# 4. MC mode, external ROM, external RAM.
+# 5. MP mode, external ROM.
+# 6. MP mode, external ROM, external RAM.
+# 7. MP mode, external RAM (dual-port with hosting CPU or external debugger).
+#
+# Config  TEXT     DATA/BSS
+# 1.      INT_RAM  INT_RAM   (mcmode,onchip)
+# 2.      EXT_RAM  EXT_RAM   (mcmode,extram)
+# 3.      INT_RAM  INT_RAM   (mcmode,onchip)
+# 4.      EXT_RAM  EXT_RAM   (mcmode,extram)
+# 5.      EXT_ROM  INT_RAM   (mpmode,onchip,extrom)
+# 6.      EXT_ROM  EXT_RAM   (mpmode,extram,extrom)
+# 7.      EXT_RAM  EXT_RAM   (mpmode,extram)
+#
+# In MC mode, TEXT and DATA are copied into RAM by the bootloader. 
+#
+# In MP mode with external ROM, DATA needs to be copied into RAM at boot time.
+#
+# If there is external RAM it is better to use that and reserve the internal RAM 
+# for data buffers.  However, the address of the external RAM needs to be specified.
+#
+# This emulation assumes config 7.
+
+case $OUTPUT_ARCH in
+  tic3x) OUTPUT_ARCHNAME="TMS320C3x" ;;
+  tic4x) OUTPUT_ARCHNAME="TMS320C4x" ;;
+esac
+
+case $ONCHIP in
+  yes) RAM=RAM;
+       STACK_SIZE_DEFAULT=128;
+       HEAP_SIZE_DEFAULT=0;
+       ;;
+  *)   RAM=EXT0;
+       STACK_SIZE_DEFAULT=0x1000;
+       HEAP_SIZE_DEFAULT=0x4000;
+       ;;
+esac
+
+TEXT_MEMORY=$RAM;
+DATA_MEMORY=$RAM;
+
+
+MEMORY_DEF="
+/* C30 memory space.  */
+MEMORY
+{
+   EXT0  :  org = 0x0000000, len = 0x800000  /* External address bus.  */
+   XBUS  :  org = 0x0800000, len = 0x002000  /* Expansion bus.         */
+   IOBUS :  org = 0x0804000, len = 0x002000  /* I/O BUS.               */
+   RAM0  :  org = 0x0809800, len = 0x000400  /* Internal RAM block 0.  */
+   RAM1  :  org = 0x0809a00, len = 0x000400  /* Internal RAM block 1.  */
+   RAM   :  org = 0x0809800, len = 0x000800  /* Internal RAM.          */
+   EXT1  :  org = 0x080a000, len = 0x7f6000  /* External address bus.  */
+}
+"
+
+test -z "$ENTRY" && ENTRY=_start
+
+cat <<EOF
+${RELOCATING+/* Linker script for $OUTPUT_ARCHNAME executable.  */}
+${RELOCATING-/* Linker script for $OUTPUT_ARCHNAME object file (ld -r).  */}
+
+OUTPUT_FORMAT("${OUTPUT_FORMAT}")
+OUTPUT_ARCH("${OUTPUT_ARCH}")
+${LIB_SEARCH_DIRS}
+ENTRY(${ENTRY})
+
+${RELOCATING+ __HEAP_SIZE = DEFINED(__HEAP_SIZE) ? __HEAP_SIZE : ${HEAP_SIZE_DEFAULT};}
+${RELOCATING+ __STACK_SIZE  = DEFINED(__STACK_SIZE)  ? __STACK_SIZE  : ${STACK_SIZE_DEFAULT};}
+
+${RELOCATING+${MEMORY_DEF}}
+
+/* In the small memory model the .data and .bss sections must be contiguous
+   when loaded and fit within the same page.   The DP register is loaded
+   with the page address.  */
+
+SECTIONS
+{
+  /* Reset, interrupt, and trap vectors.  */
+  .vectors ${RELOCATING+ 0} : {
+    *(.vectors)
+  } ${RELOCATING+ > ${TEXT_MEMORY}}
+  /* Constants.  */
+  .const : {
+    *(.const)
+  } ${RELOCATING+ > ${TEXT_MEMORY}}
+  /* Program code.  */
+  .text : {
+    ${RELOCATING+  __text =  .;}
+    ${RELOCATING+ *(.init)}
+    *(.text)
+    ${CONSTRUCTING+ ___CTOR_LIST__ = .;}
+    ${CONSTRUCTING+ LONG(___CTOR_END__ - ___CTOR_LIST__ - 2)}
+    ${CONSTRUCTING+ *(.ctors)}
+    ${CONSTRUCTING+ LONG(0);}
+    ${CONSTRUCTING+ ___CTOR_END__  = .;}
+    ${CONSTRUCTING+ ___DTOR_LIST__ = .;}
+    ${CONSTRUCTING+ LONG(___DTOR_END__ - ___DTOR_LIST__ - 2)}
+    ${CONSTRUCTING+ *(.dtors)}
+    ${CONSTRUCTING+ LONG(0)}
+    ${CONSTRUCTING+ ___DTOR_END__  = .;}
+    ${RELOCATING+ *(.fini)}
+    ${RELOCATING+  __etext =  .;}
+  } ${RELOCATING+ > ${TEXT_MEMORY}}
+  /* Global initialised variables.  */
+  .data :
+  { 				
+    ${RELOCATING+  __data  =  .;}
+    *(.data)
+    ${RELOCATING+  __edata  = .;}
+  } ${RELOCATING+ > ${DATA_MEMORY}}
+  /* Global uninitialised variables.  */
+  .bss : {
+    ${RELOCATING+ __bss  =  .;}	
+    *(.bss)
+    *(COMMON)
+    ${RELOCATING+  __end  =  .;}
+  } ${RELOCATING+ > ${DATA_MEMORY}}
+  /* Heap.  */
+  .heap :
+  { 					
+    ${RELOCATING+ __heap  =  .;}		
+    ${RELOCATING+ . += __HEAP_SIZE};
+  } ${RELOCATING+ > ${DATA_MEMORY}}
+  /* Stack (grows upward).  */
+  .stack :
+  { 				
+    ${RELOCATING+ __stack  =  .;}		
+    *(.stack)
+    ${RELOCATING+ .  =  . + __STACK_SIZE};		
+  } ${RELOCATING+ > ${DATA_MEMORY}}
+  .stab 0 ${RELOCATING+\(NOLOAD\)} : 
+  {
+    [ .stab ]
+  }
+  .stabstr 0 ${RELOCATING+\(NOLOAD\)} :
+  {
+    [ .stabstr ]
+  }
+}
+EOF
+@
+
+
+1.2
+log
+@as promised, deliver an all-target 64-bit bfd and appropriate libs,
+binutils, ld and gas (though it can only support one target, it does
+support alternative output (a.out, elf, coff for example) now).
+it's -Wall -Werror SHELL=ksh clean.
+
+then, regenerate the configure scripts etc.
+@
+text
+@d1 1
+a1 1
+# $MirBSD$
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+d144 1
+a144 1
+  .stab 0 ${RELOCATING+(NOLOAD)} : 
+d148 1
+a148 1
+  .stabstr 0 ${RELOCATING+(NOLOAD)} :
+@
+
+
+1.1.2.1
+log
+@binutils-040916.tar.bz2 from sources.deadrat.com for src/ for later use
+@
+text
+@@
+
+
+1.1.3.1
+log
+@Import testing binutils source into main tree
+@
+text
+@@

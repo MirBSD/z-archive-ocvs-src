@@ -1,0 +1,355 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.46.41;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.41;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: lib_tracebits.c,v 1.9 2003/03/18 16:55:54 millert Exp $	*/
+
+/****************************************************************************
+ * Copyright (c) 1998,1999,2000 Free Software Foundation, Inc.              *
+ *                                                                          *
+ * Permission is hereby granted, free of charge, to any person obtaining a  *
+ * copy of this software and associated documentation files (the            *
+ * "Software"), to deal in the Software without restriction, including      *
+ * without limitation the rights to use, copy, modify, merge, publish,      *
+ * distribute, distribute with modifications, sublicense, and/or sell       *
+ * copies of the Software, and to permit persons to whom the Software is    *
+ * furnished to do so, subject to the following conditions:                 *
+ *                                                                          *
+ * The above copyright notice and this permission notice shall be included  *
+ * in all copies or substantial portions of the Software.                   *
+ *                                                                          *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  *
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF               *
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.   *
+ * IN NO EVENT SHALL THE ABOVE COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,   *
+ * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR    *
+ * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR    *
+ * THE USE OR OTHER DEALINGS IN THE SOFTWARE.                               *
+ *                                                                          *
+ * Except as contained in this notice, the name(s) of the above copyright   *
+ * holders shall not be used in advertising or otherwise to promote the     *
+ * sale, use or other dealings in this Software without prior written       *
+ * authorization.                                                           *
+ ****************************************************************************/
+
+/****************************************************************************
+ *  Author: Zeyd M. Ben-Halim <zmbenhal@@netcom.com> 1992,1995               *
+ *     and: Eric S. Raymond <esr@@snark.thyrsus.com>                         *
+ ****************************************************************************/
+
+#include <curses.priv.h>
+#include <term.h>		/* cur_term */
+
+MODULE_ID("$From: lib_tracebits.c,v 1.9 2000/12/10 03:02:45 tom Exp $")
+
+#if SVR4_TERMIO && !defined(_POSIX_SOURCE)
+#define _POSIX_SOURCE
+#endif
+
+#if HAVE_SYS_TERMIO_H
+#include <sys/termio.h>		/* needed for ISC */
+#endif
+
+#ifdef __EMX__
+#include <io.h>
+#endif
+
+/* may be undefined if we're using termio.h */
+#ifndef TOSTOP
+#define TOSTOP 0
+#endif
+#ifndef IEXTEN
+#define IEXTEN 0
+#endif
+
+#ifdef TRACE
+
+typedef struct {
+    unsigned int val;
+    const char *name;
+} BITNAMES;
+
+static void
+lookup_bits(char *buf, size_t bufsize, const BITNAMES * table, const char *label, unsigned int val)
+{
+    const BITNAMES *sp;
+
+    (void) strlcat(buf, label, bufsize);
+    (void) strlcat(buf, ": {", bufsize);
+    for (sp = table; sp->name; sp++)
+	if (sp->val != 0
+	    && (val & sp->val) == sp->val) {
+	    (void) strlcat(buf, sp->name, bufsize);
+	    (void) strlcat(buf, ", ", bufsize);
+	}
+    if (buf[strlen(buf) - 2] == ',')
+	buf[strlen(buf) - 2] = '\0';
+    (void) strlcat(buf, "} ", bufsize);
+}
+
+NCURSES_EXPORT(char *)
+_nc_tracebits(void)
+/* describe the state of the terminal control bits exactly */
+{
+    char *buf;
+    size_t bufsize;
+
+#ifdef TERMIOS
+    static const BITNAMES iflags[] =
+    {
+	{BRKINT, "BRKINT"},
+	{IGNBRK, "IGNBRK"},
+	{IGNPAR, "IGNPAR"},
+	{PARMRK, "PARMRK"},
+	{INPCK, "INPCK"},
+	{ISTRIP, "ISTRIP"},
+	{INLCR, "INLCR"},
+	{IGNCR, "IGNC"},
+	{ICRNL, "ICRNL"},
+	{IXON, "IXON"},
+	{IXOFF, "IXOFF"},
+	{0, NULL}
+#define ALLIN	(BRKINT|IGNBRK|IGNPAR|PARMRK|INPCK|ISTRIP|INLCR|IGNCR|ICRNL|IXON|IXOFF)
+    }, oflags[] =
+    {
+	{OPOST, "OPOST"},
+	{0, NULL}
+#define ALLOUT	(OPOST)
+    }, cflags[] =
+    {
+	{CLOCAL, "CLOCAL"},
+	{CREAD, "CREAD"},
+	{CSTOPB, "CSTOPB"},
+#if !defined(CS5) || !defined(CS8)
+	{CSIZE, "CSIZE"},
+#endif
+	{HUPCL, "HUPCL"},
+	{PARENB, "PARENB"},
+	{PARODD | PARENB, "PARODD"},	/* concession to readability */
+	{0, NULL}
+#define ALLCTRL	(CLOCAL|CREAD|CSIZE|CSTOPB|HUPCL|PARENB|PARODD)
+    }, lflags[] =
+    {
+	{ECHO, "ECHO"},
+	{ECHOE | ECHO, "ECHOE"},	/* concession to readability */
+	{ECHOK | ECHO, "ECHOK"},	/* concession to readability */
+	{ECHONL, "ECHONL"},
+	{ICANON, "ICANON"},
+	{ISIG, "ISIG"},
+	{NOFLSH, "NOFLSH"},
+	{TOSTOP, "TOSTOP"},
+	{IEXTEN, "IEXTEN"},
+	{0, NULL}
+#define ALLLOCAL	(ECHO|ECHONL|ICANON|ISIG|NOFLSH|TOSTOP|IEXTEN)
+    };
+
+    bufsize = 8 + sizeof(iflags) + 8 + sizeof(oflags) + 8 + sizeof(cflags) +
+	      8 + sizeof(lflags) + 8;
+    buf = _nc_trace_buf(0, bufsize);
+
+    if (cur_term->Nttyb.c_iflag & ALLIN)
+	lookup_bits(buf, bufsize, iflags, "iflags", cur_term->Nttyb.c_iflag);
+
+    if (cur_term->Nttyb.c_oflag & ALLOUT)
+	lookup_bits(buf, bufsize, oflags, "oflags", cur_term->Nttyb.c_oflag);
+
+    if (cur_term->Nttyb.c_cflag & ALLCTRL)
+	lookup_bits(buf, bufsize, cflags, "cflags", cur_term->Nttyb.c_cflag);
+
+#if defined(CS5) && defined(CS8)
+    {
+	static struct {
+	    char *name;
+	    int value;
+	} csizes[] = {
+	    {
+		"CS5 ", CS5
+	    },
+#ifdef CS6
+	    {
+		"CS6 ", CS6
+	    },
+#endif
+#ifdef CS7
+	    {
+		"CS7 ", CS7
+	    },
+#endif
+	    {
+		"CS8 ", CS8
+	    },
+	};
+	char *result = "CSIZE? ";
+	int value = (cur_term->Nttyb.c_cflag & CSIZE);
+	unsigned n;
+
+	if (value != 0) {
+	    for (n = 0; n < SIZEOF(csizes); n++) {
+		if (csizes[n].value == value) {
+		    result = csizes[n].name;
+		    break;
+		}
+	    }
+	}
+	strlcat(buf, result, bufsize);
+    }
+#endif
+
+    if (cur_term->Nttyb.c_lflag & ALLLOCAL)
+	lookup_bits(buf, bufsize, lflags, "lflags", cur_term->Nttyb.c_lflag);
+
+#else
+    /* reference: ttcompat(4M) on SunOS 4.1 */
+#ifndef EVENP
+#define EVENP 0
+#endif
+#ifndef LCASE
+#define LCASE 0
+#endif
+#ifndef LLITOUT
+#define LLITOUT 0
+#endif
+#ifndef ODDP
+#define ODDP 0
+#endif
+#ifndef TANDEM
+#define TANDEM 0
+#endif
+
+    static const BITNAMES cflags[] =
+    {
+	{CBREAK, "CBREAK"},
+	{CRMOD, "CRMOD"},
+	{ECHO, "ECHO"},
+	{EVENP, "EVENP"},
+	{LCASE, "LCASE"},
+	{LLITOUT, "LLITOUT"},
+	{ODDP, "ODDP"},
+	{RAW, "RAW"},
+	{TANDEM, "TANDEM"},
+	{XTABS, "XTABS"},
+	{0, NULL}
+#define ALLCTRL	(CBREAK|CRMOD|ECHO|EVENP|LCASE|LLITOUT|ODDP|RAW|TANDEM|XTABS)
+    };
+
+    buf = _nc_trace_buf(0,
+			8 + sizeof(cflags));
+
+    if (cur_term->Nttyb.sg_flags & ALLCTRL) {
+	lookup_bits(buf, bufsize, cflags, "cflags", cur_term->Nttyb.sg_flags);
+    }
+#endif
+    return (buf);
+}
+#else
+NCURSES_EXPORT(char *)
+_nc_tracebits(void)
+{
+    static char tmp[] = "";
+    return tmp;
+}
+#endif /* TRACE */
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

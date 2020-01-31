@@ -1,0 +1,338 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.14;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.14;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.37;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package ExtUtils::MM_OS2;
+
+use strict;
+use vars qw($VERSION @@ISA);
+
+use ExtUtils::MakeMaker qw(neatvalue);
+use File::Spec;
+
+$VERSION = '1.03';
+
+require ExtUtils::MM_Any;
+require ExtUtils::MM_Unix;
+@@ISA = qw(ExtUtils::MM_Any ExtUtils::MM_Unix);
+
+=pod
+
+=head1 NAME
+
+ExtUtils::MM_OS2 - methods to override UN*X behaviour in ExtUtils::MakeMaker
+
+=head1 SYNOPSIS
+
+ use ExtUtils::MM_OS2; # Done internally by ExtUtils::MakeMaker if needed
+
+=head1 DESCRIPTION
+
+See ExtUtils::MM_Unix for a documentation of the methods provided
+there. This package overrides the implementation of these methods, not
+the semantics.
+
+=head1 METHODS
+
+=over 4
+
+=cut
+
+sub dist {
+    my($self, %attribs) = @@_;
+
+    $attribs{TO_UNIX} ||= sprintf <<'MAKE_TEXT', $self->{NOECHO};
+%s$(TEST_F) tmp.zip && $(RM) tmp.zip; $(ZIP) -ll -mr tmp.zip $(DISTVNAME) && unzip -o tmp.zip && $(RM) tmp.zip
+MAKE_TEXT
+
+    return $self->SUPER::dist(%attribs);
+}
+
+sub dlsyms {
+    my($self,%attribs) = @@_;
+
+    my($funcs) = $attribs{DL_FUNCS} || $self->{DL_FUNCS} || {};
+    my($vars)  = $attribs{DL_VARS} || $self->{DL_VARS} || [];
+    my($funclist) = $attribs{FUNCLIST} || $self->{FUNCLIST} || [];
+    my($imports)  = $attribs{IMPORTS} || $self->{IMPORTS} || {};
+    my(@@m);
+    (my $boot = $self->{NAME}) =~ s/:/_/g;
+
+    if (not $self->{SKIPHASH}{'dynamic'}) {
+	push(@@m,"
+$self->{BASEEXT}.def: Makefile.PL
+",
+     '	$(PERL) "-I$(PERL_ARCHLIB)" "-I$(PERL_LIB)" -e \'use ExtUtils::Mksymlists; \\
+     Mksymlists("NAME" => "$(NAME)", "DLBASE" => "$(DLBASE)", ',
+     '"VERSION" => "$(VERSION)", "DISTNAME" => "$(DISTNAME)", ',
+     '"INSTALLDIRS" => "$(INSTALLDIRS)", ',
+     '"DL_FUNCS" => ',neatvalue($funcs),
+     ', "FUNCLIST" => ',neatvalue($funclist),
+     ', "IMPORTS" => ',neatvalue($imports),
+     ', "DL_VARS" => ', neatvalue($vars), ');\'
+');
+    }
+    if ($self->{IMPORTS} && %{$self->{IMPORTS}}) {
+	# Make import files (needed for static build)
+	-d 'tmp_imp' or mkdir 'tmp_imp', 0777 or die "Can't mkdir tmp_imp";
+	open IMP, '>tmpimp.imp' or die "Can't open tmpimp.imp";
+	my ($name, $exp);
+	while (($name, $exp)= each %{$self->{IMPORTS}}) {
+	    my ($lib, $id) = ($exp =~ /(.*)\.(.*)/) or die "Malformed IMPORT `$exp'";
+	    print IMP "$name $lib $id ?\n";
+	}
+	close IMP or die "Can't close tmpimp.imp";
+	# print "emximp -o tmpimp$Config::Config{lib_ext} tmpimp.imp\n";
+	system "emximp -o tmpimp$Config::Config{lib_ext} tmpimp.imp" 
+	    and die "Cannot make import library: $!, \$?=$?";
+	unlink <tmp_imp/*>;
+	system "cd tmp_imp; $Config::Config{ar} x ../tmpimp$Config::Config{lib_ext}" 
+	    and die "Cannot extract import objects: $!, \$?=$?";      
+    }
+    join('',@@m);
+}
+
+sub static_lib {
+    my($self) = @@_;
+    my $old = $self->ExtUtils::MM_Unix::static_lib();
+    return $old unless $self->{IMPORTS} && %{$self->{IMPORTS}};
+    
+    my @@chunks = split /\n{2,}/, $old;
+    shift @@chunks unless length $chunks[0]; # Empty lines at the start
+    $chunks[0] .= <<'EOC';
+
+	$(AR) $(AR_STATIC_ARGS) $@@ tmp_imp/* && $(RANLIB) $@@
+EOC
+    return join "\n\n". '', @@chunks;
+}
+
+sub replace_manpage_separator {
+    my($self,$man) = @@_;
+    $man =~ s,/+,.,g;
+    $man;
+}
+
+sub maybe_command {
+    my($self,$file) = @@_;
+    $file =~ s,[/\\]+,/,g;
+    return $file if -x $file && ! -d _;
+    return "$file.exe" if -x "$file.exe" && ! -d _;
+    return "$file.cmd" if -x "$file.cmd" && ! -d _;
+    return;
+}
+
+sub perl_archive {
+    return "\$(PERL_INC)/libperl\$(LIB_EXT)";
+}
+
+=item perl_archive_after
+
+This is an internal method that returns path to a library which
+should be put on the linker command line I<after> the external libraries
+to be linked to dynamic extensions.  This may be needed if the linker
+is one-pass, and Perl includes some overrides for C RTL functions,
+such as malloc().
+
+=cut 
+
+sub perl_archive_after
+{
+ return "\$(PERL_INC)/libperl_override\$(LIB_EXT)" unless $OS2::is_aout;
+ return "";
+}
+
+sub export_list
+{
+ my ($self) = @@_;
+ return "$self->{BASEEXT}.def";
+}
+
+1;
+
+__END__
+
+=pod
+
+=back
+
+=cut
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d9 1
+a9 1
+$VERSION = '1.04';
+a34 4
+=item init_dist (o)
+
+Define TO_UNIX to convert OS2 linefeeds to Unix style.
+
+d37 2
+a38 2
+sub init_dist {
+    my($self) = @@_;
+d40 2
+a41 2
+    $self->{TO_UNIX} ||= <<'MAKE_TEXT';
+$(NOECHO) $(TEST_F) tmp.zip && $(RM_F) tmp.zip; $(ZIP) -ll -mr tmp.zip $(DISTVNAME) && unzip -o tmp.zip && $(RM_F) tmp.zip
+d44 1
+a44 1
+    $self->SUPER::init_dist;
+d120 3
+a122 1
+=item init_linker
+d124 1
+a124 1
+=cut
+d126 5
+a130 2
+sub init_linker {
+    my $self = shift;
+d132 1
+a132 1
+    $self->{PERL_ARCHIVE} = "\$(PERL_INC)/libperl\$(LIB_EXT)";
+d134 4
+a137 4
+    $self->{PERL_ARCHIVE_AFTER} = $OS2::is_aout
+      ? ''
+      : '$(PERL_INC)/libperl_override$(LIB_EXT)';
+    $self->{EXPORT_LIST} = '$(BASEEXT).def';
+d140 5
+a144 1
+=item os_flavor
+d146 1
+a146 1
+OS/2 is OS/2
+d148 1
+a148 1
+=cut
+d150 1
+a150 3
+sub os_flavor {
+    return('OS/2');
+}
+a154 2
+
+1;
+@
+

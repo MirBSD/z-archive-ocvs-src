@@ -1,0 +1,259 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.02;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.02;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+#
+#  Copyright (c) 1995-2000, Raphael Manfredi
+#  
+#  You may redistribute only under the same terms as Perl 5, as specified
+#  in the README file that comes with the distribution.
+#  
+
+sub BEGIN {
+    if ($ENV{PERL_CORE}){
+	chdir('t') if -d 't';
+	@@INC = ('.', '../lib');
+    } else {
+	unshift @@INC, 't';
+    }
+    require Config; import Config;
+    if ($ENV{PERL_CORE} and $Config{'extensions'} !~ /\bStorable\b/) {
+        print "1..0 # Skip: Storable was not built\n";
+        exit 0;
+    }
+}
+
+
+use Storable qw(freeze thaw dclone);
+use vars qw($debugging $verbose);
+
+print "1..8\n";
+
+sub ok {
+    my($testno, $ok) = @@_;
+    print "not " unless $ok;
+    print "ok $testno\n";
+}
+
+
+# Uncomment the folowing line to get a dump of the constructed data structure
+# (you may want to reduce the size of the hashes too)
+# $debugging = 1;
+
+$hashsize = 100;
+$maxhash2size = 100;
+$maxarraysize = 100;
+
+# Use MD5 if its available to make random string keys
+
+eval { require "MD5.pm" };
+$gotmd5 = !$@@;
+
+# Use Data::Dumper if debugging and it is available to create an ASCII dump
+
+if ($debugging) {
+    eval { require "Data/Dumper.pm" };
+    $gotdd  = !$@@;
+}
+
+@@fixed_strings = ("January", "February", "March", "April", "May", "June",
+		  "July", "August", "September", "October", "November", "December" );
+
+# Build some arbitrarily complex data structure starting with a top level hash
+# (deeper levels contain scalars, references to hashes or references to arrays);
+
+for (my $i = 0; $i < $hashsize; $i++) {
+	my($k) = int(rand(1_000_000));
+	$k = MD5->hexhash($k) if $gotmd5 and int(rand(2));
+	$a1{$k} = { key => "$k", "value" => $i };
+
+	# A third of the elements are references to further hashes
+
+	if (int(rand(1.5))) {
+		my($hash2) = {};
+		my($hash2size) = int(rand($maxhash2size));
+		while ($hash2size--) {
+			my($k2) = $k . $i . int(rand(100));
+			$hash2->{$k2} = $fixed_strings[rand(int(@@fixed_strings))];
+		}
+		$a1{$k}->{value} = $hash2;
+	}
+
+	# A further third are references to arrays
+
+	elsif (int(rand(2))) {
+		my($arr_ref) = [];
+		my($arraysize) = int(rand($maxarraysize));
+		while ($arraysize--) {
+			push(@@$arr_ref, $fixed_strings[rand(int(@@fixed_strings))]);
+		}
+		$a1{$k}->{value} = $arr_ref;
+	}	
+}
+
+
+print STDERR Data::Dumper::Dumper(\%a1) if ($verbose and $gotdd);
+
+
+# Copy the hash, element by element in order of the keys
+
+foreach $k (sort keys %a1) {
+    $a2{$k} = { key => "$k", "value" => $a1{$k}->{value} };
+}
+
+# Deep clone the hash
+
+$a3 = dclone(\%a1);
+
+# In canonical mode the frozen representation of each of the hashes
+# should be identical
+
+$Storable::canonical = 1;
+
+$x1 = freeze(\%a1);
+$x2 = freeze(\%a2);
+$x3 = freeze($a3);
+
+ok 1, (length($x1) > $hashsize);	# sanity check
+ok 2, length($x1) == length($x2);	# idem
+ok 3, $x1 eq $x2;
+ok 4, $x1 eq $x3;
+
+# In normal mode it is exceedingly unlikely that the frozen
+# representaions of all the hashes will be the same (normally the hash
+# elements are frozen in the order they are stored internally,
+# i.e. pseudo-randomly).
+
+$Storable::canonical = 0;
+
+$x1 = freeze(\%a1);
+$x2 = freeze(\%a2);
+$x3 = freeze($a3);
+
+
+# Two out of three the same may be a coincidence, all three the same
+# is much, much more unlikely.  Still it could happen, so this test
+# may report a false negative.
+
+ok 5, ($x1 ne $x2) || ($x1 ne $x3);    
+
+
+# Ensure refs to "undef" values are properly shared
+# Same test as in t/dclone.t to ensure the "canonical" code is also correct
+
+my $hash;
+push @@{$$hash{''}}, \$$hash{a};
+ok 6, $$hash{''}[0] == \$$hash{a};
+
+my $cloned = dclone(dclone($hash));
+ok 7, $$cloned{''}[0] == \$$cloned{a};
+
+$$cloned{a} = "blah";
+ok 8, $$cloned{''}[0] == \$$cloned{a};
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

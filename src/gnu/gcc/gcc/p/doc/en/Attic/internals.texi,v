@@ -1,0 +1,1783 @@
+head	1.2;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.08.13.04.53.35;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.00.51;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.00.51;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@no C++, Java(TM), Pascal, Objective C or Fortran 77 for a while
+as discussed on the mailing list
+@
+text
+@@@c Copyright (C) 1996-2003 Free Software Foundation, Inc.
+@@c For copying conditions, see the file gpc.texi.
+@@c This file is part of the GPC Manual.
+@@c
+@@c Authors: Peter Gerwinski <peter@@gerwinski.de>
+@@c          Frank Heckenbach <frank@@pascal.gnu.de>
+@@c
+@@c Last modification: 2003-05-16 (file mostly up to date)
+
+@@node Internals
+@@chapter The GPC Source Reference
+@@cindex GPC, internals
+@@cindex source, internals
+@@cindex GPC source, internals
+@@cindex Internals
+
+@@quotation
+@@i{``The Source will be with you. Always.''}
+@@end quotation
+
+This chapter describes internals of GPC. It is meant for GPC
+developers and those who want to become developers, or just want to
+know more about how the compiler works. It does not contain
+information needed to just use GPC to compile programs.
+
+This chapter tells you how to look up additional information about
+the GNU Pascal compiler from its source code.
+
+@@c It replaces chapters like ``syntax diagrams'' you probably know from
+@@c the documentation of other compilers.
+@@c @@@@@@@@ Not really. Syntax diagrams are directed towards users, and
+@@c      Pascal programmers can't be expected to make sense of bison
+@@c      source with C statements (it's hard enough for us
+@@c      sometimes ... ;-). OK, so we just need a tool to draw syntax
+@@c      diagrams from a bison input. This might be feasible,
+@@c      actually. However, the bison grammar might not be the
+@@c      optimal description of the GPC syntax from a user's point of
+@@c      view ... -- Frank
+
+@@strong{Note:} If you intend to modify GPC's source, please check
+the top of each file you're going to modify. A number of files are
+generated automatically by various tools. The top of these files
+will tell you by which tool and from what file they were generated.
+Modifying a generated file is pointless, since it will be
+overwritten the next time the tool is run. Instead, modify the
+original source (which will usually be easier in fact, e.g. a bison
+input file vs. the generated C code). This also holds for various
+documentation and other files.
+
+Proprietary compilers often come with a lot of technical information
+about the internals of the compiler. This is necessary because their
+vendors want to avoid to distribute the source of the compiler --
+which is always the most definitive source of this technical
+information.
+
+With GNU compilers, on the other hand, you are free to get the
+source code, look how your compiler works internally, customize it
+for your own needs, and to re-distribute it in modified or
+unmodified form. You may even take money for this redistribution.
+(For details, see the GNU General Public License, @@ref{Copying}.)
+
+The following subsections are your guide to the GNU Pascal source
+code. If you have further questions, be welcome to ask them at the
+GNU Pascal mailing list (see @@ref{Support}).
+
+All file paths mentioned in this chapter are relative to the GNU
+Pascal source directory, a subdirectory @@file{gcc/p} below the
+top-level GCC source directory.
+
+The following sections roughly coincide with the order of the steps
+a Pascal source passes through during compilation (omitting the code
+generation which is the job of the GCC backend, and the assembler
+and linker steps at the end which are done by the programs @@samp{as}
+and @@samp{ld} of binutils and possibly other utilities like
+@@samp{collect2}). Also missing here is the compiler driver
+@@samp{gpc} which behaves very similarly to @@samp{gcc} and whose main
+job is to invoke the other parts in the right order, with the right
+arguments etc.
+
+Note, this chapter docuemnts only selected parts of the compiler.
+Many things are missing because nobody has yet had the time to write
+something about them. In any case, for real understanding of the
+inner workings, you should always refer to the source code.
+
+@@menu
+* Preprocessor::         @@file{gpcpp.c} -- The Pascal preprocessor
+* Lexical analyzer::     @@file{gpc-lex.c} -- How GPC reads your source.
+* Language definition::  @@file{parse.y} -- ``Syntax diagrams'' as ``Bison'' source.
+* Tree nodes::           @@file{../tree.*} -- How GPC stores your program internally.
+* Parameter passing::    @@file{typecheck.c} -- How GPC passes parameters.
+* GPI files::            @@file{module.c} -- How GPC's precompiled module/unit interfaces work.
+* Automake::             @@file{module.c} -- How GPC automatically ``makes'' a large project.
+* File Layout::          Files that make up GPC
+* Planned::              Planned features
+@@end menu
+
+For more information, see the manual of GCC internals,
+@@ref{Top,,,gccint}.
+
+
+@@c ========================================================================
+
+
+@@node Preprocessor
+@@section The Pascal preprocessor
+@@cindex preprocessor, internals
+
+@@samp{gpcpp} is based on the C preprocessor, so it does everything
+@@samp{cpp} does (see the cpp manual) and some more.
+In particular:
+
+@@itemize @@bullet
+
+@@item Comments like @@samp{cpp} does, but within @@samp{@@{ @@dots{} @@}}
+and @@samp{(* @@dots{} *)}, also after @@samp{//} if
+@@samp{delphi-comments} is active, never within @@samp{/* @@dots{} */}.
+Also mixed comments (@@samp{@@{ @@dots{} *)}, @@samp{(* @@dots{} @@}}) if
+enabled (@@samp{mixed-comments}) and nested comments (e.g.
+@@samp{@@{ @@dots{} @@{ @@dots{} @@} @@dots{} @@}}) if enabled
+(@@samp{nested-comments})
+
+@@item Macros and conditionals like @@samp{cpp} does, but both case
+sensitive and insensitive ones; @@samp{no-macros} to turn macro
+expansion off (e.g., for BP compatibility)
+
+@@item @@samp{ifopt} for short and long options
+
+@@item Include files like @@samp{cpp} does, but also with
+@@samp{@@{$I @@dots{}@@}} (BP style), which allows the file name
+extension to be omitted
+
+@@item Recognize Pascal strings (to avoid looking for comments and
+directives within strings) enclosed in single (like Standard Pascal)
+or double quotes (like C).
+
+@@item Option handling, sharing tables in @@file{gpc-options.h} with
+the compiler:
+@@itemize @@minus
+@@item Default option settings
+@@item Options can imply other options (e.g.,
+@@samp{borland-pascal} -> @@samp{no-macros} etc.)
+@@item Short compiler directives
+@@item Short directive @@samp{W} (warnings) is disabled in
+@@samp{borland-pascal} and @@samp{delphi} because it has another
+meaning there
+@@end itemize
+
+@@item Compiler directives (@@samp{@@{$@@dots{}@@}} or
+@@samp{(*$@@dots{}*)}):
+@@itemize @@minus
+@@item pass them through, so the compiler can handle them
+@@item keep track of them for @@samp{ifopt}
+@@item handle those that affect the preprocessor (e.g., about
+comments)
+@@item allow comments within compiler directives if nested comments
+are enabled
+@@item local directives
+@@item case insensitive
+@@end itemize
+
+@@item Slightly Pascal-like syntax for conditional compilation
+(@@samp{not} -> @@samp{!}, @@samp{and} -> @@samp{&&},
+@@samp{or} -> @@samp{||}, @@samp{xor} -> @@samp{!=},
+@@samp{shl} -> @@samp{<<}, @@samp{shr} -> @@samp{>>},
+@@samp{False} -> @@samp{0}, @@samp{True} -> @@samp{1},
+@@samp{<>} -> @@samp{!=}, @@samp{=} -> @@samp{==})
+
+@@item Line directives like @@samp{cpp} does, but recognize BP style
+(@@samp{#42} or @@samp{#$f0}) character constants and don't confuse
+them with line directives (the latter seem to always have a space
+after the @@samp{#})
+
+@@end itemize
+
+
+@@c ========================================================================
+
+
+@@node Lexical analyzer
+@@section GPC's Lexical Analyzer
+@@cindex lexical analyzer, internals
+
+The source file @@file{gpc-lex.c} contains the so-called
+@@emph{lexical analyzer} of the GNU Pascal compiler. (For those of
+you who know @@file{flex}: This file was @@emph{not} created using
+@@file{flex} but is maintained manually.) This very-first stage of
+the compiler (after the preprocessor which is a separate executable)
+is responsible for reading what you have written and dividing it
+into @@emph{tokens}, the ``atoms'' of each computer language. The
+source @@file{gpc-lex.c} essentially contains one large function,
+@@samp{yylex()}.
+
+Here is, for example, where the real number @@samp{3.14} and the
+subrange of integers @@samp{3..14} are distinguished, and where
+strings constants, symbols etc. are recognized.
+
+@@menu
+* BP character constants::
+* Compiler directives internally::
+@@end menu
+
+@@node BP character constants
+@@subsection BP character constants
+@@cindex BP character constants, internals
+@@cindex character constants, internals
+
+Borland-style character constants of the form @@samp{^M} need special
+care. For example look at the following type declaration:
+
+@@example
+type
+  X = Integer;
+  Y = ^X;        @@{ pointer type @@}
+  Z = ^X .. ^Y;  @@{ subrange type @@}
+@@end example
+
+One way to resolve this is to try to let the parser tell the lexer
+(via a global flag) whether a character constant or the symbol
+@@samp{^} (to create pointer types or to dereference pointer
+expressions) is suitable in the current context. This was done in
+previous versions, but it had a number of disadvantages: First, any
+dependency of the lexer on the parser (@@pxref{Lexical Tie-Ins, , ,
+bison}) is problematic by itself since it must be taken care of
+manually in each relevant parser rule. Furthermore, the parser
+read-ahead must be taken into account, so the flag must usually be
+changed apparently one token too early. Using a more powerful
+parsing algorithm such as GLR (@@pxref{GLR Parsers, , , bison}) adds
+to this problem since it may read many tokens while the parser is
+split before it can perform any semantic action (which is where the
+flag could be modified). Secondly, as the example above shows, there
+are contexts in which both meanings are acceptable. So further
+look-ahead (within the lexer) was needed to resolve the problem.
+
+Therefore, the current version of GPC uses another approach. When
+seeing @@samp{^X}, the lexer returns two tokens, a regular @@samp{^}
+and a special token @@samp{LEX_CARET_LETTER} with semantic value
+@@samp{X}. The parser then accepts @@samp{LEX_CARET_LETTER} wherever
+an identifier is accepted (and turns it into the identifier @@samp{X}
+via the nonterminal @@samp{caret_letter}). Furthermore, it accepts
+the sequence @@samp{^}, @@samp{LEX_CARET_LETTER} as a string constant
+(whose value is a one-character string). Since
+@@samp{LEX_CARET_LETTER} is only produced by the lexer immediately
+after @@samp{^} (no white-space in between), this works (whereas
+otherwise, pasting tokens in the parser is not reliable due to
+white-space, e.g. the token sequence @@samp{:} and @@samp{=} could
+stand for @@samp{:=} (if @@samp{:=} weren't a token by itself), but
+also for @@samp{: =} with a space in between). With this trick, we
+can handle @@samp{^} followed by a single letter or underscore. The
+fact that this doesn't cause any conflicts in the bison parser tell
+us that this method works.
+
+However, BP even allows any other character after @@samp{^} as a char
+constant. Some characters are unproblematic because they can never
+occur after a @@samp{^} in its regular meaning, so the sequence can
+be lexed as a char constant directly. These are all characters that
+are not part of any Pascal tokens at all (which includes all control
+characters except white-space, all non-ASCII characters and the
+characters @@samp{!}, @@samp{&}, @@samp{%}, @@samp{?}, @@samp{\},
+@@samp{`}, @@samp{|}, @@samp{~} and @@samp{@@}} -- the last one occurs at
+the end of comments, but within a comment this issue doesn't occur,
+anyway) and those characters that can only start constants because a
+constant can never follow a @@samp{^} in Pascal (which are @@samp{#},
+@@samp{$}, @@samp{'}, @@samp{"} and the digits).
+
+For @@samp{^} followed by whitespace, we return the token
+@@samp{LEX_CARET_WHITE} which the parser accepts as either a string
+constant or equivalent to @@samp{^} (because in the regular meaning,
+the white-space is meaningless).
+
+If @@samp{^} is followed by one of the tokens @@samp{,}, @@samp{.},
+@@samp{:}, @@samp{;}, @@samp{(}, @@samp{)}, @@samp{[}, @@samp{]},
+@@samp{+}, @@samp{-}, @@samp{*}, @@samp{/}, @@samp{<}, @@samp{=},
+@@samp{>}, @@samp{@@@@}, @@samp{^}, the lexer just returns the tokens
+regularly, and the parser accepts these sequences as a char constant
+(besides the normal meaning of the tokens). (Again, since
+white-space after @@samp{^} is already dealt with, this token pasting
+works here.)
+
+But @@samp{^} can also be followed by a multi-character alphanumeric
+sequence such as @@samp{^cto} which might be read as @@samp{^ cto} or
+@@samp{^c to} (since BP also allows omitting white-space after
+constants), or by a multi-character token such as @@samp{^<=} which
+could be @@samp{^ <=} or @@samp{^< =}. Both could be solved with extra
+tokens, e.g. lexing @@samp{^<=} as @@samp{^}, @@samp{LEX_CARET_LESS},
+@@samp{=} and accepting @@samp{^}, @@samp{LEX_CARET_LESS} in the parser
+as a string constant and @@samp{LEX_CARET_LESS}, @@samp{=} as
+equivalent to @@samp{<=} (relying on the fact that the lexer doesn't
+produce @@samp{LEX_CARET_LESS} if there's white-space after the
+@@samp{<} because then the simple @@samp{^}, @@samp{<} will work, so
+justifying the token-pasting once again). This has not been done yet
+(in the alphanumeric case, this might add a lot of special tokens
+because of keywords etc., and it's doubtful whether that's worth
+it).
+
+Finally, we have @@samp{^@@{} and @@samp{^(*}. This is so incredibly
+stupid (e.g., think of the construct @@samp{type c = Integer; foo =
+^@@{ .. ^|; bar = @@{@@} c;} which would become ambiguous then), that
+perhaps we should not attempt to handle this @@dots{}
+
+(As a side-note, BP itself doesn't handle @@samp{^} character
+constants in many situations, including many that GPC does handle
+with the mechanisms described above, probably the clearest sign for
+a design bug. But if we support them at all, we might just as well
+do it better than BP @@dots{} :--)
+
+@@node Compiler directives internally
+@@subsection Compiler directives internally
+@@cindex Compiler directives, internals
+@@cindex BP character constants, internals
+@@cindex character constants, internals
+
+Compiler directives are mostly handled in @@file{options.c}, mostly
+in common with command-line options, using the definitions in
+@@file{lang-options.h} and the tables in @@file{gpc-options.h}.
+
+A special problem is that the parser sometimes has to read tokens
+before they're used to decide what to do next. This is generally
+harmless, but if there is a compiler directive before such a
+look-ahead token, it would be handled apparently too early. This
+looks strange from the programmer's point of view -- even more so
+since the programmer cannot easily predict when the parser needs to
+read ahead and when not, and therefore cannot be sure where exactly
+to place the directive (especially for local directives that are
+meant to have a scope as small as possible).
+
+To solve this problem (and in turn give the parser more freedom for
+further look ahead which is useful, e.g., for a GLR parser), GPC
+keeps the options that can be changed by directives in a
+@@samp{struct options}. There are several pointers to such a
+structure:
+
+@@samp{lexer_options} are the options current to the lexer. These are
+always the ones read most recently. Compiler directives are applied
+here when read. Each directive creates a new @@samp{struct options}
+which is chained in a linked list to the previous ones.
+
+@@samp{compiler_options} points to the options current for the
+compiler, i.e. seen before the last token handled in a parser rule.
+To facilitate this, we abuse Bison's location tracking feature
+(@@pxref{Locations, , , bison}) and refer to the options seen before
+a token in the token's location (@@samp{yylloc}). Before each grammar
+rule is handled, the compiler options are updated to those of the
+last token involved in the rules handled so far, using Bison's
+@@samp{YYLLOC_DEFAULT} feature. Actual locations, used for error
+messages etc., are handled the same way (according to the real
+purpose of Bison's location tracking), also distinct for the lexer
+and compiler.
+
+Note: Tokens are not always handled in order. E.g., in @@samp{2 + 3 *
+4}, first @@samp{3 * 4} is evaluated, then @@samp{2 + 12}, i.e., the
+tokens @@samp{2} and @@samp{+} are handled after the following tokens.
+To avoid jumping back in the options, we store a counter, rather
+than a pointer, in @@samp{yyloc}, so we can compare it to the current
+counter. This also allows us to free any @@samp{struct options} that
+@@samp{compiler_options} has advanced beyond because it can never go
+back.
+
+Finally, the pointer @@samp{co} points to the current options which
+is @@samp{lexer_options} when we're in the lexer and
+@@samp{compiler_options} otherwise. All routines that use or set
+options refer to @@samp{co}, so there is no problem when they may be
+called both from the lexer and from other parts of the compiler
+(e.g., @@samp{lookup_name}).
+
+Note: Some of the options are flags declared in the backend. Since
+we can't keep them in @@samp{struct option} directly, we have to copy
+them back and forth in @@samp{activate_options}. This is a little
+annoyance, but no real problem.
+
+
+@@c ========================================================================
+
+
+@@node Language definition
+@@section Language Definition: GPC's Parser
+@@cindex language definition, internals
+@@cindex parser, internals
+@@cindex grammar, internals
+@@cindex front-end, internals
+
+The file @@file{parse.y} contains the ``bison'' source code of GNU
+Pascal's parser. This stage of the compilation analyzes and checks
+the syntax of your Pascal program, and it generates an intermediate,
+language-independent code which is then passed to the GNU back-end.
+
+The @@emph{bison} language essentially is a machine-readable form of
+the Backus-Naur Form, the symbolic notation of grammars of computer
+languages. ``Syntax diagrams'' are a graphical variant of the
+Backus-Naur Form.
+
+For details about the ``bison'' language, see the Bison manual. A
+short overview how to pick up some information you might need for
+programming follows.
+
+Suppose you have forgotten how a variable is declared in Pascal.
+After some searching in @@file{parse.y} you have found the following:
+
+@@example
+simple_decl_1:
+    @@dots{}
+  | p_var variable_declaration_list
+      @@{ [@@dots{}] @@}
+  ;
+
+variable_declaration_list:
+    variable_declaration @@{ @@}
+  | variable_declaration_list variable_declaration
+  ;
+@@end example
+
+Translated into English, this means: ``A declaration can (amoung
+other things like types and constants, omitted here) consist of the
+keyword (lexical token) @@samp{var} followed by a `variable
+declaration list'. A `variable declaration list' in turn consists of
+one or more `variable declarations'.'' (The latter explanation
+requires that you understand the recursive nature of the definition
+of @@samp{variable_declaration_list}.)
+
+Now we can go on and search for @@samp{variable_declaration}.
+
+@@example
+variable_declaration:
+    id_list_limited ':' type_denoter_with_attributes
+      @@{ [@@dots{}] @@}
+    absolute_or_value_specification optional_variable_directive_list ';'
+      @@{ [@@dots{}] @@}
+  ;
+@@end example
+
+The @@samp{[@@dots{}]} are placeholders for some C statements, the
+@@dfn{semantic actions} which (for the most part) aren't important
+for understanding GPC's grammar.
+
+From this you can look up that a variable declaration in GNU Pascal
+consists of an identifier list, followed by a colon, ``type denoter
+with attributes'', an ``absolute or value specification'' and an
+``optional variable directive list'', terminated by a semicolon.
+Some of these parts are easy to understand, the others you can look
+up from @@file{parse.y}. Remember that the reserved word @@samp{var}
+precedes all this.
+
+Now you know how to get the exact grammar of the GNU Pascal language
+from the source.
+
+The semantic actions, not shown above, are in some sense the most
+important part of the bison source, because they are responsible for
+the generation of the intermediate code of the GNU Pascal front-end,
+the so-called @@emph{tree nodes} (which are used to represent most
+things in the compiler). For instance, the C code in ``type
+denoter'' returns (assigns to @@samp{$$}) information about the type
+in a variable of type @@samp{tree}.
+
+The ``variable declaration'' gets this and other information in the
+numbered arguments (@@samp{$1} etc.) and passes it to some C
+functions declared in the other source files. Generally, those
+functions do the real work, while the main job of the C statements
+in the parser is to call them with the right arguments.
+
+This, the parser, is the place where it becomes Pascal.
+
+@@menu
+* Parsing keywords::   So many keywords, so many problems @@dots{}
+* Parsing subranges::  Expressions as lower bounds of subranges
+@@end menu
+
+
+@@c ========================================================================
+
+
+@@node Parsing keywords
+@@subsection So many keywords, so many problems @@dots{}
+@@cindex keywords, internals
+@@cindex parsing, internals
+
+Keywords can be potential problems since they are (generally) not
+available for use as identifiers. Only those keywords that are
+defined in ISO 7185 Pascal are unproblematic because no valid
+program should ever use them as identifiers.
+
+To cope with this problem, GPC does several things:
+
+@@itemize @@bullet
+
+@@item
+If a dialect option is set, only keywords of the specified dialect
+are enabled. All possible keywords, together with their dialects,
+are defined in @@file{predef.h}. However, compiling with dialect
+options is usually not recommended, so this is no good general
+solution.
+
+@@item
+The user can turn off individual keywords using the compiler
+directive @@samp{@@{$disable-keyword@@}}. This makes sure that every
+conflict with a user's identifier @@emph{can} be avoided, but with
+extra work on part of the user.
+
+@@item
+The parser used to enable and disable keywords in certain syntactic
+contexts. However, this was rather fragile since it interacts with
+the parser's read-ahead, and it requires attention on every related
+change in the parser. Therefore, this mechanism was removed.
+
+@@item
+Many of the problematic keywords are now treated as ``weak''. This
+means, they are only recognized as keywords if no current
+declaration of this name exists. However, so that this can work, it
+must be possible to create new declarations of this name in the
+first place -- at this point, no declaration exists yet, so the name
+is recognized as a keyword.
+
+This is solved by listing these keywords in the
+@@samp{new_identifier} rule of the parser. This means, first the
+lexer recognizes them as keywords, then the parser ``turns them
+back'' into identifiers. The advantage, compared to explicit
+enabling and disabling of keywords, is that bison automatically
+finds the places in which to apply the @@samp{new_identifier} rule,
+i.e. treat them as plain identifiers.
+
+Of course, there is a catch. Since the keyword tokens are listed in
+@@samp{new_identifier}, they can conflict with occurrences of the
+actual keywords (bison will find such cases as S/R or R/R
+conflicts). Such conflicts have to be sorted out carefully.
+Fortunately, for many keywords, this turned out quite easy -- in
+some cases no conflicts at all arose. One especially complicated
+example is explained below in detail. If it is not possible to solve
+the conflicts for a particular keyword, this keyword cannot be
+handled this way.
+@@end itemize
+
+The following sections describe the most problematic keywords:
+
+@@menu
+* attribute as a weak keyword::
+* external as a weak keyword::
+* forward near far::
+* implementation constructor destructor operator uses import initialization::
+@@end menu
+
+These descriptions should make it clear that we're walking on the
+bleeding edge of what's possible with LALR(1) and lexer tricks.
+Trying much more will probably increase the complexity to the
+unmanageable.
+
+@@node attribute as a weak keyword
+@@subsubsection @@samp{attribute} as a weak keyword
+@@cindex attribute, internals
+@@cindex new_identifier_limited, internals
+
+Note that in the following we use the spelling @@samp{attribute} when
+referring to the directive and @@samp{Attribute} for an identifier.
+This is according to the GPCS and might make the following text
+clearer. However, it cannot be a criterion for resolving the
+conflict since the compiler must treat both spellings equally. The
+same applies, of course, to the line-breaks and white-space used
+here for readability.
+
+Making @@samp{attribute} a weak keyword leads to a S/R conflict in
+variable declarations (whereas routine declarations go without
+conflicts). Consider this case:
+
+@@example
+var
+  a: Integer; attribute (@@dots{})
+@@end example
+
+vs.
+
+@@example
+var
+  a: Integer;
+  Attribute: @@dots{}
+@@end example
+
+After reading the @@samp{;}, the parser must decide whether to shift
+it, or to reduce to a variable declaration. But the next token
+@@samp{attribute} doesn't decide it, and bison can only look ahead
+one token.
+
+The following token would resolve the problem, since the directive
+@@samp{attribute} is always followed by @@samp{(} whereas an
+identifier in a variable declaration can be followed by @@samp{,} or
+@@samp{:}, but never @@samp{(}.
+
+More generally, an identifier in an @@samp{id_list} in the parser can
+never be followed by @@samp{(} (while identifiers in other contexts
+can be, e.g. in function calls). This must be carefully checked
+manually through the whole grammar!
+
+Thus, the solution consists of two steps. Firstly, the @@emph{lexer}
+does the additional look-ahead that bison can't do. When it reads
+the word @@samp{attribute} (and it is not disabled by dialect options
+or by the user or shadowed by some declaration), then if the next
+token is not @@samp{(}, it can only be an identifier, so the lexer
+returns @@samp{LEX_ID}. If the next token is @@samp{(}, the lexer
+returns @@samp{p_attribute}.
+
+Lexer look-ahead is not really nice, either, e.g. because it
+increases the ``shift'' of compiler directives. At least, we only
+have to read ahead two characters plus preceding white-space (two
+because of @@samp{(.}), and not an actual token -- the latter would
+add additiional complications of saving and restoring lexer semantic
+values and the state of lexer/parser interrelation variables such as
+@@samp{lex_const_equal}, and then either lex the token again later or
+handle the cases where the parser modifies these variables in
+between. This would get really messy.
+
+Secondly, the parser accepts @@samp{p_attribute} as an identifier
+@@emph{except} in an @@samp{id_list}. To achieve this, the nonterminal
+@@samp{new_identifier_limited} is used within @@samp{id_list}.
+
+@@emph{Note:} Using @@samp{new_identifier_limited} does @@emph{not}
+mean that @@samp{Attribute} can't be used as an identifier in this
+place. Instead, this nonterminal can never be followed by @@samp{(},
+so the lexer will have turned @@samp{Attribute} into a @@samp{LEX_ID}
+token already.
+
+Actually, that's not all: In a @@samp{constant_definition}, the
+conflict is not against @@samp{id_list}, but against a simple
+@@samp{new_identifier}. But we can just use
+@@samp{new_identifier_limited} instead in the
+@@samp{constant_definition} rule.
+
+This finally solves all conflicts with @@samp{attribute}.
+@@file{fjf792*.pas} are test programs for these cases.
+
+@@node external as a weak keyword
+@@subsubsection @@samp{external} as a weak keyword
+@@cindex external, internals
+
+The situation about @@samp{external} is similar to @@samp{attribute}.
+However, on the positive side, we don't have to worry about
+constants which cannot be external -- by definition, since
+initialization and external declaration contradict each other.
+
+The new problems are that an @@samp{external} directive can be
+followed by @@samp{;}, @@samp{name} and by many more tokens if GPC
+will support a BP compatible @@samp{external @@var{libname}} where
+@@var{libname} can be a string constant expression.
+
+So we have to consider the problem from the other side. In an
+@@samp{id_list} of a variable declaration (which is the only
+conflict, given the notes about attribute, @@ref{attribute as a weak
+keyword}.), an identifier can be followed only by @@samp{,} and
+@@samp{:}. These two tokens cannot follow an @@samp{external}
+directive (not even in @@samp{external @@var{libname}}).
+
+However, in other contexts, identifiers can be followed by other
+tokens (even in an @@samp{id_list}, e.g. @@samp{procedure Foo (var
+External; i: Integer);}), so we accept @@samp{p_external} as a
+@@samp{new_identifier} everywhere except in variable declarations
+(@@samp{new_identifier_limited} @@samp{id_list_limited}).
+
+@@file{fjf793*.pas} are test programs for @@samp{external}.
+
+(Basically the same applies to the deprecated @@samp{asmname}.)
+
+@@node forward near far
+@@subsubsection @@samp{forward}, @@samp{near} and @@samp{far} as weak keywords
+@@cindex forward, internals
+@@cindex near, internals
+@@cindex far, internals
+
+@@samp{forward} is a little special in ISO 7185 in that it is no
+keyword, so it may be used as an identifier and a directive at the
+same time. That's more than what our weak keywords allow.
+
+This problem would be easy to solve if we just parsed it as a plain
+identifier (@@samp{LEX_ID}) and then check that it was in fact
+@@samp{forward}.
+
+However, the same applies to the BP directives @@samp{near} and
+@@samp{far}. (At least so it seems -- the BP documentation claims
+they're reserved words, but the compiler seems to think otherwise.)
+
+Parsing all the three together as an identifier and then checking
+which one it was fails because @@samp{forward} is a remote directive,
+i.e. a routine declared so has no body, while @@samp{near} and
+@@samp{far} are not. So it makes a syntactical difference for what
+follows.
+
+So we need a new trick: We lex the three like regular (non-weak)
+keywords, but throw their tokens together with @@samp{LEX_ID} very
+early in the parser, in the @@samp{id} rule which is used everywhere
+an existing identifier is expected. But in the context of these
+three directives, no identifier is allowed, so the three tokens can
+be used without conflicts between each other or with @@samp{id}.
+
+@@node implementation constructor destructor operator uses import initialization
+@@subsubsection @@samp{implementation}, @@samp{constructor}, @@samp{destructor}, @@samp{operator}, @@samp{uses}, @@samp{import} and @@samp{initialization} as weak keywords
+@@cindex implementation, internals
+@@cindex constructor, internals
+@@cindex destructor, internals
+@@cindex operator, internals
+@@cindex uses, internals
+@@cindex import, internals
+@@cindex initialization, internals
+
+In ISO 7185 Pascal, each section of the source code is uniquely
+introduced by a keyword (@@samp{program}, @@samp{const}, @@samp{type},
+@@samp{var}, @@samp{label}, @@samp{procedure}, @@samp{function},
+@@samp{begin}). However, the ending of some of these sections (in
+particular @@samp{const}, @@samp{type} and @@samp{var}) is not
+intrinsically defined, but only by the context (the next of these
+``critical'' keywords). E.g., @@samp{var Foo: Integer;} can be a
+complete variable declaration part (if one of those keywords
+follows), or only a part of one, as in @@samp{var Foo: Integer; Bar:
+Integer;}. (For the other keywords, the ending is intrinsically
+defined -- the @@samp{program} heading and @@samp{label} declarations
+end with the next @@samp{;}. For @@samp{procedure} and @@samp{function}
+it's a little more complicated, due to @@samp{forward} declarations,
+but still well-defined, and @@samp{begin} ends with the matching
+@@samp{end}). The same applies to sections within one routine, except
+that @@samp{program} cannot occur there.
+
+Extended Pascal adds @@samp{to} (in @@samp{to begin do} and @@samp{to
+end do}) and @@samp{end} (in interface modules and implementation
+modules without initializer and finalizer) to those ``critical''
+keywords.
+
+But it also adds two keywords which are not defined in classic
+Pascal, namely @@samp{export} and @@samp{import}. But they can only
+occur at the beginning of the source or of a module implementation
+so they have fewer chances to conflict with those other keywords.
+The same applies to UCSD/Borland Pascal's @@samp{uses} for units.
+(@@samp{uses} terminates at the first @@samp{;}, @@samp{export} and
+@@samp{import} do not necessarily, like @@samp{var} etc.)
+
+The problem gets bigger with UCSD/Borland Pascal's
+@@samp{implementation} in units. It can occur after the interface
+part, so it might follow, e.g., a variable declaration part. And it
+is not an ISO 7185 Pascal keyword.
+
+If we want to treat @@samp{implementation} as a weak keyword, it must
+not conflict with @@emph{new} identifiers anywhere in the grammar.
+
+However, variable declaration parts are not self-contained in the
+sense described above, so after a variable declaration part it is
+not immediately clear if the part is finished or will continue. So
+this is a place where a new identifier is acceptable. E.g.:
+
+@@example
+interface
+
+var
+  Bar: Integer;
+  Implementation: Integer;
+@@end example
+
+vs.
+
+@@example
+interface
+
+var
+  Bar: Integer;
+
+implementation
+@@end example
+
+The same applies to @@samp{implementation} after @@samp{const},
+@@samp{type}, @@samp{export} and @@samp{import} parts.
+
+The same problem also occurs with the Borland Pascal and Object
+Pascal keywords @@samp{constructor} and @@samp{destructor}, the
+Borland Delphi keyword @@samp{initialization}, and the PXSC keyword
+@@samp{operator} since the respective declarations can follow
+variable declaration blocks etc. It also happens with @@samp{import}
+(but it is only possible after an @@samp{export} part) and with
+@@samp{uses} if we allow it after other declarations (GPC extension).
+
+Again, we play some lexer tricks. We observe that the new identifier
+in @@samp{export}, @@samp{var}, @@samp{const} and @@samp{type} is always
+followed by either @@samp{,}, @@samp{:} or @@samp{=} while none of the
+keywords @@samp{implementation}, @@samp{constructor},
+@@samp{destructor}, @@samp{operator}, @@samp{import} and @@samp{uses} is
+ever followed by one of these symbols @@dots{} with two exceptions:
+@@samp{operator =} is valid, overloading the @@samp{=} operator.
+Consider:
+
+@@example
+type
+  Foo = record end;
+  Operator = (a, b);  @@{ enum type @@}
+@@end example
+
+vs.
+
+@@example
+type
+  Foo = record end;
+
+operator = (a, b: Foo) c: Foo;
+@@end example
+
+To decide whether @@samp{operator} is a keyword, we would have to
+look ahead @@emph{six tokens}! Anyway, that seems to be a new record
+(where ``record'' in this sentence can be read either as a Pascal
+keyword or in at least one of the usual English meanings ;--).
+@@c I wish you good luck translating this, if someone will ever try ...
+
+The other exception is that @@samp{initialization} can, in principle,
+be followed by @@samp{(}, as in:
+
+@@example
+implementation
+
+type
+  Foo = Integer;
+  Initialization (Obj: Integer)
+@@end example
+
+vs.
+
+@@example
+implementation
+
+type
+  Foo = Integer;
+
+Initialization
+  (Obj as SubObj).Method;
+@@end example
+
+This would require 3 tokens look-ahead. However, a @@samp{(} at the
+beginning of a statement is quite uncommon, so we just disallow
+that, so the use of @@samp{Initialization} as an identifier is not
+restricted.
+
+Doing so much look-ahead would be a huge effort and cause some
+complications as noted above. This seems inappropriate for such an
+academic example. So, until someone comes up with a clever trick to
+cope with this case, we give up here and let @@samp{operator} before
+@@samp{=} be a keyword, so overloading @@samp{=} is possible. This
+means that @@samp{operator} cannot be used as an @@samp{export}
+interface, a type or an (untyped) constant, unless the keyword is
+disabled explicitly or by dialect options. (Enabling and disabling
+the keyword by the parser would also have been no option here, since
+the parser would need the 6-token look-ahead just as well, which it
+cannot do.)
+
+You may have noticed that we ``forgot'' @@samp{import} (in the list
+of possibly unfinished sections; not in the list of critical
+following keywords where it was alright; it actually plays both
+roles in this discussion).
+
+This is because the identifier at the beginning of an import
+specification can be followed by @@samp{qualified}, @@samp{only},
+@@samp{in}, @@samp{(} or @@samp{;} -- the former two of which are
+non-standard keywords as well and would therefore conflict with a
+new identifier after, e.g., @@samp{uses} and @@samp{operator}.
+
+This means that there's no simple general solution. So let's
+consider the problematic keywords after an @@samp{import} part in
+detail:
+
+@@itemize @@bullet
+
+@@item @@samp{import}. Can't happen since EP only allows only
+@@samp{import} part (possibly containing multiple import
+specifications). So this one doesn't cause a S/R conflict, unlike
+the following ones.
+
+@@item @@samp{uses}. Combining module-style @@samp{import} with
+unit-style @@samp{uses} is a direct mix of different standards.
+According to the discussion above, it would lead to the following
+ambiguity:
+
+@@example
+import Foo; Uses only (a);  @@{ import only @@samp{a} from @@samp{Uses} @@}
+@@end example
+
+vs.
+
+@@example
+import Foo;
+
+uses Only (a);  @@{ import @@samp{a} from @@samp{Only} @@}
+@@end example
+
+Though @@samp{uses} with an import-list is another ``cross-standard''
+extension, disallowing it would only reduce the issue from an
+ambiguity to a two-token look-ahead conflict and not really help
+much -- whereas it would devalue the usefulness of @@samp{uses} which
+otherwise can always serve as a substitute for @@samp{import}, e.g.
+to avoid all the conflicts discussed here (because @@samp{uses} is
+terminated by the first @@samp{;}).
+
+@@item @@samp{operator}.
+
+@@example
+import Foo; Operator only (a, b);
+@@end example
+
+(i.e., import only @@samp{a} and @@samp{b} from an interface called
+@@samp{Operator}), vs.
+
+@@example
+import Foo;
+
+operator Only (a, b: Integer) c: Integer;
+@@end example
+
+As in the case of @@samp{operator =}, we would need 6 tokens of
+look-ahead. We have to give up.
+
+@@item @@samp{implementation}. This does not happen for module
+implementations since their syntax is different (@@samp{module Foo
+implementation;}), but for unit implementations. Combining these
+with module-style @@samp{import} is therefore ``cross-standard''
+already. In addition, it would imply an empty interface part (apart
+from the imports) which is rather pointless in units (whereas it
+might be useful in modules, containing only re-exports, but as
+noted, module implementations are unproblematic here).
+
+@@item @@samp{constructor} and @@samp{destructor}. In an interface,
+these actually do not make sense immediately after @@samp{import}
+since their purpose is to implement constructors and destructors of
+object types that must have been declared before (not imported). But
+it could happen in an implementation.
+
+@@end itemize
+
+We forbid all of these keywords immediately after an @@samp{import}
+part. This is achieved using parser precedence rules.
+
+
+@@c ========================================================================
+
+
+@@node Parsing subranges
+@@subsection Expressions as lower bounds of subranges
+@@cindex subranges, internals
+@@cindex lower bounds, internals
+@@cindex parsing, internals
+
+Extended Pascal allows arbitrary expressions as the lower bounds of
+subrange types. This leads to some following parsing difficulties:
+
+@@example
+type
+  a = (expr1) .. expr2;
+@@end example
+
+(if @@samp{expr1} starts with an identifier) vs.
+
+@@example
+type
+  a = (enum1, enum2);
+@@end example
+
+If the enum type contains at least two items, we get no real
+conflicts, but what the bison manual calls ``mystery conflicts'',
+i.e. our grammer is LR(1), but not LALR(1) which bison requires,
+@@ref{Mystery Conflicts, , , bison}.
+
+Our solution is the one suggested in the bison manual, to add a
+bogus rule. For that we add a new terminal @@samp{BOGUS} which is
+never used and a new nonterminal @@samp{conflict_id} which contains
+the identifiers that are responsible for the six conflicts.
+
+It gets more difficult if the enum type has only one item, i.e.:
+
+@@example
+type
+  a = (enum1);
+@@end example
+
+If further @@samp{expr1} consists of a single identifier, the
+conflict cannot be resolved without reading the token following the
+right parenthesis. (This is inherent in the EP language.)
+
+But already after reading the identifier (@@samp{expr1} or
+@@samp{enum1}), our parser has to decide whether to reduce it to an
+expression or to keep it as an identifier. (The alternative would be
+to define an expression which is anything but a single identifier,
+and parse @@samp{(@@var{identifier})} as a distinct thing, but this
+would get quite hairy.)
+
+We resolve it with a lexer hack. The lexer turns a right parenthesis
+which is followed by @@samp{..} into the new token @@samp{LEX_RPAR}.
+Most places in the parser treat @@samp{LEX_RPAR} and @@samp{)} as
+equivalent (nonterminal @@samp{rpar}). However, enum types allow only
+@@samp{)} (they can never be followed by @@samp{..}), and the lower
+bound of a subrange allows only @@samp{LEX_RPAR} (it is always
+followed by @@samp{..}). This resolves the conflict.
+
+But there are more conflicts if the lower bound is not enclosed in
+parentheses:
+
+@@example
+type
+  a = Foo (42) .. expr2;
+@@end example
+
+(where @@samp{Foo} can be one of certain built-in functions such as
+@@samp{Sqr}, or a type name for a type-cast) vs.
+
+@@example
+type
+  a = Bar (42);
+@@end example
+
+(where @@samp{Bar} is an undiscriminated schema type).
+
+@@c disabled
+To resolve this, we let the lexer return a special token
+@@samp{LEX_SCHEMA} for identifiers which correspond to
+undiscriminated schema types. The parser accepts this token in
+@@samp{new_identifier} (so schema identifiers can be redefined) and
+@@samp{typename} (e.g. for parameters), but not in @@samp{id} (which
+appears in expressions) where undiscriminated schema types are
+invalid.
+
+The last conflict:
+
+@@example
+type
+  a = @@@@Foo = (@@var{expr}) .. expr2;
+@@end example
+
+(where @@samp{@@@@} is the BP address operator -- the
+@@samp{= (@@var{expr})} is there to create an ordinal (namely,
+Boolean) expression that starts with the address operator) vs.
+
+@@example
+type
+  a = @@@@Bar = (@@var{expr});
+@@end example
+
+(where @@samp{@@@@} is a lexical alternative for @@samp{^}, according to
+the standards).
+
+The conflict arises already with the @@samp{@@@@} token. The @@samp{=}
+(as a comparison operator in the first case, and for a type
+initializer -- EP extension, combined with a BP extension of using
+@@samp{=} instead of @@samp{value}) just adds to the problem. Since
+@@var{expr} can be arbitrary long, the conflict is in fact not
+solvable with any fixed number of lookup tokens.
+
+This conflict is decided using parser precedence rules, in favour of
+the latter interpretation. (BP itself can't parse the supposedly BP
+compatible former syntax.)
+
+
+@@c ========================================================================
+
+
+@@node Tree nodes
+@@section Tree Nodes
+@@cindex tree nodes, internals
+@@cindex intermediate code, internals
+@@cindex front-end, internals
+
+If you want really to understand how the GNU Pascal language
+front-end works internally and perhaps want to improve the compiler,
+it is important that you understand GPC's internal data structures.
+
+The data structure used by the language front-end to hold all
+information about your Pascal program are the so-called ``tree
+nodes''. (Well, it needn't be Pascal source -- tree nodes are
+language independent.) The tree nodes are kind of objects, connected
+to each other via pointers. Since the GNU compiler is written in C
+and was created at a time where nobody really thought about
+object-oriented programming languages yet, a lot of effort has been
+taken to create these ``objects'' in C.
+
+Here is an extract from the ``object hierarchy''. Omissions are
+marked with ``@@dots{}''; nodes in parentheses are ``abstract'': They
+are never instantiated and aren't really defined. They only appear
+here to clarify the structure of the tree node hierarchy. The
+complete list is in @@file{../tree.def}; additional information can
+be found in @@file{../tree.h}.
+
+@@example
+(tree_node)
+|
+|--- ERROR_MARK  @@{ enables GPC to continue after an error @@}
+|
+|--- (identifier)
+|    |
+|    |--- IDENTIFIER_NODE
+|    |
+|    \--- OP_IDENTIFIER
+|
+|--- TREE_LIST  @@{ a list of nodes, also used as a
+|                  general-purpose "container object" @@}
+|
+|--- TREE_VEC
+|
+|--- BLOCK
+|
+|--- (type)  @@{ information about types @@}
+|    |
+|    |--- VOID_TYPE
+|    |
+|    |--- INTEGER_TYPE
+|   ...
+|    |
+|    |--- RECORD_TYPE
+|    |
+|    |--- FUNCTION_TYPE
+|    |
+|    \--- LANG_TYPE  @@{ for language-specific extensions @@}
+|
+|--- INTEGER_CST  @@{ an integer constant @@}
+|
+|--- REAL_CST
+|
+|--- STRING_CST
+|
+|--- COMPLEX_CST
+|
+|--- (declaration)
+|    |
+|    |--- FUNCTION_DECL
+|   ...
+|    |
+|    |--- TYPE_DECL
+|    |
+|    \--- VAR_DECL
+|
+|--- (reference)
+|    |
+|    |--- COMPONENT_REF
+|   ...
+|    |
+|    \--- ARRAY_REF
+|
+|--- CONSTRUCTOR
+|
+\--- (expression)
+     |
+     |--- MODIFY_EXPR  @@{ assignment @@}
+     |
+     |--- PLUS_EXPR  @@{ addition @@}
+    ...
+     |
+     |--- CALL_EXPR  @@{ procedure/function call @@}
+     |
+     |--- GOTO_EXPR
+     |
+     \--- LOOP_EXPR  @@{ for all loops @@}
+@@end example
+
+Most of these tree nodes -- struct variables in fact -- contain
+pointers to other tree nodes. A @@samp{TREE_LIST} for instance has a
+@@samp{TREE_VALUE} and a @@samp{TREE_PURPOSE} slot which can contain
+arbitrary data; a third pointer @@samp{TREE_CHAIN} points to the next
+@@samp{TREE_LIST} node and thus allows us to create linked lists of
+tree nodes.
+
+One example: When GPC reads the list of identifiers in a variable
+declaration
+
+@@example
+var
+  Foo, Bar, Baz: Integer;
+@@end example
+
+@@cindex magic, internals
+the parser creates a chain of @@samp{TREE_LIST}s whose
+@@samp{TREE_VALUE}s hold @@samp{IDENTIFIER_NODE}s for the identifiers
+@@samp{Foo}, @@samp{Bar}, and @@samp{Baz}. The function
+@@samp{declare_variables()} (declared in @@file{declarations.c}) gets
+this tree list as a parameter, does some magic, and finally passes a
+chain of @@samp{VAR_DECL} nodes to the back-end.
+
+The @@samp{VAR_DECL} nodes in turn have a pointer @@samp{TREE_TYPE}
+which holds a @@samp{_TYPE} node -- an @@samp{INTEGER_TYPE} node in
+the example above. Having this, GPC can do type-checking when a
+variable is referenced.
+
+For another example, let's look at the following statement:
+
+@@example
+Baz := Foo + Bar;
+@@end example
+
+Here the parser creates a @@samp{MODIFY_EXPR} tree node. This node
+has two pointers, @@samp{TREE_OPERAND[0]} which holds a
+representation of @@samp{Baz}, a @@samp{VAR_DECL} node, and
+@@samp{TREE_OPERAND[1]} which holds a representation of the sum
+@@samp{Foo + Bar}. The sum in turn is represented as a
+@@samp{PLUS_EXPR} tree node whose @@samp{TREE_OPERAND[0]} is the
+@@samp{VAR_DECL} node @@samp{Foo}, and whose @@samp{TREE_OPERAND[1]} is
+the @@samp{VAR_DECL} node @@samp{Bar}. Passing this (the
+@@samp{MODIFY_EXPR} node) to the back-end results in assembler code
+for the assignment.
+
+If you want to have a closer look at these tree nodes, write a line
+@@samp{@@{$debug-tree FooBar@@}} into your program with @@samp{FooBar}
+being some identifier in your program. This tells GPC to output the
+contents of the @@samp{IDENTIFIER_NODE} to the standard error file
+handle in human-readable form.
+
+While hacking and debugging GPC, you will also wish to have a look
+at these tree nodes in other cases. Use the @@samp{debug_tree()}
+function to do so. (In fact @@samp{@@{$debug-tree FooBar@@}} does
+nothing else than to @@samp{debug_tree()} the
+@@samp{IDENTIFIER_NODE} of the @@samp{Foobar} identifier node -- note
+the capitalization of the first character in the internal
+representation.)
+
+
+@@c ========================================================================
+
+
+@@node Parameter passing
+@@section Parameter Passing
+@@cindex parameter passing, internals
+
+GPC supports a lot of funny things in parameter lists: value and
+reference, @@samp{protected} and @@samp{const} parameters, strings and
+other schemata with specified or unspecified discriminants,
+conformant and open arrays, objects, procedural parameters, untyped
+reference parameters, etc. All this requires sophisticated
+type-checking; the responsible function is
+@@samp{convert_arguments()} in the source file @@file{typecheck.c}.
+Every detail can be looked up from there.
+
+Some short notes about the most interesting cases follow.
+
+@@table @@strong
+
+@@cindex conformant arrays, internals
+@@item Conformant arrays:
+First, the array bounds are passed (an even number of parameters of
+an ordinal type), then the address(es) of the array(s) themselves.
+
+@@cindex procedural parameters, internals
+@@cindex functions as parameters, internals
+@@item Procedural parameters:
+These need special care because a function passed as a parameter can
+be confused with a call to the function whose result is then passed
+as a parameter. See also the functions @@samp{maybe_call_function()}
+and @@samp{probably_call_function()} in @@file{expressions.c}.
+
+@@item Chars:
+According to ISO 10206 Extended Pascal, formal char parameters
+accept string values. GPC does the necessary conversion implicitly.
+The empty string produces a space.
+
+@@cindex string parameters, internals
+@@cindex schema parameters, internals
+@@item Strings and schemata:
+Value parameter strings and schemata of known size are really passed
+by value. Value parameter strings and schemata of unknown size are
+passed by reference, and GPC creates temporary variable to hold a
+copy of the string.
+
+@@item @@samp{CString} parameters:
+GPC implicitly converts any string value such that the address of
+the actual string data is passed and appends a @@samp{Chr (0)}
+terminator when necessary.
+
+@@cindex const parameters, internals
+@@item @@samp{const} parameters:
+If a constant value is passed to a @@samp{const} parameter, GPC
+assigns the value to a temporary variable whose address is passed.
+Exception: Small types (whose size is known and not bigger than that
+of a pointer) as well as all integer, real and complex types are
+passed by value.
+
+@@cindex untyped parameters, internals
+@@cindex typeless parameters, internals
+@@item Untyped parameters:
+These are denoted by @@samp{var foo} or @@samp{var foo: Void} and are
+compatible to C's @@samp{void *} parameters; the size of such
+entities is @@emph{not} passed. Maybe we will change this in the
+future and pass the size for @@samp{var foo} parameters whereas
+@@samp{var foo: Void} will remain compatible to C. (Same with
+@@samp{const} instead of @@samp{var}.)
+
+@@end table
+
+
+@@c ========================================================================
+
+
+@@node GPI files
+@@section GPI files -- GNU Pascal Interfaces
+@@cindex GPI files, internals
+@@cindex interfaces, internals
+@@cindex modules, internals
+@@cindex units, internals
+
+This section documents the mechanism how GPC transfers information
+from the exporting modules and units to the program, module or unit
+which imports (uses) the information.
+
+A GPI file contains a precompiled GNU Pascal interface.
+``Precompiled'' means in this context that the interface already has
+been parsed (i.e.@@: the front-end has done its work), but that no
+assembler output has been produced yet.
+
+The GPI file format is an implementation-dependent (but not
+@@emph{too} implementation-dependent ;@@minus{}) file format for
+storing GNU Pascal interfaces to be exported -- Extended Pascal and
+PXSC module interfaces as well as interface parts of UCSD/Borland
+Pascal units compiled with GNU Pascal.
+
+To see what information is stored in or loaded from a GPI file, run
+GPC with an additional command-line option @@samp{--debug-gpi}. Then,
+GPC will write a human-readable version of what is being
+stored/loaded to the standard error file handle. (See also:
+@@ref{Tree nodes}.) @@strong{Note:} This will usually produce
+@@emph{huge} amounts of output!
+
+While parsing an interface, GPC stores the names of exported objects
+in tree lists -- look for @@samp{handle_autoexport} in the GPC source
+files. At the end of the interface, everything is stored in one or
+more GPI files. This is done in @@file{module.c}. There you can find
+the source of @@samp{create_gpi_files()} which documents the file
+format:
+
+First, a header of 33 bytes containing the string @@samp{GNU Pascal
+unit/module interface} plus a newline.
+
+This is followed by an integer containing the ``magic'' value
+12345678 (hexadecimal) to carry information about the endianness.
+Note that, though a single GPI file is always specific to a
+particular target architecture, the host architecture (i.e., the
+system on which GPC runs) can be different (cross-compilers).
+Currently, GPC is not able to convert endianness in GPI files ``on
+the fly'', but at least it will detect and reject GPI files with the
+``wrong'' endianness. When writing GPI files, always the host's
+endianness is used (this seems to be a good idea even when
+converting on the fly will be supported in the future, since most
+often, GPI files created by a cross-compiler will be read again by
+the same cross-compiler). ``Integer'' here and in the following
+paragraphs means a @@samp{gpi_int} (which is currently defined as
+@@samp{HOST_WIDE_INT}).
+
+The rest of the GPI file consists of chunks. Each chunk starts with
+a one-byte code that describes the type of the chunk. It is followed
+by an integer that describes the size of the chunk (excluding this
+chunk header). The further contents depend on the type, as listed
+below.
+
+For the numeric values of the chunk type codes, please refer to
+@@samp{GPI_CHUNKS} in @@file{module.c}. Chunk types denoted with
+@@samp{(*)} must occur exactly once in a GPI file. Other types may
+occur any number of times (including zero times). The order of
+chunks is arbitrary. ``String'' here simply means a character
+sequence whose length is the chunk's length (so no terminator is
+needed).
+
+@@table @@asis
+@@item @@samp{GPI_CHUNK_VERSION} (String) (*)
+The version of the GPI file which is the same as the GPC version. If
+@@samp{USE_GPI_DEBUG_KEY} is used (which will insert a ``magic''
+value at the beginning of each node in the node table, see below, so
+errors in GPI files will be detected more reliably), @@samp{ D} is
+appended to this version string. (Currently,
+@@samp{USE_GPI_DEBUG_KEY} is used by default.) Furthermore, the GCC
+backend version is appended, since it also influences GPI files.
+
+@@item @@samp{GPI_CHUNK_TARGET} (String) (*)
+The target system the GPI file was compiled for.
+
+@@item @@samp{GPI_CHUNK_MODULE_NAME} (String) (*)
+The name of the unit/module.
+
+@@item @@samp{GPI_CHUNK_SRCFILE} (String) (*)
+The name of the primary source file of the unit/module.
+
+@@item @@samp{GPI_CHUNK_IMPORT}
+The name of an interface imported by the current interface. This
+chunk consists of a string followed by the checksum of the imported
+interface's nodes, so the chunk length is the length of the string
+plus the size of an integer. Again, no terminator of the string is
+needed.
+
+The checksum is currently a simple weighted sum over the contents of
+the @@samp{GPI_CHUNK_NODES} chunk's contents (see below). This might
+be replaced in the future by a MD5 hash or something else more
+elaborate.
+
+@@item @@samp{GPI_CHUNK_LINK} (String)
+The name of a file to link.
+
+@@item @@samp{GPI_CHUNK_LIB} (String)
+The name of a library to link (prefixed with @@samp{-l}).
+
+@@item @@samp{GPI_CHUNK_INITIALIZER} (String)
+The name of a module initializer. For technical reasons, any such
+chunk must come @@emph{after} the @@samp{GPI_CHUNK_MODULE_NAME} chunk.
+
+@@item @@samp{GPI_CHUNK_GPC_MAIN_NAME} (String)
+A @@samp{gpc-main} option given in this interface. (More than one
+occurrence is pointless.)
+
+@@item @@samp{GPI_CHUNK_NODES} (*)
+The exported names and the objects (i.e., constants, data types,
+variables and routines) they refer to are internally represented as
+so-called @@emph{tree nodes} as defined in the files @@file{../tree.h}
+and @@file{../tree.def} from the GNU compiler back-end. (See also:
+@@ref{Tree nodes}.)
+
+The main problem when storing tree nodes is that they form a
+complicated structure in memory with a lot of circular references
+(actually, not a tree, but a directed graph in the usual
+terminology, so the name ``tree nodes'' is actually a misnomer), so
+the storing mechanism must make sure that nothing is stored multiple
+times.
+
+The functions @@samp{load_node()} and @@samp{store_node_fields()} do
+the main work of loading/storing the contents of a tree node with
+references to all its contained pointers in a GPI file. Each tree
+node has a @@samp{TREE_CODE} indicating what kind of information it
+contains. Each kind of tree nodes must be stored in a different way
+which is not described here. See the source of these functions for
+details.
+
+As most tree nodes contain pointers to other tree nodes,
+@@samp{load_node()} is an (indirectly) recursive function. Since this
+recursion can be circular (think of a record containing a pointer to
+a record of the same type), we must resolve references to tree nodes
+which already have been loaded. For this reason, all tree nodes
+being loaded are kept in a table (@@samp{rb.nodes}). They are entered
+there @@emph{before} all their fields have been loaded (because
+loading them is what causes the recursion). So the table contains
+some incomplete nodes during loading, but at the end of loading a
+GPI file, they have all been completed.
+
+On the other hand, for @@samp{store_node_fields()} the (seeming)
+recursion must be resolved to an iterative process so that the
+single tree nodes are stored one after another in the file, and not
+mixed together. This is the job of @@samp{store_tree()}. It uses a
+hash table (see @@samp{get_node_id()}) for efficiency.
+
+When re-exporting (directly or indirectly) a node that was imported
+from another interface, and a later compiler run imports both
+interfaces, it must merge the corresponding nodes loaded from both
+interfaces. Otherwise it would get only similar, but not identical
+items. However, we cannot simply omit the re-exported nodes from the
+new interface in case a later compiler run imports only one of them.
+The same problem occurs when a module exports several interfaces. In
+this case, a program that imports more than one of them must
+recognize their contents as identical where they overlap.
+
+Therefore, each node in a GPI file is prefixed (immediately before
+its tree code) with information about the interface it was
+originally imported from or stored in first. This information is
+represented as a reference to an @@samp{INTERFACE_NAME_NODE} followed
+by the id (as an integer) of the node in that interface. If the node
+is imported again and re-re-exported, this information is copied
+unchanged, so it will always refer to the interface the node was
+originally contained it. For nodes that appear in an interface for
+the first time (the normal case), a single 0 integer is stored
+instead of interface @@samp{INTERFACE_NAME_NODE} and id (for
+shortness, since this information is implicit).
+
+This mechanism is not applied to @@samp{INTERFACE_NAME_NODE}s since
+there would be a problem when the identifier they represent is the
+name of the interface they come from; neither to
+@@samp{IDENTIFIER_NODE}s because they are handled somewhat specially
+by the backend (e.g., they contain fields like
+@@samp{IDENTIFIER_VALUE} which depend on the currently active
+declarations, so storing and loading them in GPI files would be
+wrong) because there is only one @@samp{IDENTIFIER_NODE} ever made
+for any particular name. But for the same reason, it is no problem
+that the mechanism can't be applied to them.
+
+@@samp{INTERFACE_NAME_NODE}s are a special kind of tree nodes, only
+used for this purpose. They contain the name of the interface, the
+name of the module (to detect the unlikely case that different
+modules have interfaces of the same name which otherwise might
+confuse GPC), and the checksum of that interface. The latter may
+seem redundant with the checksum stored in the
+@@samp{GPI_CHUNK_IMPORT} chunk, but in fact it is not. On the one
+hand, @@samp{GPI_CHUNK_IMPORT} chunks occur only for interfaces
+imported directly, while the @@samp{INTERFACE_NAME_NODE} mechanism
+might also refer to interfaces imported indirectly. On the other
+hand, storing the checksum in the @@samp{GPI_CHUNK_IMPORT} chunks
+allows the automake mechanism to detect discrepancies and force
+recompilation of the imported module, whereas during the handling of
+the @@samp{GPI_CHUNK_NODES} chunk, the imported modules must already
+have been loaded. (It would be possible to scan the
+@@samp{GPI_CHUNK_NODES} chunk while deciding whether to recompile,
+but that would be a lot of extra effort, compared to storing the
+checksum in the @@samp{GPI_CHUNK_IMPORT} chunks.)
+
+Finally, at the end of the @@samp{GPI_CHUNK_NODES} chunk, a checksum
+of its own contents (excluding the checksum itself, of course) is
+appended. This is to detect corrupted GPI files and is independent
+of the other uses of checksums.
+
+@@item @@samp{GPI_CHUNK_OFFSETS} (*)
+An offset table for the tree nodes. Each node in a GPI file is
+assigned a unique id (which is stored as an integer wherever nodes
+refer to other nodes). There are some special tree nodes (e.g.,
+@@samp{integer_type_node} or @@samp{NULL_TREE}) which are used very
+often and have fixed meanings. They have been assigned predefined
+ids, so they don't have to be stored in the GPI file at all. Their
+number and values are fixed (but may change between different GPC
+versions), see @@samp{SPECIAL_NODES} in @@file{module.c}.
+
+For the remaining nodes, the @@samp{GPI_CHUNK_OFFSETS} table contains
+the file offsets as integers where they are stored within the (only)
+@@samp{GPI_CHUNK_NODES} chunk. The offsets are relative to the start
+of that chunk, i.e. after the chunk header. After the table (but
+still in this chunk) the id of the main node which contains the list
+of all exported names is stored as an integer. (Currently, this is
+always the last node, but for the file format definition, this is
+not guaranteed.)
+
+@@item @@samp{GPI_CHUNK_IMPLEMENTATION}
+This chunk contains no data (i.e., its size must be 0). Its only
+purpose is to signal that the module implementation or the
+implementation part of the unit has been compiled. (Stored, but not
+used currently.)
+@@end table
+
+That's it. Now you should be able to ``read'' GPI files using GPC's
+@@samp{--debug-gpi} option. There is also a utility
+@@file{gpidump.pas} in the @@file{utils} directory to decode and show
+the contents of GPI files. It does also some amount of integrity
+checking (a little more than GPC does while loading GPI files), so
+if you suspect a problem with GPI files, you might want to run
+@@samp{gpidump} on them, discarding its standard output (it writes
+all error reports to standard error, of course).
+
+If you encounter a case where the loaded information differs too
+much from the stored information, you have found a bug --
+congratulations! What ``too much'' means, depends on the object
+being stored in or loaded from the GPI file. Remember that the order
+things are loaded from a GPI file is the @@emph{reversed} order
+things are stored when considering @@emph{different} recursion
+levels, but the @@emph{same} order when considering the @@emph{same}
+recursion level. (This is important when using @@samp{--debug-gpi};
+with @@samp{gpidump} you can read the file in any order you like.)
+
+
+@@c ========================================================================
+
+
+@@node Automake
+@@section GPC's Automake Mechanism -- How it Works
+@@cindex Automake, internals
+
+When a program/module/unit imports (uses) an interface, GPC searches
+for the GPI file (see @@ref{GPI files}) derived from the name of the
+interface.
+
+Case 1: A GPI file was found.
+
+Each GPI file contains the name of the primary source file (normally
+a @@file{.pas} or @@file{.p} file) of the module/unit, and the names
+of all interfaces imported. GPC reads this information and invokes
+itself with a command like
+
+@@example
+gpc foo.pas -M -o foo.d
+@@end example
+
+This means: preprocess the file, and write down the name of the
+object file and those of all its source files in @@file{foo.d}. GPC
+reads @@file{foo.d} and looks if the object file exists and if the
+source was modified since the creation of the object file and the
+gpi file. If so, GPC calls itself again to compile the primary
+source file. When everything is done, the @@file{.d} file is removed.
+If there was no need to recompile, all interfaces imported by the
+module/unit are processed in the same way as this one.
+
+Case 2: No GPI file was found.
+
+In this case, GPC derives the name of the source file from that of
+the interface by trying first @@file{interface.p}, then
+@@file{interface.pas}. This will almost always work with UCSD/Borland
+Pascal units, but not always with Extended Pascal modules. The
+programmer can override this assumption using @@samp{uses @@dots{} in}
+or @@samp{import @@dots{} in}.
+
+All this is done by the function @@samp{gpi_open()} which uses some
+auxiliary functions such as @@samp{module_must_be_recompiled()} and
+@@samp{compile_module()}.
+
+Each time an object file is compiled or recognized as being
+up-to-date, its name is stored in a temporary file with the same
+base name as all the other temporary files used by GPC but the
+extension @@file{.gpc}. When the top-level @@file{gpc} is invoked
+(which calls @@file{gpc1} later on), it passes the name of this
+temporary file as an additional command line parameter to
+@@file{gpc1}. After compilation has been completed, the top-level
+@@file{gpc} reads the temporary file and adds the new object files to
+the arguments passed to the linker.
+
+The additional command @@samp{--amtmpfile} (not to be specified by
+the user!) is passed to child GPC processes, so all compiles use the
+same temporary file.
+
+The source for this is merely in @@file{module.c}, but there are also
+some hacks in @@file{gpc.c}, additional command line options in
+@@file{lang-options.h} and @@file{options.c}, and @@file{gpc.h}
+contains declarations for the functions and global variables.
+
+
+@@c ========================================================================
+
+
+@@node File Layout
+@@section Files that make up GPC
+@@cindex File layout, internals
+
+The GNU back end (gbe) is used to convert RTL into assembler code.
+It is supposed to be language independent. Files are in the
+@@file{..} directory (i.e., the directory called @@file{gcc}). It also
+uses files in the @@file{../config} subdirectories etc.
+
+Unfortunately, some of them are not completely language independent
+and need patching for GPC. These patches (against all supported GCC
+versions) are in the @@file{diffs} subdirectory.
+
+The Pascal language implementation files are in the directory called
+@@file{p}. Some of them were written from scratch. Others are hacked
+from GCC sources. Their roots, if any, are mentioned in the comment
+at their top.
+
+
+@@c ========================================================================
+
+
+@@node Planned
+@@section Planned features
+@@cindex Planned features, internals
+
+@@subheading AnyStrings
+
+@@example
+GetCapacity (s):
+  LongString            : s.Capacity
+  UndiscriminatedString : MaxInt
+  ShortString           : High (s)
+  FixedString           : High (s) - Low (s) + 1
+  CString (Array)       : High (s) - Low (s)
+  CString (Zeiger)      : strlen (s)
+  ObjectString          : s.GetCapacity
+
+GetLength (s):
+  LongString            : s.Length
+  UndiscriminatedString : s.Length
+  ShortString           : Ord (s[0])
+  FixedString           : c := High (s);
+                          while (c >= Low (s)) and (s[c] = ' ') do Dec (c);
+                          c - Low (s) + 1
+  CString               : strlen (s)
+  ObjectString          : s.GetLength
+
+SetLength (s,n):
+  if n > GetCapacity (s) then
+    if TruncateFlag then
+      n := GetCapacity (s)
+    else
+      Error;
+  LongString            : s.Length := n
+  UndiscriminatedString : if n > s.Capacity then
+                            begin
+                              tmp := @@@@s;
+                              @@{ possibly round n up to m * 2^k
+                                to avoid frequent reallocations @@}
+                              New (@@@@s, n);
+                              Move (tmp^[1], s[1], Length (tmp^);
+                              Dispose (tmp)
+                            end;
+                          s.Length := n
+  ShortString           : s[0] := Chr (n)
+  FixedString           : FillChar (s[Low (s) + n],
+                            GetCapacity (s) - n, ' ')
+  CString               : s[n] := #0
+  ObjectString          : s.SetLength (n)
+
+GetFirstChar (s):
+  LongString            : @@@@s[1]
+  UndiscriminatedString : @@@@s[1]
+  ShortString           : @@@@s[1]
+  FixedString           : @@@@s[Low (s)]
+  CString               : s
+  ObjectString          : s.GetFirstChar
+@@end example
+
+Anything else can be reduced to these, e.g. string assignment:
+
+@@example
+SetLength (Dest, GetLength (Src));
+Move (GetFirstChar (Src) ^, GetFirstChar (Dest) ^, GetLength (Dest));
+                                                              ^^^^
+                                               (because of truncate!)
+@@end example
+
+Note pointer CStrings because assignments to them (from long,
+undiscriminated (with appending #0) or CStrings, not from short,
+fixed or object strings) should set the pointer, not overwrite the
+memory pointed to.
+
+@@subheading Fully automatic C header translator
+
+@@itemize @@bullet
+
+@@item C operators like @@samp{+=} (increment a variable and return
+the new value), or @@samp{/} (integer or real division, depending on
+the arguments). They could be emulated by special built-in functions
+in GPC which do the same @@dots{}
+
+@@item Types! C doesn't distinguish between pointers and arrays --
+and various other ``jokes''. E.g., a @@samp{CString} and a pointer to
+an array of bytes can both be @@samp{char *} in C. Solutions could be
+to introduce ``special types'' in GPC which behave like the C types
+(not so nice @@dots{})-:, or to let the translator choose one
+possible matching GPC type (by some heuristics perhaps), and leave
+it up to the user to type-cast when necessary (also not nice)-:
+@@dots{}
+
+@@item Name clashes. How to map @@samp{foo}, @@samp{FOO}, @@samp{struct
+foo}, @@samp{union foo} etc. (which can potentially be totally
+different things in C) to Pascal identifiers in a reasonable way.
+Also, how to introduce identifiers for types when needed (e.g.,
+typed used in parameter lists). Of course, that's solvable @@dots{}
+
+@@item Macros. Since GPC has a preprocessor, we can translate most of
+them, but some particularly strange ones are virtually impossible to
+translate. But there's hope that such strange macros are not being
+used in the libraries' headers @@dots{}
+
+@@item @@dots{}
+
+@@end itemize
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

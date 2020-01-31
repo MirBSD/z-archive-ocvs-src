@@ -1,0 +1,453 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.41;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.41;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.53.54;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package B::Debug;
+
+our $VERSION = '1.00';
+
+use strict;
+use B qw(peekop class walkoptree walkoptree_exec
+         main_start main_root cstring sv_undef);
+use B::Asmdata qw(@@specialsv_name);
+
+my %done_gv;
+
+sub B::OP::debug {
+    my ($op) = @@_;
+    printf <<'EOT', class($op), $$op, ${$op->next}, ${$op->sibling}, $op->ppaddr, $op->targ, $op->type, $op->seq, $op->flags, $op->private;
+%s (0x%lx)
+	op_next		0x%x
+	op_sibling	0x%x
+	op_ppaddr	%s
+	op_targ		%d
+	op_type		%d
+	op_seq		%d
+	op_flags	%d
+	op_private	%d
+EOT
+}
+
+sub B::UNOP::debug {
+    my ($op) = @@_;
+    $op->B::OP::debug();
+    printf "\top_first\t0x%x\n", ${$op->first};
+}
+
+sub B::BINOP::debug {
+    my ($op) = @@_;
+    $op->B::UNOP::debug();
+    printf "\top_last\t\t0x%x\n", ${$op->last};
+}
+
+sub B::LOOP::debug {
+    my ($op) = @@_;
+    $op->B::BINOP::debug();
+    printf <<'EOT', ${$op->redoop}, ${$op->nextop}, ${$op->lastop};
+       op_redoop       0x%x
+       op_nextop       0x%x
+       op_lastop       0x%x
+EOT
+}
+
+sub B::LOGOP::debug {
+    my ($op) = @@_;
+    $op->B::UNOP::debug();
+    printf "\top_other\t0x%x\n", ${$op->other};
+}
+
+sub B::LISTOP::debug {
+    my ($op) = @@_;
+    $op->B::BINOP::debug();
+    printf "\top_children\t%d\n", $op->children;
+}
+
+sub B::PMOP::debug {
+    my ($op) = @@_;
+    $op->B::LISTOP::debug();
+    printf "\top_pmreplroot\t0x%x\n", ${$op->pmreplroot};
+    printf "\top_pmreplstart\t0x%x\n", ${$op->pmreplstart};
+    printf "\top_pmnext\t0x%x\n", ${$op->pmnext};
+    printf "\top_pmregexp->precomp\t%s\n", cstring($op->precomp);
+    printf "\top_pmflags\t0x%x\n", $op->pmflags;
+    $op->pmreplroot->debug;
+}
+
+sub B::COP::debug {
+    my ($op) = @@_;
+    $op->B::OP::debug();
+    printf <<'EOT', $op->label, $op->stashpv, $op->file, $op->seq, $op->arybase, $op->line, ${$op->warnings};
+	cop_label	%s
+	cop_stashpv	%s
+	cop_file	%s
+	cop_seq		%d
+	cop_arybase	%d
+	cop_line	%d
+	cop_warnings	0x%x
+EOT
+}
+
+sub B::SVOP::debug {
+    my ($op) = @@_;
+    $op->B::OP::debug();
+    printf "\top_sv\t\t0x%x\n", ${$op->sv};
+    $op->sv->debug;
+}
+
+sub B::PVOP::debug {
+    my ($op) = @@_;
+    $op->B::OP::debug();
+    printf "\top_pv\t\t%s\n", cstring($op->pv);
+}
+
+sub B::PADOP::debug {
+    my ($op) = @@_;
+    $op->B::OP::debug();
+    printf "\top_padix\t\t%ld\n", $op->padix;
+}
+
+sub B::CVOP::debug {
+    my ($op) = @@_;
+    $op->B::OP::debug();
+    printf "\top_cv\t\t0x%x\n", ${$op->cv};
+}
+
+sub B::NULL::debug {
+    my ($sv) = @@_;
+    if ($$sv == ${sv_undef()}) {
+	print "&sv_undef\n";
+    } else {
+	printf "NULL (0x%x)\n", $$sv;
+    }
+}
+
+sub B::SV::debug {
+    my ($sv) = @@_;
+    if (!$$sv) {
+	print class($sv), " = NULL\n";
+	return;
+    }
+    printf <<'EOT', class($sv), $$sv, $sv->REFCNT, $sv->FLAGS;
+%s (0x%x)
+	REFCNT		%d
+	FLAGS		0x%x
+EOT
+}
+
+sub B::RV::debug {
+    my ($rv) = @@_;
+    B::SV::debug($rv);
+    printf <<'EOT', ${$rv->RV};
+	RV		0x%x
+EOT
+    $rv->RV->debug;
+}
+
+sub B::PV::debug {
+    my ($sv) = @@_;
+    $sv->B::SV::debug();
+    my $pv = $sv->PV();
+    printf <<'EOT', cstring($pv), length($pv);
+	xpv_pv		%s
+	xpv_cur		%d
+EOT
+}
+
+sub B::IV::debug {
+    my ($sv) = @@_;
+    $sv->B::SV::debug();
+    printf "\txiv_iv\t\t%d\n", $sv->IV;
+}
+
+sub B::NV::debug {
+    my ($sv) = @@_;
+    $sv->B::IV::debug();
+    printf "\txnv_nv\t\t%s\n", $sv->NV;
+}
+
+sub B::PVIV::debug {
+    my ($sv) = @@_;
+    $sv->B::PV::debug();
+    printf "\txiv_iv\t\t%d\n", $sv->IV;
+}
+
+sub B::PVNV::debug {
+    my ($sv) = @@_;
+    $sv->B::PVIV::debug();
+    printf "\txnv_nv\t\t%s\n", $sv->NV;
+}
+
+sub B::PVLV::debug {
+    my ($sv) = @@_;
+    $sv->B::PVNV::debug();
+    printf "\txlv_targoff\t%d\n", $sv->TARGOFF;
+    printf "\txlv_targlen\t%u\n", $sv->TARGLEN;
+    printf "\txlv_type\t%s\n", cstring(chr($sv->TYPE));
+}
+
+sub B::BM::debug {
+    my ($sv) = @@_;
+    $sv->B::PVNV::debug();
+    printf "\txbm_useful\t%d\n", $sv->USEFUL;
+    printf "\txbm_previous\t%u\n", $sv->PREVIOUS;
+    printf "\txbm_rare\t%s\n", cstring(chr($sv->RARE));
+}
+
+sub B::CV::debug {
+    my ($sv) = @@_;
+    $sv->B::PVNV::debug();
+    my ($stash) = $sv->STASH;
+    my ($start) = $sv->START;
+    my ($root) = $sv->ROOT;
+    my ($padlist) = $sv->PADLIST;
+    my ($file) = $sv->FILE;
+    my ($gv) = $sv->GV;
+    printf <<'EOT', $$stash, $$start, $$root, $$gv, $file, $sv->DEPTH, $padlist, ${$sv->OUTSIDE};
+	STASH		0x%x
+	START		0x%x
+	ROOT		0x%x
+	GV		0x%x
+	FILE		%s
+	DEPTH		%d
+	PADLIST		0x%x			       
+	OUTSIDE		0x%x
+EOT
+    $start->debug if $start;
+    $root->debug if $root;
+    $gv->debug if $gv;
+    $padlist->debug if $padlist;
+}
+
+sub B::AV::debug {
+    my ($av) = @@_;
+    $av->B::SV::debug;
+    my(@@array) = $av->ARRAY;
+    print "\tARRAY\t\t(", join(", ", map("0x" . $$_, @@array)), ")\n";
+    printf <<'EOT', scalar(@@array), $av->MAX, $av->OFF, $av->AvFLAGS;
+	FILL		%d    
+	MAX		%d
+	OFF		%d
+	AvFLAGS		%d
+EOT
+}
+    
+sub B::GV::debug {
+    my ($gv) = @@_;
+    if ($done_gv{$$gv}++) {
+	printf "GV %s::%s\n", $gv->STASH->NAME, $gv->SAFENAME;
+	return;
+    }
+    my ($sv) = $gv->SV;
+    my ($av) = $gv->AV;
+    my ($cv) = $gv->CV;
+    $gv->B::SV::debug;
+    printf <<'EOT', $gv->SAFENAME, $gv->STASH->NAME, $gv->STASH, $$sv, $gv->GvREFCNT, $gv->FORM, $$av, ${$gv->HV}, ${$gv->EGV}, $$cv, $gv->CVGEN, $gv->LINE, $gv->FILE, $gv->GvFLAGS;
+	NAME		%s
+	STASH		%s (0x%x)
+	SV		0x%x
+	GvREFCNT	%d
+	FORM		0x%x
+	AV		0x%x
+	HV		0x%x
+	EGV		0x%x
+	CV		0x%x
+	CVGEN		%d
+	LINE		%d
+	FILE		%s
+	GvFLAGS		0x%x
+EOT
+    $sv->debug if $sv;
+    $av->debug if $av;
+    $cv->debug if $cv;
+}
+
+sub B::SPECIAL::debug {
+    my $sv = shift;
+    print $specialsv_name[$$sv], "\n";
+}
+
+sub compile {
+    my $order = shift;
+    B::clearsym();
+    if ($order && $order eq "exec") {
+        return sub { walkoptree_exec(main_start, "debug") }
+    } else {
+        return sub { walkoptree(main_root, "debug") }
+    }
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+B::Debug - Walk Perl syntax tree, printing debug info about ops
+
+=head1 SYNOPSIS
+
+	perl -MO=Debug[,OPTIONS] foo.pl
+
+=head1 DESCRIPTION
+
+See F<ext/B/README>.
+
+=head1 AUTHOR
+
+Malcolm Beattie, C<mbeattie@@sable.ox.ac.uk>
+
+=cut
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d3 1
+a3 1
+our $VERSION = '1.01';
+d43 3
+a45 3
+	op_redoop	0x%x
+	op_nextop	0x%x
+	op_lastop	0x%x
+d75 1
+a75 2
+    my $cop_io = class($op->io) eq 'SPECIAL' ? '' : $op->io->as_string;
+    printf <<'EOT', $op->label, $op->stashpv, $op->file, $op->cop_seq, $op->arybase, $op->line, ${$op->warnings}, cstring($cop_io);
+a82 1
+	cop_io		%s
+d105 6
+d201 1
+a201 1
+    printf <<'EOT', $$stash, $$start, $$root, $$gv, $file, $sv->DEPTH, $padlist, ${$sv->OUTSIDE}, $sv->OUTSIDE_SEQ;
+d208 1
+a208 1
+	PADLIST		0x%x
+a209 1
+	OUTSIDE_SEQ	%d
+d223 1
+a223 1
+	FILL		%d
+d229 1
+a229 1
+
+@
+

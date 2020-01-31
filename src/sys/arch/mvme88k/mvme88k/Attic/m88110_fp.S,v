@@ -1,0 +1,451 @@
+head	1.2;
+access;
+symbols
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.04.06.04.29.31;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.06;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.06;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.08.17.14.31.27;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/* $OpenBSD: m88110_fp.S,v 1.9 2001/12/22 17:57:11 smurph Exp $	*/
+/*
+ * Copyright (c) 1999 Steve Murphree, Jr.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed by Christopher G. Demetriou.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/* Floating point trouble routines */
+/*
+ * August 1, 1999
+ * smurph@@OpenBSD.org
+ *
+ * Additions to support MVME197 (mc88110) mmu routines.
+ */
+
+/*
+ * This is cheesy.  I'm using the TCFP features of the mc88110
+ * because it was easy.  It is not 100% IEEE.  But it may be 
+ * close enough.  We shall see...  XXXsmurph
+ * Err... TCFP == "Time Critical Floating Point"
+ *
+ * The only two SFU1 exceptions that can occure in TCFP mode are:
+ * 1) Unimplemented Floating Point Instruction
+ * 2) Floating Point Privilege Violation
+ */
+
+#include "assym.h"
+#include <machine/trap.h>
+#include <machine/asm.h>
+
+	.text
+ENTRY(m88110_Xfp_precise)
+	or	r29, r3, r0     /*  r29 is now the E.F. */
+	subu	r31, r31, 40
+	st	r1,  r31, 32
+	st	r29, r31, 36
+  
+	ld	r2, r29, EF_FPSR  * 4
+	ld	r3, r29, EF_FPCR  * 4
+	ld	r4, r29, EF_FPECR * 4
+	
+	/* Load into r1 the return address for the 0 handlers.  Looking */
+	/* at FPECR, branch to the appropriate 0 handler.  However, */
+	/* if none of the 0 bits are enabled, then a floating point */
+	/* instruction was issued with the floating point unit disabled.  This */
+	/* will cause an unimplemented opcode 0. */
+	
+1:   	bb0	6,r4, 2f   	/* branch to m88110_FPunimp if bit set */
+     	br	m88110_FPuimp
+2:  	bb0	5,r4, 3f 	/* branch to m88110_FPpriviol if bit set */ 
+	br	m88110_FPpriviol
+3:	
+	or.u	r4, r4, 0xffff
+
+ASGLOBAL(m88110_FPuimp)
+	subu    r31,r31,40      /* allocate stack */
+	st      r1,r31,36       /* save return address */
+	st      r3,r31,32       /* save exception frame */
+	or      r2,r0,T_FPEPFLT /* load trap type */
+	or	r3, r29, r0
+	bsr     _C_LABEL(m88110_trap)	/* trap */
+	ld      r1,r31,36       /* recover return address */
+	addu    r31,r31,40      /* deallocate stack */
+ 	jmp	r1
+
+ASGLOBAL(m88110_FPpriviol)
+	subu    r31,r31,40      /* allocate stack */
+	st      r1,r31,36       /* save return address */
+	st      r3,r31,32       /* save exception frame */
+	or      r2,r0,T_PRIVINFLT /* load trap type */
+	or	r3, r29, r0
+	bsr     _C_LABEL(m88110_trap)	/* trap */
+	ld      r1,r31,36       /* recover return address */
+	addu    r31,r31,40      /* deallocate stack */
+ 	jmp	r1
+
+ENTRY(set_tcfp)
+	
+	or.u	r2, r0, hi16(0x200000)
+	or	r2, r2, lo16(0x200000)
+	jmp.n	r1
+	fstcr	r2, fcr0
+
+
+/*************************************************************************
+ *************************************************************************
+ **
+ ** void set_mmureg(unsigned reg_const, unsigned value);
+ **
+ ** Sets the given mmu register on the mc88110 chip to the given value. 
+ **
+ ** Input:
+ **	r1	return address
+ **	r2 	the register
+ **	r3	the value
+ **
+ ** Other registers used:
+ **	r5	jumptable address
+ **	r6	calculated jumptable address
+ **
+ ** Output:
+ **	none
+ **/
+ENTRY(set_mmureg)
+	/* calculate address to jump to */
+	or.u	r5, 	r0, 	hi16(regmark)
+	or	r5,	r5,	lo16(regmark)
+        mul	r2,	r2,	0x08
+	/* and go there (after adjusting the offset via ".n") */
+	jmp.n	r6
+	subu	r6,	r5, 	r2
+
+	jmp.n	r1
+	stcr	r3,	cr51
+	jmp.n	r1
+	stcr	r3,	cr50
+	jmp.n	r1
+	stcr	r3,	cr49
+	jmp.n	r1
+	stcr	r3,	cr48
+	jmp.n	r1
+	stcr	r3,	cr47
+	jmp.n	r1
+	stcr	r3,	cr46
+	jmp.n	r1
+	stcr	r3,	cr45
+	jmp.n	r1
+	stcr	r3,	cr44
+	jmp.n	r1
+	stcr	r3,	cr43
+	jmp.n	r1
+	stcr	r3,	cr42
+	jmp.n	r1
+	stcr	r3,	cr41
+	jmp.n	r1
+	stcr	r3,	cr40
+	jmp.n	r1
+	stcr	r3,	cr36
+	jmp.n	r1
+	stcr	r3,	cr35
+	jmp.n	r1
+	stcr	r3,	cr34
+	jmp.n	r1
+	stcr	r3,	cr33
+	jmp.n	r1
+	stcr	r3,	cr32
+	jmp.n	r1
+	stcr	r3,	cr31
+	jmp.n	r1
+	stcr	r3,	cr30
+	jmp.n	r1
+	stcr	r3,	cr29
+	jmp.n	r1
+	stcr	r3,	cr28
+	jmp.n	r1
+	stcr	r3,	cr27
+	jmp.n	r1
+	stcr	r3,	cr26
+regmark: jmp.n	r1
+	 stcr	r3,	cr25
+
+/*************************************************************************
+ *************************************************************************
+ **
+ ** unsigned get_mmureg(unsigned reg_const);
+ **
+ ** Get the given mmu register's value. 
+ **
+ ** Input:
+ **	r1	return address
+ **	r2 	the register/return value
+ **
+ ** Other registers used:
+ **	r5	jumptable address
+ **	r6	calculated jumptable address
+ **
+ ** Output:
+ **	r2	return value
+ **/
+ENTRY(get_mmureg)
+	/* calculate address to jump to */
+	or.u	r5, 	r0, 	hi16(regmark2)
+	or	r5,	r5,	lo16(regmark2)
+        mul	r2,	r2,	0x08
+	/* and go there (after adjusting the offset via ".n") */
+	jmp.n	r6
+	subu	r6,	r5, 	r2
+
+	jmp.n	r1
+	ldcr	r2,	cr51
+	jmp.n	r1
+	ldcr	r2,	cr50
+	jmp.n	r1
+	ldcr	r2,	cr49
+	jmp.n	r1
+	ldcr	r2,	cr48
+	jmp.n	r1
+	ldcr	r2,	cr47
+	jmp.n	r1
+	ldcr	r2,	cr46
+	jmp.n	r1
+	ldcr	r2,	cr45
+	jmp.n	r1
+	ldcr	r2,	cr44
+	jmp.n	r1
+	ldcr	r2,	cr43
+	jmp.n	r1
+	ldcr	r2,	cr42
+	jmp.n	r1
+	ldcr	r2,	cr41
+	jmp.n	r1
+	ldcr	r2,	cr40
+	jmp.n	r1
+	ldcr	r2,	cr36
+	jmp.n	r1
+	ldcr	r2,	cr35
+	jmp.n	r1
+	ldcr	r2,	cr34
+	jmp.n	r1
+	ldcr	r2,	cr33
+	jmp.n	r1
+	ldcr	r2,	cr32
+	jmp.n	r1
+	ldcr	r2,	cr31
+	jmp.n	r1
+	ldcr	r2,	cr30
+	jmp.n	r1
+	ldcr	r2,	cr29
+	jmp.n	r1
+	ldcr	r2,	cr28
+	jmp.n	r1
+	ldcr	r2,	cr27
+	jmp.n	r1
+	ldcr	r2,	cr26
+regmark2: jmp.n	r1
+	ldcr	r2,	cr25
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD source tree from CVS (anoncvs canada)
+of roughly 12:00 UTC today. Bumps us to OpenBSD 3.4
+and makes source/ports in sync. Hopefully.
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: m88110_fp.S,v 1.11 2003/08/12 19:33:27 miod Exp $	*/
+d42 1
+a42 1
+ * because it was easy.  It is not 100% IEEE.  But it may be
+d55 2
+a56 1
+ASENTRY(m88110_Xfp_precise)
+d61 3
+a63 3
+
+	ld	r2, r29, EF_FPSR * 4
+	ld	r3, r29, EF_FPCR * 4
+d65 12
+a76 14
+
+	/*
+	 * Load into r1 the return address for the 0 handlers.  Looking
+	 * at FPECR, branch to the appropriate 0 handler.  However,
+	 * if none of the 0 bits are enabled, then a floating point
+	 * instruction was issued with the floating point unit disabled.  This
+	 * will cause an unimplemented opcode 0.
+	 */
+
+   	bb0	6,r4, 2f   	/* branch to m88110_FPunimp if bit set */
+     	br	_ASM_LABEL(m88110_FPuimp)
+2:  	bb0	5,r4, 3f 	/* branch to m88110_FPpriviol if bit set */
+	br	_ASM_LABEL(m88110_FPpriviol)
+3:
+d79 5
+a83 5
+ASLOCAL(m88110_FPuimp)
+	subu	r31,r31,40		/* allocate stack */
+	st	r1,r31,36		/* save return address */
+	st	r3,r31,32		/* save exception frame */
+	or	r2,r0,T_FPEPFLT		/* load trap type */
+d85 3
+a87 3
+	bsr	_C_LABEL(m88110_trap)	/* trap */
+	ld	r1,r31,36		/* recover return address */
+	addu	r31,r31,40		/* deallocate stack */
+d90 5
+a94 5
+ASLOCAL(m88110_FPpriviol)
+	subu	r31,r31,40		/* allocate stack */
+	st	r1,r31,36		/* save return address */
+	st	r3,r31,32		/* save exception frame */
+	or	r2,r0,T_PRIVINFLT	/* load trap type */
+d96 4
+a99 4
+	bsr	_C_LABEL(m88110_trap)	/* trap */
+	ld	r1,r31,36		/* recover return address */
+ 	jmp.n	r1
+	 addu	r31,r31,40		/* deallocate stack */
+d102 1
+d106 155
+a260 1
+	 fstcr	r2, fcr0
+@
+

@@ -1,0 +1,400 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.28.18;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.26;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.26;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.33.52;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: autoconf.c,v 1.2 1997/11/06 19:42:42 millert Exp $	*/
+/*	$NetBSD: autoconf.c,v 1.12 1997/01/30 10:32:51 thorpej Exp $	*/
+
+/*
+ * Copyright (c) 1988 University of Utah.
+ * Copyright (c) 1990, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * the Systems Programming Group of the University of Utah Computer
+ * Science Department.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ * from: Utah Hdr: autoconf.c 1.16 92/05/29
+ *
+ *	@@(#)autoconf.c	8.1 (Berkeley) 6/10/93
+ */
+
+#include <sys/param.h>
+#include <sys/reboot.h>
+
+#include "samachdep.h"
+#include "rominfo.h"
+#include "device.h"
+
+#include <hp300/dev/grfreg.h>
+
+/*
+ * Mapping of ROM MSUS types to BSD major device numbers
+ * WARNING: major numbers must match bdevsw indices in hp300/conf.c.
+ */
+char rom2mdev[] = {
+	0, 0, 						/* 0-1: none */
+	6,	/* 2: network device; special */
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,		/* 3-13: none */
+	4,	/* 14: SCSI disk */
+	0,	/* 15: none */
+	2,	/* 16: CS/80 device on HPIB */
+	2,	/* 17: CS/80 device on HPIB */
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,	/* 18-31: none */
+};
+
+struct hp_hw sc_table[MAXCTLRS];
+int cpuspeed;
+
+extern int internalhpib;
+
+#ifdef PRINTROMINFO
+printrominfo()
+{
+	struct rominfo *rp = (struct rominfo *)ROMADDR;
+
+	printf("boottype %x, name %s, lowram %x, sysflag %x\n",
+	       rp->boottype, rp->name, rp->lowram, rp->sysflag&0xff);
+	printf("rambase %x, ndrives %x, sysflag2 %x, msus %x\n",
+	       rp->rambase, rp->ndrives, rp->sysflag2&0xff, rp->msus);
+}
+#endif
+
+configure()
+{
+	u_long msustobdev();
+
+	switch (machineid) {
+	case HP_320:
+	case HP_330:
+	case HP_340:
+		cpuspeed = MHZ_16;
+		break;
+	case HP_350:
+	case HP_360:
+		cpuspeed = MHZ_25;
+		break;
+	case HP_370:
+		cpuspeed = MHZ_33;
+		break;
+	case HP_375:
+		cpuspeed = MHZ_50;
+		break;
+	case HP_380:
+		cpuspeed = MHZ_25 * 2;	/* XXX */
+		break;
+	case HP_385:
+	case HP_433:
+		cpuspeed = MHZ_33 * 2;	/* XXX */
+		break;
+	default:	/* assume the fastest (largest delay value) */
+		cpuspeed = MHZ_50;
+		break;
+	}
+	find_devs();
+	cninit();
+#ifdef PRINTROMINFO
+	printrominfo();
+#endif
+	hpibinit();
+	scsiinit();
+	if ((bootdev & B_MAGICMASK) != B_DEVMAGIC)
+		bootdev = msustobdev();
+}
+
+/*
+ * Convert HP MSUS to a valid bootdev layout:
+ *	TYPE comes from MSUS device type as mapped by rom2mdev
+ *	PARTITION is set to 0 ('a')
+ *	UNIT comes from MSUS unit (almost always 0)
+ *	CONTROLLER comes from MSUS primary address
+ *	ADAPTER comes from SCSI/HPIB driver logical unit number
+ *		(passed back via unused hw_pa field)
+ */
+u_long
+msustobdev()
+{
+	struct rominfo *rp = (struct rominfo *) ROMADDR;
+	u_long bdev = 0;
+	register struct hp_hw *hw;
+	int sc, type, ctlr, slave, punit;
+
+	sc = (rp->msus >> 8) & 0xFF;
+	for (hw = sc_table; hw < &sc_table[MAXCTLRS]; hw++)
+		if (hw->hw_sc == sc)
+			break;
+
+	type  = rom2mdev[(rp->msus >> 24) & 0x1F];
+	ctlr  = (int)hw->hw_pa;
+	slave = (rp->msus & 0xFF);
+	punit = ((rp->msus >> 16) & 0xFF);
+
+	bdev  = MAKEBOOTDEV(type, ctlr, slave, punit, 0);
+
+#ifdef PRINTROMINFO
+	printf("msus %x -> bdev %x\n", rp->msus, bdev);
+#endif
+	return (bdev);
+}
+
+sctoaddr(sc)
+	int sc;
+{
+	if (sc == -1)
+		return(GRFIADDR);
+	if (sc == 7 && internalhpib)
+		return(internalhpib);
+	if (sc < 32)
+		return(DIOBASE + sc * DIOCSIZE);
+	if (sc >= 132)
+		return(DIOIIBASE + (sc - 132) * DIOIICSIZE);
+	return(sc);
+}
+
+/*
+ * Probe all DIO select codes (0 - 32), the internal display address,
+ * and DIO-II select codes (132 - 256).
+ *
+ * Note that we only care about displays, LANCEs, SCSIs and HP-IBs.
+ */
+find_devs()
+{
+	short sc, sctop;
+	u_char *id_reg;
+	register caddr_t addr;
+	register struct hp_hw *hw;
+
+	hw = sc_table;
+	sctop = machineid == HP_320 ? 32 : 256;
+	for (sc = -1; sc < sctop; sc++) {
+		if (sc >= 32 && sc < 132)
+			continue;
+		addr = (caddr_t) sctoaddr(sc);
+		if (badaddr(addr))
+			continue;
+
+		id_reg = (u_char *) addr;
+		hw->hw_pa = 0;	/* XXX used to pass back LUN from driver */
+		if (sc >= 132)
+			hw->hw_size = (id_reg[0x101] + 1) * 0x100000;
+		else
+			hw->hw_size = DIOCSIZE;
+		hw->hw_kva = addr;
+		hw->hw_id = id_reg[1];
+		hw->hw_sc = sc;
+
+		/*
+		 * Not all internal HP-IBs respond rationally to id requests
+		 * so we just go by the "internal HPIB" indicator in SYSFLAG.
+		 */
+		if (sc == 7 && internalhpib) {
+			hw->hw_type = C_HPIB;
+			hw++;
+			continue;
+		}
+
+		switch (hw->hw_id) {
+		case 5:		/* 98642A */
+		case 5+128:	/* 98642A remote */
+			hw->hw_type = D_COMMDCM;
+			break;
+		case 8:		/* 98625B */
+		case 128:	/* 98624A */
+			hw->hw_type = C_HPIB;
+			break;
+		case 21:	/* LANCE */
+			hw->hw_type = D_LAN;
+			break;
+		case 57:	/* Displays */
+			hw->hw_type = D_BITMAP;
+			hw->hw_secid = id_reg[0x15];
+			switch (hw->hw_secid) {
+			case 4:	/* renaissance */
+			case 8: /* davinci */
+				sc++;		/* occupy 2 select codes */
+				break;
+			}
+			break;
+		case 9:
+			hw->hw_type = D_KEYBOARD;
+			break;
+		case 7:
+		case 7+32:
+		case 7+64:
+		case 7+96:
+			hw->hw_type = C_SCSI;
+			break;
+		default:	/* who cares */
+			hw->hw_type = D_MISC;
+			break;
+		}
+		hw++;
+	}
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: autoconf.c,v 1.3 2003/06/02 23:27:46 millert Exp $	*/
+d21 5
+a25 1
+ * 3. Neither the name of the University nor the names of its contributors
+@
+

@@ -1,0 +1,287 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.06.10.19.02.00;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.39;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.39;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@// srcdoc.h : header file
+//
+
+/////////////////////////////////////////////////////////////////////////////
+// CSrcD document
+
+class CSrcLine 
+{
+ public:
+  int isasm;			/* Set if this is an assembly line */
+  int is_source_line() { return !isasm;}
+  int is_assembly_line() { return isasm;}
+  int line;			/* line number of this line (based at 0) */
+  int bpt_ok() ;
+
+
+  CORE_ADDR from;
+  CORE_ADDR to;
+  const char *text;
+  CSrcLine(CSrcLine **next, int,CORE_ADDR, CORE_ADDR ,const char *text);
+  CSrcLine *next;		/* Thread them to make them easy to delete */
+  ~CSrcLine();
+};
+
+class CSrcFrom
+{
+  int maxlines;
+  int maxwidth;
+  CPtrArray lines;
+ public:
+  CSrcLine *get_line(int n);
+  CSrcFrom ();
+  ~CSrcFrom();
+  int get_height();
+  int get_width();
+  void add(CSrcLine *p);
+  void reset_contents();
+};
+
+class CSrcFile  : public CObject
+{
+ public:
+  CSrcFile (const char *);	/* Tab name */
+  CSrcFrom src;
+  CSrcFrom asml;
+  CSrcFrom both; 
+  CSrcLine *head;
+
+  int source_available;		
+  int assembly_available;	
+
+  int notthere;			/* Set if the source is unavailable,
+				   but we have line number debug info */
+  int func_only;		/* Set if we've got just enough info for 
+				   the range of the function */
+
+  CString title;		/* tab title */
+  CORE_ADDR first_pc;
+  CORE_ADDR last_pc;
+  void delete_lines();
+  virtual ~CSrcFile();
+
+  void read(CFile &file);
+
+
+  void cantfind();
+  virtual void toggle_breakpoint(CSrcLine *)  = 0;
+  virtual CSymtab *get_symtab() = 0;
+  virtual class CSrcFileBySymtab *get_CSrcFileBySymtab() = 0;
+  virtual class CSrcFileByFilename *get_CSrcFileByFilename() = 0;
+  virtual  void preparedisassemble() = 0;
+};
+
+
+
+class CSrcFileBySymtab : public CSrcFile
+{
+ public:
+  virtual ~CSrcFileBySymtab();
+  class  CSymtab *symtab;	/* Then point to owner */
+  CSrcFileBySymtab (CSymtab *symtab);
+  void read_src_by_symtab(CSymtab *);
+  void preparedisassemble();
+  void disassemble(CORE_ADDR from, int length);
+  void toggle_breakpoint(CSrcLine *)  ;
+  BOOL suck_document();
+  virtual CSymtab *get_symtab();
+  virtual CSrcFileBySymtab *get_CSrcFileBySymtab();
+  virtual CSrcFileByFilename *get_CSrcFileByFilename() ;
+  void reread();
+}				  ;
+
+class CSrcFileByFilename : public CSrcFile
+{
+ public:
+  virtual  ~CSrcFileByFilename();
+  CString filename;
+  CSrcFileByFilename(const char *);
+  virtual CSymtab *get_symtab();
+  virtual CSrcFileBySymtab *get_CSrcFileBySymtab();
+  virtual CSrcFileByFilename *get_CSrcFileByFilename() ;
+  void preparedisassemble();
+  void toggle_breakpoint(CSrcLine *)  ;
+}			;
+
+class CSrcFileByAddress : public CSrcFile
+{
+ public:
+  virtual  ~CSrcFileByAddress();
+  CORE_ADDR address;
+  CSrcFileByAddress(CORE_ADDR address);
+  virtual CSymtab *get_symtab();
+  virtual CSrcFileBySymtab *get_CSrcFileBySymtab();
+  virtual CSrcFileByFilename *get_CSrcFileByFilename() ;
+  void preparedisassemble();
+  void toggle_breakpoint(CSrcLine *)  ;
+}			;
+
+class CSrcD : public CDocument
+{
+ protected:
+ public:
+  void read_src_by_filename(const char *path);
+  void read_src_by_symtab(CSymtab *tab);
+  void func(const char *f, CORE_ADDR from, CORE_ADDR to);
+  const char *getrecentname;
+  
+  CObList list;			/* list of CSrcFiles */
+  void delete_list();
+  CSrcFile *lookup_title(const char *n, int *p);
+  CSrcFile *lookup_symtab(class CSymtab *, int *p);
+  CSrcFile *lookup_by_index(int n);
+
+  void makesure_fresh() ;	/* checks to see if source should be re-read */
+  static int path_changed;	/* incremented each time the source file path
+				   changes */
+  int path_now;			/* when it's different to this, re-read */
+
+  void remove_file(CSrcFile *);
+  void sync_bpts();
+  void sync_pc();
+  void show_at(CORE_ADDR x);
+ protected:
+  CSrcD();			
+  DECLARE_DYNCREATE(CSrcD)
+    
+    // Attributes
+  public:
+  
+  
+  // Operations
+public:
+  // Overrides
+  // ClassWizard generated virtual function overrides
+  //{{AFX_VIRTUAL(CSrcD)
+public:
+  virtual BOOL OnOpenDocument(const char *path);
+  
+protected:
+  virtual BOOL OnNewDocument();
+  //}}AFX_VIRTUAL
+  
+  // Implementation
+public:
+  virtual ~CSrcD();
+  virtual void Serialize(CArchive& ar);	// overridden for document i/o
+  
+  // Generated message map functions
+protected:
+  //{{AFX_MSG(CSrcD)
+  //}}AFX_MSG
+  DECLARE_MESSAGE_MAP()
+  };
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

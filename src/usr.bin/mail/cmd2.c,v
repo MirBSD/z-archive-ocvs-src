@@ -1,0 +1,809 @@
+head	1.3;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.3
+	tg-mergefixes-1-branch:1.3.0.8
+	tg-mergefixes-1-base:1.3
+	MIROS_X:1.3.0.6
+	MIROS_X_BASE:1.3
+	tg-mergetmp-3:1.3
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.05.23.18.46.32;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.01.29.21.33.10;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.53.03;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.03;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.43.29;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.12.22.21.13.33;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.05.16.08.09.10;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@* big OpenBSD 3.5-current merge
+* adaption of share/doc Makefiles
+* revival of the ancient "learn" utility
+  XXX possible flaws!
+* whitespace, config and comment cleanup in ssh
+* add soelim, which was previously missing, and crunch
+* add MirOS ELF note support to file
+@
+text
+@/*	$MirBSD: src/usr.bin/mail/cmd2.c,v 1.2 2004/01/29 21:33:10 tg Exp $	*/
+/*	$OpenBSD: cmd2.c,v 1.14 2004/05/10 12:10:50 millert Exp $	*/
+/*	$NetBSD: cmd2.c,v 1.7 1997/05/17 19:55:10 pk Exp $	*/
+
+/*
+ * Copyright (c) 1980, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include <sys/cdefs.h>
+#include <sys/wait.h>
+#include "rcv.h"
+#include "extern.h"
+
+__SCCSID("@@(#)cmd2.c	8.1 (Berkeley) 6/6/93");
+__RCSID("$MirBSD$");
+
+/*
+ * Mail -- a mail program
+ *
+ * More user commands.
+ */
+static int igcomp(const void *, const void *);
+
+/*
+ * If any arguments were given, go to the next applicable argument
+ * following dot, otherwise, go to the next applicable message.
+ * If given as first command with no arguments, print first message.
+ */
+int
+next(void *v)
+{
+	struct message *mp;
+	int *msgvec = v;
+	int *ip, *ip2, list[2], mdot;
+
+	if (*msgvec) {
+		/*
+		 * If some messages were supplied, find the
+		 * first applicable one following dot using
+		 * wrap around.
+		 */
+		mdot = dot - &message[0] + 1;
+
+		/*
+		 * Find the first message in the supplied
+		 * message list which follows dot.
+		 */
+		for (ip = msgvec; *ip; ip++)
+			if (*ip > mdot)
+				break;
+		if (*ip == 0)
+			ip = msgvec;
+		ip2 = ip;
+		do {
+			mp = &message[*ip2 - 1];
+			if ((mp->m_flag & MDELETED) == 0) {
+				dot = mp;
+				goto hitit;
+			}
+			if (*ip2)
+				ip2++;
+			if (!(*ip2))
+				ip2 = msgvec;
+		} while (ip2 != ip);
+		puts("No messages applicable");
+		return(1);
+	}
+
+	/*
+	 * If this is the first command, select message 1.
+	 * Note that this must exist for us to get here at all.
+	 */
+	if (!sawcom)
+		goto hitit;
+
+	/*
+	 * Just find the next good message after dot, no
+	 * wraparound.
+	 */
+	for (mp = dot+1; mp < &message[msgCount]; mp++)
+		if ((mp->m_flag & (MDELETED|MSAVED)) == 0)
+			break;
+	if (mp >= &message[msgCount]) {
+		puts("At EOF");
+		return(0);
+	}
+	dot = mp;
+hitit:
+	/*
+	 * Print dot.
+	 */
+	list[0] = dot - &message[0] + 1;
+	list[1] = 0;
+	return(type(list));
+}
+
+/*
+ * Save a message in a file.  Mark the message as saved
+ * so we can discard when the user quits.
+ */
+int
+save(void *v)
+{
+	char *str = v;
+
+	return(save1(str, 1, "save", saveignore));
+}
+
+/*
+ * Copy a message to a file without affected its saved-ness
+ */
+int
+copycmd(void *v)
+{
+	char *str = v;
+
+	return(save1(str, 0, "copy", saveignore));
+}
+
+/*
+ * Save/copy the indicated messages at the end of the passed file name.
+ * If mark is true, mark the message "saved."
+ */
+int
+save1(char *str, int mark, char *cmd, struct ignoretab *ignore)
+{
+	struct message *mp;
+	char *file, *disp;
+	int f, *msgvec, *ip;
+	FILE *obuf;
+
+	msgvec = (int *)salloc((msgCount + 2) * sizeof(*msgvec));
+	if ((file = snarf(str, &f)) == NULL)
+		return(1);
+	if (!f) {
+		*msgvec = first(0, MMNORM);
+		if (*msgvec == 0) {
+			printf("No messages to %s.\n", cmd);
+			return(1);
+		}
+		msgvec[1] = 0;
+	}
+	if (f && getmsglist(str, msgvec, 0) < 0)
+		return(1);
+	if ((file = expand(file)) == NULL)
+		return(1);
+	printf("\"%s\" ", file);
+	fflush(stdout);
+	if (access(file, 0) >= 0)
+		disp = "[Appended]";
+	else
+		disp = "[New file]";
+	if ((obuf = Fopen(file, "a")) == NULL) {
+		warn(NULL);
+		return(1);
+	}
+	for (ip = msgvec; *ip && ip-msgvec < msgCount; ip++) {
+		mp = &message[*ip - 1];
+		touch(mp);
+		if (sendmessage(mp, obuf, ignore, NULL) < 0) {
+			warn("%s", file);
+			(void)Fclose(obuf);
+			return(1);
+		}
+		if (mark)
+			mp->m_flag |= MSAVED;
+	}
+	fflush(obuf);
+	if (ferror(obuf))
+		warn("%s", file);
+	(void)Fclose(obuf);
+	printf("%s\n", disp);
+	return(0);
+}
+
+/*
+ * Write the indicated messages at the end of the passed
+ * file name, minus header and trailing blank line.
+ */
+int
+swrite(void *v)
+{
+	char *str = v;
+
+	return(save1(str, 1, "write", ignoreall));
+}
+
+/*
+ * Snarf the file from the end of the command line and
+ * return a pointer to it.  If there is no file attached,
+ * just return NULL.  Put a null in front of the file
+ * name so that the message list processing won't see it,
+ * unless the file name is the only thing on the line, in
+ * which case, return 0 in the reference flag variable.
+ */
+char *
+snarf(char *linebuf, int *flag)
+{
+	char *cp;
+
+	*flag = 1;
+	cp = strlen(linebuf) + linebuf - 1;
+
+	/*
+	 * Strip away trailing blanks.
+	 */
+	while (cp > linebuf && isspace(*cp))
+		cp--;
+	*++cp = 0;
+
+	/*
+	 * Now search for the beginning of the file name.
+	 */
+	while (cp > linebuf && !isspace(*cp))
+		cp--;
+	if (*cp == '\0') {
+		puts("No file specified.");
+		return(NULL);
+	}
+	if (isspace(*cp))
+		*cp++ = 0;
+	else
+		*flag = 0;
+	return(cp);
+}
+
+/*
+ * Delete messages.
+ */
+int
+delete(void *v)
+{
+	int *msgvec = v;
+
+	delm(msgvec);
+	return(0);
+}
+
+/*
+ * Delete messages, then type the new dot.
+ */
+int
+deltype(void *v)
+{
+	int *msgvec = v;
+	int list[2];
+	int lastdot;
+
+	lastdot = dot - &message[0] + 1;
+	if (delm(msgvec) >= 0) {
+		list[0] = dot - &message[0] + 1;
+		if (list[0] > lastdot) {
+			touch(dot);
+			list[1] = 0;
+			return(type(list));
+		}
+		puts("At EOF");
+	} else
+		puts("No more messages");
+	return(0);
+}
+
+/*
+ * Delete the indicated messages.
+ * Set dot to some nice place afterwards.
+ * Internal interface.
+ */
+int
+delm(int *msgvec)
+{
+	struct message *mp;
+	int *ip, last;
+
+	last = 0;
+	for (ip = msgvec; *ip; ip++) {
+		mp = &message[*ip - 1];
+		touch(mp);
+		mp->m_flag |= MDELETED|MTOUCH;
+		mp->m_flag &= ~(MPRESERVE|MSAVED|MBOX);
+		last = *ip;
+	}
+	if (last) {
+		dot = &message[last-1];
+		last = first(0, MDELETED);
+		if (last) {
+			dot = &message[last-1];
+			return(0);
+		}
+		else {
+			dot = &message[0];
+			return(-1);
+		}
+	}
+
+	/*
+	 * Following can't happen -- it keeps lint happy
+	 */
+	return(-1);
+}
+
+/*
+ * Undelete the indicated messages.
+ */
+int
+undeletecmd(void *v)
+{
+	int *msgvec = v;
+	int *ip;
+	struct message *mp;
+
+	for (ip = msgvec; *ip && ip-msgvec < msgCount; ip++) {
+		mp = &message[*ip - 1];
+		touch(mp);
+		dot = mp;
+		mp->m_flag &= ~MDELETED;
+	}
+	return(0);
+}
+
+/*
+ * Interactively dump core on "core"
+ */
+int
+core(void *v)
+{
+	pid_t pid;
+	extern int wait_status;
+
+	switch (pid = vfork()) {
+	case -1:
+		warn("vfork");
+		return(1);
+	case 0:
+		abort();
+		_exit(1);
+	}
+	fputs("Okie dokie", stdout);
+	fflush(stdout);
+	wait_child(pid);
+	if (WIFSIGNALED(wait_status) && WCOREDUMP(wait_status))
+		puts(" -- Core dumped.");
+	else
+		puts(" -- Can't dump core.");
+	return(0);
+}
+
+/*
+ * Add the given header fields to the retained list.
+ * If no arguments, print the current list of retained fields.
+ */
+int
+retfield(void *v)
+{
+	char **list = v;
+
+	return(ignore1(list, ignore + 1, "retained"));
+}
+
+/*
+ * Add the given header fields to the ignored list.
+ * If no arguments, print the current list of ignored fields.
+ */
+int
+igfield(void *v)
+{
+	char **list = v;
+
+	return(ignore1(list, ignore, "ignored"));
+}
+
+int
+saveretfield(void *v)
+{
+	char **list = v;
+
+	return(ignore1(list, saveignore + 1, "retained"));
+}
+
+int
+saveigfield(void *v)
+{
+	char **list = v;
+
+	return(ignore1(list, saveignore, "ignored"));
+}
+
+int
+ignore1(char **list, struct ignoretab *tab, char *which)
+{
+	char field[LINESIZE];
+	char **ap;
+	struct ignore *igp;
+	int h;
+
+	if (*list == NULL)
+		return(igshow(tab, which));
+	for (ap = list; *ap != 0; ap++) {
+		istrlcpy(field, *ap, sizeof(field));
+		if (member(field, tab))
+			continue;
+		h = hash(field);
+		igp = (struct ignore *)calloc(1, sizeof(struct ignore));
+		if (igp == NULL)
+			errx(1, "Out of memory");
+		igp->i_field = strdup(field);
+		if (igp->i_field == NULL)
+			errx(1, "Out of memory");
+		igp->i_link = tab->i_head[h];
+		tab->i_head[h] = igp;
+		tab->i_count++;
+	}
+	return(0);
+}
+
+/*
+ * Print out all currently retained fields.
+ */
+int
+igshow(struct ignoretab *tab, char *which)
+{
+	int h;
+	struct ignore *igp;
+	char **ap, **ring;
+
+	if (tab->i_count == 0) {
+		printf("No fields currently being %s.\n", which);
+		return(0);
+	}
+	ring = (char **)salloc((tab->i_count + 1) * sizeof(char *));
+	ap = ring;
+	for (h = 0; h < HSHSIZE; h++)
+		for (igp = tab->i_head[h]; igp != 0; igp = igp->i_link)
+			*ap++ = igp->i_field;
+	*ap = 0;
+	qsort(ring, tab->i_count, sizeof(char *), igcomp);
+	for (ap = ring; *ap != 0; ap++)
+		puts(*ap);
+	return(0);
+}
+
+/*
+ * Compare two names for sorting ignored field list.
+ */
+static int
+igcomp(const void *l, const void *r)
+{
+
+	return(strcmp(*(char **)l, *(char **)r));
+}
+@
+
+
+1.2
+log
+@the first part of making a release (non-X)
+* sync sets (for now)
+* mention set sizes in INSTALL.i386
+* install all files, but not more than wanted
+* fix build time warnings
+  (the mktemp in lpd is said to be safe)
+* update docs a bit
+* the eqn -> neqn move
+* improved man page generation
+* anoncvsbin removes tmp before making new symlink
+* sendmail generated files are now in sendmail, and
+  SKIPDIRS is checked before (asked for by Waldemar Brodkorb)
+* more SKIPDIR checks, mostly for GNU stuff
+@
+text
+@d1 2
+a2 2
+/*	$MirBSD$	*/
+/*	$OpenBSD: cmd2.c,v 1.13 2003/10/24 20:32:06 avsm Exp $	*/
+d34 2
+a35 8
+#ifndef lint
+#if 0
+static const char sccsid[] = "@@(#)cmd2.c	8.1 (Berkeley) 6/6/93";
+#else
+static const char rcsid[] = "$MirBSD: cmd2.c,v 1.13 2003/10/24 20:32:06 avsm Exp $";
+#endif
+#endif /* not lint */
+
+a36 1
+#include <sys/wait.h>
+d39 3
+a369 34
+}
+
+/*
+ * Clobber as many bytes of stack as the user requests.
+ */
+int
+clobber(void *v)
+{
+	char **argv = v;
+	int times;
+
+	if (argv[0] == 0)
+		times = 1;
+	else
+		times = (atoi(argv[0]) + 511) / 512;
+	clob1(times);
+	return(0);
+}
+
+/*
+ * Clobber the stack.
+ */
+void
+clob1(n)
+	int n;
+{
+	char buf[512];
+	char *cp;
+
+	if (n <= 0)
+		return;
+	for (cp = buf; cp < &buf[512]; *cp++ = 0xFF)
+		;
+	clob1(n - 1);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 1
+/*	$OpenBSD: cmd2.c,v 1.11 2001/11/21 20:41:55 millert Exp $	*/
+d17 1
+a17 5
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+d38 1
+a38 1
+static const char rcsid[] = "$OpenBSD: cmd2.c,v 1.11 2001/11/21 20:41:55 millert Exp $";
+d65 1
+a65 1
+	if (*msgvec != NULL) {
+d77 1
+a77 1
+		for (ip = msgvec; *ip != NULL; ip++)
+d80 1
+a80 1
+		if (*ip == NULL)
+d89 1
+a89 1
+			if (*ip2 != NULL)
+d91 1
+a91 1
+			if (*ip2 == NULL)
+d122 1
+a122 1
+	list[1] = NULL;
+d166 1
+a166 1
+		if (*msgvec == NULL) {
+d170 1
+a170 1
+		msgvec[1] = NULL;
+d283 1
+a283 1
+			list[1] = NULL;
+d303 2
+a304 2
+	last = NULL;
+	for (ip = msgvec; *ip != NULL; ip++) {
+d311 1
+a311 1
+	if (last != NULL) {
+d314 1
+a314 1
+		if (last != NULL) {
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: cmd2.c,v 1.12 2003/06/03 02:56:11 millert Exp $	*/
+d16 5
+a20 1
+ * 3. Neither the name of the University nor the names of its contributors
+d41 1
+a41 1
+static const char rcsid[] = "$OpenBSD: cmd2.c,v 1.12 2003/06/03 02:56:11 millert Exp $";
+@
+
+
+1.1.1.3
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: cmd2.c,v 1.13 2003/10/24 20:32:06 avsm Exp $	*/
+d37 1
+a37 1
+static const char rcsid[] = "$OpenBSD: cmd2.c,v 1.13 2003/10/24 20:32:06 avsm Exp $";
+d79 1
+a79 1
+		if (*ip == 0)
+d90 1
+a90 1
+			if (*ip2 == 0)
+d165 1
+a165 1
+		if (*msgvec == 0) {
+@
+
+
+1.1.1.4
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: cmd2.c,v 1.14 2004/05/10 12:10:50 millert Exp $	*/
+d37 1
+a37 1
+static const char rcsid[] = "$OpenBSD: cmd2.c,v 1.14 2004/05/10 12:10:50 millert Exp $";
+d373 34
+@
+
+

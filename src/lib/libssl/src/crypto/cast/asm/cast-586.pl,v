@@ -1,0 +1,344 @@
+head	1.2;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.4
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.2
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.2
+	cvs-200408220000:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	openssl-0_9_7d:1.1.3.1
+	cvs-200405160640:1.1.1.2
+	cvs-200403222025:1.1.1.2
+	cvs-200403181737:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	openssl-0_9_7c:1.1.3.1
+	openssl-0_9_7b:1.1.3.1
+	tg:1.1.3
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.12.26.23.09.04;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.47.23;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.23;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.21.08.17;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2003.10.29.15.54.54;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@merge conflicts
+remove unused files
+@
+text
+@#!/usr/local/bin/perl
+
+# define for pentium pro friendly version
+$ppro=1;
+
+push(@@INC,"perlasm","../../perlasm");
+require "x86asm.pl";
+require "cbc.pl";
+
+&asm_init($ARGV[0],"cast-586.pl",$ARGV[$#ARGV] eq "386");
+
+$CAST_ROUNDS=16;
+$L="edi";
+$R="esi";
+$K="ebp";
+$tmp1="ecx";
+$tmp2="ebx";
+$tmp3="eax";
+$tmp4="edx";
+$S1="CAST_S_table0";
+$S2="CAST_S_table1";
+$S3="CAST_S_table2";
+$S4="CAST_S_table3";
+
+@@F1=("add","xor","sub");
+@@F2=("xor","sub","add");
+@@F3=("sub","add","xor");
+
+&CAST_encrypt("CAST_encrypt",1);
+&CAST_encrypt("CAST_decrypt",0);
+&cbc("CAST_cbc_encrypt","CAST_encrypt","CAST_decrypt",1,4,5,3,-1,-1) unless $main'openbsd;
+
+&asm_finish();
+
+sub CAST_encrypt {
+    local($name,$enc)=@@_;
+
+    local($win_ex)=<<"EOF";
+EXTERN	_CAST_S_table0:DWORD
+EXTERN	_CAST_S_table1:DWORD
+EXTERN	_CAST_S_table2:DWORD
+EXTERN	_CAST_S_table3:DWORD
+EOF
+    &main::external_label(
+			  "CAST_S_table0",
+			  "CAST_S_table1",
+			  "CAST_S_table2",
+			  "CAST_S_table3",
+			  );
+
+    &function_begin_B($name,$win_ex);
+
+    &comment("");
+
+    &push("ebp");
+    &push("ebx");
+    &mov($tmp2,&wparam(0));
+    &mov($K,&wparam(1));
+    &push("esi");
+    &push("edi");
+
+    &comment("Load the 2 words");
+    &mov($L,&DWP(0,$tmp2,"",0));
+    &mov($R,&DWP(4,$tmp2,"",0));
+
+    &comment('Get short key flag');
+    &mov($tmp3,&DWP(128,$K,"",0));
+    if($enc) {
+	&push($tmp3);
+    } else {
+	&or($tmp3,$tmp3);
+	&jnz(&label('cast_dec_skip'));
+    }
+
+    &xor($tmp3,	$tmp3);
+
+    # encrypting part
+
+    if ($enc) {
+	&E_CAST( 0,$S,$L,$R,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 1,$S,$R,$L,$K,@@F2,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 2,$S,$L,$R,$K,@@F3,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 3,$S,$R,$L,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 4,$S,$L,$R,$K,@@F2,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 5,$S,$R,$L,$K,@@F3,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 6,$S,$L,$R,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 7,$S,$R,$L,$K,@@F2,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 8,$S,$L,$R,$K,@@F3,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 9,$S,$R,$L,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST(10,$S,$L,$R,$K,@@F2,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST(11,$S,$R,$L,$K,@@F3,$tmp1,$tmp2,$tmp3,$tmp4);
+	&comment('test short key flag');
+	&pop($tmp4);
+	&or($tmp4,$tmp4);
+	&jnz(&label('cast_enc_done'));
+	&E_CAST(12,$S,$L,$R,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST(13,$S,$R,$L,$K,@@F2,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST(14,$S,$L,$R,$K,@@F3,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST(15,$S,$R,$L,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+    } else {
+	&E_CAST(15,$S,$L,$R,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST(14,$S,$R,$L,$K,@@F3,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST(13,$S,$L,$R,$K,@@F2,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST(12,$S,$R,$L,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+	&set_label('cast_dec_skip');
+	&E_CAST(11,$S,$L,$R,$K,@@F3,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST(10,$S,$R,$L,$K,@@F2,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 9,$S,$L,$R,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 8,$S,$R,$L,$K,@@F3,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 7,$S,$L,$R,$K,@@F2,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 6,$S,$R,$L,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 5,$S,$L,$R,$K,@@F3,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 4,$S,$R,$L,$K,@@F2,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 3,$S,$L,$R,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 2,$S,$R,$L,$K,@@F3,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 1,$S,$L,$R,$K,@@F2,$tmp1,$tmp2,$tmp3,$tmp4);
+	&E_CAST( 0,$S,$R,$L,$K,@@F1,$tmp1,$tmp2,$tmp3,$tmp4);
+    }
+
+    &set_label('cast_enc_done') if $enc;
+# Why the nop? - Ben 17/1/99
+    &nop();
+    &mov($tmp3,&wparam(0));
+    &mov(&DWP(4,$tmp3,"",0),$L);
+    &mov(&DWP(0,$tmp3,"",0),$R);
+    &function_end($name);
+}
+
+sub E_CAST {
+    local($i,$S,$L,$R,$K,$OP1,$OP2,$OP3,$tmp1,$tmp2,$tmp3,$tmp4)=@@_;
+    # Ri needs to have 16 pre added.
+
+    &comment("round $i");
+    &mov(	$tmp4,		&DWP($i*8,$K,"",1));
+
+    &mov(	$tmp1,		&DWP($i*8+4,$K,"",1));
+    &$OP1(	$tmp4,		$R);
+
+    &rotl(	$tmp4,		&LB($tmp1));
+
+    if ($ppro) {
+	&mov(	$tmp2,		$tmp4);		# B
+	&xor(	$tmp1,		$tmp1);
+	
+	&movb(	&LB($tmp1),	&HB($tmp4));	# A
+	&and(	$tmp2,		0xff);
+
+	&shr(	$tmp4,		16); 		#
+	&xor(	$tmp3,		$tmp3);
+    } else {
+	&mov(	$tmp2,		$tmp4);		# B
+	&movb(	&LB($tmp1),	&HB($tmp4));	# A	# BAD BAD BAD
+	
+	&shr(	$tmp4,		16); 		#
+	&and(	$tmp2,		0xff);
+    }
+
+    &movb(	&LB($tmp3),	&HB($tmp4));	# C	# BAD BAD BAD
+    &and(	$tmp4,		0xff);		# D
+
+    &mov(	$tmp1,		&DWP($S1,"",$tmp1,4));
+    &mov(	$tmp2,		&DWP($S2,"",$tmp2,4));
+
+    &$OP2(	$tmp1,		$tmp2);
+    &mov(	$tmp2,		&DWP($S3,"",$tmp3,4));
+
+    &$OP3(	$tmp1,		$tmp2);
+    &mov(	$tmp2,		&DWP($S4,"",$tmp4,4));
+
+    &$OP1(	$tmp1,		$tmp2);
+    # XXX
+
+    &xor(	$L,		$tmp1);
+    # XXX
+}
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d31 1
+a31 1
+&cbc("CAST_cbc_encrypt","CAST_encrypt","CAST_decrypt",1,4,5,3,-1,-1);
+@
+
+
+1.1.3.1
+log
+@for the damned sixth time: try to import (stock) OpenSSL 0.9.7b (on which
+the OpenBSD-openssl and our libcrypto and libssl are based) into a vendor
+branch in order to schedule an update to OpenSSL.
+
+CVS hates me today.
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d31 1
+a31 1
+&cbc("CAST_cbc_encrypt","CAST_encrypt","CAST_decrypt",1,4,5,3,-1,-1) unless $main'openbsd;
+@
+

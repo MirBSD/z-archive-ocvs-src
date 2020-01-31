@@ -1,0 +1,1516 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.53.16;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.00.40;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.07;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.07;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.26.58;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.53;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.04.35;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.08.32;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* Support for 32-bit SPARC NLM (NetWare Loadable Module)
+   Copyright 1993, 1994, 2000, 2001, 2002 Free Software Foundation, Inc.
+
+   This file is part of BFD, the Binary File Descriptor library.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "bfd.h"
+#include "sysdep.h"
+#include "libbfd.h"
+
+#define ARCH_SIZE 32
+
+#include "nlm/sparc32-ext.h"
+#define Nlm_External_Fixed_Header	Nlm32_sparc_External_Fixed_Header
+
+#include "libnlm.h"
+
+static bfd_boolean nlm_sparc_read_reloc
+  PARAMS ((bfd *, nlmNAME(symbol_type) *, asection **, arelent *));
+static bfd_boolean nlm_sparc_write_reloc
+  PARAMS ((bfd *, asection *, arelent *));
+static bfd_boolean nlm_sparc_mangle_relocs
+  PARAMS ((bfd *, asection *, PTR, bfd_vma, bfd_size_type));
+static bfd_boolean nlm_sparc_read_import
+  PARAMS ((bfd *, nlmNAME(symbol_type) *));
+static bfd_boolean nlm_sparc_write_import
+  PARAMS ((bfd *, asection *, arelent *));
+static bfd_boolean nlm_sparc_write_external
+  PARAMS ((bfd *, bfd_size_type, asymbol *, struct reloc_and_sec *));
+static bfd_boolean nlm_sparc_write_export
+  PARAMS ((bfd *, asymbol *, bfd_vma));
+
+enum reloc_type
+  {
+    R_SPARC_NONE = 0,
+    R_SPARC_8,		R_SPARC_16,		R_SPARC_32,
+    R_SPARC_DISP8,	R_SPARC_DISP16,		R_SPARC_DISP32,
+    R_SPARC_WDISP30,	R_SPARC_WDISP22,
+    R_SPARC_HI22,	R_SPARC_22,
+    R_SPARC_13,		R_SPARC_LO10,
+    R_SPARC_GOT10,	R_SPARC_GOT13,		R_SPARC_GOT22,
+    R_SPARC_PC10,	R_SPARC_PC22,
+    R_SPARC_WPLT30,
+    R_SPARC_COPY,
+    R_SPARC_GLOB_DAT,	R_SPARC_JMP_SLOT,
+    R_SPARC_RELATIVE,
+    R_SPARC_UA32,
+    R_SPARC_max
+  };
+
+#if 0
+static const char *const reloc_type_names[] =
+  {
+    "R_SPARC_NONE",
+    "R_SPARC_8",		"R_SPARC_16",		"R_SPARC_32",
+    "R_SPARC_DISP8",	"R_SPARC_DISP16",	"R_SPARC_DISP32",
+    "R_SPARC_WDISP30",	"R_SPARC_WDISP22",
+    "R_SPARC_HI22",	"R_SPARC_22",
+    "R_SPARC_13",		"R_SPARC_LO10",
+    "R_SPARC_GOT10",	"R_SPARC_GOT13",	"R_SPARC_GOT22",
+    "R_SPARC_PC10",	"R_SPARC_PC22",
+    "R_SPARC_WPLT30",
+    "R_SPARC_COPY",
+    "R_SPARC_GLOB_DAT",	"R_SPARC_JMP_SLOT",
+    "R_SPARC_RELATIVE",
+    "R_SPARC_UA32",
+  };
+#endif
+
+static reloc_howto_type nlm32_sparc_howto_table[] =
+  {
+    HOWTO (R_SPARC_NONE,    0,0, 0,FALSE,0,complain_overflow_dont,    0,"R_SPARC_NONE",    FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_8,       0,0, 8,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_8",       FALSE,0,0x000000ff,TRUE),
+    HOWTO (R_SPARC_16,      0,1,16,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_16",      FALSE,0,0x0000ffff,TRUE),
+    HOWTO (R_SPARC_32,      0,2,32,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_32",      FALSE,0,0xffffffff,TRUE),
+    HOWTO (R_SPARC_DISP8,   0,0, 8,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_DISP8",   FALSE,0,0x000000ff,TRUE),
+    HOWTO (R_SPARC_DISP16,  0,1,16,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_DISP16",  FALSE,0,0x0000ffff,TRUE),
+    HOWTO (R_SPARC_DISP32,  0,2,32,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_DISP32",  FALSE,0,0x00ffffff,TRUE),
+    HOWTO (R_SPARC_WDISP30, 2,2,30,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_WDISP30", FALSE,0,0x3fffffff,TRUE),
+    HOWTO (R_SPARC_WDISP22, 2,2,22,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_WDISP22", FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_HI22,   10,2,22,FALSE,0,complain_overflow_dont,    0,"R_SPARC_HI22",    FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_22,      0,2,22,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_22",      FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_13,      0,2,13,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_13",      FALSE,0,0x00001fff,TRUE),
+    HOWTO (R_SPARC_LO10,    0,2,10,FALSE,0,complain_overflow_dont,    0,"R_SPARC_LO10",    FALSE,0,0x000003ff,TRUE),
+    HOWTO (R_SPARC_GOT10,   0,2,10,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_GOT10",   FALSE,0,0x000003ff,TRUE),
+    HOWTO (R_SPARC_GOT13,   0,2,13,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_GOT13",   FALSE,0,0x00001fff,TRUE),
+    HOWTO (R_SPARC_GOT22,  10,2,22,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_GOT22",   FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_PC10,    0,2,10,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_PC10",    FALSE,0,0x000003ff,TRUE),
+    HOWTO (R_SPARC_PC22,    0,2,22,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_PC22",    FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_WPLT30,  0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_WPLT30",  FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_COPY,    0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_COPY",    FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_GLOB_DAT,0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_GLOB_DAT",FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_JMP_SLOT,0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_JMP_SLOT",FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_RELATIVE,0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_RELATIVE",FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_UA32,    0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_UA32",    FALSE,0,0x00000000,TRUE),
+};
+
+/* Read a NetWare sparc reloc.  */
+
+struct nlm32_sparc_reloc_ext
+  {
+    unsigned char offset[4];
+    unsigned char addend[4];
+    unsigned char type[1];
+    unsigned char pad1[3];
+  };
+
+static bfd_boolean
+nlm_sparc_read_reloc (abfd, sym, secp, rel)
+     bfd *abfd;
+     nlmNAME(symbol_type) *sym ATTRIBUTE_UNUSED;
+     asection **secp;
+     arelent *rel;
+{
+  bfd_vma val, addend;
+  unsigned int index;
+  unsigned int type;
+  struct nlm32_sparc_reloc_ext tmp_reloc;
+  asection *code_sec, *data_sec;
+
+  if (bfd_bread (&tmp_reloc, (bfd_size_type) 12, abfd) != 12)
+    return FALSE;
+
+  code_sec = bfd_get_section_by_name (abfd, NLM_CODE_NAME);
+  data_sec = bfd_get_section_by_name (abfd, NLM_INITIALIZED_DATA_NAME);
+
+  *secp = code_sec;
+
+  val = bfd_get_32 (abfd, tmp_reloc.offset);
+  addend = bfd_get_32 (abfd, tmp_reloc.addend);
+  type = bfd_get_8 (abfd, tmp_reloc.type);
+
+  rel->address = val;
+  rel->addend = addend;
+  rel->howto = NULL;
+
+  for (index = 0;
+       index < sizeof (nlm32_sparc_howto_table) / sizeof (reloc_howto_type);
+       index++)
+    if (nlm32_sparc_howto_table[index].type == type)
+      {
+	rel->howto = &nlm32_sparc_howto_table[index];
+	break;
+      }
+
+#ifdef DEBUG
+  fprintf (stderr, "%s:  address = %08lx, addend = %08lx, type = %d, howto = %08lx\n",
+	   __FUNCTION__, rel->address, rel->addend, type, rel->howto);
+#endif
+  return TRUE;
+
+}
+
+/* Write a NetWare sparc reloc.  */
+
+static bfd_boolean
+nlm_sparc_write_reloc (abfd, sec, rel)
+     bfd *abfd;
+     asection *sec;
+     arelent *rel;
+{
+  bfd_vma val;
+  struct nlm32_sparc_reloc_ext tmp_reloc;
+  unsigned int index;
+  int type = -1;
+  reloc_howto_type *tmp;
+
+  for (index = 0;
+       index < sizeof (nlm32_sparc_howto_table) / sizeof (reloc_howto_type);
+       index++)
+    {
+      tmp = &nlm32_sparc_howto_table[index];
+
+      if (tmp->rightshift == rel->howto->rightshift
+	  && tmp->size == rel->howto->size
+	  && tmp->bitsize == rel->howto->bitsize
+	  && tmp->pc_relative == rel->howto->pc_relative
+	  && tmp->bitpos == rel->howto->bitpos
+	  && tmp->src_mask == rel->howto->src_mask
+	  && tmp->dst_mask == rel->howto->dst_mask)
+	{
+	  type = tmp->type;
+	  break;
+	}
+    }
+  if (type == -1)
+    abort ();
+
+  /* Netware wants a list of relocs for each address.
+     Format is:
+    	long	offset
+    	long	addend
+    	char	type
+     That should be it.  */
+
+  /* The value we write out is the offset into the appropriate
+     segment.  This offset is the section vma, adjusted by the vma of
+     the lowest section in that segment, plus the address of the
+     relocation.  */
+#if 0
+  val = bfd_get_section_vma (abfd, (*rel->sym_ptr_ptr)->section) + rel->address;
+#else
+  val = bfd_get_section_vma (abfd, sec) + rel->address;
+#endif
+
+#ifdef DEBUG
+  fprintf (stderr, "%s:  val = %08lx, addend = %08lx, type = %d\n",
+	   __FUNCTION__, val, rel->addend, rel->howto->type);
+#endif
+  bfd_put_32 (abfd, val, tmp_reloc.offset);
+  bfd_put_32 (abfd, rel->addend, tmp_reloc.addend);
+  bfd_put_8 (abfd, (short) (rel->howto->type), tmp_reloc.type);
+
+  if (bfd_bwrite (&tmp_reloc, (bfd_size_type) 12, abfd) != 12)
+    return FALSE;
+
+  return TRUE;
+}
+
+/* Mangle relocs for SPARC NetWare.  We can just use the standard
+   SPARC relocs.  */
+
+static bfd_boolean
+nlm_sparc_mangle_relocs (abfd, sec, data, offset, count)
+     bfd *abfd ATTRIBUTE_UNUSED;
+     asection *sec ATTRIBUTE_UNUSED;
+     PTR data ATTRIBUTE_UNUSED;
+     bfd_vma offset ATTRIBUTE_UNUSED;
+     bfd_size_type count ATTRIBUTE_UNUSED;
+{
+  return TRUE;
+}
+
+/* Read a NetWare sparc import record.  */
+
+static bfd_boolean
+nlm_sparc_read_import (abfd, sym)
+     bfd *abfd;
+     nlmNAME(symbol_type) *sym;
+{
+  struct nlm_relent *nlm_relocs;	/* Relocation records for symbol.  */
+  bfd_size_type rcount;			/* Number of relocs.  */
+  bfd_byte temp[NLM_TARGET_LONG_SIZE];	/* Temporary 32-bit value.  */
+  unsigned char symlength;		/* Length of symbol name.  */
+  char *name;
+
+  /* First, read in the number of relocation
+     entries for this symbol.  */
+  if (bfd_bread ((PTR) temp, (bfd_size_type) 4, abfd) != 4)
+    return FALSE;
+
+  rcount = bfd_get_32 (abfd, temp);
+
+  /* Next, read in the length of the symbol.  */
+
+  if (bfd_bread ((PTR) &symlength, (bfd_size_type) sizeof (symlength), abfd)
+      != sizeof (symlength))
+    return FALSE;
+  sym -> symbol.the_bfd = abfd;
+  name = bfd_alloc (abfd, (bfd_size_type) symlength + 1);
+  if (name == NULL)
+    return FALSE;
+
+  /* Then read in the symbol.  */
+
+  if (bfd_bread (name, (bfd_size_type) symlength, abfd) != symlength)
+    return FALSE;
+  name[symlength] = '\0';
+  sym -> symbol.name = name;
+  sym -> symbol.flags = 0;
+  sym -> symbol.value = 0;
+  sym -> symbol.section = bfd_und_section_ptr;
+
+  /* Next, start reading in the relocs.  */
+
+  nlm_relocs = ((struct nlm_relent *)
+		bfd_alloc (abfd, rcount * sizeof (struct nlm_relent)));
+  if (!nlm_relocs)
+    return FALSE;
+  sym -> relocs = nlm_relocs;
+  sym -> rcnt = 0;
+  while (sym -> rcnt < rcount)
+    {
+      asection *section;
+
+      if (! nlm_sparc_read_reloc (abfd, sym, &section, &nlm_relocs -> reloc))
+	return FALSE;
+      nlm_relocs -> section = section;
+      nlm_relocs++;
+      sym -> rcnt++;
+    }
+
+  return TRUE;
+}
+
+static bfd_boolean
+nlm_sparc_write_import (abfd, sec, rel)
+     bfd *abfd;
+     asection *sec;
+     arelent *rel;
+{
+  char temp[4];
+  asection *code, *data, *bss, *symsec;
+  bfd_vma base;
+
+  code = bfd_get_section_by_name (abfd, NLM_CODE_NAME);
+  data = bfd_get_section_by_name (abfd, NLM_INITIALIZED_DATA_NAME);
+  bss = bfd_get_section_by_name (abfd, NLM_UNINITIALIZED_DATA_NAME);
+  symsec = (*rel->sym_ptr_ptr)->section;
+
+  if (symsec == code)
+    base = 0;
+  else if (symsec == data)
+    base = bfd_section_size (abfd, code);
+  else if (symsec == bss)
+    base = bfd_section_size (abfd, code) + bfd_section_size (abfd, data);
+  else
+    base = 0;
+
+#ifdef DEBUG
+  fprintf (stderr, "%s:  <%x, 1>\n\t",
+	   __FUNCTION__, base + (*rel->sym_ptr_ptr)->value);
+#endif
+  bfd_put_32 (abfd, base + (*rel->sym_ptr_ptr)->value, temp);
+  if (bfd_bwrite ((PTR) temp, (bfd_size_type) 4, abfd) != 4)
+    return FALSE;
+  bfd_put_32 (abfd, (bfd_vma) 1, temp);
+  if (bfd_bwrite ((PTR) temp, (bfd_size_type) 4, abfd) != 4)
+    return FALSE;
+  if (! nlm_sparc_write_reloc (abfd, sec, rel))
+    return FALSE;
+  return TRUE;
+}
+
+/* Write out an external reference.  */
+
+static bfd_boolean
+nlm_sparc_write_external (abfd, count, sym, relocs)
+     bfd *abfd;
+     bfd_size_type count;
+     asymbol *sym;
+     struct reloc_and_sec *relocs;
+{
+  unsigned int i;
+  bfd_byte len;
+  unsigned char temp[NLM_TARGET_LONG_SIZE];
+
+  bfd_put_32 (abfd, count, temp);
+  if (bfd_bwrite (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+
+  len = strlen (sym->name);
+  if ((bfd_bwrite (&len, (bfd_size_type) sizeof (bfd_byte), abfd)
+       != sizeof (bfd_byte))
+      || bfd_bwrite (sym->name, (bfd_size_type) len, abfd) != len)
+    return FALSE;
+
+  for (i = 0; i < count; i++)
+    {
+      if (! nlm_sparc_write_reloc (abfd, relocs[i].sec, relocs[i].rel))
+	return FALSE;
+    }
+
+  return TRUE;
+}
+
+static bfd_boolean
+nlm_sparc_write_export (abfd, sym, value)
+     bfd *abfd;
+     asymbol *sym;
+     bfd_vma value;
+{
+  bfd_byte len;
+  bfd_byte temp[4];
+
+#ifdef DEBUG
+  fprintf (stderr, "%s: <%x, %d, %s>\n",
+	   __FUNCTION__, value, strlen (sym->name), sym->name);
+#endif
+  bfd_put_32 (abfd, value, temp);
+  len = strlen (sym->name);
+
+  if (bfd_bwrite (temp, (bfd_size_type) 4, abfd) != 4
+      || bfd_bwrite (&len, (bfd_size_type) 1, abfd) != 1
+      || bfd_bwrite (sym->name, (bfd_size_type) len, abfd) != len)
+    return FALSE;
+
+  return TRUE;
+}
+
+#undef nlm_swap_fixed_header_in
+#undef nlm_swap_fixed_header_out
+
+#include "nlmswap.h"
+
+static const struct nlm_backend_data nlm32_sparc_backend =
+  {
+    "NetWare SPARC Module   \032",
+    sizeof (Nlm32_sparc_External_Fixed_Header),
+    0,	/* optional_prefix_size */
+    bfd_arch_sparc,
+    0,
+    FALSE,
+    0,	/* backend_object_p */
+    0,	/* write_prefix_func */
+    nlm_sparc_read_reloc,
+    nlm_sparc_mangle_relocs,
+    nlm_sparc_read_import,
+    nlm_sparc_write_import,
+    0,	/* set_public_section */
+    0,	/* get_public_offset */
+    nlm_swap_fixed_header_in,
+    nlm_swap_fixed_header_out,
+    nlm_sparc_write_external,
+    nlm_sparc_write_export
+  };
+
+#define TARGET_BIG_NAME		"nlm32-sparc"
+#define TARGET_BIG_SYM		nlmNAME(sparc_vec)
+#define TARGET_BACKEND_DATA	& nlm32_sparc_backend
+
+#include "nlm-target.h"
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 2000 Free Software Foundation, Inc.
+d4 1
+a4 1
+This file is part of BFD, the Binary File Descriptor library.
+d6 13
+a18 13
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+d31 1
+a31 1
+static boolean nlm_sparc_read_reloc
+d33 1
+a33 1
+static boolean nlm_sparc_write_reloc
+d35 1
+a35 1
+static boolean nlm_sparc_mangle_relocs
+d37 1
+a37 1
+static boolean nlm_sparc_read_import
+d39 1
+a39 1
+static boolean nlm_sparc_write_import
+d41 1
+a41 1
+static boolean nlm_sparc_write_external
+d43 2
+d65 16
+a80 16
+static CONST char *CONST reloc_type_names[] =
+{
+  "R_SPARC_NONE",
+  "R_SPARC_8",		"R_SPARC_16",		"R_SPARC_32",
+  "R_SPARC_DISP8",	"R_SPARC_DISP16",	"R_SPARC_DISP32",
+  "R_SPARC_WDISP30",	"R_SPARC_WDISP22",
+  "R_SPARC_HI22",	"R_SPARC_22",
+  "R_SPARC_13",		"R_SPARC_LO10",
+  "R_SPARC_GOT10",	"R_SPARC_GOT13",	"R_SPARC_GOT22",
+  "R_SPARC_PC10",	"R_SPARC_PC22",
+  "R_SPARC_WPLT30",
+  "R_SPARC_COPY",
+  "R_SPARC_GLOB_DAT",	"R_SPARC_JMP_SLOT",
+  "R_SPARC_RELATIVE",
+  "R_SPARC_UA32",
+};
+d84 25
+a108 25
+{
+  HOWTO(R_SPARC_NONE,    0,0, 0,false,0,complain_overflow_dont,    0,"R_SPARC_NONE",    false,0,0x00000000,true),
+  HOWTO(R_SPARC_8,       0,0, 8,false,0,complain_overflow_bitfield,0,"R_SPARC_8",       false,0,0x000000ff,true),
+  HOWTO(R_SPARC_16,      0,1,16,false,0,complain_overflow_bitfield,0,"R_SPARC_16",      false,0,0x0000ffff,true),
+  HOWTO(R_SPARC_32,      0,2,32,false,0,complain_overflow_bitfield,0,"R_SPARC_32",      false,0,0xffffffff,true),
+  HOWTO(R_SPARC_DISP8,   0,0, 8,true, 0,complain_overflow_signed,  0,"R_SPARC_DISP8",   false,0,0x000000ff,true),
+  HOWTO(R_SPARC_DISP16,  0,1,16,true, 0,complain_overflow_signed,  0,"R_SPARC_DISP16",  false,0,0x0000ffff,true),
+  HOWTO(R_SPARC_DISP32,  0,2,32,true, 0,complain_overflow_signed,  0,"R_SPARC_DISP32",  false,0,0x00ffffff,true),
+  HOWTO(R_SPARC_WDISP30, 2,2,30,true, 0,complain_overflow_signed,  0,"R_SPARC_WDISP30", false,0,0x3fffffff,true),
+  HOWTO(R_SPARC_WDISP22, 2,2,22,true, 0,complain_overflow_signed,  0,"R_SPARC_WDISP22", false,0,0x003fffff,true),
+  HOWTO(R_SPARC_HI22,   10,2,22,false,0,complain_overflow_dont,    0,"R_SPARC_HI22",    false,0,0x003fffff,true),
+  HOWTO(R_SPARC_22,      0,2,22,false,0,complain_overflow_bitfield,0,"R_SPARC_22",      false,0,0x003fffff,true),
+  HOWTO(R_SPARC_13,      0,2,13,false,0,complain_overflow_bitfield,0,"R_SPARC_13",      false,0,0x00001fff,true),
+  HOWTO(R_SPARC_LO10,    0,2,10,false,0,complain_overflow_dont,    0,"R_SPARC_LO10",    false,0,0x000003ff,true),
+  HOWTO(R_SPARC_GOT10,   0,2,10,false,0,complain_overflow_bitfield,0,"R_SPARC_GOT10",   false,0,0x000003ff,true),
+  HOWTO(R_SPARC_GOT13,   0,2,13,false,0,complain_overflow_bitfield,0,"R_SPARC_GOT13",   false,0,0x00001fff,true),
+  HOWTO(R_SPARC_GOT22,  10,2,22,false,0,complain_overflow_bitfield,0,"R_SPARC_GOT22",   false,0,0x003fffff,true),
+  HOWTO(R_SPARC_PC10,    0,2,10,false,0,complain_overflow_bitfield,0,"R_SPARC_PC10",    false,0,0x000003ff,true),
+  HOWTO(R_SPARC_PC22,    0,2,22,false,0,complain_overflow_bitfield,0,"R_SPARC_PC22",    false,0,0x003fffff,true),
+  HOWTO(R_SPARC_WPLT30,  0,0,00,false,0,complain_overflow_dont,    0,"R_SPARC_WPLT30",  false,0,0x00000000,true),
+  HOWTO(R_SPARC_COPY,    0,0,00,false,0,complain_overflow_dont,    0,"R_SPARC_COPY",    false,0,0x00000000,true),
+  HOWTO(R_SPARC_GLOB_DAT,0,0,00,false,0,complain_overflow_dont,    0,"R_SPARC_GLOB_DAT",false,0,0x00000000,true),
+  HOWTO(R_SPARC_JMP_SLOT,0,0,00,false,0,complain_overflow_dont,    0,"R_SPARC_JMP_SLOT",false,0,0x00000000,true),
+  HOWTO(R_SPARC_RELATIVE,0,0,00,false,0,complain_overflow_dont,    0,"R_SPARC_RELATIVE",false,0,0x00000000,true),
+  HOWTO(R_SPARC_UA32,    0,0,00,false,0,complain_overflow_dont,    0,"R_SPARC_UA32",    false,0,0x00000000,true),
+d113 7
+a119 6
+struct nlm32_sparc_reloc_ext {
+  unsigned char offset[4];
+  unsigned char addend[4];
+  unsigned char type[1];
+  unsigned char pad1[3];
+};
+d121 1
+a121 1
+static boolean
+d134 2
+a135 2
+  if (bfd_read (&tmp_reloc, 12, 1, abfd) != 12)
+    return false;
+d153 5
+a157 4
+    if (nlm32_sparc_howto_table[index].type == type) {
+      rel->howto = &nlm32_sparc_howto_table[index];
+      break;
+    }
+d163 1
+a163 1
+  return true;
+d169 1
+a169 1
+static boolean
+d183 3
+a185 2
+       index++) {
+    tmp = &nlm32_sparc_howto_table[index];
+d187 11
+a197 9
+    if (tmp->rightshift == rel->howto->rightshift
+	&& tmp->size == rel->howto->size
+	&& tmp->bitsize == rel->howto->bitsize
+	&& tmp->pc_relative == rel->howto->pc_relative
+	&& tmp->bitpos == rel->howto->bitpos
+	&& tmp->src_mask == rel->howto->src_mask
+	&& tmp->dst_mask == rel->howto->dst_mask) {
+      type = tmp->type;
+      break;
+a198 1
+  }
+d202 6
+a207 8
+  /*
+   * Netware wants a list of relocs for each address.
+   * Format is:
+   *	long	offset
+   *	long	addend
+   *	char	type
+   * That should be it.
+   */
+d227 2
+a228 2
+  if (bfd_write (&tmp_reloc, 12, 1, abfd) != 12)
+    return false;
+d230 1
+a230 1
+  return true;
+d236 1
+a236 1
+static boolean
+d244 1
+a244 1
+  return true;
+d247 3
+a249 2
+/* Read a NetWare sparc import record */
+static boolean
+d254 4
+a257 4
+  struct nlm_relent *nlm_relocs;	/* relocation records for symbol */
+  bfd_size_type rcount;			/* number of relocs */
+  bfd_byte temp[NLM_TARGET_LONG_SIZE];	/* temporary 32-bit value */
+  unsigned char symlength;		/* length of symbol name */
+d260 4
+a263 6
+  /*
+   * First, read in the number of relocation
+   * entries for this symbol
+   */
+  if (bfd_read ((PTR) temp, 4, 1, abfd) != 4)
+    return false;
+d267 1
+a267 3
+  /*
+   * Next, read in the length of the symbol
+   */
+d269 1
+a269 1
+  if (bfd_read ((PTR) &symlength, sizeof (symlength), 1, abfd)
+d271 1
+a271 1
+    return false;
+d273 1
+a273 1
+  name = bfd_alloc (abfd, symlength + 1);
+d275 1
+a275 1
+    return false;
+d277 1
+a277 3
+  /*
+   * Then read in the symbol
+   */
+d279 2
+a280 2
+  if (bfd_read (name, symlength, 1, abfd) != symlength)
+    return false;
+d287 1
+a287 3
+  /*
+   * Next, start reading in the relocs.
+   */
+d292 1
+a292 1
+    return false;
+d299 2
+a300 4
+      if (nlm_sparc_read_reloc (abfd, sym, &section,
+			      &nlm_relocs -> reloc)
+	  == false)
+	return false;
+d305 2
+a306 1
+  return true;
+d309 1
+a309 1
+static boolean
+d324 1
+a324 1
+  if (symsec == code) {
+d326 1
+a326 1
+  } else if (symsec == data) {
+d328 1
+a328 1
+  } else if (symsec == bss) {
+d330 1
+a330 1
+  } else
+d338 8
+a345 8
+  if (bfd_write ((PTR)temp, 4, 1, abfd) != 4)
+    return false;
+  bfd_put_32 (abfd, 1, temp);
+  if (bfd_write ((PTR)temp, 4, 1, abfd) != 4)
+    return false;
+  if (nlm_sparc_write_reloc (abfd, sec, rel) == false)
+    return false;
+  return true;
+d350 1
+a350 1
+static boolean
+d362 2
+a363 2
+  if (bfd_write (temp, sizeof (temp), 1, abfd) != sizeof (temp))
+    return false;
+d366 4
+a369 3
+  if ((bfd_write (&len, sizeof (bfd_byte), 1, abfd) != sizeof (bfd_byte))
+      || bfd_write (sym->name, len, 1, abfd) != len)
+    return false;
+d373 2
+a374 3
+      if (nlm_sparc_write_reloc (abfd, relocs[i].sec,
+				 relocs[i].rel) == false)
+	return false;
+d377 1
+a377 1
+  return true;
+d380 1
+a380 1
+static boolean
+d396 4
+a399 4
+  if (bfd_write (temp, 4, 1, abfd) != 4
+      || bfd_write (&len, 1, 1, abfd) != 1
+      || bfd_write (sym->name, len, 1, abfd) != len)
+    return false;
+d401 1
+a401 1
+  return true;
+d410 20
+a429 20
+{
+  "NetWare SPARC Module   \032",
+  sizeof (Nlm32_sparc_External_Fixed_Header),
+  0,	/* optional_prefix_size */
+  bfd_arch_sparc,
+  0,
+  false,
+  0,	/* backend_object_p */
+  0,	/* write_prefix_func */
+  nlm_sparc_read_reloc,
+  nlm_sparc_mangle_relocs,
+  nlm_sparc_read_import,
+  nlm_sparc_write_import,
+  0,	/* set_public_section */
+  0,	/* get_public_offset */
+  nlm_swap_fixed_header_in,
+  nlm_swap_fixed_header_out,
+  nlm_sparc_write_external,
+  nlm_sparc_write_export
+};
+d433 1
+a433 1
+#define TARGET_BACKEND_DATA		&nlm32_sparc_backend
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 2000, 2001, 2002 Free Software Foundation, Inc.
+d4 1
+a4 1
+   This file is part of BFD, the Binary File Descriptor library.
+d6 13
+a18 13
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+d31 1
+a31 1
+static bfd_boolean nlm_sparc_read_reloc
+d33 1
+a33 1
+static bfd_boolean nlm_sparc_write_reloc
+d35 1
+a35 1
+static bfd_boolean nlm_sparc_mangle_relocs
+d37 1
+a37 1
+static bfd_boolean nlm_sparc_read_import
+d39 1
+a39 1
+static bfd_boolean nlm_sparc_write_import
+d41 1
+a41 1
+static bfd_boolean nlm_sparc_write_external
+a42 2
+static bfd_boolean nlm_sparc_write_export
+  PARAMS ((bfd *, asymbol *, bfd_vma));
+d63 16
+a78 16
+static const char *const reloc_type_names[] =
+  {
+    "R_SPARC_NONE",
+    "R_SPARC_8",		"R_SPARC_16",		"R_SPARC_32",
+    "R_SPARC_DISP8",	"R_SPARC_DISP16",	"R_SPARC_DISP32",
+    "R_SPARC_WDISP30",	"R_SPARC_WDISP22",
+    "R_SPARC_HI22",	"R_SPARC_22",
+    "R_SPARC_13",		"R_SPARC_LO10",
+    "R_SPARC_GOT10",	"R_SPARC_GOT13",	"R_SPARC_GOT22",
+    "R_SPARC_PC10",	"R_SPARC_PC22",
+    "R_SPARC_WPLT30",
+    "R_SPARC_COPY",
+    "R_SPARC_GLOB_DAT",	"R_SPARC_JMP_SLOT",
+    "R_SPARC_RELATIVE",
+    "R_SPARC_UA32",
+  };
+d82 25
+a106 25
+  {
+    HOWTO (R_SPARC_NONE,    0,0, 0,FALSE,0,complain_overflow_dont,    0,"R_SPARC_NONE",    FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_8,       0,0, 8,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_8",       FALSE,0,0x000000ff,TRUE),
+    HOWTO (R_SPARC_16,      0,1,16,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_16",      FALSE,0,0x0000ffff,TRUE),
+    HOWTO (R_SPARC_32,      0,2,32,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_32",      FALSE,0,0xffffffff,TRUE),
+    HOWTO (R_SPARC_DISP8,   0,0, 8,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_DISP8",   FALSE,0,0x000000ff,TRUE),
+    HOWTO (R_SPARC_DISP16,  0,1,16,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_DISP16",  FALSE,0,0x0000ffff,TRUE),
+    HOWTO (R_SPARC_DISP32,  0,2,32,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_DISP32",  FALSE,0,0x00ffffff,TRUE),
+    HOWTO (R_SPARC_WDISP30, 2,2,30,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_WDISP30", FALSE,0,0x3fffffff,TRUE),
+    HOWTO (R_SPARC_WDISP22, 2,2,22,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_WDISP22", FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_HI22,   10,2,22,FALSE,0,complain_overflow_dont,    0,"R_SPARC_HI22",    FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_22,      0,2,22,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_22",      FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_13,      0,2,13,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_13",      FALSE,0,0x00001fff,TRUE),
+    HOWTO (R_SPARC_LO10,    0,2,10,FALSE,0,complain_overflow_dont,    0,"R_SPARC_LO10",    FALSE,0,0x000003ff,TRUE),
+    HOWTO (R_SPARC_GOT10,   0,2,10,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_GOT10",   FALSE,0,0x000003ff,TRUE),
+    HOWTO (R_SPARC_GOT13,   0,2,13,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_GOT13",   FALSE,0,0x00001fff,TRUE),
+    HOWTO (R_SPARC_GOT22,  10,2,22,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_GOT22",   FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_PC10,    0,2,10,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_PC10",    FALSE,0,0x000003ff,TRUE),
+    HOWTO (R_SPARC_PC22,    0,2,22,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_PC22",    FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_WPLT30,  0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_WPLT30",  FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_COPY,    0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_COPY",    FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_GLOB_DAT,0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_GLOB_DAT",FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_JMP_SLOT,0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_JMP_SLOT",FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_RELATIVE,0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_RELATIVE",FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_UA32,    0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_UA32",    FALSE,0,0x00000000,TRUE),
+d111 6
+a116 7
+struct nlm32_sparc_reloc_ext
+  {
+    unsigned char offset[4];
+    unsigned char addend[4];
+    unsigned char type[1];
+    unsigned char pad1[3];
+  };
+d118 1
+a118 1
+static bfd_boolean
+d131 2
+a132 2
+  if (bfd_bread (&tmp_reloc, (bfd_size_type) 12, abfd) != 12)
+    return FALSE;
+d150 4
+a153 5
+    if (nlm32_sparc_howto_table[index].type == type)
+      {
+	rel->howto = &nlm32_sparc_howto_table[index];
+	break;
+      }
+d159 1
+a159 1
+  return TRUE;
+d165 1
+a165 1
+static bfd_boolean
+d179 2
+a180 3
+       index++)
+    {
+      tmp = &nlm32_sparc_howto_table[index];
+d182 9
+a190 11
+      if (tmp->rightshift == rel->howto->rightshift
+	  && tmp->size == rel->howto->size
+	  && tmp->bitsize == rel->howto->bitsize
+	  && tmp->pc_relative == rel->howto->pc_relative
+	  && tmp->bitpos == rel->howto->bitpos
+	  && tmp->src_mask == rel->howto->src_mask
+	  && tmp->dst_mask == rel->howto->dst_mask)
+	{
+	  type = tmp->type;
+	  break;
+	}
+d192 1
+d196 8
+a203 6
+  /* Netware wants a list of relocs for each address.
+     Format is:
+    	long	offset
+    	long	addend
+    	char	type
+     That should be it.  */
+d223 2
+a224 2
+  if (bfd_bwrite (&tmp_reloc, (bfd_size_type) 12, abfd) != 12)
+    return FALSE;
+d226 1
+a226 1
+  return TRUE;
+d232 1
+a232 1
+static bfd_boolean
+d240 1
+a240 1
+  return TRUE;
+d243 2
+a244 3
+/* Read a NetWare sparc import record.  */
+
+static bfd_boolean
+d249 4
+a252 4
+  struct nlm_relent *nlm_relocs;	/* Relocation records for symbol.  */
+  bfd_size_type rcount;			/* Number of relocs.  */
+  bfd_byte temp[NLM_TARGET_LONG_SIZE];	/* Temporary 32-bit value.  */
+  unsigned char symlength;		/* Length of symbol name.  */
+d255 6
+a260 4
+  /* First, read in the number of relocation
+     entries for this symbol.  */
+  if (bfd_bread ((PTR) temp, (bfd_size_type) 4, abfd) != 4)
+    return FALSE;
+d264 3
+a266 1
+  /* Next, read in the length of the symbol.  */
+d268 1
+a268 1
+  if (bfd_bread ((PTR) &symlength, (bfd_size_type) sizeof (symlength), abfd)
+d270 1
+a270 1
+    return FALSE;
+d272 1
+a272 1
+  name = bfd_alloc (abfd, (bfd_size_type) symlength + 1);
+d274 1
+a274 1
+    return FALSE;
+d276 3
+a278 1
+  /* Then read in the symbol.  */
+d280 2
+a281 2
+  if (bfd_bread (name, (bfd_size_type) symlength, abfd) != symlength)
+    return FALSE;
+d288 3
+a290 1
+  /* Next, start reading in the relocs.  */
+d295 1
+a295 1
+    return FALSE;
+d302 4
+a305 2
+      if (! nlm_sparc_read_reloc (abfd, sym, &section, &nlm_relocs -> reloc))
+	return FALSE;
+d310 1
+a310 2
+
+  return TRUE;
+d313 1
+a313 1
+static bfd_boolean
+d328 1
+a328 1
+  if (symsec == code)
+d330 1
+a330 1
+  else if (symsec == data)
+d332 1
+a332 1
+  else if (symsec == bss)
+d334 1
+a334 1
+  else
+d342 8
+a349 8
+  if (bfd_bwrite ((PTR) temp, (bfd_size_type) 4, abfd) != 4)
+    return FALSE;
+  bfd_put_32 (abfd, (bfd_vma) 1, temp);
+  if (bfd_bwrite ((PTR) temp, (bfd_size_type) 4, abfd) != 4)
+    return FALSE;
+  if (! nlm_sparc_write_reloc (abfd, sec, rel))
+    return FALSE;
+  return TRUE;
+d354 1
+a354 1
+static bfd_boolean
+d366 2
+a367 2
+  if (bfd_bwrite (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+d370 3
+a372 4
+  if ((bfd_bwrite (&len, (bfd_size_type) sizeof (bfd_byte), abfd)
+       != sizeof (bfd_byte))
+      || bfd_bwrite (sym->name, (bfd_size_type) len, abfd) != len)
+    return FALSE;
+d376 3
+a378 2
+      if (! nlm_sparc_write_reloc (abfd, relocs[i].sec, relocs[i].rel))
+	return FALSE;
+d381 1
+a381 1
+  return TRUE;
+d384 1
+a384 1
+static bfd_boolean
+d400 4
+a403 4
+  if (bfd_bwrite (temp, (bfd_size_type) 4, abfd) != 4
+      || bfd_bwrite (&len, (bfd_size_type) 1, abfd) != 1
+      || bfd_bwrite (sym->name, (bfd_size_type) len, abfd) != len)
+    return FALSE;
+d405 1
+a405 1
+  return TRUE;
+d414 20
+a433 20
+  {
+    "NetWare SPARC Module   \032",
+    sizeof (Nlm32_sparc_External_Fixed_Header),
+    0,	/* optional_prefix_size */
+    bfd_arch_sparc,
+    0,
+    FALSE,
+    0,	/* backend_object_p */
+    0,	/* write_prefix_func */
+    nlm_sparc_read_reloc,
+    nlm_sparc_mangle_relocs,
+    nlm_sparc_read_import,
+    nlm_sparc_write_import,
+    0,	/* set_public_section */
+    0,	/* get_public_offset */
+    nlm_swap_fixed_header_in,
+    nlm_swap_fixed_header_out,
+    nlm_sparc_write_external,
+    nlm_sparc_write_export
+  };
+d437 1
+a437 1
+#define TARGET_BACKEND_DATA	& nlm32_sparc_backend
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d2 1
+a2 2
+   Copyright 1993, 1994, 2000, 2001, 2002, 2003
+   Free Software Foundation, Inc.
+d36 1
+a36 1
+  PARAMS ((bfd *, asection *, const PTR, bfd_vma, bfd_size_type));
+d240 1
+a240 1
+     const PTR data ATTRIBUTE_UNUSED;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 2000, 2001, 2002 Free Software Foundation, Inc.
+d4 1
+a4 1
+   This file is part of BFD, the Binary File Descriptor library.
+d6 13
+a18 13
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+d31 1
+a31 1
+static bfd_boolean nlm_sparc_read_reloc
+d33 1
+a33 1
+static bfd_boolean nlm_sparc_write_reloc
+d35 1
+a35 1
+static bfd_boolean nlm_sparc_mangle_relocs
+d37 1
+a37 1
+static bfd_boolean nlm_sparc_read_import
+d39 1
+a39 1
+static bfd_boolean nlm_sparc_write_import
+d41 1
+a41 1
+static bfd_boolean nlm_sparc_write_external
+a42 2
+static bfd_boolean nlm_sparc_write_export
+  PARAMS ((bfd *, asymbol *, bfd_vma));
+d63 16
+a78 16
+static const char *const reloc_type_names[] =
+  {
+    "R_SPARC_NONE",
+    "R_SPARC_8",		"R_SPARC_16",		"R_SPARC_32",
+    "R_SPARC_DISP8",	"R_SPARC_DISP16",	"R_SPARC_DISP32",
+    "R_SPARC_WDISP30",	"R_SPARC_WDISP22",
+    "R_SPARC_HI22",	"R_SPARC_22",
+    "R_SPARC_13",		"R_SPARC_LO10",
+    "R_SPARC_GOT10",	"R_SPARC_GOT13",	"R_SPARC_GOT22",
+    "R_SPARC_PC10",	"R_SPARC_PC22",
+    "R_SPARC_WPLT30",
+    "R_SPARC_COPY",
+    "R_SPARC_GLOB_DAT",	"R_SPARC_JMP_SLOT",
+    "R_SPARC_RELATIVE",
+    "R_SPARC_UA32",
+  };
+d82 25
+a106 25
+  {
+    HOWTO (R_SPARC_NONE,    0,0, 0,FALSE,0,complain_overflow_dont,    0,"R_SPARC_NONE",    FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_8,       0,0, 8,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_8",       FALSE,0,0x000000ff,TRUE),
+    HOWTO (R_SPARC_16,      0,1,16,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_16",      FALSE,0,0x0000ffff,TRUE),
+    HOWTO (R_SPARC_32,      0,2,32,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_32",      FALSE,0,0xffffffff,TRUE),
+    HOWTO (R_SPARC_DISP8,   0,0, 8,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_DISP8",   FALSE,0,0x000000ff,TRUE),
+    HOWTO (R_SPARC_DISP16,  0,1,16,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_DISP16",  FALSE,0,0x0000ffff,TRUE),
+    HOWTO (R_SPARC_DISP32,  0,2,32,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_DISP32",  FALSE,0,0x00ffffff,TRUE),
+    HOWTO (R_SPARC_WDISP30, 2,2,30,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_WDISP30", FALSE,0,0x3fffffff,TRUE),
+    HOWTO (R_SPARC_WDISP22, 2,2,22,TRUE, 0,complain_overflow_signed,  0,"R_SPARC_WDISP22", FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_HI22,   10,2,22,FALSE,0,complain_overflow_dont,    0,"R_SPARC_HI22",    FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_22,      0,2,22,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_22",      FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_13,      0,2,13,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_13",      FALSE,0,0x00001fff,TRUE),
+    HOWTO (R_SPARC_LO10,    0,2,10,FALSE,0,complain_overflow_dont,    0,"R_SPARC_LO10",    FALSE,0,0x000003ff,TRUE),
+    HOWTO (R_SPARC_GOT10,   0,2,10,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_GOT10",   FALSE,0,0x000003ff,TRUE),
+    HOWTO (R_SPARC_GOT13,   0,2,13,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_GOT13",   FALSE,0,0x00001fff,TRUE),
+    HOWTO (R_SPARC_GOT22,  10,2,22,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_GOT22",   FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_PC10,    0,2,10,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_PC10",    FALSE,0,0x000003ff,TRUE),
+    HOWTO (R_SPARC_PC22,    0,2,22,FALSE,0,complain_overflow_bitfield,0,"R_SPARC_PC22",    FALSE,0,0x003fffff,TRUE),
+    HOWTO (R_SPARC_WPLT30,  0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_WPLT30",  FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_COPY,    0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_COPY",    FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_GLOB_DAT,0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_GLOB_DAT",FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_JMP_SLOT,0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_JMP_SLOT",FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_RELATIVE,0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_RELATIVE",FALSE,0,0x00000000,TRUE),
+    HOWTO (R_SPARC_UA32,    0,0,00,FALSE,0,complain_overflow_dont,    0,"R_SPARC_UA32",    FALSE,0,0x00000000,TRUE),
+d111 6
+a116 7
+struct nlm32_sparc_reloc_ext
+  {
+    unsigned char offset[4];
+    unsigned char addend[4];
+    unsigned char type[1];
+    unsigned char pad1[3];
+  };
+d118 1
+a118 1
+static bfd_boolean
+d131 2
+a132 2
+  if (bfd_bread (&tmp_reloc, (bfd_size_type) 12, abfd) != 12)
+    return FALSE;
+d150 4
+a153 5
+    if (nlm32_sparc_howto_table[index].type == type)
+      {
+	rel->howto = &nlm32_sparc_howto_table[index];
+	break;
+      }
+d159 1
+a159 1
+  return TRUE;
+d165 1
+a165 1
+static bfd_boolean
+d179 2
+a180 3
+       index++)
+    {
+      tmp = &nlm32_sparc_howto_table[index];
+d182 9
+a190 11
+      if (tmp->rightshift == rel->howto->rightshift
+	  && tmp->size == rel->howto->size
+	  && tmp->bitsize == rel->howto->bitsize
+	  && tmp->pc_relative == rel->howto->pc_relative
+	  && tmp->bitpos == rel->howto->bitpos
+	  && tmp->src_mask == rel->howto->src_mask
+	  && tmp->dst_mask == rel->howto->dst_mask)
+	{
+	  type = tmp->type;
+	  break;
+	}
+d192 1
+d196 8
+a203 6
+  /* Netware wants a list of relocs for each address.
+     Format is:
+    	long	offset
+    	long	addend
+    	char	type
+     That should be it.  */
+d223 2
+a224 2
+  if (bfd_bwrite (&tmp_reloc, (bfd_size_type) 12, abfd) != 12)
+    return FALSE;
+d226 1
+a226 1
+  return TRUE;
+d232 1
+a232 1
+static bfd_boolean
+d240 1
+a240 1
+  return TRUE;
+d243 2
+a244 3
+/* Read a NetWare sparc import record.  */
+
+static bfd_boolean
+d249 4
+a252 4
+  struct nlm_relent *nlm_relocs;	/* Relocation records for symbol.  */
+  bfd_size_type rcount;			/* Number of relocs.  */
+  bfd_byte temp[NLM_TARGET_LONG_SIZE];	/* Temporary 32-bit value.  */
+  unsigned char symlength;		/* Length of symbol name.  */
+d255 6
+a260 4
+  /* First, read in the number of relocation
+     entries for this symbol.  */
+  if (bfd_bread ((PTR) temp, (bfd_size_type) 4, abfd) != 4)
+    return FALSE;
+d264 3
+a266 1
+  /* Next, read in the length of the symbol.  */
+d268 1
+a268 1
+  if (bfd_bread ((PTR) &symlength, (bfd_size_type) sizeof (symlength), abfd)
+d270 1
+a270 1
+    return FALSE;
+d272 1
+a272 1
+  name = bfd_alloc (abfd, (bfd_size_type) symlength + 1);
+d274 1
+a274 1
+    return FALSE;
+d276 3
+a278 1
+  /* Then read in the symbol.  */
+d280 2
+a281 2
+  if (bfd_bread (name, (bfd_size_type) symlength, abfd) != symlength)
+    return FALSE;
+d288 3
+a290 1
+  /* Next, start reading in the relocs.  */
+d295 1
+a295 1
+    return FALSE;
+d302 4
+a305 2
+      if (! nlm_sparc_read_reloc (abfd, sym, &section, &nlm_relocs -> reloc))
+	return FALSE;
+d310 1
+a310 2
+
+  return TRUE;
+d313 1
+a313 1
+static bfd_boolean
+d328 1
+a328 1
+  if (symsec == code)
+d330 1
+a330 1
+  else if (symsec == data)
+d332 1
+a332 1
+  else if (symsec == bss)
+d334 1
+a334 1
+  else
+d342 8
+a349 8
+  if (bfd_bwrite ((PTR) temp, (bfd_size_type) 4, abfd) != 4)
+    return FALSE;
+  bfd_put_32 (abfd, (bfd_vma) 1, temp);
+  if (bfd_bwrite ((PTR) temp, (bfd_size_type) 4, abfd) != 4)
+    return FALSE;
+  if (! nlm_sparc_write_reloc (abfd, sec, rel))
+    return FALSE;
+  return TRUE;
+d354 1
+a354 1
+static bfd_boolean
+d366 2
+a367 2
+  if (bfd_bwrite (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+d370 3
+a372 4
+  if ((bfd_bwrite (&len, (bfd_size_type) sizeof (bfd_byte), abfd)
+       != sizeof (bfd_byte))
+      || bfd_bwrite (sym->name, (bfd_size_type) len, abfd) != len)
+    return FALSE;
+d376 3
+a378 2
+      if (! nlm_sparc_write_reloc (abfd, relocs[i].sec, relocs[i].rel))
+	return FALSE;
+d381 1
+a381 1
+  return TRUE;
+d384 1
+a384 1
+static bfd_boolean
+d400 4
+a403 4
+  if (bfd_bwrite (temp, (bfd_size_type) 4, abfd) != 4
+      || bfd_bwrite (&len, (bfd_size_type) 1, abfd) != 1
+      || bfd_bwrite (sym->name, (bfd_size_type) len, abfd) != len)
+    return FALSE;
+d405 1
+a405 1
+  return TRUE;
+d414 20
+a433 20
+  {
+    "NetWare SPARC Module   \032",
+    sizeof (Nlm32_sparc_External_Fixed_Header),
+    0,	/* optional_prefix_size */
+    bfd_arch_sparc,
+    0,
+    FALSE,
+    0,	/* backend_object_p */
+    0,	/* write_prefix_func */
+    nlm_sparc_read_reloc,
+    nlm_sparc_mangle_relocs,
+    nlm_sparc_read_import,
+    nlm_sparc_write_import,
+    0,	/* set_public_section */
+    0,	/* get_public_offset */
+    nlm_swap_fixed_header_in,
+    nlm_swap_fixed_header_out,
+    nlm_sparc_write_external,
+    nlm_sparc_write_export
+  };
+d437 1
+a437 1
+#define TARGET_BACKEND_DATA	& nlm32_sparc_backend
+@
+

@@ -1,0 +1,388 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.07.18.12.31.13;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.48.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.48.18;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.05.16.08.19.31;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke regression tests
+
+noone actually uses them (I've run them about half a dozen times only),
+some of the tests (eg. everything PF) are broken, some of the code is
+broken... and the adventurous are invited to use CVS and fix them,
+maybe on a tagged branch.
+@
+text
+@#	$OpenBSD: test-exec.sh,v 1.14 2002/04/15 15:19:48 markus Exp $
+#	Placed in the Public Domain.
+
+PORT=4242
+USER=`id -un`
+SUDO=
+#SUDO=sudo
+
+OBJ=$1
+if [ "x$OBJ" = "x" ]; then
+	echo '$OBJ not defined'
+	exit 2
+fi
+if [ ! -d $OBJ ]; then
+	echo "not a directory: $OBJ"
+	exit 2
+fi
+SCRIPT=$2
+if [ "x$SCRIPT" = "x" ]; then
+	echo '$SCRIPT not defined'
+	exit 2
+fi
+if [ ! -f $SCRIPT ]; then
+	echo "not a file: $SCRIPT"
+	exit 2
+fi
+if sh -n $SCRIPT; then
+	true
+else
+	echo "syntax error in $SCRIPT"
+	exit 2
+fi
+unset SSH_AUTH_SOCK
+
+# defaults
+SSH=ssh
+SSHD=sshd
+SSHAGENT=ssh-agent
+SSHADD=ssh-add
+SSHKEYGEN=ssh-keygen
+SSHKEYSCAN=ssh-keyscan
+SFTP=sftp
+SFTPSERVER=/usr/libexec/sftp-server
+
+if [ "x$TEST_SSH_SSH" != "x" ]; then
+	SSH=${TEST_SSH_SSH}
+fi
+if [ "x$TEST_SSH_SSHD" != "x" ]; then
+	SSHD=${TEST_SSH_SSHD}
+fi
+if [ "x$TEST_SSH_SSHAGENT" != "x" ]; then
+	SSHAGENT=${TEST_SSH_SSHAGENT}
+fi
+if [ "x$TEST_SSH_SSHADD" != "x" ]; then
+	SSHADD=${TEST_SSH_SSHADD}
+fi
+if [ "x$TEST_SSH_SSHKEYGEN" != "x" ]; then
+	SSHKEYGEN=${TEST_SSH_SSHKEYGEN}
+fi
+if [ "x$TEST_SSH_SSHKEYSCAN" != "x" ]; then
+	SSHKEYSCAN=${TEST_SSH_SSHKEYSCAN}
+fi
+if [ "x$TEST_SSH_SFTP" != "x" ]; then
+	SFTP=${TEST_SSH_SFTP}
+fi
+if [ "x$TEST_SSH_SFTPSERVER" != "x" ]; then
+	SFTPSERVER=${TEST_SSH_SFTPSERVER}
+fi
+
+# these should be used in tests
+export SSH SSHD SSHAGENT SSHADD SSHKEYGEN SSHKEYSCAN SFTP SFTPSERVER
+#echo $SSH $SSHD $SSHAGENT $SSHADD $SSHKEYGEN $SSHKEYSCAN $SFTP $SFTPSERVER
+
+# helper
+cleanup ()
+{
+	if [ -f $PIDFILE ]; then
+		pid=`cat $PIDFILE`
+		if [ "X$pid" = "X" ]; then
+			echo no sshd running
+		else
+			if [ $pid -lt 2 ]; then
+				echo bad pid for ssd: $pid
+			else
+				$SUDO kill $pid
+			fi
+		fi
+	fi
+}
+
+trace ()
+{
+	if [ "X$TEST_SSH_TRACE" = "Xyes" ]; then
+		echo "$@@"
+	fi
+}
+
+verbose ()
+{
+	if [ "X$TEST_SSH_QUIET" != "Xyes" ]; then
+		echo "$@@"
+	fi
+}
+
+
+fail ()
+{
+	RESULT=1
+	echo "$@@"
+}
+
+fatal ()
+{
+	echo -n "FATAL: "
+	fail "$@@"
+	cleanup
+	exit $RESULT
+}
+
+RESULT=0
+PIDFILE=$OBJ/pidfile
+
+trap fatal 3 2
+
+# create server config
+cat << EOF > $OBJ/sshd_config
+	Port			$PORT
+	ListenAddress		127.0.0.1
+	#ListenAddress		::1
+	PidFile			$PIDFILE
+	AuthorizedKeysFile	$OBJ/authorized_keys_%u
+	LogLevel		QUIET
+EOF
+
+# server config for proxy connects
+cp $OBJ/sshd_config $OBJ/sshd_proxy
+
+# allow group-writable directories in proxy-mode
+echo 'StrictModes no' >> $OBJ/sshd_proxy
+
+# create client config
+cat << EOF > $OBJ/ssh_config
+Host *
+	Hostname		127.0.0.1
+	HostKeyAlias		localhost-with-alias
+	Port			$PORT
+	User			$USER
+	GlobalKnownHostsFile	$OBJ/known_hosts
+	UserKnownHostsFile	$OBJ/known_hosts
+	RSAAuthentication	yes
+	PubkeyAuthentication	yes
+	ChallengeResponseAuthentication	no
+	HostbasedAuthentication	no
+	PasswordAuthentication	no
+	RhostsAuthentication	no
+	RhostsRSAAuthentication	no
+	BatchMode		yes
+	StrictHostKeyChecking	yes
+EOF
+
+rm -f $OBJ/known_hosts $OBJ/authorized_keys_$USER
+
+trace "generate keys"
+for t in rsa rsa1; do
+	# generate user key
+	rm -f $OBJ/$t
+	${SSHKEYGEN} -q -N '' -t $t  -f $OBJ/$t ||\
+		fail "ssh-keygen for $t failed"
+
+	# known hosts file for client
+	(
+		echo -n 'localhost-with-alias,127.0.0.1,::1 '
+		cat $OBJ/$t.pub
+	) >> $OBJ/known_hosts
+
+	# setup authorized keys
+	cat $OBJ/$t.pub >> $OBJ/authorized_keys_$USER
+	echo IdentityFile $OBJ/$t >> $OBJ/ssh_config
+
+	# use key as host key, too
+	$SUDO cp $OBJ/$t $OBJ/host.$t
+	echo HostKey $OBJ/host.$t >> $OBJ/sshd_config
+
+	# don't use SUDO for proxy connect
+	echo HostKey $OBJ/$t >> $OBJ/sshd_proxy
+done
+chmod 644 $OBJ/authorized_keys_$USER
+
+# create a proxy version of the client config
+(
+	cat $OBJ/ssh_config
+	echo proxycommand ${SSHD} -i -f $OBJ/sshd_proxy
+) > $OBJ/ssh_proxy
+
+# check proxy config
+${SSHD} -t -f $OBJ/sshd_proxy	|| fatal "sshd_proxy broken"
+
+start_sshd ()
+{
+	# start sshd
+	$SUDO ${SSHD} -f $OBJ/sshd_config -t	|| fatal "sshd_config broken"
+	$SUDO ${SSHD} -f $OBJ/sshd_config
+
+	trace "wait for sshd"
+	i=0;
+	while [ ! -f $PIDFILE -a $i -lt 5 ]; do
+		i=`expr $i + 1`
+		sleep $i
+	done
+
+	test -f $PIDFILE || fatal "no sshd running on port $PORT"
+}
+
+# source test body
+. $SCRIPT
+
+# kill sshd
+cleanup
+if [ $RESULT -eq 0 ]; then
+	verbose ok $tid
+else
+	echo failed $tid
+fi
+exit $RESULT
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+#	$OpenBSD: test-exec.sh,v 1.16 2004/04/27 09:47:30 djm Exp $
+d46 1
+a46 1
+	SSH="${TEST_SSH_SSH}"
+d49 1
+a49 1
+	SSHD="${TEST_SSH_SSHD}"
+d52 1
+a52 1
+	SSHAGENT="${TEST_SSH_SSHAGENT}"
+d55 1
+a55 1
+	SSHADD="${TEST_SSH_SSHADD}"
+d58 1
+a58 1
+	SSHKEYGEN="${TEST_SSH_SSHKEYGEN}"
+d61 1
+a61 1
+	SSHKEYSCAN="${TEST_SSH_SSHKEYSCAN}"
+d64 1
+a64 1
+	SFTP="${TEST_SSH_SFTP}"
+d67 1
+a67 1
+	SFTPSERVER="${TEST_SSH_SFTPSERVER}"
+a132 2
+	AcceptEnv		_XXX_TEST_*
+	AcceptEnv		_XXX_TEST
+@
+

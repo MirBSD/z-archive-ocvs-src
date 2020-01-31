@@ -1,0 +1,383 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.18;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.48;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package Hash::Util;
+
+require 5.007003;
+use strict;
+use Carp;
+
+require Exporter;
+our @@ISA        = qw(Exporter);
+our @@EXPORT_OK  = qw(lock_keys unlock_keys lock_value unlock_value
+                     lock_hash unlock_hash
+                    );
+our $VERSION    = 0.04;
+
+=head1 NAME
+
+Hash::Util - A selection of general-utility hash subroutines
+
+=head1 SYNOPSIS
+
+  use Hash::Util qw(lock_keys   unlock_keys 
+                    lock_value  unlock_value
+                    lock_hash   unlock_hash);
+
+  %hash = (foo => 42, bar => 23);
+  lock_keys(%hash);
+  lock_keys(%hash, @@keyset);
+  unlock_keys(%hash);
+
+  lock_value  (%hash, 'foo');
+  unlock_value(%hash, 'foo');
+
+  lock_hash  (%hash);
+  unlock_hash(%hash);
+
+=head1 DESCRIPTION
+
+C<Hash::Util> contains special functions for manipulating hashes that
+don't really warrant a keyword.
+
+By default C<Hash::Util> does not export anything.
+
+=head2 Restricted hashes
+
+5.8.0 introduces the ability to restrict a hash to a certain set of
+keys.  No keys outside of this set can be added.  It also introduces
+the ability to lock an individual key so it cannot be deleted and the
+value cannot be changed.
+
+This is intended to largely replace the deprecated pseudo-hashes.
+
+=over 4
+
+=item lock_keys
+
+=item unlock_keys
+
+  lock_keys(%hash);
+  lock_keys(%hash, @@keys);
+
+Restricts the given %hash's set of keys to @@keys.  If @@keys is not
+given it restricts it to its current keyset.  No more keys can be
+added.  delete() and exists() will still work, but it does not effect
+the set of allowed keys.
+
+  unlock_keys(%hash;)
+
+Removes the restriction on the %hash's keyset.
+
+=cut
+
+sub lock_keys (\%;@@) {
+    my($hash, @@keys) = @@_;
+
+    Internals::hv_clear_placeholders %$hash;
+    if( @@keys ) {
+        my %keys = map { ($_ => 1) } @@keys;
+        my %original_keys = map { ($_ => 1) } keys %$hash;
+        foreach my $k (keys %original_keys) {
+            die sprintf "Hash has key '$k' which is not in the new key ".
+                        "set at %s line %d\n", (caller)[1,2]
+              unless $keys{$k};
+        }
+    
+        foreach my $k (@@keys) {
+            $hash->{$k} = undef unless exists $hash->{$k};
+        }
+        Internals::SvREADONLY %$hash, 1;
+
+        foreach my $k (@@keys) {
+            delete $hash->{$k} unless $original_keys{$k};
+        }
+    }
+    else {
+        Internals::SvREADONLY %$hash, 1;
+    }
+
+    return;
+}
+
+sub unlock_keys (\%) {
+    my($hash) = shift;
+
+    Internals::SvREADONLY %$hash, 0;
+    return;
+}
+
+=item lock_value
+
+=item unlock_value
+
+  lock_key  (%hash, $key);
+  unlock_key(%hash, $key);
+
+Locks and unlocks an individual key of a hash.  The value of a locked
+key cannot be changed.
+
+%hash must have already been locked for this to have useful effect.
+
+=cut
+
+sub lock_value (\%$) {
+    my($hash, $key) = @@_;
+    carp "Cannot usefully lock values in an unlocked hash" 
+      unless Internals::SvREADONLY %$hash;
+    Internals::SvREADONLY $hash->{$key}, 1;
+}
+
+sub unlock_value (\%$) {
+    my($hash, $key) = @@_;
+    Internals::SvREADONLY $hash->{$key}, 0;
+}
+
+
+=item B<lock_hash>
+
+=item B<unlock_hash>
+
+    lock_hash(%hash);
+
+lock_hash() locks an entire hash, making all keys and values readonly.
+No value can be changed, no keys can be added or deleted.
+
+    unlock_hash(%hash);
+
+unlock_hash() does the opposite of lock_hash().  All keys and values
+are made read/write.  All values can be changed and keys can be added
+and deleted.
+
+=cut
+
+sub lock_hash (\%) {
+    my($hash) = shift;
+
+    lock_keys(%$hash);
+
+    foreach my $key (keys %$hash) {
+        lock_value(%$hash, $key);
+    }
+
+    return 1;
+}
+
+sub unlock_hash (\%) {
+    my($hash) = shift;
+
+    foreach my $key (keys %$hash) {
+        unlock_value(%$hash, $key);
+    }
+
+    unlock_keys(%$hash);
+
+    return 1;
+}
+
+
+=back
+
+=head1 AUTHOR
+
+Michael G Schwern <schwern@@pobox.com> on top of code by Nick
+Ing-Simmons and Jeffrey Friedl.
+
+=head1 SEE ALSO
+
+L<Scalar::Util>, L<List::Util>, L<Hash::Util>
+
+=cut
+
+1;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d10 1
+a10 1
+                     lock_hash unlock_hash hash_seed
+d12 1
+a12 1
+our $VERSION    = 0.05;
+d20 1
+a20 1
+  use Hash::Util qw(lock_keys   unlock_keys
+d22 1
+a22 2
+                    lock_hash   unlock_hash
+                    hash_seed);
+a34 2
+  my $hashes_are_randomised = hash_seed() != 0;
+
+d62 2
+a63 5
+added. delete() and exists() will still work, but will not alter
+the set of allowed keys. B<Note>: the current implementation prevents
+the hash from being bless()ed while it is in a locked state. Any attempt
+to do so will raise an exception. Of course you can still bless()
+the hash before you call lock_keys() so this shouldn't be a problem.
+d65 1
+a65 1
+  unlock_keys(%hash);
+d111 2
+a112 2
+  lock_value  (%hash, $key);
+  unlock_value(%hash, $key);
+a175 20
+=item B<hash_seed>
+
+    my $hash_seed = hash_seed();
+
+hash_seed() returns the seed number used to randomise hash ordering.
+Zero means the "traditional" random hash ordering, non-zero means the
+new even more random hash ordering introduced in Perl 5.8.1.
+
+B<Note that the hash seed is sensitive information>: by knowing it one
+can craft a denial-of-service attack against Perl code, even remotely,
+see L<perlsec/"Algorithmic Complexity Attacks"> for more information.
+B<Do not disclose the hash seed> to people who don't need to know it.
+See also L<perlrun/PERL_HASH_SEED_DEBUG>.
+
+=cut
+
+sub hash_seed () {
+    Internals::rehash_seed();
+}
+
+a177 9
+=head1 CAVEATS
+
+Note that the trapping of the restricted operations is not atomic:
+for example
+
+    eval { %hash = (illegal_key => 1) }
+
+leaves the C<%hash> empty rather than with its original contents.
+
+d185 1
+a185 2
+L<Scalar::Util>, L<List::Util>, L<Hash::Util>,
+and L<perlsec/"Algorithmic Complexity Attacks">.
+@
+

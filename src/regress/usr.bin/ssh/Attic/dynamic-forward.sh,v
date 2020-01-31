@@ -1,0 +1,190 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.07.18.12.31.08;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.06.29.17.26.54;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.06.29.17.26.54;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.07.06.15.39.09;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.08.19.25;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke regression tests
+
+noone actually uses them (I've run them about half a dozen times only),
+some of the tests (eg. everything PF) are broken, some of the code is
+broken... and the adventurous are invited to use CVS and fix them,
+maybe on a tagged branch.
+@
+text
+@#	$OpenBSD: dynamic-forward.sh,v 1.1 2003/06/26 14:23:10 markus Exp $
+#	Placed in the Public Domain.
+
+tid="dynamic forwarding"
+
+PORT=4242
+FWDPORT=4243
+
+if [ -x `which nc` ] && nc -h 2>&1 | grep "x proxy address" >/dev/null; then
+	proxycmd="nc -x 127.0.0.1:$FWDPORT -X"
+elif [ -x `which connect` ]; then
+	proxycmd="connect -S 127.0.0.1:$FWDPORT -"
+else
+	echo "skipped (no suitable ProxyCommand found)"
+	exit 0
+fi
+trace "will use ProxyCommand $proxycmd"
+
+start_sshd
+
+for p in 1 2; do
+  for s in 4; do
+    for h in 127.0.0.1 localhost; do
+	trace "testing ssh protocol $p socks version $s host $h"
+	trace "start dynamic forwarding, fork to background"
+	${SSH} -$p -F $OBJ/ssh_config -f -D $FWDPORT somehost sleep 10
+
+	trace "transfer over forwarded channel and check result"
+	${SSH} -F $OBJ/ssh_config -o "ProxyCommand ${proxycmd}${s} $h $PORT" \
+		somehost cat /bin/ls > $OBJ/ls.copy
+	test -f $OBJ/ls.copy	 || fail "failed copy /bin/ls"
+	cmp /bin/ls $OBJ/ls.copy || fail "corrupted copy of /bin/ls"
+
+	sleep 10
+    done
+  done
+done
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@the previous cvs import did not finish due to 'memory fault'
+sync with OpenBSD-cvs
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD base system minus kerberos from CTM,
+kernel source from CVS right now (no diffs though)
+@
+text
+@d1 1
+a1 1
+#	$OpenBSD: dynamic-forward.sh,v 1.2 2003/07/03 08:21:46 markus Exp $
+d22 3
+d26 1
+a26 2
+	${SSH} -$p -F $OBJ/ssh_config -f -D $FWDPORT -q somehost \
+		exec sh -c \'"echo \$\$ > $OBJ/remote_pid; exec sleep 444"\'
+d28 9
+a36 20
+	for s in 4 5; do
+	    for h in 127.0.0.1 localhost; do
+		trace "testing ssh protocol $p socks version $s host $h"
+		${SSH} -F $OBJ/ssh_config \
+			-o "ProxyCommand ${proxycmd}${s} $h $PORT" \
+			somehost cat /bin/ls > $OBJ/ls.copy
+		test -f $OBJ/ls.copy	 || fail "failed copy /bin/ls"
+		cmp /bin/ls $OBJ/ls.copy || fail "corrupted copy of /bin/ls"
+	    done
+	done
+
+	if [ -f $OBJ/remote_pid ]; then
+		remote=`cat $OBJ/remote_pid`
+		trace "terminate remote shell, pid $remote"
+		if [ $remote -gt 1 ]; then
+			kill -HUP $remote
+		fi
+	else
+		fail "no pid file: $OBJ/remote_pid"
+	fi
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+#	$OpenBSD: dynamic-forward.sh,v 1.3 2004/02/28 12:16:57 dtucker Exp $
+d9 1
+a9 1
+if [ -x "`which nc`" ] && nc -h 2>&1 | grep "proxy address" >/dev/null; then
+d11 1
+a11 1
+elif [ -x "`which connect`" ]; then
+@
+
+

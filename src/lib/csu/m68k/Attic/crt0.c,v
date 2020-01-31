@@ -1,0 +1,341 @@
+head	1.2;
+access;
+symbols
+	cvs-200410141645:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310231600:1.1.5.1
+	netbsd:1.1.5
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.12.20.54.40;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.46.01;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.5.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.01;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.5.1
+date	2003.10.23.16.06.41;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove more non-x86-32 from src
+@
+text
+@/*	$OpenBSD: crt0.c,v 1.8 2003/02/28 18:05:51 deraadt Exp $	*/
+/*	$NetBSD: crt0.c,v 1.14 1995/06/03 13:16:11 pk Exp $	*/
+/*
+ * Copyright (c) 1993 Paul Kranenburg
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed by Paul Kranenburg.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ */
+
+
+#if defined(LIBC_SCCS) && !defined(lint)
+static char rcsid[] = "$OpenBSD: crt0.c,v 1.8 2003/02/28 18:05:51 deraadt Exp $";
+#endif /* LIBC_SCCS and not lint */
+
+#include <sys/param.h>
+#include <stdlib.h>
+
+#include "common.h"
+
+extern void	start(void) asm("start");
+
+void
+start()
+{
+	struct kframe {
+		int	kargc;
+		char	*kargv[1];	/* size depends on kargc */
+		char	kargstr[1];	/* size varies */
+		char	kenvstr[1];	/* size varies */
+	};
+	/*
+	 *	ALL REGISTER VARIABLES!!!
+	 */
+	register struct kframe *kfp;
+	register char **argv, *ap;
+	char *s;
+
+#ifdef lint
+	kfp = 0;
+	initcode = initcode = 0;
+#else /* not lint */
+	asm("lea a6@@(4),%0" : "=r" (kfp));	/* catch it quick */
+#endif /* not lint */
+	argv = &kfp->kargv[0];
+	environ = argv + kfp->kargc + 1;
+
+	if (ap = argv[0]) {
+		if ((__progname = _strrchr(ap, '/')) == NULL)
+			__progname = ap;
+		else
+			++__progname;
+		for (s = __progname_storage; *__progname &&
+		    s < &__progname_storage[sizeof __progname_storage - 1]; )
+			*s++ = *__progname++;
+		*s = '\0';
+		__progname = __progname_storage;
+	}
+
+#ifdef DYNAMIC
+	/* ld(1) convention: if DYNAMIC = 0 then statically linked */
+#ifdef stupid_gcc
+	if (&_DYNAMIC)
+#else
+	if ( ({volatile caddr_t x = (caddr_t)&_DYNAMIC; x; }) )
+#endif
+		__load_rtld(&_DYNAMIC);
+#endif /* DYNAMIC */
+
+asm("eprol:");
+
+#ifdef MCRT0
+	atexit(_mcleanup);
+	monstartup((u_long)&eprol, (u_long)&etext);
+#endif /* MCRT0 */
+
+asm ("__callmain:");		/* Defined for the benefit of debuggers */
+	exit(main(kfp->kargc, argv, environ));
+}
+
+#ifdef DYNAMIC
+	asm("	___syscall:");
+	asm("		movel	a7@@+,a0");	/* return address */
+	asm("		movel	a7@@,d0");	/* syscall number */
+	asm("		movel	a0,a7@@");
+	asm("		trap	#0");		/* do system call */
+	asm("		bcc	1f");		/* check error */
+	asm("		moveq	#-1,d0");
+	asm("	1:	movel	a7@@,a0");	/* get return address, leave */
+	asm("		jmp	a0@@");		/* correct amount on stack */
+
+#endif /* DYNAMIC */
+
+#include "common.c"
+
+#ifdef MCRT0
+asm ("	.text");
+asm ("_eprol:");
+#endif
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.5.1
+log
+@Import NetBSD lib/csu into vendor branch to ease future updates
+@
+text
+@d1 4
+a4 4
+/*	$NetBSD: crt0.c,v 1.21 1999/01/22 11:29:16 mycroft Exp $	*/
+
+/*-
+ * Copyright (c) 1998 The NetBSD Foundation, Inc.
+a6 3
+ * This code is derived from software contributed to The NetBSD Foundation
+ * by Charles M. Hannum and Paul Kranenburg.
+ *
+d17 14
+a30 5
+ *        This product includes software developed by the NetBSD
+ *        Foundation, Inc. and its contributors.
+ * 4. Neither the name of The NetBSD Foundation nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+a31 11
+ * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+d34 6
+d44 1
+a44 21
+extern	void		start __P((void)) asm("start");
+	void		__start __P((int, char *[], char *[]));
+
+__asm("
+	.text
+	.align	2
+	.globl	start
+start:
+	movel	a2,___ps_strings
+	movel	sp@@,d0
+	lea	sp@@(8,d0:l:4),a0
+	lea	sp@@(4),a1
+	movel	a0,sp@@-
+	movel	a1,sp@@-
+	movel	d0,sp@@-
+	jsr	___start
+");
+
+#if defined(LIBC_SCCS) && !defined(lint)
+__RCSID("$NetBSD: crt0.c,v 1.21 1999/01/22 11:29:16 mycroft Exp $");
+#endif /* LIBC_SCCS and not lint */
+d47 1
+a47 4
+__start(argc, argv, envp)
+	int argc;
+	char *argv[];
+	char *envp[];
+d49 21
+a69 3
+	char *ap;
+
+	environ = envp;
+d71 1
+a71 1
+	if (ap = argv[0])
+d76 6
+d93 2
+d100 2
+a101 2
+__asm("__callmain:");		/* Defined for the benefit of debuggers */
+	exit(main(argc, argv, envp));
+d105 10
+a114 14
+__asm("
+	.text
+	.align	2
+___syscall:
+	movel	a7@@+,a0
+	movel	a7@@,d0
+	movel	a0,a7@@
+	trap	#0
+	bcs	1f
+	jmp	a0@@
+1:
+	moveq	#-1,d0
+	jmp	a0@@
+");
+d120 3
+a122 6
+__asm("
+	.text
+	.align	2
+eprol:
+");
+#endif /* MCRT0 */
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

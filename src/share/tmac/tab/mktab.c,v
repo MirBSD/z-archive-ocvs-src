@@ -1,0 +1,261 @@
+head	1.5;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.5
+	tg-mergefixes-1-branch:1.5.0.8
+	tg-mergefixes-1-base:1.5
+	MIROS_X:1.5.0.6
+	MIROS_X_BASE:1.5
+	tg-mergetmp-3:1.5
+	MIRBSD_XP_MIRPPC:1.5.0.4
+	MIRBSD_XP_SPARC_BASE:1.5
+	MIRBSD_XP_SPARC:1.5.0.2
+	MIRBSD_7quater:1.4
+	MIRBSD_7_ALPHA:1.4.0.6
+	MIRBSD_7:1.4.0.4
+	MIRBSD_7ter:1.4
+	MIRBSD_7_DEV:1.4.0.2
+	MIRBSD_5:1.3;
+locks; strict;
+comment	@ * @;
+
+
+1.5
+date	2004.01.10.04.57.07;	author tg;	state Stab;
+branches;
+next	1.4;
+
+1.4
+date	2003.09.04.13.12.42;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2003.06.06.20.33.07;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.05.12.20.22.43;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.05.12.20.16.40;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@Jumbo patch from wbx@@ to replace the
+bcopy(3), bcmp(3) and bzero(3) func-
+tions, having been deprecated earli-
+er, by their ISO counterparts, name-
+ly memmove(3) and the gcc3-optimized
+memcmp(3) and memset(3) functions.
+
+I didn't read every single line (be-
+cause of the time of day), but looks
+fine and builds through. I just nee-
+ded to nuke three cases of whitespa-
+ce at EOL. Good work wbx@@.
+
+I've also sprinkled in a few patches
+of mine addressing the issue that in
+some kernel header files, bcopy() is
+used as well... also there have been
+quite some string cleaning fixes and
+a missing header.
+@
+text
+@/* $MirBSD: mktab.c,v 1.4 2003/09/04 13:12:42 tg Exp $ */
+/*-
+ * Copyright (c) 1989 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#ifndef lint
+char copyright[] =
+"@@(#) Copyright (c) 1989 The Regents of the University of California.\n\
+ All rights reserved.\n";
+#endif /* not lint */
+
+#ifndef lint
+static char sccsid[] = "@@(#)mktab.c	5.2 (Berkeley) 4/18/91";
+#endif /* not lint */
+
+/*
+ * mktab.c
+ *
+ * Function:	Build nroff terminal tables in a compiler-independent way.
+ * Usage:	cc -Itroff mktab.c tabnnn.c -o mktab; mktab > tabnnn
+ * Date:	Sat Feb 25 00:10:06 MST 1989
+ * Author:	Donn Seeley
+ * Remarks:
+ *	Traditional nroff terminal table construction works by compiling
+ *	a C file into a binary that is read directly into nroff as it runs.
+ *	If your C compiler or your relocation format differ from what nroff
+ *	expects, you lose.  This program, when linked with a terminal table
+ *	object file, fakes up an 'object' file that looks enough like the
+ *	traditional one to fool nroff.
+ */
+
+#include <stdio.h>
+#include "tw.h"
+
+main()
+{
+	static struct fake_exec {
+		int bogus[8];	/* bogus[2] == a_data */
+	} fe;
+	register int *bip;
+	register char **tip;
+	register int offset = sizeof t;
+	int buf[sizeof t / sizeof (int)];
+	char *malloc();
+	int twbase = (int *) &t.twinit - &t.bset;
+
+	/*
+	 * Copy the integers at the start of the table.
+	 */
+	memmove((char *) buf, (char *) &t, twbase * sizeof (int));
+
+	/*
+	 * Replace the character pointers in the copy with integer offsets.
+	 * This duplicates the effect of relocation offsets.
+	 * Take care to count the possibly null control bytes in the codetab
+	 *	section.
+	 */
+	for (bip = &buf[twbase], tip = &t.twinit;
+	     tip < &t.codetab[0];
+	     ++bip, ++tip)
+		if (*tip) {
+			*bip = offset;
+			offset += strlen(*tip) + 1;
+		} else
+			*bip = 0;
+	for (; tip < &t.zzz; ++bip, ++tip)
+		if (*tip) {
+			*bip = offset;
+			offset += strlen(*tip + 1) + 2;
+		} else
+			*bip = 0;
+
+	/*
+	 * Patch in a fake data segment size field.
+	 */
+	fe.bogus[2] = offset;
+
+	/*
+	 * Dump the header and the table.
+	 */
+	(void) fwrite((char *) &fe, sizeof fe, 1, stdout);
+	(void) fwrite((char *) buf, sizeof t, 1, stdout);
+
+	/*
+	 * Dump the strings.
+	 */
+	for (tip = &t.twinit; tip < &t.codetab[0]; ++tip)
+		if (*tip) {
+			fputs(*tip, stdout);
+			putchar('\0');
+		}
+	for (tip = &t.codetab[0]; tip < &t.zzz; ++tip)
+		if (*tip) {
+			putchar(**tip);
+			fputs(*tip + 1, stdout);
+			putchar('\0');
+		}
+
+	return 0;
+}
+@
+
+
+1.4
+log
+@Tack a proper Caldera / UCB copyright onto "modules suspected to
+be subject to your Western Electric License Agreement", with RCS
+IDs added, etc.
+Unify the copyright header between these files.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: mktab.c,v 1.3 2003/06/06 20:33:07 tg Exp $ */
+d75 1
+a75 1
+	bcopy((char *) &t, (char *) buf, twbase * sizeof (int));
+@
+
+
+1.3
+log
+@remove UCB advertising clause, reinscinded(spelling?) 1999
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD: mktab.c,v 1.2 2003/05/12 20:22:43 tg Exp $	*/
+d18 1
+a18 1
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+@
+
+
+1.2
+log
+@add RCSId
+add missing include file
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD$	*/
+d14 1
+a14 5
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+@
+
+
+1.1
+log
+@Driver for the "new" 4.4BSD troff
+@
+text
+@d1 1
+@
+

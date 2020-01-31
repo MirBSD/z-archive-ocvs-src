@@ -1,0 +1,582 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.12.09.18.59.52;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.35.31;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.35.31;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.16.59.42;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@* games went off to ports/games/bsdgames
+* don't install isakmpd or ctm samples
+@
+text
+@/*	$OpenBSD: bdisp.c,v 1.7 2002/05/31 04:21:30 pjanzen Exp $	*/
+/*
+ * Copyright (c) 1994
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Ralph Campbell.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#ifndef lint
+#if 0
+static char sccsid[] = "@@(#)bdisp.c	8.2 (Berkeley) 5/3/95";
+#else
+static char rcsid[] = "$OpenBSD: bdisp.c,v 1.7 2002/05/31 04:21:30 pjanzen Exp $";
+#endif
+#endif /* not lint */
+
+#include "gomoku.h"
+#include <curses.h>
+#include <string.h>
+#include <err.h>
+
+#define	SCRNH		24		/* assume 24 lines for the moment */
+#define	SCRNW		80		/* assume 80 chars for the moment */
+
+static	int	lastline;
+static	char	pcolor[] = "*O.?";
+
+/*
+ * Initialize screen display.
+ */
+void
+cursinit()
+{
+	initscr();
+	if ((LINES < SCRNH) || (COLS < SCRNW)) {
+		endwin();
+		errx(1,"Screen too small (need %dx%d)",SCRNW,SCRNH);
+	}
+#ifdef KEY_MIN
+	keypad(stdscr, TRUE);
+#endif /* KEY_MIN */
+	nonl();
+	noecho();
+	cbreak();
+
+#ifdef NCURSES_MOUSE_VERSION
+	mousemask(BUTTON1_CLICKED, (mmask_t *)NULL);
+#endif /* NCURSES_MOUSE_VERSION*/
+}
+
+/*
+ * Restore screen display.
+ */
+void
+cursfini()
+{
+	move(BSZ4, 0);
+	clrtoeol();
+	refresh();
+	echo();
+	endwin();
+}
+
+/*
+ * Initialize board display.
+ */
+void
+bdisp_init()
+{
+	int i, j;
+
+	/* top border */
+	for (i = 1; i < BSZ1; i++) {
+		move(0, 2 * i + 1);
+		addch(letters[i]);
+	}
+	/* left and right edges */
+	for (j = BSZ1; --j > 0; ) {
+		move(20 - j, 0);
+		printw("%2d ", j);
+		move(20 - j, 2 * BSZ1 + 1);
+		printw("%d ", j);
+	}
+	/* bottom border */
+	for (i = 1; i < BSZ1; i++) {
+		move(20, 2 * i + 1);
+		addch(letters[i]);
+	}
+	bdwho(0);
+	move(0, 47);
+	addstr("#  black  white");
+	lastline = 0;
+	bdisp();
+}
+
+/*
+ * Update who is playing whom.
+ */
+void
+bdwho(update)
+	int update;
+{
+	int i, j;
+	extern char *plyr[];
+
+	move(21, 0);
+	printw("                                              ");
+	i = strlen(plyr[BLACK]);
+	j = strlen(plyr[WHITE]);
+	if (i + j <= 20) {
+		move(21, 10 - (i + j)/2);
+		printw("BLACK/%s (*) vs. WHITE/%s (O)",
+		    plyr[BLACK], plyr[WHITE]);
+	} else {
+		move(21, 0);
+		if (i <= 10)
+			j = 20 - i;
+		else if (j <= 10)
+			i = 20 - j;
+		else
+			i = j = 10;
+		printw("BLACK/%.*s (*) vs. WHITE/%.*s (O)",
+		    i, plyr[BLACK], j, plyr[WHITE]);
+	}
+	if (update)
+		refresh();
+}
+
+/*
+ * Update the board display after a move.
+ */
+void
+bdisp()
+{
+	int i, j, c;
+	struct spotstr *sp;
+
+	for (j = BSZ1; --j > 0; ) {
+		for (i = 1; i < BSZ1; i++) {
+			move(BSZ1 - j, 2 * i + 1);
+			sp = &board[i + j * BSZ1];
+			if (debug > 1 && sp->s_occ == EMPTY) {
+				if (sp->s_flg & IFLAGALL)
+					c = '+';
+				else if (sp->s_flg & CFLAGALL)
+					c = '-';
+				else
+					c = '.';
+			} else
+				c = pcolor[sp->s_occ];
+			addch(c);
+		}
+	}
+	refresh();
+}
+
+#ifdef DEBUG
+/*
+ * Dump board display to a file.
+ */
+bdump(fp)
+	FILE *fp;
+{
+	int i, j, c;
+	struct spotstr *sp;
+
+	/* top border */
+	fprintf(fp, "   A B C D E F G H J K L M N O P Q R S T\n");
+
+	for (j = BSZ1; --j > 0; ) {
+		/* left edge */
+		fprintf(fp, "%2d ", j);
+		for (i = 1; i < BSZ1; i++) {
+			sp = &board[i + j * BSZ1];
+			if (debug > 1 && sp->s_occ == EMPTY) {
+				if (sp->s_flg & IFLAGALL)
+					c = '+';
+				else if (sp->s_flg & CFLAGALL)
+					c = '-';
+				else
+					c = '.';
+			} else
+				c = pcolor[sp->s_occ];
+			putc(c, fp);
+			putc(' ', fp);
+		}
+		/* right edge */
+		fprintf(fp, "%d\n", j);
+	}
+
+	/* bottom border */
+	fprintf(fp, "   A B C D E F G H J K L M N O P Q R S T\n");
+}
+#endif /* DEBUG */
+
+/*
+ * Display a transcript entry
+ */
+void
+dislog(str)
+	char *str;
+{
+
+	if (++lastline >= SCRNH - 1) {
+		/* move 'em up */
+		lastline = 1;
+	}
+	if (strlen(str) >= SCRNW - (2 * BSZ4))
+		str[SCRNW - (2 * BSZ4) - 1] = '\0';
+	move(lastline, (2 * BSZ4));
+	addstr(str);
+	clrtoeol();
+	move(lastline + 1, (2 * BSZ4));
+	clrtoeol();
+}
+
+/*
+ * Display a question.
+ */
+void
+ask(str)
+	char *str;
+{
+	int len = strlen(str);
+
+	move(BSZ4, 0);
+	addstr(str);
+	clrtoeol();
+	move(BSZ4, len);
+	refresh();
+}
+
+int
+getline(buf, size)
+	char *buf;
+	int size;
+{
+	char *cp, *end;
+	int c = EOF;
+	extern int interactive;
+
+	cp = buf;
+	end = buf + size - 1;	/* save room for the '\0' */
+	while (cp < end && (c = getchar()) != EOF && c != '\n' && c != '\r') {
+		*cp++ = c;
+		if (interactive) {
+			switch (c) {
+			case 0x0c: /* ^L */
+				wrefresh(curscr);
+				cp--;
+				continue;
+			case 0x15: /* ^U */
+			case 0x18: /* ^X */
+				while (cp > buf) {
+					cp--;
+					addch('\b');
+				}
+				clrtoeol();
+				break;
+			case '\b':
+			case 0x7f: /* DEL */
+				if (cp == buf + 1) {
+					cp--;
+					continue;
+				}
+				cp -= 2;
+				addch('\b');
+				c = ' ';
+				/* FALLTHROUGH */
+			default:
+				addch(c);
+			}
+			refresh();
+		}
+	}
+	*cp = '\0';
+	return(c != EOF);
+}
+
+
+/* Decent (n)curses interface for the game, based on Eric S. Raymond's
+ * modifications to the battleship (bs) user interface.
+ */
+int getcoord(void)
+{
+	static int curx = BSZ / 2;
+	static int cury = BSZ / 2;
+	int ny, nx, c;
+
+	BGOTO(cury,curx);
+	refresh();
+	nx = curx; ny = cury;
+	for (;;) {
+		mvprintw(BSZ3, (BSZ -6)/2, "(%c %d)", 
+				'A'+ ((curx > 7) ? (curx+1) : curx), cury + 1);
+		BGOTO(cury, curx);
+
+		switch(c = getch()) {
+		case 'k': case '8':
+#ifdef KEY_MIN
+		case KEY_UP:
+#endif /* KEY_MIN */
+			ny = cury + 1;       nx = curx;
+			break;
+		case 'j': case '2':
+#ifdef KEY_MIN
+		case KEY_DOWN:
+#endif /* KEY_MIN */
+			ny = BSZ + cury - 1; nx = curx;
+			break;
+		case 'h': case '4':
+#ifdef KEY_MIN
+		case KEY_LEFT:
+#endif /* KEY_MIN */
+			ny = cury;          nx = BSZ + curx - 1;
+			break;
+		case 'l': case '6':
+#ifdef KEY_MIN
+		case KEY_RIGHT:
+#endif /* KEY_MIN */
+			ny = cury;          nx = curx + 1;
+			break;
+		case 'y': case '7':
+#ifdef KEY_MIN
+		case KEY_A1:
+#endif /* KEY_MIN */
+			ny = cury + 1;        nx = BSZ + curx - 1;
+			break;
+		case 'b': case '1':
+#ifdef KEY_MIN
+		case KEY_C1:
+#endif /* KEY_MIN */
+			ny = BSZ + cury - 1; nx = BSZ + curx - 1;
+			break;
+		case 'u': case '9':
+#ifdef KEY_MIN
+		case KEY_A3:
+#endif /* KEY_MIN */
+			ny = cury + 1;        nx = curx + 1;
+			break;
+		case 'n': case '3':
+#ifdef KEY_MIN
+		case KEY_C3:
+#endif /* KEY_MIN */
+			ny = BSZ + cury - 1; nx = curx + 1;
+			break;
+		case 'K':
+			ny = cury + 5;       nx = curx;
+			break;
+		case 'J':
+			ny = BSZ + cury - 5; nx = curx;
+			break;
+		case 'H':
+			ny = cury;          nx = BSZ + curx - 5;
+			break;
+		case 'L':
+			ny = cury;          nx = curx + 5;
+			break;
+		case 'Y':
+			ny = cury + 5;        nx = BSZ + curx - 5;
+			break;
+		case 'B':
+			ny = BSZ + cury - 5; nx = BSZ + curx - 5;
+			break;
+		case 'U':
+			ny = cury + 5;        nx = curx + 5;
+			break;
+		case 'N':
+			ny = BSZ + cury - 5; nx = curx + 5;
+			break;
+		case FF:
+			nx = curx; ny = cury;
+			(void)clearok(stdscr, TRUE);
+			(void)refresh();
+			break;
+#ifdef NCURSES_MOUSE_VERSION
+		case KEY_MOUSE:
+		{
+			MEVENT	myevent;
+
+			getmouse(&myevent);
+			if (myevent.y >= 1 && myevent.y <= BSZ1
+				&& myevent.x >= 3 && myevent.x <= (2 * BSZ + 1))
+			{
+				curx = (myevent.x - 3) / 2;
+				cury = BSZ - myevent.y;
+				return(PT(curx,cury));
+			}
+			else
+				beep();
+		}
+		break;
+#endif /* NCURSES_MOUSE_VERSION */
+		case 'Q':
+			return(RESIGN);
+			break;
+		case 'S':
+			return(SAVE);
+			break;
+		case ' ':
+		case '\015':  /* return */
+			(void) mvaddstr(BSZ3, (BSZ -6)/2, "      ");
+			return(PT(curx+1,cury+1));
+			break;
+	}
+
+	curx = nx % BSZ;
+	cury = ny % BSZ;
+    }
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bdisp.c,v 1.8 2003/06/03 03:01:39 millert Exp $	*/
+d17 5
+a21 1
+ * 3. Neither the name of the University nor the names of its contributors
+d42 1
+a42 1
+static char rcsid[] = "$OpenBSD: bdisp.c,v 1.8 2003/06/03 03:01:39 millert Exp $";
+@
+

@@ -1,0 +1,241 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.06.10.19.01.07;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.22;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.22;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@/* Functions specific to running gdb native on a VAX running NetBSD
+   Copyright 1989, 1992, 1993, 1994, 1996 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include <sys/types.h>
+#include <sys/ptrace.h>
+#include <machine/reg.h>
+#include <machine/frame.h>
+#include <machine/pcb.h>
+
+#include "defs.h"
+#include "inferior.h"
+#include "target.h"
+#include "gdbcore.h"
+
+void
+fetch_inferior_registers (regno)
+     int regno;
+{
+  struct reg inferior_registers;
+
+  ptrace (PT_GETREGS, inferior_pid,
+	  (PTRACE_ARG3_TYPE) &inferior_registers, 0);
+  memcpy (&registers[REGISTER_BYTE (0)], &inferior_registers,
+	  sizeof(inferior_registers));
+
+  registers_fetched ();
+}
+
+void
+store_inferior_registers (regno)
+     int regno;
+{
+  struct reg inferior_registers;
+
+  memcpy (&inferior_registers, &registers[REGISTER_BYTE (0)],
+	  sizeof(inferior_registers));
+  ptrace (PT_SETREGS, inferior_pid,
+	  (PTRACE_ARG3_TYPE) &inferior_registers, 0);
+}
+
+
+/* XXX - Add this to machine/regs.h instead? */
+struct md_core {
+  struct reg intreg;
+  /* struct fpreg freg; XXX */
+};
+
+static void
+fetch_core_registers (core_reg_sect, core_reg_size, which, reg_addr)
+     char *core_reg_sect;
+     unsigned core_reg_size;
+     int which;
+     unsigned int reg_addr;	/* Unused in this version */
+{
+  struct md_core *core_reg;
+
+  core_reg = (struct md_core *)core_reg_sect;
+
+  /* We get everything from the .reg section. */
+  if (which != 0)
+    return;
+
+  if (core_reg_size < sizeof(*core_reg)) {
+    fprintf_unfiltered (gdb_stderr, "Couldn't read regs from core file\n");
+    return;
+  }
+
+  /* Integer registers */
+  memcpy(&registers[REGISTER_BYTE (0)],
+	 &core_reg->intreg, sizeof(struct reg));
+
+  registers_fetched ();
+}
+
+/* Register that we are able to handle vaxnbsd core file formats.
+   FIXME: is this really bfd_target_unknown_flavour? */
+
+static struct core_fns nat_core_fns =
+{
+  bfd_target_unknown_flavour,
+  fetch_core_registers,
+  NULL
+};
+
+void
+_initialize_vaxnbsd_nat ()
+{
+  add_core_fns (&nat_core_fns);
+}
+
+
+/*
+ * kernel_u_size() is not helpful on NetBSD because
+ * the "u" struct is NOT in the core dump file.
+ */
+
+#ifdef	FETCH_KCORE_REGISTERS
+/*
+ * Get registers from a kernel crash dump or live kernel.
+ * Called by kcore-nbsd.c:get_kcore_registers().
+ */
+void
+fetch_kcore_registers (pcb)
+     struct pcb *pcb;
+{
+
+  printf("XXX: fetch_kcore_registers\n");
+
+  /* The kernel does not use the FPU, so ignore it. */
+  registers_fetched ();
+}
+#endif	/* FETCH_KCORE_REGISTERS */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

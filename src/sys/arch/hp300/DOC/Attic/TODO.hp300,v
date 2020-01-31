@@ -1,0 +1,205 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.04.06.04.28.09;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.22;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.22;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@$OpenBSD: TODO.hp300,v 1.2 1997/01/12 15:12:12 downsj Exp $
+$NetBSD: TODO.hp300,v 1.2 1994/10/26 07:22:59 cgd Exp $
+
+1. Create and use an interrupt stack.
+   Well actually, use the master SP for kernel stacks instead of
+   the interrupt SP.  Right now we use the interrupt stack for
+   everything.  Allows for more accurate accounting of systime.
+   In theory, could also allow for smaller kernel stacks but we
+   only use one page anyway.
+
+2. Copy/clear primitives could be tuned.
+   What is best is highly CPU and cache dependent.  One thing to look
+   at are the copyin/copyout primitives.  Rather than looping using
+   MOVS instructions, you could map an entire page at a time and use
+   bcopy, MOVE16, or whatever.  This would lose big on the VAC models
+   however.
+
+3. Sendsig/sigreturn are pretty bogus.
+   Currently we can call a signal handler even if an excpetion
+   occurs in the middle of an instruction.  This causes the handler
+   to return right back to the middle of the offending instruction
+   which will most likely lead to another exception/signal.
+   Technically, I feel this is the correct behavior but it requires
+   saving a lot of state on the user's stack, state that we don't
+   really want the user messing with.  Other 68k implementations
+   (e.g. Sun) will delay signals or abort execution of the current
+   instruction to reduce saved state.  Even if we stick with the
+   current philosophy, the code could be cleaned up.
+
+4. Ditto for AST and software interrupt emulation.
+   Both are possibly over-elaborate and inefficiently implemented.
+   We could possibly handle them by using an appropriately planted
+   PS trace bit.
+
+5. Make use of transparent translation registers on 030/040 MMU.
+   With a little rearranging of the KVA space we could use one to
+   map the entire external IO space [ 600000 - 20000000 ).  Since
+   the translation must be 1-1, this would limit the kernel to 6mb
+   (some would say that is hardly a limit) or divide it into two
+   pieces.  Another promising use would be to map physical memory
+   within the kernel.  This allows a much simpler and more efficient
+   implementation of /dev/mem, pmap_zero_page, pmap_copy_page and
+   possible even kernel-user cross address space copies.  However,
+   it does eat up a significant piece of kernel address space.
+
+6. Create a 32-bit timer.
+   Timers 2 and 3 on the MC6840 clock chip can be concatonated together to
+   get a 32-bit countdown timer.  There are at least three uses for this:
+   1. Monitoring the interval timer ("clock") to detect lost "ticks".
+      (Idea from Scott Marovich)
+   2. Implement the DELAY macro properly instead of approximating with
+      the current "while (--count);" loop.  Because of caches, the current
+      method is potentially way off.
+   3. Export as a user-mappable timer for high-precision (4us) timing.
+   Note that by doing this we can no longer use timer 3 as a separate
+   statistics/profiling timer.  Should be able to compile-time (runtime?)
+   select between the two.
+
+7. Conditional MMU code sould be restructured.
+   Right now it reflects the evolutionary path of the code: 320/350 MMU
+   was supported and PMMU support was glued on.  The latter can be ifdef'ed
+   out when not needed, but not all of the former (e.g. ``mmutype'' tests).
+   Also, PMMU is made to look like the HP MMU somewhat ham-stringing it.
+   Since HP MMU models are dead, the excess baggage should be there (though
+   it could be argued that they benefit more from the minor performance
+   impact).  MMU code should probably not be ifdef'ed on model type, but
+   rather on more relevant tags (e.g. MMU_HP, MMU_MOTO).
+
+8. Redo cache handling.
+   There are way too many routines which are specific to particular
+   cache types.  We should be able to come up with a more coherent
+   scheme (though HP 68k boxes have just about every caching scheme
+   imaginable: internal/external, physical/virtual, writeback/writethrough)
+   See, for example, Wheeler and Bershad in ASPLOS 92.
+
+9. Sort the free page list.
+   The DMA hardware on the 300 cannot do scatter/gather IO.  For example,
+   if an 8k system buffer consists of two non-contiguous physical pages
+   it will require two DMA transfers (and hence two interrupts) to do the
+   operation.  It would take only one transfer if they were physically
+   contiguous.  By keeping the free list ordered we could potentially
+   allocate contiguous pages and reduce the number of interrupts.  We can
+   consider doing this since pages in the free list are not reclaimed and
+   thus we don't have to worry about distorting any LRU behavior.
+----
+Mike Hibler
+University of Utah CSS group
+mike@@cs.utah.edu
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

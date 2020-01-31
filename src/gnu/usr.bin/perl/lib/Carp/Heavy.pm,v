@@ -1,0 +1,382 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.4
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.2
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.13;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.13;	author tg;	state Stab;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.10.23.18.40.41;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@# Carp::Heavy uses some variables in common with Carp.
+package Carp;
+
+=head1 NAME
+
+Carp heavy machinery - no user serviceable parts inside
+
+=cut
+
+# use strict; # not yet
+
+# On one line so MakeMaker will see it.
+use Carp;  our $VERSION = $Carp::VERSION;
+
+our ($CarpLevel, $MaxArgNums, $MaxEvalLen, $MaxArgLen, $Verbose);
+
+sub caller_info {
+  my $i = shift(@@_) + 1;
+  package DB;
+  my %call_info;
+  @@call_info{
+    qw(pack file line sub has_args wantarray evaltext is_require)
+  } = caller($i);
+  
+  unless (defined $call_info{pack}) {
+    return ();
+  }
+
+  my $sub_name = Carp::get_subname(\%call_info);
+  if ($call_info{has_args}) {
+    my @@args = map {Carp::format_arg($_)} @@DB::args;
+    if ($MaxArgNums and @@args > $MaxArgNums) { # More than we want to show?
+      $#args = $MaxArgNums;
+      push @@args, '...';
+    }
+    # Push the args onto the subroutine
+    $sub_name .= '(' . join (',', @@args) . ')';
+  }
+  $call_info{sub_name} = $sub_name;
+  return wantarray() ? %call_info : \%call_info;
+}
+
+# Transform an argument to a function into a string.
+sub format_arg {
+  my $arg = shift;
+  if (not defined($arg)) {
+    $arg = 'undef';
+  }
+  elsif (ref($arg)) {
+      $arg = defined($overload::VERSION) ? overload::StrVal($arg) : "$arg";
+  }
+  $arg =~ s/'/\\'/g;
+  $arg = str_len_trim($arg, $MaxArgLen);
+  
+  # Quote it?
+  $arg = "'$arg'" unless $arg =~ /^-?[\d.]+\z/;
+
+  # The following handling of "control chars" is direct from
+  # the original code - I think it is broken on Unicode though.
+  # Suggestions?
+  $arg =~ s/([[:cntrl:]]|[[:^ascii:]])/sprintf("\\x{%x}",ord($1))/eg;
+  return $arg;
+}
+
+# Takes an inheritance cache and a package and returns
+# an anon hash of known inheritances and anon array of
+# inheritances which consequences have not been figured
+# for.
+sub get_status {
+    my $cache = shift;
+    my $pkg = shift;
+    $cache->{$pkg} ||= [{$pkg => $pkg}, [trusts_directly($pkg)]];
+    return @@{$cache->{$pkg}};
+}
+
+# Takes the info from caller() and figures out the name of
+# the sub/require/eval
+sub get_subname {
+  my $info = shift;
+  if (defined($info->{evaltext})) {
+    my $eval = $info->{evaltext};
+    if ($info->{is_require}) {
+      return "require $eval";
+    }
+    else {
+      $eval =~ s/([\\\'])/\\$1/g;
+      return "eval '" . str_len_trim($eval, $MaxEvalLen) . "'";
+    }
+  }
+
+  return ($info->{sub} eq '(eval)') ? 'eval {...}' : $info->{sub};
+}
+
+# Figures out what call (from the point of view of the caller)
+# the long error backtrace should start at.
+sub long_error_loc {
+  my $i;
+  my $lvl = $CarpLevel;
+  {
+    my $pkg = caller(++$i);
+    unless(defined($pkg)) {
+      # This *shouldn't* happen.
+      if (%Internal) {
+        local %Internal;
+        $i = long_error_loc();
+        last;
+      }
+      else {
+        # OK, now I am irritated.
+        return 2;
+      }
+    }
+    redo if $CarpInternal{$pkg};
+    redo unless 0 > --$lvl;
+    redo if $Internal{$pkg};
+  }
+  return $i - 1;
+}
+
+
+sub longmess_heavy {
+  return @@_ if ref($_[0]); # don't break references as exceptions
+  my $i = long_error_loc();
+  return ret_backtrace($i, @@_);
+}
+
+# Returns a full stack backtrace starting from where it is
+# told.
+sub ret_backtrace {
+  my ($i, @@error) = @@_;
+  my $mess;
+  my $err = join '', @@error;
+  $i++;
+
+  my $tid_msg = '';
+  if (defined &Thread::tid) {
+    my $tid = Thread->self->tid;
+    $tid_msg = " thread $tid" if $tid;
+  }
+
+  { if ($err =~ /\n$/) {	# extra block to localise $1 etc
+    $mess = $err;
+  }
+  else {
+    my %i = caller_info($i);
+    $mess = "$err at $i{file} line $i{line}$tid_msg\n";
+  }}
+
+  while (my %i = caller_info(++$i)) {
+      $mess .= "\t$i{sub_name} called at $i{file} line $i{line}$tid_msg\n";
+  }
+  
+  return $mess;
+}
+
+sub ret_summary {
+  my ($i, @@error) = @@_;
+  my $mess;
+  my $err = join '', @@error;
+  $i++;
+
+  my $tid_msg = '';
+  if (defined &Thread::tid) {
+    my $tid = Thread->self->tid;
+    $tid_msg = " thread $tid" if $tid;
+  }
+
+  my %i = caller_info($i);
+  return "$err at $i{file} line $i{line}$tid_msg\n";
+}
+
+
+sub short_error_loc {
+  my $cache;
+  my $i = 1;
+  my $lvl = $CarpLevel;
+  {
+    my $called = caller($i++);
+    my $caller = caller($i);
+    return 0 unless defined($caller); # What happened?
+    redo if $Internal{$caller};
+    redo if $CarpInternal{$called};
+    redo if trusts($called, $caller, $cache);
+    redo if trusts($caller, $called, $cache);
+    redo unless 0 > --$lvl;
+  }
+  return $i - 1;
+}
+
+sub shortmess_heavy {
+  return longmess_heavy(@@_) if $Verbose;
+  return @@_ if ref($_[0]); # don't break references as exceptions
+  my $i = short_error_loc();
+  if ($i) {
+    ret_summary($i, @@_);
+  }
+  else {
+    longmess_heavy(@@_);
+  }
+}
+
+# If a string is too long, trims it with ...
+sub str_len_trim {
+  my $str = shift;
+  my $max = shift || 0;
+  if (2 < $max and $max < length($str)) {
+    substr($str, $max - 3) = '...';
+  }
+  return $str;
+}
+
+# Takes two packages and an optional cache.  Says whether the
+# first inherits from the second.
+#
+# Recursive versions of this have to work to avoid certain
+# possible endless loops, and when following long chains of
+# inheritance are less efficient.
+sub trusts {
+    my $child = shift;
+    my $parent = shift;
+    my $cache = shift || {};
+    my ($known, $partial) = get_status($cache, $child);
+    # Figure out consequences until we have an answer
+    while (@@$partial and not exists $known->{$parent}) {
+        my $anc = shift @@$partial;
+        next if exists $known->{$anc};
+        $known->{$anc}++;
+        my ($anc_knows, $anc_partial) = get_status($cache, $anc);
+        my @@found = keys %$anc_knows;
+        @@$known{@@found} = ();
+        push @@$partial, @@$anc_partial;
+    }
+    return exists $known->{$parent};
+}
+
+# Takes a package and gives a list of those trusted directly
+sub trusts_directly {
+    my $class = shift;
+    no strict 'refs';
+    no warnings 'once'; 
+    return @@{"$class\::CARP_NOT"}
+      ? @@{"$class\::CARP_NOT"}
+      : @@{"$class\::ISA"};
+}
+
+1;
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@5.8.5
+@
+text
+@d6 1
+a6 1
+Carp::Heavy - heavy machinery, no user serviceable parts inside
+d37 1
+a37 1
+    $sub_name .= '(' . join (', ', @@args) . ')';
+d141 7
+a147 2
+  my %i = caller_info($i);
+  $mess = "$err at $i{file} line $i{line}$tid_msg\n";
+d158 1
+@
+

@@ -1,0 +1,1141 @@
+head	1.2;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.01.11.18.17.03;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.01.00;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.01.00;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke some unused, redundant or generated files
+@
+text
+@This is ../p/doc/info/gpc.info, produced by makeinfo version 4.1 from
+gpc.texi.
+
+INFO-DIR-SECTION GNU programming tools
+START-INFO-DIR-ENTRY
+* GPC: (gpc).                   The GNU Pascal Compiler.
+END-INFO-DIR-ENTRY
+INFO-DIR-SECTION Individual utilities
+START-INFO-DIR-ENTRY
+* GPC: (gpc)Invoking GPC.       The GNU Pascal Compiler.
+END-INFO-DIR-ENTRY
+
+   This file documents the GNU Pascal Compiler.
+
+   Permission is granted to make and distribute verbatim copies of this
+manual provided the copyright notice and this permission notice are
+preserved on all copies.
+
+   Copyright (C) 1988-2003 Free Software Foundation, Inc.
+
+   Permission is granted to copy and distribute modified versions of
+this manual under the conditions for verbatim copying, provided also
+that the sections entitled "GNU General Public License", "The GNU
+Project", "The GNU Manifesto" and "Funding for free Software" are
+included exactly as in the original, and provided that the entire
+resulting derived work is distributed under the terms of a permission
+notice identical to this one.
+
+   Permission is granted to copy and distribute translations of this
+manual into another language, under the above conditions for modified
+versions, except that the sections entitled "GNU General Public
+License", "The GNU Project", "The GNU Manifesto" and "Funding for Free
+Software" and this permission notice, may be included in translations
+approved by the Free Software Foundation instead of in the original
+English.
+
+
+File: gpc.info,  Node: Assembler syntax,  Next: DJGPP specific code,  Prev: DJGPP DPMI server,  Up: GPC on DJGPP
+
+I have troubles with assembly code
+----------------------------------
+
+   The GNU Assembler (`as.exe'), or `gas', called by GCC accepts "AT&T"
+syntax which is different from "Intel" syntax.  Differences are
+discussed in section 17.1 of the DJGPP FAQ.
+
+   A guide is available which was written by Brennan Mr. Wacko
+Underwood <brennan@@mack.rt66.com> and describes how to use inline
+assembly programming with DJGPP, at this URL:
+`http://www.delorie.com/djgpp/doc/brennan/brennan_att_inline_djgpp.html'
+
+   There's also a GPC assembler tutorial at
+`http://www.gnu-pascal.de/contrib/misc/gpcasm.zip'
+
+   Section 17.3 of the DJGPP FAQ discusses some methods to convert
+"Intel" syntax to "AT&T" syntax.
+
+   However, please note that assembler code is unportable, i.e. it will
+work on IA32 ("x86") and compatible processors if written for them, but
+will not even compile for other processors. So by writing assembler
+code in your programs, you will limit their usefulness substantially.
+
+   If you think you "need" assembler code for speed - and you've
+checked that your assembler code actually runs faster than Pascal code
+compiled with suitable optimizations - you might want to put both
+Pascal and assembler versions of the critical sections in your program,
+and let, e.g., an `{$ifdef i386}' decide which one to use. This way,
+your program will at least compile on all processors.
+
+
+File: gpc.info,  Node: DJGPP specific code,  Next: Stack size,  Prev: Assembler syntax,  Up: GPC on DJGPP
+
+Tell me how to do DPMI, BIOS and other DOS related things.
+----------------------------------------------------------
+
+   DPMI, BIOS and other functions are no different than other system
+functions. Refer to the GPC Manual on how to access your system's
+C-library. This small example shows how to use DPMI, copying some
+structures and function prototypes of `<dpmi.h>':
+
+     program DPMIDemo;
+     
+     { Only for DJGPP }
+     
+     {$X+}
+     
+     { `Byte' is `unsigned char' in C,
+       `ShortCard' is `unsigned short' in C,
+       `MedCard' is `unsigned long' in C,
+       `Word' is `unsigned' in C,
+       etc. (all these types are built-in). }
+     
+     type
+       TDpmiVersionRet = record
+         Major     : Byte;
+         Minor     : Byte;
+         Flags     : ShortCard;
+         CPU       : Byte;
+         Master_PIC: Byte;
+         Slave_PIC : Byte;
+       end;
+     
+     type
+       TDpmiFreeMemInfo = record
+         LargestAvailableFreeBlockInBytes,
+         MaximumUnlockedPageAllocationInPages,
+         MaximumLockedPageAllocationInPages,
+         LinearAddressSpaceSizeInPages,
+         TotalNumberOfUnlockedPages,
+         TotalNumberOfFreePages,
+         TotalNumberOfPhysicalPages,
+         FreeLinearAddressSpaceInPages,
+         SizeOfPagingFilePartitionInPages,
+         Reserved1,
+         Reserved2,
+         Reserved3: MedCard;
+       end;
+     
+     function DpmiGetVersion (var Version: TDpmiVersionRet): Integer;
+              external name '__dpmi_get_version';
+     
+     function DpmiGetFreeMemoryInformation
+              (var MemInfo: TDpmiFreeMemInfo): Integer;
+              external name '__dpmi_get_free_memory_information';
+     
+     var
+       Version: TDpmiVersionRet;
+       MemInfo: TDpmiFreeMemInfo;
+     
+     begin
+       if DpmiGetVersion (Version) = 0 then
+         begin
+           WriteLn ('CPU type:       ', Version.CPU, '86');
+           WriteLn ('DPMI major:       ', Version.Major);
+           WriteLn ('DPMI minor:       ', Version.Minor);
+         end
+       else
+         WriteLn ('Error in DpmiGetVersion');
+       if DpmiGetFreeMemoryInformation (MemInfo) = 0 then
+         WriteLn ('Free DPMI memory: ',
+                  MemInfo.TotalNumberOfFreePages, ' pages.')
+       else
+         WriteLn ('Error in DpmiGetMemoryInformation');
+     end.
+
+
+File: gpc.info,  Node: Stack size,  Prev: DJGPP specific code,  Up: GPC on DJGPP
+
+I got an exception when accessing an `array [1 .. 4000000] of Byte'.
+--------------------------------------------------------------------
+
+   Per default, the maximum stack size of a DJGPP application is 256K.
+If you need more, you have to adjust it with the stubedit program, i.e.:
+
+     stubedit your_app.exe minstack=5000K
+
+   Another way is to add the following code to your program to define a
+minimum stack size (here: 2 MB). This value will be honored even if a
+user sets a lower value by using stubedit, so this method might be a
+little safer. (The linker name `_stklen' is essential; the Pascal
+identifier doesn't matter. The constant doesn't have to be used
+anywhere in the program. It is recommended to put this declaration in
+the main program file, not in any unit/module, so programs using a
+unit/module can set whatever limit they need.)
+
+     {$ifdef __GO32__}
+     const
+       MinStackSize: Cardinal = $200000; attribute (name = '_stklen');
+     {$endif}
+
+   Still, it might be a good idea to use pointers for large structures,
+and allocate the memory at runtime.
+
+   DJGPP has to allocate the stack in physical memory at program
+startup, so one might have to be careful with too large stack limits.
+Most other systems allocate stack pages on demand, so the only reason
+to set a limit at all might be to prevent a runaway recursion from
+eating up all memory ...
+
+   On Unix-like systems, you can set a resource limit, but you usually
+don't do it in normal programs, but rather in the shell settings (bash:
+`ulimit'; csh: `limit'; syscall: `setrlimit'(2)).
+
+
+File: gpc.info,  Node: Strings in GPC,  Next: Getting Help,  Prev: GPC on DJGPP,  Up: FAQ
+
+Strings
+=======
+
+* Menu:
+
+* String schema::                What's this confusion about strings?
+* Strings in variant records::   Overlaying strings in variant records
+* Length byte::                  Why does `s[0]' not contain the length?
+* Strings as value parameters::  Watch out when using strings as parameters
+* Short strings::                Support for BP compatible short strings
+* C strings::                    What about C strings?
+
+
+File: gpc.info,  Node: String schema,  Next: Strings in variant records,  Up: Strings in GPC
+
+What's this confusion about strings?
+------------------------------------
+
+   Turbo Pascal strings have a length byte in front. Since a byte has
+the range 0 .. 255, this limits a string to 255 characters. However,
+the Pascal string schema, as defined in section 6.4.3.3.3 of the ISO
+10206 Extended Pascal standard, is a schema record:
+
+     type
+       String (Capacity: Integer) = record
+         Length: 0 .. Capacity;
+         String: packed array [1 .. Capacity + 1] of Char
+       end;
+
+   The `+ 1' is a GPC extension to make it feasible to automatically
+add the `#0' terminator when passing or assigning them to CStrings.
+Thus at the expense of a little added complexity (must declare
+capacity, don't use `GetMem' without explicit initialization of the
+`Capacity' field, and the additional space requirement) you can now
+have very long strings.
+
+
+File: gpc.info,  Node: Strings in variant records,  Next: Length byte,  Prev: String schema,  Up: Strings in GPC
+
+Overlaying strings in variant records
+-------------------------------------
+
+   Q: Should the different variants in a variant record overlay in the
+same memory? Previous Pascals I have used have guaranteed this, and
+I've got low-level code that relies on this. The variants are not the
+same length, and they are intended not to be.
+
+   A: No, this is intentional so that the discriminants are not
+overwritten, and they can be properly initialized in the first place.
+Consider:
+
+     record
+     case Boolean of
+       False: (s1: String (42));
+       True:  (s2: String (99));
+     end;
+
+   If the strings would overlay, in particular their discriminants
+would occupy the same place in memory. How should it be initialized?
+Either way, it would be wrong for at least one of the variants ...
+
+   So, after a discussion in the ISO Pascal newsgroup
+(news:comp.lang.pascal.ansi-iso) where this topic came up concerning
+file variables (which also require some automatic initialization and
+finalization), we decided to do this in GPC for all types with
+automatic initialization and finalization (currently files, objects and
+schemata, including strings, in the future this might also be Delphi
+compatible classes and user-defined initialized and finalized types),
+since the standard does not guarantee variants to overlay, anyway ...
+
+   There are two ways in GPC to get guaranteed overlaying (both
+non-standard, of course, since the standard does not assume anything
+about internal representations; both BP compatible), `absolute'
+declarations and variable type casts. E.g., in order to overlay a byte
+array `b' to a variable `v':
+
+     var
+       b: array [1 .. SizeOf (v)] of Byte absolute v;
+
+   Or you can use type-casting:
+
+     type
+       t = array [1 .. SizeOf (v)] of Byte;
+
+   then `t (v)' can be used as a byte array overlayed to `v'.
+
+
+File: gpc.info,  Node: Length byte,  Next: Strings as value parameters,  Prev: Strings in variant records,  Up: Strings in GPC
+
+Why does `s[0]' not contain the length?
+---------------------------------------
+
+   Q: In standard Pascal you expect `s[1]' to align with the first
+character position of `s' and thus one character to the left is the
+length of `s'. Thus `s[0]' is the length of `s'.  True?
+
+   A: This holds for UCSD/BP strings (which GPC does not yet implement,
+but that's planned). The only strings Standard Pascal knows are arrays
+of char without any length field.
+
+   GPC also supports Extended Pascal string schemata (*note String
+schema::), but they also don't have a length byte at "position 0", but
+rather a `Length' field (which is larger than one byte).
+
+
+File: gpc.info,  Node: Strings as value parameters,  Next: Short strings,  Prev: Length byte,  Up: Strings in GPC
+
+Watch out when using strings as parameters
+------------------------------------------
+
+   Q: Any "gotchas" with string parameters?
+
+   A: Be careful when passing string literals as parameters to routines
+accepting the string as a value parameter and that internally modify
+the value of the parameter. Inside the routine, the value parameter
+gets a fixed capacity - the length of the string literal that was
+passed to it. Any attempt to assign a longer value will not work.
+
+   This only applies if the value parameter is declared as `String'. If
+it is declared as a string with a given capacity (e.g., `String
+(255)'), it gets this capacity within the routine.
+
+
+File: gpc.info,  Node: Short strings,  Next: C strings,  Prev: Strings as value parameters,  Up: Strings in GPC
+
+Support for BP compatible short strings
+---------------------------------------
+
+   Q: Two different kinds of strings with the same name - `String' -
+does make a bit of confusion. Perhaps the oldstyle strings could be
+renamed `short string' ?
+
+   A: When we implement the short strings, we'll have to do such a
+distinction. Our current planning goes like this:
+
+   `String (N)': string schema (EP compatible)
+
+   `String [N]': short string (UCSD/BP compatible, where N must be <=
+255)
+
+   `String': dependent on flags, by default undiscriminated schema, but
+in BP mode (or with a special switch) short string of capacity 255
+(UCSD/BP compatible).
+
+   Q: So when will these short strings be available?
+
+   A: It's been planned for over a year. The delay has been caused by
+more pressing problems.
+
+
+File: gpc.info,  Node: C strings,  Prev: Short strings,  Up: Strings in GPC
+
+What about C strings?
+---------------------
+
+   A C string (`char *') is an array of char, terminated with a `#0'
+char.
+
+   C library functions require C, not Pascal style string arguments.
+However, Pascal style strings are automatically converted to C style
+strings when passed to a routine that expects C style strings. This
+works only if the routine reads from the string, not if it modifies it.
+
+   E.g., this is how you could access the `system()' call in your C
+library (which is not necessary anymore, since `Execute' is already
+built-in):
+
+     program SysCall;
+     
+     function System (CmdLine: CString): Integer; external name 'system';
+     
+     var
+       Result: Integer;
+     
+     begin
+       Result := System ('ls -l');
+       WriteLn ('system() call returned: ', Result)
+     end.
+
+   You could use the type `PChar' instead of `CString'. Both `CString'
+and `PChar' are predefined as `^Char' - though we recommend `CString'
+because it makes it clearer that we're talking about some kind of
+string rather than a single character.
+
+   A lot of library routines in Pascal for many applications exist in
+the GPC unit and some other units. Where available, they should be
+preferred (e.g. `Execute' rather than `system()', and then you won't
+have to worry about `CString's.)
+
+   Do *not* pass a C style string as a `const' or `var' argument if the
+C prototype says `const char *' or you will probably get a segfault.
+
+
+File: gpc.info,  Node: Getting Help,  Next: Miscellaneous FAQ,  Prev: Strings in GPC,  Up: FAQ
+
+Getting Help
+============
+
+   Please read the GPC Manual (info files or other formats) as well as
+the `README' and `BUGS' files that come with GPC (usually installed in
+directory `/usr/local/doc/gpc'), plus other docs that might help (the
+DJGPP FAQ if you use DJGPP, etc.) before you send email to the
+maintainers or mailing list.
+
+   In particular, the `BUGS' file contains information on how to submit
+bug reports in the most efficient way.
+
+   The `Support' chapter of the GPC Manual tells you where to find more
+information about GPC and how to contact the GPC developers.  (*note
+Support::)
+
+
+File: gpc.info,  Node: Miscellaneous FAQ,  Prev: Getting Help,  Up: FAQ
+
+Miscellaneous
+=============
+
+* Menu:
+
+* Contributing::   I want to contribute; where do I start?
+* GPC web site::   Where is the GNU Pascal web site?
+* About the FAQ::  About this FAQ
+
+
+File: gpc.info,  Node: Contributing,  Next: GPC web site,  Up: Miscellaneous FAQ
+
+I want to contribute; where do I start?
+---------------------------------------
+
+   If you want to contribute, please write to the mailing list, *Note
+Mailing List::.
+
+
+File: gpc.info,  Node: GPC web site,  Next: About the FAQ,  Prev: Contributing,  Up: Miscellaneous FAQ
+
+Where is the GNU Pascal web site?
+---------------------------------
+
+   The GPC homepage on the web, for information and downloads, is
+`http://www.gnu-pascal.de'.
+
+   The GPC To-Do list, listing the latest features and fixed bugs can
+also be found there.
+
+
+File: gpc.info,  Node: About the FAQ,  Prev: GPC web site,  Up: Miscellaneous FAQ
+
+About this FAQ
+--------------
+
+   Current Maintainer: Russ Whitaker, <russ@@ashlandhome.net>
+
+   This is the second incarnation of the GNU Pascal FAQ list, based on
+the previous FAQ by J.J. van der Heijden. Comments about, suggestions
+for, or corrections to this FAQ list are welcome.
+
+   Please make sure to include in your mail the version number of the
+document to which your comments apply (you can find the version at the
+beginning of this FAQ list).
+
+   Many people have contributed to this FAQ, only some of them are
+acknowledged above. Much of the info in, and inspiration for this FAQ
+list was taken from the GPC mailing list traffic, so you may have
+(unbeknownst to you) contributed to this list.
+
+
+File: gpc.info,  Node: Installation,  Next: Invoking GPC,  Prev: FAQ,  Up: Top
+
+How to download, compile and install GNU Pascal.
+************************************************
+
+* Menu:
+
+* Download::              Where and what to download
+* Binary Distributions::  How to install a binary distribution
+* Compiling GPC::         How to compile GPC
+* Compilation Notes::     Compilation notes for specific platforms
+* Cross-Compilers::       Building and Installing a cross-compiler
+* Crossbuilding::         Crossbuilding a compiler
+
+
+File: gpc.info,  Node: Download,  Next: Binary Distributions,  Up: Installation
+
+Where and what to download
+==========================
+
+   You can download the source code of the current GNU Pascal release
+from
+     `http://www.gnu-pascal.de/current/'
+   and binaries for some platforms from
+     `http://www.gnu-pascal.de/binary/'
+
+   The binary archive files are named `gpc-VERSION.PLATFORM.EXTENSION'
+- for example `gpc-2.1.alpha-unknown-linux-gnu.tar.gz' for GPC version
+2.1 on an Alpha workstation running the Linux kernel with GNU C
+Library, or `gpc-20000616.i386-pc-msdosdjgpp' for GPC version 20000616
+on an Intel IA32 compatible PC running DOS with DJGPP.
+
+   After you have downloaded the correct archive file for your
+platform, please read the installation notes on how to install such a
+binary distribution.
+
+   If you are running Dos or MS Windows, you will need additional tools
+- see "What else to download and where" below.
+
+Current snapshots
+-----------------
+
+   GNU Pascal is subject to steady development. Alpha and beta
+snapshots (source only, use at your own risk) can be found at:
+
+     `http://www.gnu-pascal.de/alpha/'
+     `http://www.gnu-pascal.de/beta/'
+
+What else to download and where
+-------------------------------
+
+   When you are using GNU Pascal on a DOS system, you will need either
+the DJGPP or the EMX development environment (see below). On an OS/2
+system, you will need EMX. On an MS Windows 95/98/NT system you will
+need either the CygWin or the mingw32 environment.
+
+   GNU Pascal uses the compiler back-end from the GNU Compiler
+Collection, GNU CC or GCC. If you want to compile GPC, you will need
+the source of GCC as well as the source of GPC itself. From the same
+place as GPC, please download GCC `2.8.1, 2.95.x or 3.2.1'. (It is also
+available from any GNU mirror; see `http://www.gnu.org/software/gcc/'.)
+
+Libraries
+---------
+
+   For some of GPC's units, you will need some standard libraries. In
+particular:
+
+Unit             Platform              Library
+CRT              Unix/terminal         ncurses >= 5.0 (1), (2)
+CRT              Unix/X11              PDCurses (2)
+CRT              Dos, MS-Windows       PDCurses (3)
+GMP              any                   gmp
+RegEx            any                   rx
+(debugging)      Unix, MS-Windows      ElectricFence (4)
+
+   Notes:
+
+   (1) ncurses version 5.0 or newer is strongly recommended because
+older versions contain a bug that severely affects CRT programs.
+
+   (2) You can install both ncurses and PDCurses on a Unix system, and
+choose at compile time whether to generate a terminal or X11 version of
+your program.
+
+   (3) ncurses also runs under MS-Windows with CygWin (not mingw32,
+however), but doesn't appear to behave much differently from PDCurses
+on that platform.
+
+   (4) ElectricFence is not used by any unit, but can be used for
+debugging memory allocation bugs by simply linking it (see the
+accompanying documentation).
+
+   You can find those libraries on many places on the Net. Also, many
+GNU/Linux distributions, DJGPP mirrors and other OS distributions
+already contain some of the libraries. In any case, you can find the
+sources of the libraries (sometimes together with patches that you
+should apply before building if you choose to build from the sources)
+and binaries for some platforms in
+
+     `http://www.gnu-pascal.de/libs/'
+
+   For more information and descriptions of these libraries, see *Note
+Libraries::.
+
+DJGPP
+-----
+
+   DJGPP (http://www.delorie.com/djgpp/) is available from any SimTel
+mirror in the `gnu/djgpp' subdirectory; for addresses look into the
+DJGPP FAQ (http://www.delorie.com/djgpp/v2faq/).  To use GNU Pascal you
+need at least
+
+   - the C library, `v2/djdev201.zip', and
+
+   - `binutils' (assembler, etc.), `v2gnu/bnu270b.zip'.
+
+   We also recommend you to get:
+
+   - the `make' utility, `v2gnu/mak375b.zip'
+
+   - the GNU debugger, `v2gnu/gdb416b.zip'
+
+   - the DJGPP FAQ, `v2faq/faq211b.zip'
+
+   - the GRX graphics library, `http://www.gnu.de/software/GRX/'
+
+   - PENG, `http://fjf.gnu.de/peng/', an integrated development
+     environment, similar to BP's one, written in GNU Pascal, or
+
+   - RHIDE, `v2app/rhide.zip', another integrated development
+     environment, or
+
+   - DevPascal, `http://www.bloodshed.net/devpascal.html', an
+     integrated development environment for mingw32.
+
+EMX
+---
+
+   EMX is an environment for creating 32-bit applications for DOS and
+OS/2.  It is available from:
+
+     `http://www.leo.org/pub/comp/os/os2/leo/gnu/emx+gcc/index.html'
+
+   To develop EMX programs with GNU Pascal you need at least
+
+   - the EMX runtime package, `emxrt.zip',
+
+   - the EMX development system, `emxdev*.zip', and
+
+   - the GNU development tools, `gnudev*.zip'.
+
+   If your DOS box has DPMI (it does if you are using MS Windows or
+OS/2) you will also need RSX, available from the same sites as EMX in
+the subdirectory `rsxnt'.
+
+   The GNU development tools contain the GNU C compiler which is in fact
+not needed to use GNU Pascal. However, the C library _is_ needed.
+
+CygWin
+------
+
+   CygWin is an environment which implements a POSIX layer under MS
+Windows, giving it large parts of the functionality of Unix. CygWin
+contains development tools such as an assembler, a linker, etc. GPC
+needs for operation. More information about CygWin can be found at
+     `http://cygwin.com'
+
+mingw32
+-------
+
+   The Minimalists' GNU Win32 environment, mingw32, allows a large
+number of Unix programs - including GPC and GCC - to run under MS
+Windows 95/98/NT using native MS libraries. mingw32 ressources can be
+found at
+     `http://www.mingw.org'
+
+
+File: gpc.info,  Node: Binary Distributions,  Next: Compiling GPC,  Prev: Download,  Up: Installation
+
+Installation instructions for a GPC binary distribution
+=======================================================
+
+   To install a binary distribution, `cd' to the root directory and
+unpack the archive while preserving the stored directory structure.
+Under a Unix compatible system with GNU `tar' installed, the following
+(performed as `root') will do the job:
+
+     # cd /
+     # tar xzf ARCHIVE.tar.gz
+
+   If you are using a `tar' utility other than GNU `tar', it might be
+necessary to do the above in an explicit pipe:
+
+     # cd /
+     # gzip -c -d ARCHIVE.tar.gz | tar xf -
+
+   If you want to install a GPC binary distribution in another directory
+than it was prepared for (for example, if you do not have root access
+to the computer and want to install GPC somewhere under your home
+directory), you can do the following:
+
+   - Unpack the archive file in a directory of your choice (see above).
+
+   - `cd' to the "prefix" directory of the distribution (for instance
+     `usr/local').
+
+   - Run the script `install-gpc-binary', available from
+     `http://www.gnu-pascal.de/binary/'.
+
+   - Follow the instructions in the script.
+
+   To install a ZIP archive under DOS with `PKunzip', `cd' to the
+appropriate directory (usually `\' for EMX, `\DJGPP' for DJGPP), then
+call `PKunzip' with the `-d' option:
+
+     C:\> cd djgpp
+     C:\DJGPP> pkunzip -d ARCHIVE.zip
+
+   where `ARCHIVE.zip' is the name of the distribution file.
+
+   For DJGPP you must edit your `djgpp.env' in the `DJGPP' directory to
+complete the installation: Please copy the entries from `[gcc]' to
+create a new `[gpc]' section. The result may look as follows:
+
+     [gcc]
+     COMPILER_PATH=%/>;COMPILER_PATH%%DJDIR%/bin
+     LIBRARY_PATH=%/>;LIBRARY_PATH%%DJDIR%/lib
+     
+     [gpc]
+     COMPILER_PATH=%/>;COMPILER_PATH%%DJDIR%/bin
+     LIBRARY_PATH=%/>;LIBRARY_PATH%%DJDIR%/lib
+
+   If you are using the DJGPP version of GPC but do not have a `DJGPP'
+directory, please download and install DJGPP (*note Download::).
+
+   Binary distributions include `libgcc.a' and `specs', files that are
+normally part of GCC. If you have GCC installed, they will be replaced
+unless you manually install the archive.
+
+
+File: gpc.info,  Node: Compiling GPC,  Next: Compilation Notes,  Prev: Binary Distributions,  Up: Installation
+
+Compiling GPC
+=============
+
+   The preferred way to distribute GNU software is distribution of the
+source code. However, it can be a non-trivial exercise to build GNU
+Pascal on some non-Unix systems, so we also provide ready-to-run
+binaries for a number of platforms. (See *Note Binary Distributions::
+for how to install a binary distribution.)
+
+   GPC is based on the GNU Compiler Collection, GNU CC or GCC. You will
+need the GCC sources to build it. It must be the same version as the
+one GPC is implemented with - `2.8.1, 2.95.x or 3.2.1' as of this
+writing. Although you need GCC to build the GNU Pascal compiler, you
+don't need GCC to compile Pascal programs once GNU Pascal is installed.
+(However, using certain libraries will require compiling C wrappers, so
+it is a good idea to install the C compiler as well.)
+
+   Because GNU Pascal shares its back-end with GCC, it should run on any
+system supported by GCC. A full list of platforms supported by GCC can
+be found in *Note the GCC installation instructions: (gcc)Installation.
+
+   The GCC source can be obtained from any mirror of the GNU FTP site,
+`ftp://ftp.gnu.org/gnu/gcc/'. The "core" distribution is sufficient for
+GPC.
+
+   Here is the generic procedure for installing GNU Pascal on a Unix
+system. See *Note Compilation Notes:: for extra information needed to
+install GPC on DOS-like platforms.
+
+  1. Checking the prerequisites
+
+     Make sure that GNU make is installed and that you use it in the
+     following steps. When unsure, you can try `make --version' and/or
+     `gmake --version'. It should tell you that it is GNU make. If you
+     don't have it, you can obtain it from
+     `http://www.gnu.org/software/make/'.
+
+     (In the following, we will simply speak of `make' when invoking
+     GNU make; you might need to call `gmake' instead.)
+
+     For extracting the example programs from the documentation to the
+     `doc/docdemos' directory a non-crippled `sed' is needed.  GNU sed
+     is known to work.
+
+     If you have downloaded a "minimal" source distribution, most
+     derived files have to be rebuilt. This happens automatically, but
+     you need additional tools: `bash', `bzip2', *GNU* `sed', GNU `awk',
+     GNU `m4', `bison' (at least version 1.875), `flex', `autoconf'
+     (version 2.12), `help2man', `texinfo' (at least version 4.2).
+     Make sure that these are installed. The minimal distributions are
+     compressed with `bzip2' instead of `gzip', so substitute it in the
+     instructions below.
+
+     If you want to build the GPC WWW pages you will also need a TeX
+     distribution (including `pdftex' and `dvips').
+
+     If you run into trouble during the installation process, please
+     check whether you are using outdated versions of the required
+     utilities and upgrade if necessary.
+
+     The GNU versions of the packages above are available from
+     `http://www.gnu.org/software/', in a subdirectory whose name is
+     the name of the package.
+
+  2. Unpacking the source
+
+     From a directory of your choice (e.g. `/home/fred'), unpack the
+     GCC and GNU Pascal source distributions. This will create separate
+     subdirectories for GCC and GPC. Let us assume `gcc-2.95.3' and
+     `gpc-20030209' in this example.
+          % cd /home/fred
+          % gzip -c -d gcc-core-2.95.3.tar.gz | tar xf -
+          % gzip -c -d gpc-20030209.tar.gz | tar xf -
+
+     `cd' to the GPC directory and move the contents (a subdirectory
+     `p') to the subdirectory `gcc' of the GCC directory:
+
+          % mv /home/fred/gpc-20030209/p /home/fred/gcc-2.95.3/gcc/
+
+     Instead of moving the directory, it is now also possible to make a
+     symbolic link (if the OS supports symlinks). This is useful if you
+     want to build GPC with several different GCC versions:
+
+          % ln -s /home/fred/gpc-20030209/p /home/fred/gcc-2.95.3/gcc/p
+
+     It is recommended, though not required, to use a separate
+     directory for building the compiler, rather than compiling in the
+     source directory. In this example, let us create
+     `/home/fred/gpc-build' for this purpose:
+
+          % mkdir /home/fred/gpc-build
+
+     If you use a separate directory, you do not need to write into the
+     GCC source directory once you have patched the GCC source (see
+     below), and can build GPC for more than one platform from the same
+     source tree.
+
+     In case you are re-using a directory where you have already built
+     GCC and/or GPC for a different target machine, do `make distclean'
+     to delete all files that might be invalid. One of the files this
+     deletes is `Makefile'; if `make distclean' complains that
+     `Makefile' does not exist, it probably means that the directory is
+     already suitably clean.
+
+  3. Configuring and building GCC
+
+     GNU Pascal is automatically configured with GCC. Configuration of
+     GCC is treated in depth in *Note the GCC installation
+     instructions: (gcc)Installation.  The normal procedure is as
+     follows:
+
+     `cd' to the GPC build directory. From there, run the `configure'
+     script in the GCC source directory:
+
+          % cd /home/fred/gpc-build
+          % /home/fred/gcc-2.95.3/configure --enable-languages=pascal
+
+     This creates all the necessary config files, links and Makefile in
+     the GCC object directory.
+
+     Note 1: The configuration will prompt you for patching the GCC
+     source for GPC support, so you need write access to that
+     directory. All changes to GCC are surrounded by `#ifdef GPC ...
+     #endif', so they should not interfere when you build a C compiler
+     from this source tree.
+
+     Note 2: The `--enable-languages=pascal' option means that we only
+     want to build the Pascal compiler and not, for instance, the C++
+     compiler.
+
+     Note 3: The standard base directory for installing GCC and GPC is
+     `/usr/local'. If you want to install files to an alternate
+     directory DIR, specify `--prefix=DIR' when you run `configure'.
+     For installing into a system directory such as `/usr/local' you
+     will, of course, need appropriate permissions (often root).
+     Therefore, if you want to install GPC on a system where you don't
+     have those permissions, you must specify a prefix (e.g.,
+     `$HOME/usr').
+
+  4. Putting other GNU tools in place
+
+     Some environments require other GNU tools (such as the GNU
+     assembler or linker) instead of the standard system tools for GCC
+     to work. (See the GCC installation instructions for details.) If
+     this is the case for your system, install the required tools in
+     the GPC build directory under the names `as', `ld', or whatever is
+     appropriate. This will enable the compiler to find the proper
+     tools for compilation of the program `enquire' (a part of GCC) and
+     to install the GNU tools to a place where they are found by GCC
+     but do not interfere with the standard system tools.
+
+     Alternatively, you can do subsequent compilation using a value of
+     the `PATH' environment variable such that the necessary GNU tools
+     come before the standard system tools.
+
+  5. Compiling GPC
+
+     Once you are satisfied with the configuration as determined by
+     `configure', you can build the compiler:
+
+          % make
+
+     Notice that this procedure will build the C compiler (and maybe
+     some other compilers) too, because that is used to compile the GPC
+     runtime library.
+
+     Optionally, you may supply CFLAGS, LDFLAGS or RTSFLAGS. CFLAGS is
+     used for compiler and RTS, RTSFLAGS are for RTS only, i.e.: `make
+     CFLAGS="-O2" RTSFLAGS=-Wall'
+
+     *Note*: The documentation may fail to build from *.texi sources if
+     GCC 2.95.x tries to use an older version of `makeinfo' supplied in
+     GCC package itself. This can be prevented by supplying explicit
+     instruction to use your system's `makeinfo':
+
+          % make MAKEINFO=`which makeinfo`
+
+     optionally followed by the rest of arguments.
+
+  6. Completing the installation
+
+     When everything has been compiled, you can check the installation
+     process with:
+
+          % make -n install
+
+     To complete the installation, run the command `make install'. You
+     need write access to the target directories (`/usr/local/bin',
+     `/usr/local/lib', `/usr/local/info', `/usr/local/doc', and
+     `/usr/local/man' in this example), so this is usually done as
+     `root':
+
+          % su -c "make install"
+
+     If you want to install _only_ the Pascal compiler (for example if
+     you already have the correct version of GCC installed), `cd' to the
+     `gcc' subdirectory of the build directory (e.g.
+     `/home/fred/gpc-build/gcc') and run `make pascal.install'. This
+     installation process does *not* overwrite existing copies of
+     `libgcc.a' or `specs', should they exist.
+
+     However, if you do not have the exactly matching GCC version
+     installed, you might need some additional files (otherwise GPC will
+     complain about missing files at runtime). You can install them by
+     doing `make pascal.install-with-gcc' in the `gcc' subdirectory of
+     the build directory.
+
+     There is a (partial) translation of the GPC manual into Croatian
+     available now. It is not installed by default. If you want to
+     install it, do a `pascal.install-hr' in the `gcc' directory. This
+     will install the manpage `gpc-hr.1' and the info documentation
+     `gpc-hr.info*'. Other formats like PS, PDF and HTML can be built
+     manually (it's also easy to add appropriate make targets for them
+     when needed).
+
+     Also from the `gcc' subdirectory you can do some more "exotic"
+     builds. For instance, you can build the GPC WWW pages by typing
+     `make pascal.html' or a binary distribution by typing `make
+     pascal.bindist'. See the `Makefile' in that directory for more
+     examples.
+
+
+File: gpc.info,  Node: Compilation Notes,  Next: Cross-Compilers,  Prev: Compiling GPC,  Up: Installation
+
+Compilation notes for specific platforms
+========================================
+
+* Menu:
+
+* MS-DOS with DJGPP::        The DJGPP port of GNU compilers to MS-DOS.
+* MS-DOS or OS/2 with EMX::  The EMX port of GNU compilers to MS-DOS and OS/2.
+* MS Windows 95/98/NT::      Installation on a Windows 95/98/NT system.
+
+
+File: gpc.info,  Node: MS-DOS with DJGPP,  Next: MS-DOS or OS/2 with EMX,  Up: Compilation Notes
+
+MS-DOS with DJGPP
+-----------------
+
+   The only compiler that is capable of compiling the GNU Compiler
+Collection (GNU CC or GCC) under MS-DOS is GCC itself. In order to
+compile GPC or GCC for MS-DOS with DJGPP you will therefore need either
+a working copy of DJGPP installed, or you will have to cross-build from
+a non-MS-DOS system.
+
+   Building GPC under MS-DOS with DJGPP follows the same scheme as
+building GPC under a Unix-like system: Place the `p' subdirectory in the
+`gcc' directory and follow the instructions for compiling GCC. This
+requires `bash' and many other tools installed, and you must be very
+careful at many places to circumvent the limitations of the DOS
+platform.
+
+   Our preferred way to build GPC for DJGPP is to cross-build it from a
+Unix-like platform - which is much easier. For instructions, see *Note
+Cross-Compilers:: and *Note Crossbuilding::.
+
+
+File: gpc.info,  Node: MS-DOS or OS/2 with EMX,  Next: MS Windows 95/98/NT,  Prev: MS-DOS with DJGPP,  Up: Compilation Notes
+
+MS-DOS or OS/2 with EMX
+-----------------------
+
+   EMX is a free 32-bit DOS extender which adds some properties of Unix
+to MS-compatible DOS and IBM's OS/2 operating systems.
+
+   As of this writing, we are not aware of current versions of GCC for
+EMX, and EMX support in GPC has not been maintained. Please contact us
+if you know about recent development in EMX and are interested in
+continuing EMX support in GPC.
+
+
+File: gpc.info,  Node: MS Windows 95/98/NT,  Prev: MS-DOS or OS/2 with EMX,  Up: Compilation Notes
+
+MS Windows 95/98/NT
+-------------------
+
+   There are two ports of the GNU development tools to MS Windows
+95/98/NT: CygWin and mingw32.
+
+   The CygWin environment implements a POSIX layer under MS Windows,
+giving it large parts of the functionality of Unix. Thus, compiling GCC
+and GPC under the CygWin environment can be done following the
+instructions for compiling it under a Unix-like system (see *Note
+Compiling GPC::).
+
+   The Minimalists' GNU Win32 environment, mingw32, uses the native
+`crtdll.dll' library of MS Windows. It is much smaller than CygWin, but
+it is not self-hosting and must be crossbuilt from another system (see
+*Note Crossbuilding::).
+
+
+File: gpc.info,  Node: Cross-Compilers,  Next: Crossbuilding,  Prev: Compilation Notes,  Up: Installation
+
+Building and Installing a cross-compiler
+========================================
+
+   GNU Pascal can function as a cross-compiler for many machines.
+Information about GNU tools in a cross-configuration can be found at
+`ftp://ftp.cygnus.com/pub/embedded/crossgcc/'.
+
+   Since GNU Pascal generates assembler code, you need a cross-assembler
+that GNU Pascal can run, in order to produce object files. If you want
+to link on other than the target machine, you need a cross-linker as
+well. It is straightforward to install the GNU binutils to act as
+cross-tools - see the installation instructions of the GNU binutils for
+details.
+
+   You also need header files and libraries suitable for the target
+machine that you can install on the host machine. Please install them
+under `PREFIX/PLATFORM/include/', for instance
+`/usr/local/i386-pc-msdosdjgpp/include/' for a cross-compiler from a
+typical Unix-like environment to MS-DOS with DJGPP.
+
+   Configuration and compilation of the compiler can then be done using
+the scripts `cfgpc' and `mkgpc' which are included in the source
+distribution in the subdirectory `p/script'. Please call them with the
+`-h' option for instructions.
+
+
+File: gpc.info,  Node: Crossbuilding,  Prev: Cross-Compilers,  Up: Installation
+
+Crossbuilding a compiler
+========================
+
+   Using a cross-compiler to build GNU Pascal results in a compiler
+binary that runs on the cross-target platform. This is called
+"crossbuilding". A possible reason why anybody would want to do this,
+is when the platform on which you want to run the GNU Pascal compiler
+is not self-hosting. An example is mingw32.
+
+   To crossbuild GNU Pascal, you have to install a cross-compiler for
+your target first, see *Note Cross-Compilers::.
+
+   As when building a cross-compiler, configuration and compilation of
+the compiler can be done using the scripts `cfgpc' and `mkgpc' which
+are included in the source distribution in the subdirectory `p/script'.
+Please call them with the `-h' option for instructions.
+
+
+File: gpc.info,  Node: Invoking GPC,  Next: Programming,  Prev: Installation,  Up: Top
+
+Command Line Options supported by GNU Pascal.
+*********************************************
+
+   GPC is a command-line compiler, i.e., to compile a program you have
+to invoke `gpc' passing it the name of the file you want to compile,
+plus options.
+
+   GPC supports all command-line options that GCC knows, except for
+many preprocessor options. For a complete reference and descriptions of
+all options, see *Note GCC Command Options: (gcc)Invoking GCC. Below,
+you will find a list of the additional options that GPC supports, and a
+list of GPC's most important options (including some of those supported
+by GCC as well).
+
+   You can mix options and file names on the command line. For the most
+part, the order doesn't matter. Order does matter, e.g., when you use
+several options of the same kind; for example, if you specify `-L' more
+than once, the directories are searched in the order specified. _Note:_
+Since many options have multiletter names; multiple single-letter
+options may _not_ be grouped as is possible with many other programs:
+`-dr' is very different from `-d -r'.
+
+   Many options have long names starting with `--' or, completely
+equivalent `-f'. E.g., `--mixed-comments' is the same as
+`-fmixed-comments'. Some options tell GPC when to give warnings, i.e.
+diagnostic messages that report constructs which are not inherently
+erroneous but which are risky or suggest there may have been an error.
+Those options start with `-W'.
+
+   Most GPC specific options can also be changed during one compilation
+by using compiler directives in the source, e.g. `{$X+}' or
+`{$extended-syntax}' for `--extended-syntax' (*note Compiler
+Directives::).
+
+   GPC understands the same environment variables GCC does (*note
+Environment Variables Affecting GCC: (gcc)Environment Variables.).  In
+addition, GPC recognizes `GPC_EXEC_PREFIX' with the same meaning that
+`GCC_EXEC_PREFIX' has to GCC. GPC also recognizes `GCC_EXEC_PREFIX',
+but `GPC_EXEC_PREFIX' takes precedence.
+
+   Some of the long options (e.g., `--unit-path') take an argument.
+This argument is separated with a `=' sign, e.g.:
+
+     --unit-path=/home/foo/units
+
+* Menu:
+
+* GPC Command Line Options::  GPC options besides those of GCC.
+* GPC Options::               The most commonly used options to GPC.
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

@@ -1,0 +1,434 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@// @;
+
+
+1.2
+date	2004.06.10.19.02.00;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.39;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.39;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@
+// srcb.cpp : implementation file
+//
+
+#include "stdafx.h"
+
+#include "browserl.h"
+#include "srcb.h"
+#ifdef _DEBUG
+#undef THIS_FILE
+static char BASED_CODE THIS_FILE[] = __FILE__;
+#endif
+
+
+extern CGuiApp theApp;
+void redraw_allsrcbwins()
+{ 
+  redraw_allwins(theApp.m_srcbrowserTemplate);
+}
+CFontInfo srcbfontinfo ("SrcBrowserFont", redraw_allsrcbwins);
+extern CFontInfo buttonfontinfo;
+/////////////////////////////////////////////////////////////////////////////
+// SrcB
+
+IMPLEMENT_DYNCREATE(CSrcB, CView)
+
+CSrcB::CSrcB()
+{
+showall = 1;
+}
+
+CSrcB::~CSrcB()
+{
+}
+
+
+BEGIN_MESSAGE_MAP(CSrcB, CView)
+	//{{AFX_MSG_MAP(CSrcB)
+	ON_WM_SIZE()
+	ON_WM_ERASEBKGND()
+	ON_WM_CREATE()
+	ON_BN_CLICKED(ID_CMD_BUTTON_GOTO,on_goto)
+	ON_LBN_DBLCLK(ID_CMD_BUTTON_BROWSE_LIST, on_dblclkbrowselist)
+	ON_BN_CLICKED(ID_CMD_BUTTON_BREAKPOINT, on_breakpoint)
+	ON_BN_CLICKED(ID_CMD_BUTTON_EXPLODE, on_explode)
+	ON_EN_CHANGE(ID_CMD_BUTTON_FILTER, on_change_filter)
+	//}}AFX_MSG_MAP
+END_MESSAGE_MAP()
+
+
+/////////////////////////////////////////////////////////////////////////////
+// CSrcB drawing
+
+void CSrcB::OnDraw(CDC* pDC)
+{
+	CDocument* pDoc = GetDocument();
+	// TODO: add draw code here
+}
+
+
+/////////////////////////////////////////////////////////////////////////////
+// CSrcB message handlers
+
+void CSrcB::OnInitialUpdate() 
+{
+  // TODO: Add your specialized code here and/or call the base class
+  GetParentFrame()->SetWindowPos(0,0,0,
+				 srcbfontinfo.dunits.cx * 45,
+				 srcbfontinfo.dunits.cy * 30,
+				 SWP_NOMOVE);
+  
+  CView::OnInitialUpdate();
+}
+#define R(x) x.left, x.top, x.Width(), x.Height()
+void CSrcB::OnSize(UINT nType, int cx, int cy) 
+{
+  CRect wholebox;
+  CRect shrunkbox;
+  int dx = srcbfontinfo.dunits.cx;
+  int dy = srcbfontinfo.dunits.cy;
+  
+  int bx = buttonfontinfo.dunits.cx;
+  int by = buttonfontinfo.dunits.cy;
+  
+  int hgap = dy ;
+  int indent = dx;
+  GetClientRect(wholebox);
+  shrunkbox = wholebox;
+  shrunkbox.InflateRect(-indent, -hgap);
+  
+  CRect editbox = shrunkbox;
+  editbox.bottom = editbox.top + dy *2;
+  edit.SetWindowPos (NULL, R(editbox), 0);
+  
+  CRect listbox = shrunkbox;
+  int bwidth = bx * 14;
+  listbox.top    = editbox.bottom + hgap;
+  listbox.right = shrunkbox.right - bwidth;
+  listbox.bottom = shrunkbox.bottom;
+  list.SetWindowPos (NULL, R(listbox), 0);
+  
+  /* Set, clear, disable, clearall on the bottom row */
+  CRect boxx = listbox;
+  boxx.left = shrunkbox.right - bwidth +hgap;
+  boxx.right = shrunkbox.right;
+  int boxheight = by * 2;
+  int boxgap = by * 3;
+  
+ int i = 0;
+  boxx.top = listbox.top + i * boxgap;
+  boxx.bottom = boxx.top + boxheight;
+  view.SetWindowPos(0,R(boxx),0);
+  
+  i = 1;
+  boxx.top = listbox.top + i * boxgap;
+  boxx.bottom = boxx.top + boxheight;
+  bpt.SetWindowPos(0,R(boxx),0);
+  i =2;
+  boxx.top = listbox.top + i * boxgap;
+  boxx.bottom = boxx.top + boxheight;
+  explode.SetWindowPos(0,R(boxx),0);
+  
+}
+
+int CSrcB::OnCreate(LPCREATESTRUCT lpCreateStruct) 
+{
+  CRect rc (10,10,100,100);
+  if (CView::OnCreate(lpCreateStruct) == -1)
+    return -1;
+  
+  list.Create(WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL
+	      |WS_BORDER
+	      | LBS_DISABLENOSCROLL | LBS_USETABSTOPS | WS_TABSTOP
+	      | LBS_NOTIFY | LBS_OWNERDRAWFIXED,
+	      rc,
+	      this,
+	      ID_CMD_BUTTON_BROWSE_LIST);
+  
+  edit.Create(WS_TABSTOP|WS_CHILD|WS_VISIBLE|WS_BORDER, rc, this, ID_CMD_BUTTON_FILTER);  
+  
+  view.Create("&View",WS_TABSTOP| BS_DEFPUSHBUTTON|WS_CHILD|WS_VISIBLE,	rc, this, 
+	      ID_CMD_BUTTON_GOTO);
+  bpt.Create("&Break",WS_TABSTOP| BS_DEFPUSHBUTTON|WS_CHILD|WS_VISIBLE,	rc, this, 
+	     ID_CMD_BUTTON_BREAKPOINT);
+  explode.Create("&Explode",WS_TABSTOP| BS_DEFPUSHBUTTON|WS_CHILD|WS_VISIBLE,	rc, this,
+		 ID_CMD_BUTTON_EXPLODE);
+  
+  return 0;
+}
+BOOL CSrcB::OnEraseBkgnd(CDC* pDC) 
+{
+  // TODO: Add your message handler code here and/or call default
+  CBrush b (RGB(192,192,192));
+  CBrush *old = pDC->SelectObject(&b);
+  CRect rect;
+  pDC->GetClipBox(&rect);
+  pDC->PatBlt(rect.left, rect.top,rect.Width(), rect.Height(), PATCOPY);
+  pDC->SelectObject(old);
+  return TRUE;	
+}
+
+
+void CSrcB::Initialize()
+{
+  srcbfontinfo.Initialize();
+}
+
+void CSrcB::Terminate()
+{
+  srcbfontinfo.Terminate();
+}
+
+void CSrcB::rethink()
+{
+ static   struct gui_symtab_file *p = 0;
+ int prev_top = list.GetTopIndex();
+ int prev_sel = list.GetCurSel();
+int showall; 
+ //  gdbwin_list_symbols_free(p);
+ CString filter;
+ edit.GetWindowText(filter);
+ const char *fs;
+ if (filter.IsEmpty())
+   fs = 0;
+ else 
+   fs = filter;
+ if (!p)  
+   p = gdbwin_list_symbols(0, 1);
+ 
+ int regex = fs ? ! re_comp (fs) : 0;
+				 CString bname;
+ explode.GetWindowText(bname);
+   showall = bname[1] == 'I';
+ 
+ struct gui_symtab_file *i ;
+ list.ResetContent();
+ struct gui_symtab_item *items ;  
+ int line_count = 0;
+ 
+ if (regex) 
+   {
+    for (i = p; i; i = i->next_file) 
+      {	
+	int donefile = 0;
+	for (items = i->items; items; items = items->next_item)
+	  {
+	   if (re_exec(SYMBOL_NAME(items->sym)))
+	     {
+	      if (!donefile)
+		{
+		 /* Only print the owning file if selected */
+		 list.AddString ((char *)i);
+		 line_count ++;
+		 donefile = 1;
+	       }
+	      
+	      list.AddString((char *)items);
+	      line_count ++;
+	    }
+	 }
+      }
+  }
+ else 
+   {
+    for (i = p; i; i = i->next_file) 
+      {
+       list.AddString ((char *)i);
+       line_count ++;
+       if (i->opened || showall)
+	 {
+	  for (items = i->items; items; items = items->next_item)
+	    {
+	     list.AddString((char *)items);
+	     line_count ++;
+	   }
+	}
+     }
+  }
+ list.SetTopIndex(line_count < prev_top ? line_count -1 : prev_top);
+ list.SetCurSel(line_count < prev_sel ? line_count -1 : prev_sel);
+}
+
+
+void CSrcB::OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint) 
+{
+	// TODO: Add your specialized code here and/or call the base class
+	
+rethink();
+}
+
+
+
+void CSrcB::on_dblclkbrowselist() 
+{
+  // Find what was clicked
+  int sel = list.GetCurSel();
+  if (sel >= 0) {
+    union gui_symtab *p = (union gui_symtab *) list.GetItemData(sel);
+	if (p) {
+    if (p->type == GUI_FILE) 
+      {
+	p->as_file.opened = !p->as_file.opened;
+	CDocument* pDoc = GetDocument();
+	//	pDoc->SetModifiedFlag();
+	pDoc->UpdateAllViews(NULL);
+      }
+    else 
+      {
+	/* Double click on item, goto it if possible */
+	theApp_show_at(p->as_item.sym->GetValue());
+      }
+	  }
+  }
+}
+void CSrcB::on_goto()
+{
+  on_dblclkbrowselist();
+}
+
+
+
+
+void CSrcB::on_breakpoint()
+{
+  // Find what was clicked
+  int sel = list.GetCurSel();
+  if (sel >= 0) 
+    {
+      union gui_symtab *p = (union gui_symtab *) list.GetItemData(sel);
+      if (p->type == GUI_ITEM)
+	{
+	  char buf[200];
+	  sprintf(buf,"%s:%s",
+		  p->as_item.parent->tab->filename,
+		  SYMBOL_NAME(p->as_item.sym));
+	  togdb_bpt_set(buf);
+	}
+    }
+}
+
+
+void CSrcB::on_explode()
+{
+  CString bname;
+  explode.GetWindowText(bname);
+  if (bname[1] == 'I')
+    explode.SetWindowText("&Explode");
+  else
+    explode.SetWindowText("&Implode");
+  rethink();
+}
+
+
+void CSrcB::on_change_filter()
+{
+  CString x;
+  edit.GetWindowText(x);
+  explode.EnableWindow(x.IsEmpty());
+  rethink();
+}
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,415 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.13;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.13;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.36;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package ExtUtils::Command;
+
+use 5.00503;
+use strict;
+use Carp;
+use File::Copy;
+use File::Compare;
+use File::Basename;
+use File::Path qw(rmtree);
+require Exporter;
+use vars qw(@@ISA @@EXPORT $VERSION);
+@@ISA     = qw(Exporter);
+@@EXPORT  = qw(cp rm_f rm_rf mv cat eqtime mkpath touch test_f);
+$VERSION = '1.04';
+
+my $Is_VMS = $^O eq 'VMS';
+
+=head1 NAME
+
+ExtUtils::Command - utilities to replace common UNIX commands in Makefiles etc.
+
+=head1 SYNOPSIS
+
+  perl -MExtUtils::Command -e cat files... > destination
+  perl -MExtUtils::Command -e mv source... destination
+  perl -MExtUtils::Command -e cp source... destination
+  perl -MExtUtils::Command -e touch files...
+  perl -MExtUtils::Command -e rm_f file...
+  perl -MExtUtils::Command -e rm_rf directories...
+  perl -MExtUtils::Command -e mkpath directories...
+  perl -MExtUtils::Command -e eqtime source destination
+  perl -MExtUtils::Command -e chmod mode files...
+  perl -MExtUtils::Command -e test_f file
+
+=head1 DESCRIPTION
+
+The module is used to replace common UNIX commands.  In all cases the
+functions work from @@ARGV rather than taking arguments.  This makes
+them easier to deal with in Makefiles.
+
+  perl -MExtUtils::Command -e some_command some files to work on
+
+I<NOT>
+
+  perl -MExtUtils::Command -e 'some_command qw(some files to work on)'
+
+Filenames with * and ? will be glob expanded.
+
+=over 4
+
+=cut
+
+# VMS uses % instead of ? to mean "one character"
+my $wild_regex = $Is_VMS ? '*%' : '*?';
+sub expand_wildcards
+{
+ @@ARGV = map(/[$wild_regex]/o ? glob($_) : $_,@@ARGV);
+}
+
+=item cat 
+
+Concatenates all files mentioned on command line to STDOUT.
+
+=cut 
+
+sub cat ()
+{
+ expand_wildcards();
+ print while (<>);
+}
+
+=item eqtime src dst
+
+Sets modified time of dst to that of src
+
+=cut 
+
+sub eqtime
+{
+ my ($src,$dst) = @@ARGV;
+ open(F,">$dst");
+ close(F);
+ utime((stat($src))[8,9],$dst);
+}
+
+=item rm_rf files....
+
+Removes directories - recursively (even if readonly)
+
+=cut 
+
+sub rm_rf
+{
+ expand_wildcards();
+ rmtree([grep -e $_,@@ARGV],0,0);
+}
+
+=item rm_f files....
+
+Removes files (even if readonly)
+
+=cut 
+
+sub rm_f
+{
+ expand_wildcards();
+ foreach (@@ARGV)
+  {
+   next unless -f $_;
+   next if unlink($_);
+   chmod(0777,$_);
+   next if unlink($_);
+   carp "Cannot delete $_:$!";
+  }
+}
+
+=item touch files ...
+
+Makes files exist, with current timestamp 
+
+=cut 
+
+sub touch
+{
+ my $t    = time;
+ expand_wildcards();
+ while (@@ARGV)
+  {
+   my $file = shift(@@ARGV);
+   open(FILE,">>$file") || die "Cannot write $file:$!";
+   close(FILE);
+   utime($t,$t,$file);
+  }
+}
+
+=item mv source... destination
+
+Moves source to destination.
+Multiple sources are allowed if destination is an existing directory.
+
+=cut 
+
+sub mv
+{
+ my $dst = pop(@@ARGV);
+ expand_wildcards();
+ croak("Too many arguments") if (@@ARGV > 1 && ! -d $dst);
+ while (@@ARGV)
+  {
+   my $src = shift(@@ARGV);
+   move($src,$dst);
+  }
+}
+
+=item cp source... destination
+
+Copies source to destination.
+Multiple sources are allowed if destination is an existing directory.
+
+=cut
+
+sub cp
+{
+ my $dst = pop(@@ARGV);
+ expand_wildcards();
+ croak("Too many arguments") if (@@ARGV > 1 && ! -d $dst);
+ while (@@ARGV)
+  {
+   my $src = shift(@@ARGV);
+   copy($src,$dst);
+  }
+}
+
+=item chmod mode files...
+
+Sets UNIX like permissions 'mode' on all the files.
+
+=cut 
+
+sub chmod
+{
+ my $mode = shift(@@ARGV);
+ expand_wildcards();
+ chmod($mode,@@ARGV) || die "Cannot chmod ".join(' ',$mode,@@ARGV).":$!";
+}
+
+=item mkpath directory...
+
+Creates directory, including any parent directories.
+
+=cut 
+
+sub mkpath
+{
+ expand_wildcards();
+ File::Path::mkpath([@@ARGV],0,0777);
+}
+
+=item test_f file
+
+Tests if a file exists
+
+=cut 
+
+sub test_f
+{
+ exit !-f shift(@@ARGV);
+}
+
+
+1;
+__END__ 
+
+=back
+
+=head1 BUGS
+
+Should probably be Auto/Self loaded.
+
+=head1 SEE ALSO 
+
+ExtUtils::MakeMaker, ExtUtils::MM_Unix, ExtUtils::MM_Win32
+
+=head1 AUTHOR
+
+Nick Ing-Simmons <F<nick@@ni-s.u-net.com>>.
+
+=cut
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d14 1
+a14 1
+$VERSION = '1.05';
+d24 10
+a33 10
+  perl -MExtUtils::Command       -e cat files... > destination
+  perl -MExtUtils::Command       -e mv source... destination
+  perl -MExtUtils::Command       -e cp source... destination
+  perl -MExtUtils::Command       -e touch files...
+  perl -MExtUtils::Command       -e rm_f files...
+  perl -MExtUtils::Command       -e rm_rf directories...
+  perl -MExtUtils::Command       -e mkpath directories...
+  perl -MExtUtils::Command       -e eqtime source destination
+  perl -MExtUtils::Command       -e test_f file
+  perl -MExtUtils::Command=chmod -e chmod mode files...
+a59 1
+
+d81 2
+a82 1
+ local @@ARGV = ($dst);  touch();  # in case $dst doesn't exist
+d123 11
+a133 8
+sub touch {
+    my $t    = time;
+    expand_wildcards();
+    foreach my $file (@@ARGV) {
+        open(FILE,">>$file") || die "Cannot write $file:$!";
+        close(FILE);
+        utime($t,$t,$file);
+    }
+d143 10
+a152 7
+sub mv {
+    my $dst = pop(@@ARGV);
+    expand_wildcards();
+    croak("Too many arguments") if (@@ARGV > 1 && ! -d $dst);
+    foreach my $src (@@ARGV) {
+        move($src,$dst);
+    }
+d162 10
+a171 7
+sub cp {
+    my $dst = pop(@@ARGV);
+    expand_wildcards();
+    croak("Too many arguments") if (@@ARGV > 1 && ! -d $dst);
+    foreach my $src (@@ARGV) {
+        copy($src,$dst);
+    }
+d176 1
+a176 1
+Sets UNIX like permissions 'mode' on all the files.  e.g. 0666
+d180 5
+a184 4
+sub chmod {
+    my $mode = shift(@@ARGV);
+    expand_wildcards();
+    chmod(oct $mode,@@ARGV) || die "Cannot chmod ".join(' ',$mode,@@ARGV).":$!";
+@
+

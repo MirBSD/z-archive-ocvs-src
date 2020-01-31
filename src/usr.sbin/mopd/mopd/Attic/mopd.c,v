@@ -1,0 +1,558 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.05.21.20.08.39;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.55.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.55.45;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.48.45;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.12.22.21.19.23;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.05.16.07.23.15;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@* merge OpenBSD 3.5-current
+* re-sort entries in Makefile
+  => not a bunch of adds any more; all alphabetic
+  => remove obsolete SUBDIRS_ONLY_BSD for now
+     (MirLinux won't come that soon due to a certain lawsuit,
+      licence issues with unwillingly GNU fanatics, and my
+      chronic unwillingness to do masochistic work)
+* spacing, RCS IDs, etc.
+* pkg gets folded into pkg_install, so we only have one dir
+  to worry about
+* pkg_add leaves the tree - nobody cared about this kind
+  of package tools anyways, and they're not part of MirBSD
+  (although still supported by MirPorts)
+* mopd leaves - we don't have VAX support anyways
+@
+text
+@/*	$OpenBSD: mopd.c,v 1.7 2002/06/10 21:05:25 maja Exp $ */
+
+/*
+ * Copyright (c) 1993-96 Mats O Jansson.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Mats O Jansson.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifndef LINT
+static char rcsid[] = "$OpenBSD: mopd.c,v 1.7 2002/06/10 21:05:25 maja Exp $";
+#endif
+
+/*
+ * mopd - MOP Dump/Load Daemon
+ *
+ * Usage:	mopd -a [ -d -f -v ] [ -3 | -4 ]
+ *		mopd [ -d -f -v ] [ -3 | -4 ] interface
+ */
+
+#include "os.h"
+#include "common/common.h"
+#include "common/mopdef.h"
+#include "common/device.h"
+#include "common/print.h"
+#include "common/pf.h"
+#include "common/cmp.h"
+#include "common/get.h"
+#include "common/dl.h"
+#include "common/rc.h"
+#include "process.h"
+
+/*
+ * The list of all interfaces that are being listened to. 
+ * "selects" on the descriptors in this list.
+ */
+struct if_info *iflist;
+
+void   Loop(void);
+void   Usage(void);
+void   mopProcess(struct if_info *, u_char *);
+
+int     AllFlag = 0;		/* listen on "all" interfaces */
+int     DebugFlag = 0;		/* print debugging messages   */
+int	ForegroundFlag = 0;	/* run in foreground          */
+int	VersionFlag = 0;	/* print version              */
+int	Not3Flag = 0;		/* Not MOP V3 messages.       */
+int	Not4Flag = 0;		/* Not MOP V4 messages.       */
+int	promisc = 1;		/* Need promisc mode    */
+char    *Program;
+
+int
+main(argc, argv)
+	int     argc;
+	char  **argv;
+{
+	int	c, devnull, f;
+	char   *interface;
+	pid_t	pid;
+
+	extern int optind;
+	extern char version[];
+
+	if ((Program = strrchr(argv[0], '/')))
+		Program++;
+	else
+		Program = argv[0];
+
+	if (*Program == '-')
+		Program++;
+
+	while ((c = getopt(argc, argv, "34adfv")) != -1)
+		switch (c) {
+			case '3':
+				Not3Flag++;
+				break;
+			case '4':
+				Not4Flag++;
+				break;
+			case 'a':
+				AllFlag++;
+				break;
+			case 'd':
+				DebugFlag++;
+				break;
+			case 'f':
+				ForegroundFlag++;
+				break;
+			case 'v':
+				VersionFlag++;
+				break;
+			default:
+				Usage();
+				/* NOTREACHED */
+		}
+	
+	if (VersionFlag) {
+		fprintf(stdout,"%s: version %s\n", Program, version);
+		exit(0);
+	}
+
+	interface = argv[optind++];
+
+	if ((AllFlag && interface) ||
+	    (!AllFlag && interface == 0) ||
+	    (argc > optind) ||
+	    (Not3Flag && Not4Flag))  
+		Usage();
+
+	/* All error reporting is done through syslogs. */
+	openlog(Program, LOG_PID | LOG_CONS, LOG_DAEMON);
+
+	if ((!ForegroundFlag) && DebugFlag) {
+		fprintf(stdout,
+			"%s: not running as daemon, -d given.\n",
+			Program);
+	}
+
+	if ((!ForegroundFlag) && (!DebugFlag)) {
+
+		pid = fork();
+		if (pid > 0)
+			/* Parent exits, leaving child in background. */
+			exit(0);
+		else
+			if (pid == -1) {
+				syslog(LOG_ERR, "cannot fork");
+				exit(0);
+			}
+
+		/* Fade into the background */
+		f = open("/dev/tty", O_RDWR);
+		if (f >= 0) {
+			if (ioctl(f, TIOCNOTTY, 0) < 0) {
+				syslog(LOG_ERR, "TIOCNOTTY: %m");
+				exit(0);
+			}
+			(void) close(f);
+		}
+		
+		(void) chdir("/");
+#ifdef SETPGRP_NOPARAM
+		(void) setpgrp();
+#else
+		(void) setpgrp(0, getpid());
+#endif
+		devnull = open("/dev/null", O_RDWR);
+		if (devnull >= 0) {
+			(void) dup2(devnull, 0);
+			(void) dup2(devnull, 1);
+			(void) dup2(devnull, 2);
+			if (devnull > 2)
+				(void) close(devnull);
+		}
+	}
+
+	syslog(LOG_INFO, "%s %s started.", Program, version);
+
+	if (AllFlag)
+ 		deviceInitAll();
+	else
+		deviceInitOne(interface);
+
+	Loop();
+}
+
+void
+Usage()
+{
+	(void) fprintf(stderr, "usage: %s -a [ -d -f -v ] [ -3 | -4 ]\n",Program);
+	(void) fprintf(stderr, "       %s [ -d -f -v ] [ -3 | -4 ] interface\n",Program);
+	exit(1);
+}
+
+/*
+ * Process incomming packages.
+ */
+void
+mopProcess(ii, pkt)
+	struct if_info *ii;
+	u_char *pkt;
+{
+	u_char	*dst, *src;
+	u_short  ptype;
+	int	 index, trans, len;
+
+	/* We don't known with transport, Guess! */
+
+	trans = mopGetTrans(pkt, 0);
+
+	/* Ok, return if we don't wan't this message */
+
+	if ((trans == TRANS_ETHER) && Not3Flag) return;
+	if ((trans == TRANS_8023) && Not4Flag)	return;
+
+	index = 0;
+	mopGetHeader(pkt, &index, &dst, &src, &ptype, &len, trans);
+
+	/*
+	 * Ignore our own transmissions
+	 *
+	 */	
+	if (mopCmpEAddr(ii->eaddr,src) == 0)
+		return;
+
+	switch(ptype) {
+	case MOP_K_PROTO_DL:
+		mopProcessDL(stdout, ii, pkt, &index, dst, src, trans, len);
+		break;
+	case MOP_K_PROTO_RC:
+		mopProcessRC(stdout, ii, pkt, &index, dst, src, trans, len);
+		break;
+	default:
+		break;
+	}
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: mopd.c,v 1.8 2003/06/02 21:38:39 maja Exp $ */
+d14 5
+d33 1
+a33 1
+static char rcsid[] = "$OpenBSD: mopd.c,v 1.8 2003/06/02 21:38:39 maja Exp $";
+@
+
+
+1.1.1.3
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: mopd.c,v 1.9 2003/12/01 00:56:51 avsm Exp $ */
+d28 1
+a28 1
+static const char rcsid[] = "$OpenBSD: mopd.c,v 1.9 2003/12/01 00:56:51 avsm Exp $";
+d56 1
+a56 1
+__dead void   Loop(void);
+@
+
+
+1.1.1.4
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: mopd.c,v 1.12 2004/05/12 10:43:44 henning Exp $ */
+d28 1
+a28 2
+static const char rcsid[] =
+    "$OpenBSD: mopd.c,v 1.12 2004/05/12 10:43:44 henning Exp $";
+a49 2
+#include "pwd.h"
+
+d54 1
+a54 13
+struct if_info	*iflist;
+
+__dead void	Loop(void);
+void		Usage(void);
+void		mopProcess(struct if_info *, u_char *);
+
+int	 AllFlag = 0;		/* listen on "all" interfaces */
+int	 DebugFlag = 0;		/* print debugging messages   */
+int	 ForegroundFlag = 0;	/* run in foreground          */
+int	 VersionFlag = 0;	/* print version              */
+int	 Not3Flag = 0;		/* Not MOP V3 messages.       */
+int	 Not4Flag = 0;		/* Not MOP V4 messages.       */
+int	 promisc = 1;		/* Need promisc mode    */
+d56 12
+a67 1
+extern char *__progname;
+d70 3
+a72 1
+main(int argc, char *argv[])
+d74 3
+a76 4
+	int		 c, devnull, f;
+	char		*interface;
+	pid_t		 pid;
+	struct passwd	*pw;
+d78 1
+d81 8
+d91 21
+a111 21
+		case '3':
+			Not3Flag++;
+			break;
+		case '4':
+			Not4Flag++;
+			break;
+		case 'a':
+			AllFlag++;
+			break;
+		case 'd':
+			DebugFlag++;
+			break;
+		case 'f':
+			ForegroundFlag++;
+			break;
+		case 'v':
+			VersionFlag++;
+			break;
+		default:
+			Usage();
+			/* NOTREACHED */
+d113 1
+a113 1
+
+d115 1
+a115 1
+		fprintf(stdout,"%s: version %s\n", __progname, version);
+d121 4
+a124 2
+	if ((AllFlag && interface) || (!AllFlag && interface == 0) ||
+	    (argc > optind) || (Not3Flag && Not4Flag))
+d128 1
+a128 2
+	openlog(__progname, LOG_PID | LOG_CONS, LOG_DAEMON);
+	tzset();
+d130 5
+a134 2
+	if ((pw = getpwnam("_mopd")) == NULL)
+		err(1, "getpwnam");
+d136 1
+a136 3
+	if ((!ForegroundFlag) && DebugFlag)
+		fprintf(stdout, "%s: not running as daemon, -d given.\n",
+		    __progname);
+d138 35
+a172 3
+	if ((!ForegroundFlag) && (!DebugFlag))
+		if (daemon(0, 0) == -1)
+			err(1, NULL);
+d174 1
+a174 1
+	syslog(LOG_INFO, "%s %s started.", __progname, version);
+d177 1
+a177 1
+		deviceInitAll();
+a180 16
+	if (chroot(MOP_FILE_PATH) == -1) {
+		syslog(LOG_CRIT, "chroot %s: %m", MOP_FILE_PATH);
+		exit(1);
+	}
+	if (chdir("/") == -1) {
+		syslog(LOG_CRIT, "chdir(\"/\"): %m");
+		exit(1);
+	}
+	if (setgroups(1, &pw->pw_gid) ||
+	    setegid(pw->pw_gid) || setgid(pw->pw_gid) ||
+	    seteuid(pw->pw_uid) || setuid(pw->pw_uid)) {
+		syslog(LOG_CRIT, "can't drop privileges: %m");
+		exit(1);
+	}
+	endpwent();
+
+d187 2
+a188 3
+	fprintf(stderr, "usage: %s -a [ -d -f -v ] [ -3 | -4 ]\n", __progname);
+	fprintf(stderr, "       %s [ -d -f -v ] [ -3 | -4 ] interface\n",
+	    __progname);
+d193 1
+a193 1
+ * Process incoming packages.
+d196 3
+a198 1
+mopProcess(struct if_info *ii, u_char *pkt)
+d205 1
+d209 1
+d223 1
+a223 1
+	switch (ptype) {
+@
+
+

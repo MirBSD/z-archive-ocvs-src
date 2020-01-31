@@ -1,0 +1,183 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.4
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.2
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.2
+	cvs-200406091940:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.12.03.17.55.03;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.12.03.17.55.03;	author tg;	state Stab;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.10.23.18.39.25;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+
+BEGIN {
+    unless (-d 'blib') {
+	chdir 't' if -d 't';
+	@@INC = '../lib';
+	require Config; import Config;
+	keys %Config; # Silence warning
+	if ($Config{extensions} !~ /\bList\/Util\b/) {
+	    print "1..0 # Skip: List::Util was not built\n";
+	    exit 0;
+	}
+    }
+}
+
+
+use Scalar::Util qw(refaddr);
+use vars qw($t $y $x *F $v $r);
+use Symbol qw(gensym);
+
+# Ensure we do not trigger and tied methods
+tie *F, 'MyTie';
+
+print "1..13\n";
+
+my $i = 1;
+foreach $v (undef, 10, 'string') {
+  print "not " if defined refaddr($v);
+  print "ok ",$i++,"\n";
+}
+
+foreach $r ({}, \$t, [], \*F, sub {}) {
+  my $addr = $r + 0;
+  print "not " unless refaddr($r) == $addr;
+  print "ok ",$i++,"\n";
+  my $obj = bless $r, 'FooBar';
+  print "not " unless refaddr($r) == $addr;
+  print "ok ",$i++,"\n";
+}
+
+package FooBar;
+
+use overload  '0+' => sub { 10 },
+		'+' => sub { 10 + $_[1] };
+
+package MyTie;
+
+sub TIEHANDLE { bless {} }
+sub DESTROY {}
+
+sub AUTOLOAD {
+  warn "$AUTOLOAD called";
+  exit 1; # May be in an eval
+}
+@
+
+
+1.1.1.1
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@@
+
+
+1.1.1.2
+log
+@5.8.5
+@
+text
+@d24 1
+a24 1
+print "1..19\n";
+a40 24
+{
+  my $z = '77';
+  my $y = \$z;
+  my $a = '78';
+  my $b = \$a;
+  tie my %x, 'Hash3', {};
+  $x{$y} = 22;
+  $x{$b} = 23;
+  my $xy = $x{$y};
+  my $xb = $x{$b}; 
+  print "not " unless ref($x{$y});
+  print "ok ",$i++,"\n";
+  print "not " unless ref($x{$b});
+  print "ok ",$i++,"\n";
+  print "not " unless refaddr($xy) == refaddr($y);
+  print "ok ",$i++,"\n";
+  print "not " unless refaddr($xb) == refaddr($b);
+  print "ok ",$i++,"\n";
+  print "not " unless refaddr($x{$y});
+  print "ok ",$i++,"\n";
+  print "not " unless refaddr($x{$b});
+  print "ok ",$i++,"\n";
+}
+
+a53 25
+}
+
+package Hash3;
+
+use Scalar::Util qw(refaddr);
+
+sub TIEHASH
+{
+	my $pkg = shift;
+	return bless [ @@_ ], $pkg;
+}
+sub FETCH
+{
+	my $self = shift;
+	my $key = shift;
+	my ($underlying) = @@$self;
+	return $underlying->{refaddr($key)};
+}
+sub STORE
+{
+	my $self = shift;
+	my $key = shift;
+	my $value = shift;
+	my ($underlying) = @@$self;
+	return ($underlying->{refaddr($key)} = $key);
+@
+

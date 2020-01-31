@@ -1,0 +1,244 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	cvs-200412111650:1.1.1.2
+	cvs-200412031430:1.1.1.2
+	cvs-200411261545:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	cvs-200411131700:1.1.1.2
+	cvs-200410311900:1.1.1.2
+	cvs-200410222040:1.1.1.2
+	tg-mergetmp-1:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	cvs-200410012000:1.1.1.2
+	cvs-200408281215:1.1.1.2
+	cvs-200408220030:1.1.1.2
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200403222025:1.1.1.2
+	cvs-200403101630:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310021412:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200309162245:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	MIRBSD_4:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.19;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.19;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.14.55.35;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+ * Copyright (c) 2000 Markus Friedl.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+#include "includes.h"
+RCSID("$OpenBSD: dispatch.c,v 1.15 2002/01/11 13:39:36 markus Exp $");
+
+#include "ssh1.h"
+#include "ssh2.h"
+#include "log.h"
+#include "dispatch.h"
+#include "packet.h"
+#include "compat.h"
+
+#define DISPATCH_MIN	0
+#define DISPATCH_MAX	255
+
+dispatch_fn *dispatch[DISPATCH_MAX];
+
+void
+dispatch_protocol_error(int type, u_int32_t seq, void *ctxt)
+{
+	log("dispatch_protocol_error: type %d seq %u", type, seq);
+	if (!compat20)
+		fatal("protocol error");
+	packet_start(SSH2_MSG_UNIMPLEMENTED);
+	packet_put_int(seq);
+	packet_send();
+	packet_write_wait();
+}
+void
+dispatch_protocol_ignore(int type, u_int32_t seq, void *ctxt)
+{
+	log("dispatch_protocol_ignore: type %d seq %u", type, seq);
+}
+void
+dispatch_init(dispatch_fn *dflt)
+{
+	u_int i;
+	for (i = 0; i < DISPATCH_MAX; i++)
+		dispatch[i] = dflt;
+}
+void
+dispatch_range(u_int from, u_int to, dispatch_fn *fn)
+{
+	u_int i;
+
+	for (i = from; i <= to; i++) {
+		if (i >= DISPATCH_MAX)
+			break;
+		dispatch[i] = fn;
+	}
+}
+void
+dispatch_set(int type, dispatch_fn *fn)
+{
+	dispatch[type] = fn;
+}
+void
+dispatch_run(int mode, int *done, void *ctxt)
+{
+	for (;;) {
+		int type;
+		u_int32_t seqnr;
+
+		if (mode == DISPATCH_BLOCK) {
+			type = packet_read_seqnr(&seqnr);
+		} else {
+			type = packet_read_poll_seqnr(&seqnr);
+			if (type == SSH_MSG_NONE)
+				return;
+		}
+		if (type > 0 && type < DISPATCH_MAX && dispatch[type] != NULL)
+			(*dispatch[type])(type, seqnr, ctxt);
+		else
+			packet_disconnect("protocol error: rcvd type %d", type);
+		if (done != NULL && *done)
+			return;
+	}
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d25 1
+a25 1
+RCSID("$OpenBSD: dispatch.c,v 1.16 2003/04/08 20:21:28 itojun Exp $");
+d42 1
+a42 1
+	logit("dispatch_protocol_error: type %d seq %u", type, seq);
+d53 1
+a53 1
+	logit("dispatch_protocol_ignore: type %d seq %u", type, seq);
+@
+

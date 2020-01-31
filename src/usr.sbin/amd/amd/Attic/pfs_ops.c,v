@@ -1,0 +1,307 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.06.29.19.53.15;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.54.12;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.54.12;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.46.46;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@merge the import
+amd (automount dæmon) bites the dust
+rewrite fake-NLS emulation, copyright to me
+foobar! fnord!
+@
+text
+@/*
+ * Copyright (c) 1989 Jan-Simon Pendry
+ * Copyright (c) 1989 Imperial College of Science, Technology & Medicine
+ * Copyright (c) 1989, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Jan-Simon Pendry at Imperial College, London.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	from: @@(#)pfs_ops.c	8.1 (Berkeley) 6/6/93
+ *	$Id: pfs_ops.c,v 1.1 2003/03/22 17:54:12 tg Exp $
+ */
+
+#include "am.h"
+
+#include <unistd.h>
+
+#ifdef HAS_PFS
+
+/*
+ * Program file system
+ */
+
+/*
+ * Execute needs a mount and unmount command.
+ */
+static char *
+pfs_match(am_opts *fo)
+{
+	char *prog;
+
+	if (!fo->opt_mount || !fo->opt_unmount) {
+		plog(XLOG_USER, "program: no mount/unmount specified");
+		return 0;
+	}
+	prog = strchr(fo->opt_mount, ' ');
+	return strdup(prog ? prog+1 : fo->opt_mount);
+}
+
+static int
+pfs_init(mntfs *mf)
+{
+	/*
+	 * Save unmount command
+	 */
+	if (mf->mf_refc == 1) {
+		mf->mf_private = (void *)strdup(mf->mf_fo->opt_unmount);
+		mf->mf_prfree = (void (*) ()) free;
+	}
+	return 0;
+}
+
+static int
+pfs_exec(char *info)
+{
+	char **xivec;
+	int error;
+	/*
+	 * Split copy of command info string
+	 */
+	info = strdup(info);
+	if (info == 0)
+		return ENOBUFS;
+	xivec = strsplit(info, ' ', '\'');
+	/*
+	 * Put stdout to stderr
+	 */
+	(void) fclose(stdout);
+	(void) dup(fileno(logfp));
+	if (fileno(logfp) != fileno(stderr)) {
+		(void) fclose(stderr);
+		(void) dup(fileno(logfp));
+	}
+	/*
+	 * Try the exec
+	 */
+#ifdef DEBUG
+	Debug(D_FULL) {
+		char **cp = xivec;
+		plog(XLOG_DEBUG, "executing (un)mount command...");
+		while (*cp) {
+			plog(XLOG_DEBUG, "arg[%d] = '%s'", cp-xivec, *cp);
+			cp++;
+		}
+	}
+#endif /* DEBUG */
+	if (xivec[0] == 0 || xivec[1] == 0) {
+		errno = EINVAL;
+		plog(XLOG_USER, "1st/2nd args missing to (un)mount program");
+	} else {
+		(void) execv(xivec[0], xivec+1);
+	}
+	/*
+	 * Save error number
+	 */
+	error = errno;
+	plog(XLOG_ERROR, "exec failed: %m");
+
+	/*
+	 * Free allocate memory
+	 */
+	free((void *)info);
+	free((void *)xivec);
+	/*
+	 * Return error
+	 */
+	return error;
+}
+
+static int
+pfs_fmount(mntfs *mf)
+{
+	return pfs_exec(mf->mf_fo->opt_mount);
+}
+
+static int
+pfs_fumount(mntfs *mf)
+{
+	return pfs_exec((char *) mf->mf_private);
+}
+
+/*
+ * Ops structure
+ */
+am_ops pfs_ops = {
+	"program",
+	pfs_match,
+	pfs_init,
+	auto_fmount,
+	pfs_fmount,
+	auto_fumount,
+	pfs_fumount,
+	efs_lookuppn,
+	efs_readdir,
+	0, /* pfs_readlink */
+	0, /* pfs_mounted */
+	0, /* pfs_umounted */
+	find_afs_srvr,
+	FS_BACKGROUND|FS_AMQINFO
+};
+
+#endif /* HAS_PFS */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d39 1
+a39 1
+ *	$Id: pfs_ops.c,v 1.5 2002/08/05 07:24:26 pvalchev Exp $
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d18 5
+a22 1
+ * 3. Neither the name of the University nor the names of its contributors
+d39 1
+a39 1
+ *	$Id: pfs_ops.c,v 1.6 2003/06/02 23:36:51 millert Exp $
+@
+

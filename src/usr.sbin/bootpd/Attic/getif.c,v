@@ -1,0 +1,291 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306091240:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.05.21.20.08.03;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.54.55;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.54.55;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.07.09.16.53.27;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@* merge OpenBSD 3.5-current
+* re-sort entries in Makefile
+  => not a bunch of adds any more; all alphabetic
+  => remove obsolete SUBDIRS_ONLY_BSD for now
+     (MirLinux won't come that soon due to a certain lawsuit,
+      licence issues with unwillingly GNU fanatics, and my
+      chronic unwillingness to do masochistic work)
+* spacing, RCS IDs, etc.
+* pkg gets folded into pkg_install, so we only have one dir
+  to worry about
+* pkg_add leaves the tree - nobody cared about this kind
+  of package tools anyways, and they're not part of MirBSD
+  (although still supported by MirPorts)
+* mopd leaves - we don't have VAX support anyways
+@
+text
+@/*
+ * getif.c : get an interface structure
+ */
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <sys/param.h>
+
+#if defined(SUNOS) || defined(SVR4)
+#include <sys/sockio.h>
+#endif
+#ifdef	SVR4
+#include <sys/stropts.h>
+#endif
+
+#include <net/if.h>				/* for struct ifreq */
+#include <netinet/in.h>
+
+#ifndef	NO_UNISTD
+#include <unistd.h>
+#endif
+#include <syslog.h>
+#include <errno.h>
+#include <assert.h>
+
+#include "getif.h"
+#include "report.h"
+
+#ifdef	__bsdi__
+#define BSD 43
+#endif
+
+static struct ifreq ifreq[10];	/* Holds interface configuration */
+static struct ifconf ifconf;	/* points to ifreq */
+
+static int nmatch();
+
+/* Return a pointer to the interface struct for the passed address. */
+struct ifreq *
+getif(s, addrp)
+	int s;						/* socket file descriptor */
+	struct in_addr *addrp;		/* destination address on interface */
+{
+	int maxmatch;
+	int len, m, incr;
+	struct ifreq *ifrq, *ifrmax;
+	struct sockaddr_in *sip;
+	char *p;
+
+	/* If no address was supplied, just return NULL. */
+	if (!addrp)
+		return (struct ifreq *) 0;
+
+	/* Get the interface config if not done already. */
+	if (ifconf.ifc_len == 0) {
+#ifdef	SVR4
+		/*
+		 * SysVr4 returns garbage if you do this the obvious way!
+		 * This one took a while to figure out... -gwr
+		 */
+		struct strioctl ioc;
+		ioc.ic_cmd = SIOCGIFCONF;
+		ioc.ic_timout = 0;
+		ioc.ic_len = sizeof(ifreq);
+		ioc.ic_dp = (char *) ifreq;
+		m = ioctl(s, I_STR, (char *) &ioc);
+		ifconf.ifc_len = ioc.ic_len;
+		ifconf.ifc_req = ifreq;
+#else	/* SVR4 */
+		ifconf.ifc_len = sizeof(ifreq);
+		ifconf.ifc_req = ifreq;
+		m = ioctl(s, SIOCGIFCONF, (caddr_t) & ifconf);
+#endif	/* SVR4 */
+		if ((m < 0) || (ifconf.ifc_len <= 0)) {
+			report(LOG_ERR, "ioctl SIOCGIFCONF");
+			return (struct ifreq *) 0;
+		}
+	}
+	maxmatch = 7;				/* this many bits or less... */
+	ifrmax = (struct ifreq *) 0;/* ... is not a valid match  */
+	p = (char *) ifreq;
+	len = ifconf.ifc_len;
+	while (len > 0) {
+		ifrq = (struct ifreq *) p;
+		sip = (struct sockaddr_in *) &ifrq->ifr_addr;
+		m = nmatch(addrp, &(sip->sin_addr));
+		if (m > maxmatch) {
+			maxmatch = m;
+			ifrmax = ifrq;
+		}
+		/* XXX - Could this be just #ifndef IFNAMSIZ instead? -gwr */
+#if (BSD - 0) < 43
+		/* BSD not defined or earlier than 4.3 */
+		incr = sizeof(*ifrq);
+#else /* NetBSD */
+		incr = ifrq->ifr_addr.sa_len + IFNAMSIZ;
+#endif /* NetBSD */
+
+		p += incr;
+		len -= incr;
+	}
+
+	return ifrmax;
+}
+
+/*
+ * Return the number of leading bits matching in the
+ * internet addresses supplied.
+ */
+static int
+nmatch(ca, cb)
+	u_char *ca, *cb;			/* ptrs to IP address, network order */
+{
+	u_int m = 0;				/* count of matching bits */
+	u_int n = 4;				/* bytes left, then bitmask */
+
+	/* Count matching bytes. */
+	while (n && (*ca == *cb)) {
+		ca++;
+		cb++;
+		m += 8;
+		n--;
+	}
+	/* Now count matching bits. */
+	if (n) {
+		n = 0x80;
+		while (n && ((*ca & n) == (*cb & n))) {
+			m++;
+			n >>= 1;
+		}
+	}
+	return (m);
+}
+
+/*
+ * Local Variables:
+ * tab-width: 4
+ * c-indent-level: 4
+ * c-argdecl-indent: 4
+ * c-continued-statement-offset: 4
+ * c-continued-brace-offset: -4
+ * c-label-offset: -4
+ * c-brace-offset: 0
+ * End:
+ */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Bring the entire base system and ports tree in sync with OpenBSD
+@
+text
+@d37 1
+a37 1
+static int nmatch(void *, void *);
+d112 2
+a113 1
+nmatch(void *va, void *vb)	/* ptrs to IP address, network order */
+a114 1
+	u_char *ca = va, *cb = vb;	/* ptrs to IP address, network order */
+@
+

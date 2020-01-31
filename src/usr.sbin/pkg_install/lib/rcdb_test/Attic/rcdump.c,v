@@ -1,0 +1,139 @@
+head	1.2;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.01.11.22.38.21;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.02.02.53.28;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@some steps further in the development of rcdb:
+ * more descriptive text
+ * no globals any more, use thread-local storage (aka, handle)
+   (will help intrigation of rcdb into libc-db)
+ * nuke test programmes
+   (will be rewritten as a mini toolchain later)
+ * more stringent checking for
+   - return values
+   - failures
+   - NULL pointers
+ * fix some minor bugs
+ * remove an irrelevant API (changing the primary key isn't good)
+
+the diffs to lib/plist.c, lib/rcdb.c and lib/rcdb.h ok'd by bsiegert@@
+lib and pkg_add compile with -Wall -Werror again, like before
+@
+text
+@/* $MirBSD: rcdump.c,v 1.1 2004/01/02 02:53:28 tg Exp $
+ *-
+ * Copyright (c) 2004
+ *	Thorsten Glaser <x86@@ePost.de> for the MirOS Project
+ *
+ * Subject to these terms, everybody who obtained a copy of this work
+ * is hereby permitted to deal in the work without restriction inclu-
+ * ding without limitation the rights to use, distribute, sell, modi-
+ * fy, publically perform, give away, merge or sublicence it provided
+ * this notice is kept and the authors and contributors are given due
+ * credit in derivates or accompanying documents.
+ *
+ * This work is provided "as is" with no explicit or implicit warran-
+ * ties whatsoever to the maximum extent permitted by applicable law;
+ * in no event may an author or contributor be held liable for damage
+ * that is, directly or indirectly, caused by the work, even if advi-
+ * sed of the possibility of such damage.
+ *-
+ * Routines for managing a reference counter database using libc-db
+ */
+
+#include <sys/param.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <db.h>
+#include "rcdb.h"
+
+extern DB *rcdb_database;
+extern recno_t rcdb_key, rcdb_lastrec;
+extern DBT rcdb_dkey, rcdb_ddat;
+
+recno_t
+rcdb_dump(void)
+{
+	recno_t curno = 1;
+	int rv, rn;
+	u_int cflag = R_FIRST;
+	char *rtext;
+
+retr:	rv = rcdb_database->seq(rcdb_database, &rcdb_dkey, &rcdb_ddat, cflag);
+	if (rv == -1) {
+		return -1;
+	} else if (rv == 1) {
+		return curno - 1;
+	}
+	printf("record %d contains <%s>\n", curno, (char *)(rcdb_ddat.data));
+	++curno;
+	cflag = R_NEXT;
+	goto retr;
+	/* NOTREACHED */
+}
+
+int
+main(int argc, char *argv[])
+{
+	int rv;
+
+	rv = rcdb_open(argv[1]);
+	if (rv) err("open");
+	rv = rcdb_dump();
+	if (rv == -1) err("dump");
+	printf("%d records.\n", rv);
+	rcdb_close();
+
+	return 0;
+}
+@
+
+
+1.1
+log
+@implement a database facility recording shared directories
+for the "old" pkgtools, to accomodate changes done in the
+"new" OpenBSD pkgtools.
+
+as of now, shared directories (ie, these with a @@dirrm)
+have to be owned by all packages using them, just as
+with OpenBSD Ports Tree.
+In contrast to them, MirPorts will use a more-or-less
+plaintext database counting references on them; you
+may even manually increase or decrease the count with
+a text editor (just be sure to not anger recno).
+
+Thanks for some help with Berzerkeley DB to bsiegert@@
+Thanks for discussing to bsiegert@@ and wbx@@ and some others
+Thanks for making me this work to espie@@openbsd
+ (but hey, it's cool now)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.8 2003/12/17 14:35:00 tg Exp $
+@
+

@@ -1,0 +1,609 @@
+head	1.3;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306091240:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.05.21.20.08.03;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2004.01.10.04.57.33;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.54.55;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.54.55;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.08.30.23.51.50;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@* merge OpenBSD 3.5-current
+* re-sort entries in Makefile
+  => not a bunch of adds any more; all alphabetic
+  => remove obsolete SUBDIRS_ONLY_BSD for now
+     (MirLinux won't come that soon due to a certain lawsuit,
+      licence issues with unwillingly GNU fanatics, and my
+      chronic unwillingness to do masochistic work)
+* spacing, RCS IDs, etc.
+* pkg gets folded into pkg_install, so we only have one dir
+  to worry about
+* pkg_add leaves the tree - nobody cared about this kind
+  of package tools anyways, and they're not part of MirBSD
+  (although still supported by MirPorts)
+* mopd leaves - we don't have VAX support anyways
+@
+text
+@/*
+ * getether.c : get the ethernet address of an interface
+ *
+ * All of this code is quite system-specific.  As you may well
+ * guess, it took a good bit of detective work to figure out!
+ *
+ * If you figure out how to do this on another system,
+ * please let me know.  <gwr@@mc.com>
+ */
+
+#include <sys/types.h>
+#include <sys/socket.h>
+
+#include <unistd.h>
+#include <string.h>
+#include <ctype.h>
+#include <syslog.h>
+
+#include "report.h"
+#define EALEN 6
+
+#if defined(ultrix) || (defined(__osf__) && defined(__alpha))
+/*
+ * This is really easy on Ultrix!  Thanks to
+ * Harald Lundberg <hl@@tekla.fi> for this code.
+ *
+ * The code here is not specific to the Alpha, but that was the
+ * only symbol we could find to identify DEC's version of OSF.
+ * (Perhaps we should just define DEC in the Makefile... -gwr)
+ */
+
+#include <sys/ioctl.h>
+#include <net/if.h>				/* struct ifdevea */
+
+getether(ifname, eap)
+	char *ifname;
+	u_char *eap;
+{
+	int rc = -1;
+	int fd;
+	struct ifdevea phys;
+
+	bzero(&phys, sizeof(phys));
+	strlcpy(phys.ifr_name, ifname, sizeof phys.ifr_name);
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+		report(LOG_ERR, "getether: socket(INET,DGRAM) failed");
+		return -1;
+	}
+	if (ioctl(fd, SIOCRPHYSADDR, &phys) < 0) {
+		report(LOG_ERR, "getether: ioctl SIOCRPHYSADDR failed");
+	} else {
+		memmove(eap, &phys.current_pa[0], EALEN);
+		rc = 0;
+	}
+	close(fd);
+	return rc;
+}
+
+#define	GETETHER
+#endif /* ultrix|osf1 */
+
+
+#ifdef	SUNOS
+
+#include <sys/sockio.h>
+#include <sys/time.h>			/* needed by net_if.h */
+#include <net/nit_if.h>			/* for NIOCBIND */
+#include <net/if.h>				/* for struct ifreq */
+
+getether(ifname, eap)
+	char *ifname;				/* interface name from ifconfig structure */
+	char *eap;					/* Ether address (output) */
+{
+	int rc = -1;
+
+	struct ifreq ifrnit;
+	int nit;
+
+	bzero((char *) &ifrnit, sizeof(ifrnit));
+	strlcpy(&ifrnit.ifr_name[0], ifname, IFNAMSIZ);
+
+	nit = open("/dev/nit", 0);
+	if (nit < 0) {
+		report(LOG_ERR, "getether: open /dev/nit: %s",
+			   get_errmsg());
+		return rc;
+	}
+	do {
+		if (ioctl(nit, NIOCBIND, &ifrnit) < 0) {
+			report(LOG_ERR, "getether: NIOCBIND on nit");
+			break;
+		}
+		if (ioctl(nit, SIOCGIFADDR, &ifrnit) < 0) {
+			report(LOG_ERR, "getether: SIOCGIFADDR on nit");
+			break;
+		}
+		memmove(eap, &ifrnit.ifr_addr.sa_data[0], EALEN);
+		rc = 0;
+	} while (0);
+	close(nit);
+	return rc;
+}
+
+#define	GETETHER
+#endif /* SUNOS */
+
+
+#if defined(__386BSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+/* Thanks to John Brezak <brezak@@ch.hp.com> for this code. */
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <net/if_dl.h>
+#include <net/if_types.h>
+#include <ifaddrs.h>
+
+int
+getether(ifname, eap)
+	char *ifname;				/* interface name from ifconfig structure */
+	char *eap;					/* Ether address (output) */
+{
+	int rc = -1;
+	struct ifaddrs *ifap, *ifa;
+
+	/* Fetch the interface configuration */
+	if (getifaddrs(&ifap) != 0) {
+		report(LOG_ERR, "getether: getifaddrs %s: %s", ifname,
+		    get_errmsg());
+		return (-1);
+	}
+
+	for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+		/* Look for interface */
+		if (strcmp(ifname, ifa->ifa_name) == 0 &&
+			ifa->ifa_addr->sa_family == AF_LINK &&
+		((struct sockaddr_dl *)ifa->ifa_addr)->sdl_type == IFT_ETHER) {
+			memmove(eap, LLADDR((struct sockaddr_dl *)ifa->ifa_addr), EALEN);
+			rc = 0;
+			break;
+		}
+	}
+
+	freeifaddrs(ifap);
+	return (rc);
+}
+
+#define	GETETHER
+#endif /* __NetBSD__ || __OpenBSD__ */
+
+
+#ifdef	SVR4
+/*
+ * This is for "Streams TCP/IP" by Lachman Associates.
+ * They sure made this cumbersome!  -gwr
+ */
+
+#include <sys/sockio.h>
+#include <sys/dlpi.h>
+#include <stropts.h>
+#ifndef NULL
+#define NULL 0
+#endif
+
+getether(ifname, eap)
+	char *ifname;				/* interface name from ifconfig structure */
+	char *eap;					/* Ether address (output) */
+{
+	int rc = -1;
+	char devname[32];
+	char tmpbuf[sizeof(union DL_primitives) + 16];
+	struct strbuf cbuf;
+	int fd, flags;
+	union DL_primitives *dlp;
+	char *enaddr;
+	int unit = -1;				/* which unit to attach */
+
+	snprintf(devname, sizeof(devname), "/dev/%s", ifname);
+	fd = open(devname, 2);
+	if (fd < 0) {
+		/* Try without the trailing digit. */
+		char *p = devname + 5;
+		while (isalpha(*p))
+			p++;
+		if (isdigit(*p)) {
+			unit = *p - '0';
+			*p = '\0';
+		}
+		fd = open(devname, 2);
+		if (fd < 0) {
+			report(LOG_ERR, "getether: open %s: %s",
+				   devname, get_errmsg());
+			return rc;
+		}
+	}
+#ifdef	DL_ATTACH_REQ
+	/*
+	 * If this is a "Style 2" DLPI, then we must "attach" first
+	 * to tell the driver which unit (board, port) we want.
+	 * For now, decide this based on the device name.
+	 * (Should do "info_req" and check dl_provider_style ...)
+	 */
+	if (unit >= 0) {
+		memset(tmpbuf, 0, sizeof(tmpbuf));
+		dlp = (union DL_primitives *) tmpbuf;
+		dlp->dl_primitive = DL_ATTACH_REQ;
+		dlp->attach_req.dl_ppa = unit;
+		cbuf.buf = tmpbuf;
+		cbuf.len = DL_ATTACH_REQ_SIZE;
+		if (putmsg(fd, &cbuf, NULL, 0) < 0) {
+			report(LOG_ERR, "getether: attach: putmsg: %s", get_errmsg());
+			goto out;
+		}
+		/* Recv the ack. */
+		cbuf.buf = tmpbuf;
+		cbuf.maxlen = sizeof(tmpbuf);
+		flags = 0;
+		if (getmsg(fd, &cbuf, NULL, &flags) < 0) {
+			report(LOG_ERR, "getether: attach: getmsg: %s", get_errmsg());
+			goto out;
+		}
+		/*
+		 * Check the type, etc.
+		 */
+		if (dlp->dl_primitive == DL_ERROR_ACK) {
+			report(LOG_ERR, "getether: attach: dlpi_errno=%d, unix_errno=%d",
+				   dlp->error_ack.dl_errno,
+				   dlp->error_ack.dl_unix_errno);
+			goto out;
+		}
+		if (dlp->dl_primitive != DL_OK_ACK) {
+			report(LOG_ERR, "getether: attach: not OK or ERROR");
+			goto out;
+		}
+	} /* unit >= 0 */
+#endif	/* DL_ATTACH_REQ */
+
+	/*
+	 * Get the Ethernet address the same way the ARP module
+	 * does when it is pushed onto a new stream (bind).
+	 * One should instead be able just do an dl_info_req
+	 * but many drivers do not supply the hardware address
+	 * in the response to dl_info_req (they MUST supply it
+	 * for dl_bind_ack because the ARP module requires it).
+	 */
+	memset(tmpbuf, 0, sizeof(tmpbuf));
+	dlp = (union DL_primitives *) tmpbuf;
+	dlp->dl_primitive = DL_BIND_REQ;
+	dlp->bind_req.dl_sap = 0x8FF;	/* XXX - Unused SAP */
+	cbuf.buf = tmpbuf;
+	cbuf.len = DL_BIND_REQ_SIZE;
+	if (putmsg(fd, &cbuf, NULL, 0) < 0) {
+		report(LOG_ERR, "getether: bind: putmsg: %s", get_errmsg());
+		goto out;
+	}
+	/* Recv the ack. */
+	cbuf.buf = tmpbuf;
+	cbuf.maxlen = sizeof(tmpbuf);
+	flags = 0;
+	if (getmsg(fd, &cbuf, NULL, &flags) < 0) {
+		report(LOG_ERR, "getether: bind: getmsg: %s", get_errmsg());
+		goto out;
+	}
+	/*
+	 * Check the type, etc.
+	 */
+	if (dlp->dl_primitive == DL_ERROR_ACK) {
+		report(LOG_ERR, "getether: bind: dlpi_errno=%d, unix_errno=%d",
+			   dlp->error_ack.dl_errno,
+			   dlp->error_ack.dl_unix_errno);
+		goto out;
+	}
+	if (dlp->dl_primitive != DL_BIND_ACK) {
+		report(LOG_ERR, "getether: bind: not OK or ERROR");
+		goto out;
+	}
+	if (dlp->bind_ack.dl_addr_offset == 0) {
+		report(LOG_ERR, "getether: bind: ack has no address");
+		goto out;
+	}
+	if (dlp->bind_ack.dl_addr_length < EALEN) {
+		report(LOG_ERR, "getether: bind: ack address truncated");
+		goto out;
+	}
+	/*
+	 * Copy the Ethernet address out of the message.
+	 */
+	enaddr = tmpbuf + dlp->bind_ack.dl_addr_offset;
+	memcpy(eap, enaddr, EALEN);
+	rc = 0;
+
+  out:
+	close(fd);
+	return rc;
+}
+
+#define	GETETHER
+#endif /* SVR4 */
+
+
+#ifdef	linux
+/*
+ * This is really easy on Linux!  This version (for linux)
+ * written by Nigel Metheringham <nigelm@@ohm.york.ac.uk>
+ *
+ * The code is almost identical to the Ultrix code - however
+ * the names are different to confuse the innocent :-)
+ * Most of this code was stolen from the Ultrix bit above.
+ */
+
+#include <sys/ioctl.h>
+#include <net/if.h>	       	/* struct ifreq */
+
+/* In a properly configured system this should be either sys/socketio.h
+   or sys/sockios.h, but on my distribution these don't line up correctly */
+#include <linux/sockios.h>	/* Needed for IOCTL defs */
+
+getether(ifname, eap)
+	char *ifname, *eap;
+{
+	int rc = -1;
+	int fd;
+	struct ifreq phys;
+
+	bzero(&phys, sizeof(phys));
+	strlcpy(phys.ifr_name, ifname, sizeof phys.ifr_name);
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+		report(LOG_ERR, "getether: socket(INET,DGRAM) failed");
+		return -1;
+	}
+	if (ioctl(fd, SIOCGIFHWADDR, &phys) < 0) {
+		report(LOG_ERR, "getether: ioctl SIOCGIFHWADDR failed");
+	} else {
+		memmove(eap, phys.ifr_hwaddr, EALEN);
+		rc = 0;
+	}
+	close(fd);
+	return rc;
+}
+
+#define	GETETHER
+#endif	/* linux */
+
+
+/* If we don't know how on this system, just return an error. */
+#ifndef	GETETHER
+getether(ifname, eap)
+	char *ifname, *eap;
+{
+	return -1;
+}
+
+#endif /* !GETETHER */
+
+/*
+ * Local Variables:
+ * tab-width: 4
+ * c-indent-level: 4
+ * c-argdecl-indent: 4
+ * c-continued-statement-offset: 4
+ * c-continued-brace-offset: -4
+ * c-label-offset: -4
+ * c-brace-offset: 0
+ * End:
+ */
+@
+
+
+1.2
+log
+@Jumbo patch from wbx@@ to replace the
+bcopy(3), bcmp(3) and bzero(3) func-
+tions, having been deprecated earli-
+er, by their ISO counterparts, name-
+ly memmove(3) and the gcc3-optimized
+memcmp(3) and memset(3) functions.
+
+I didn't read every single line (be-
+cause of the time of day), but looks
+fine and builds through. I just nee-
+ded to nuke three cases of whitespa-
+ce at EOL. Good work wbx@@.
+
+I've also sprinkled in a few patches
+of mine addressing the issue that in
+some kernel header files, bcopy() is
+used as well... also there have been
+quite some string cleaning fixes and
+a missing header.
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d52 1
+a52 1
+		bcopy(&phys.current_pa[0], eap, EALEN);
+d97 1
+a97 1
+		bcopy(&ifrnit.ifr_addr.sa_data[0], eap, EALEN);
+d114 1
+d121 2
+a122 5
+	int fd, rc = -1;
+	int n;
+	struct ifreq ibuf[16], ifr;
+	struct ifconf ifc;
+	struct ifreq *ifrp, *ifend;
+d125 4
+a128 4
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0) {
+		report(LOG_ERR, "getether: socket %s: %s", ifname, get_errmsg());
+		return (fd);
+d130 2
+a131 11
+	ifc.ifc_len = sizeof(ibuf);
+	ifc.ifc_buf = (caddr_t) ibuf;
+	if (ioctl(fd, SIOCGIFCONF, (char *) &ifc) < 0 ||
+		ifc.ifc_len < sizeof(struct ifreq)) {
+		report(LOG_ERR, "getether: SIOCGIFCONF: %s", get_errmsg());
+		goto out;
+	}
+	/* Search interface configuration list for link layer address. */
+	ifrp = ibuf;
+	ifend = (struct ifreq *) ((char *) ibuf + ifc.ifc_len);
+	while (ifrp < ifend) {
+d133 4
+a136 4
+		if (strcmp(ifname, ifrp->ifr_name) == 0 &&
+			ifrp->ifr_addr.sa_family == AF_LINK &&
+		((struct sockaddr_dl *) &ifrp->ifr_addr)->sdl_type == IFT_ETHER) {
+			bcopy(LLADDR((struct sockaddr_dl *) &ifrp->ifr_addr), eap, EALEN);
+a139 5
+		/* Bump interface config pointer */
+		n = ifrp->ifr_addr.sa_len + sizeof(ifrp->ifr_name);
+		if (n < sizeof(*ifrp))
+			n = sizeof(*ifrp);
+		ifrp = (struct ifreq *) ((char *) ifrp + n);
+d142 1
+a142 2
+  out:
+	close(fd);
+d332 1
+a332 1
+		bcopy(phys.ifr_hwaddr, eap, EALEN);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Synchronize with OpenBSD 3.4-beta
+@
+text
+@a113 1
+#include <ifaddrs.h>
+d120 5
+a124 2
+	int rc = -1;
+	struct ifaddrs *ifap, *ifa;
+d127 4
+a130 4
+	if (getifaddrs(&ifap) != 0) {
+		report(LOG_ERR, "getether: getifaddrs %s: %s", ifname,
+		    get_errmsg());
+		return (-1);
+d132 11
+a142 2
+
+	for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+d144 4
+a147 4
+		if (strcmp(ifname, ifa->ifa_name) == 0 &&
+			ifa->ifa_addr->sa_family == AF_LINK &&
+		((struct sockaddr_dl *)ifa->ifa_addr)->sdl_type == IFT_ETHER) {
+			bcopy(LLADDR((struct sockaddr_dl *)ifa->ifa_addr), eap, EALEN);
+d151 5
+d158 2
+a159 1
+	freeifaddrs(ifap);
+@
+

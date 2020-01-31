@@ -1,0 +1,395 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.02;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.02;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.03;	author tg;	state Stab;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.10.23.18.39.28;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+#ifdef I_DBM
+/* If using the DB3 emulation, ENTER is defined both
+ * by DB3 and Perl.  We drop the Perl definition now.
+ * See also INSTALL section on DB3.
+ * -- Stanislav Brabec <utx@@penguin.cz> */
+#  undef ENTER
+#  include <dbm.h>
+#else
+#  ifdef I_RPCSVC_DBM
+#    include <rpcsvc/dbm.h>
+#  endif
+#endif
+
+#ifndef HAS_DBMINIT_PROTO
+int	dbminit(char* filename);
+int	dbmclose(void);
+datum	fetch(datum key);
+int	store(datum key, datum dat);
+int	delete(datum key);
+datum	firstkey(void);
+datum	nextkey(datum key);
+#endif
+
+#ifdef DBM_BUG_DUPLICATE_FREE 
+/*
+ * DBM on at least Ultrix and HPUX call dbmclose() from dbminit(),
+ * resulting in duplicate free() because dbmclose() does *not*
+ * check if it has already been called for this DBM.
+ * If some malloc/free calls have been done between dbmclose() and
+ * the next dbminit(), the memory might be used for something else when
+ * it is freed.
+ * Verified to work on ultrix4.3.  Probably will work on HP/UX.
+ * Set DBM_BUG_DUPLICATE_FREE in the extension hint file.
+ */
+/* Close the previous dbm, and fail to open a new dbm */
+#define dbmclose()	((void) dbminit("/tmp/x/y/z/z/y"))
+#endif
+
+#include <fcntl.h>
+
+typedef struct {
+	void * 	dbp ;
+	SV *    filter_fetch_key ;
+	SV *    filter_store_key ;
+	SV *    filter_fetch_value ;
+	SV *    filter_store_value ;
+	int     filtering ;
+	} ODBM_File_type;
+
+typedef ODBM_File_type * ODBM_File ;
+typedef datum datum_key ;
+typedef datum datum_key_copy ;
+typedef datum datum_value ;
+
+#define ckFilter(arg,type,name)					\
+	if (db->type) {						\
+	    SV * save_defsv ;					\
+            /* printf("filtering %s\n", name) ;*/		\
+	    if (db->filtering)					\
+	        croak("recursion detected in %s", name) ;	\
+	    db->filtering = TRUE ;				\
+	    save_defsv = newSVsv(DEFSV) ;			\
+	    sv_setsv(DEFSV, arg) ;				\
+	    PUSHMARK(sp) ;					\
+	    (void) perl_call_sv(db->type, G_DISCARD|G_NOARGS); 	\
+	    sv_setsv(arg, DEFSV) ;				\
+	    sv_setsv(DEFSV, save_defsv) ;			\
+	    SvREFCNT_dec(save_defsv) ;				\
+	    db->filtering = FALSE ;				\
+	    /*printf("end of filtering %s\n", name) ;*/		\
+	}
+
+
+#define odbm_FETCH(db,key)			fetch(key)
+#define odbm_STORE(db,key,value,flags)		store(key,value)
+#define odbm_DELETE(db,key)			delete(key)
+#define odbm_FIRSTKEY(db)			firstkey()
+#define odbm_NEXTKEY(db,key)			nextkey(key)
+
+#define MY_CXT_KEY "ODBM_File::_guts" XS_VERSION
+
+typedef struct {
+    int		x_dbmrefcnt;
+} my_cxt_t;
+
+START_MY_CXT
+
+#define dbmrefcnt	(MY_CXT.x_dbmrefcnt)
+
+#ifndef DBM_REPLACE
+#define DBM_REPLACE 0
+#endif
+
+MODULE = ODBM_File	PACKAGE = ODBM_File	PREFIX = odbm_
+
+BOOT:
+{
+    MY_CXT_INIT;
+}
+
+ODBM_File
+odbm_TIEHASH(dbtype, filename, flags, mode)
+	char *		dbtype
+	char *		filename
+	int		flags
+	int		mode
+	CODE:
+	{
+	    char *tmpbuf;
+	    void * dbp ;
+	    dMY_CXT;
+
+	    if (dbmrefcnt++)
+		croak("Old dbm can only open one database");
+	    New(0, tmpbuf, strlen(filename) + 5, char);
+	    SAVEFREEPV(tmpbuf);
+	    sprintf(tmpbuf,"%s.dir",filename);
+	    if (stat(tmpbuf, &PL_statbuf) < 0) {
+		if (flags & O_CREAT) {
+		    if (mode < 0 || close(creat(tmpbuf,mode)) < 0)
+			croak("ODBM_File: Can't create %s", filename);
+		    sprintf(tmpbuf,"%s.pag",filename);
+		    if (close(creat(tmpbuf,mode)) < 0)
+			croak("ODBM_File: Can't create %s", filename);
+		}
+		else
+		    croak("ODBM_FILE: Can't open %s", filename);
+	    }
+	    dbp = (void*)(dbminit(filename) >= 0 ? &dbmrefcnt : 0);
+	    RETVAL = (ODBM_File)safemalloc(sizeof(ODBM_File_type)) ;
+    	    Zero(RETVAL, 1, ODBM_File_type) ;
+	    RETVAL->dbp = dbp ;
+	    ST(0) = sv_mortalcopy(&PL_sv_undef);
+	    sv_setptrobj(ST(0), RETVAL, dbtype);
+	}
+
+void
+DESTROY(db)
+	ODBM_File	db
+	PREINIT:
+	dMY_CXT;
+	CODE:
+	dbmrefcnt--;
+	dbmclose();
+	safefree(db);
+
+datum_value
+odbm_FETCH(db, key)
+	ODBM_File	db
+	datum_key_copy	key
+
+int
+odbm_STORE(db, key, value, flags = DBM_REPLACE)
+	ODBM_File	db
+	datum_key	key
+	datum_value	value
+	int		flags
+    CLEANUP:
+	if (RETVAL) {
+	    if (RETVAL < 0 && errno == EPERM)
+		croak("No write permission to odbm file");
+	    croak("odbm store returned %d, errno %d, key \"%s\"",
+			RETVAL,errno,key.dptr);
+	}
+
+int
+odbm_DELETE(db, key)
+	ODBM_File	db
+	datum_key	key
+
+datum_key
+odbm_FIRSTKEY(db)
+	ODBM_File	db
+
+datum_key
+odbm_NEXTKEY(db, key)
+	ODBM_File	db
+	datum_key	key
+
+
+#define setFilter(type)					\
+	{						\
+	    if (db->type)				\
+	        RETVAL = sv_mortalcopy(db->type) ; 	\
+	    ST(0) = RETVAL ;				\
+	    if (db->type && (code == &PL_sv_undef)) {	\
+                SvREFCNT_dec(db->type) ;		\
+	        db->type = Nullsv ;			\
+	    }						\
+	    else if (code) {				\
+	        if (db->type)				\
+	            sv_setsv(db->type, code) ;		\
+	        else					\
+	            db->type = newSVsv(code) ;		\
+	    }	    					\
+	}
+
+
+
+SV *
+filter_fetch_key(db, code)
+	ODBM_File	db
+	SV *		code
+	SV *		RETVAL = &PL_sv_undef ;
+	CODE:
+	    setFilter(filter_fetch_key) ;
+
+SV *
+filter_store_key(db, code)
+	ODBM_File	db
+	SV *		code
+	SV *		RETVAL =  &PL_sv_undef ;
+	CODE:
+	    setFilter(filter_store_key) ;
+
+SV *
+filter_fetch_value(db, code)
+	ODBM_File	db
+	SV *		code
+	SV *		RETVAL =  &PL_sv_undef ;
+	CODE:
+	    setFilter(filter_fetch_value) ;
+
+SV *
+filter_store_value(db, code)
+	ODBM_File	db
+	SV *		code
+	SV *		RETVAL =  &PL_sv_undef ;
+	CODE:
+	    setFilter(filter_store_value) ;
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d6 5
+d59 19
+d210 1
+a210 1
+	    DBM_setFilter(db->filter_fetch_key, code) ;
+d218 1
+a218 1
+	    DBM_setFilter(db->filter_store_key, code) ;
+d226 1
+a226 1
+	    DBM_setFilter(db->filter_fetch_value, code) ;
+d234 1
+a234 1
+	    DBM_setFilter(db->filter_store_value, code) ;
+@
+
+
+1.1.1.3
+log
+@5.8.5
+@
+text
+@d35 1
+a35 1
+#define dbmclose()	((void) dbminit("/non/exist/ent"))
+@
+
+

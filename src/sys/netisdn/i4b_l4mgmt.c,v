@@ -1,0 +1,870 @@
+head	1.4;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.4
+	tg-mergefixes-1-branch:1.4.0.14
+	tg-mergefixes-1-base:1.4
+	MIROS_X:1.4.0.12
+	MIROS_X_BASE:1.4
+	MIRBSD_XP_MIRPPC:1.4.0.10
+	MIRBSD_XP_SPARC_BASE:1.4
+	MIRBSD_XP_SPARC:1.4.0.8
+	MIRBSD_7quater:1.4
+	MIRBSD_7_ALPHA:1.4.0.6
+	MIRBSD_7:1.4.0.4
+	MIRBSD_7ter:1.4
+	MIRBSD_7_DEV:1.4.0.2
+	MIRBSD_5:1.2
+	MIRBSD_4:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2003.10.03.17.24.16;	author tg;	state Stab;
+branches;
+next	1.3;
+
+1.3
+date	2003.10.03.15.20.49;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.05.14.19.55.17;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.04.06.04.37.48;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@kernel-side support for ISDN BRI/PRI rate-independent interface
+makes us support, in addition to BRI (basic rate interface,
+ 2x64 kbps B channels, 1x16 kbps D channel, BASIC ACCESS), PRI cards
+(primary rate interface, 30x64 kbps B channels, 1x64 kbps D channel,
+ 1x64 kbps SYNC channel -> 2048 kbps E1 line; PRIMARY MULTIPLEX;
+ as well as its US/japanese equivalent).
+
+This is the theory. This is live code from NetBSD.
+@
+text
+@/*	$MirBSD: i4b_l4mgmt.c,v 1.3 2003/10/03 15:20:49 tg Exp $	*/
+/*	$NetBSD: i4b_l4mgmt.c,v 1.13 2003/10/03 16:38:44 pooka Exp $	*/
+
+/*
+ * Copyright (c) 1997, 2000 Hellmuth Michaelis. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *---------------------------------------------------------------------------
+ *
+ *	i4b_l4mgmt.c - layer 4 calldescriptor management utilites
+ *
+ *---------------------------------------------------------------------------*/
+
+#include <sys/cdefs.h>
+
+#include "isdn.h"
+
+#if NISDN > 0
+
+#include <sys/param.h>
+#include <sys/kernel.h>
+#include <sys/systm.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+#include <net/if.h>
+
+#include <sys/timeout.h>
+
+#if defined(__FreeBSD__)
+#if defined (__FreeBSD_version) && __FreeBSD_version <= 400000
+#include <machine/random.h>
+#else
+#include <sys/random.h>
+#endif
+#endif
+
+#ifdef __FreeBSD__
+#include <machine/i4b_debug.h>
+#include <machine/i4b_ioctl.h>
+#else
+#include <netisdn/i4b_debug.h>
+#include <netisdn/i4b_ioctl.h>
+#endif
+
+#include <netisdn/i4b_l3l4.h>
+#include <netisdn/i4b_mbuf.h>
+#include <netisdn/i4b_isdnq931.h>
+#include <netisdn/i4b_global.h>
+
+#include <netisdn/i4b_l2.h>
+#include <netisdn/i4b_l1l2.h>
+#include <netisdn/i4b_l4.h>
+
+static unsigned int get_cdid(void);
+
+static void i4b_init_callout(call_desc_t *);
+static void i4b_stop_callout(call_desc_t *cd);
+
+call_desc_t call_desc[N_CALL_DESC];	/* call descriptor array */
+int num_call_desc = 0;
+
+/*---------------------------------------------------------------------------*
+ *      return a new unique call descriptor id
+ *	--------------------------------------
+ *	returns a new calldescriptor id which is used to uniquely identyfy
+ *	a single call in the communication between kernel and userland.
+ *	this cdid is then used to associate a calldescriptor with an id.
+ *---------------------------------------------------------------------------*/
+static unsigned int
+get_cdid(void)
+{
+	static unsigned int cdid_count = 0;
+	int i;
+	int x;
+
+	x = splnet();   
+
+	/* get next id */
+	
+	cdid_count++;
+	
+again:
+	if(cdid_count == CDID_UNUSED)		/* zero is invalid */
+		cdid_count++;
+	else if(cdid_count > CDID_MAX)		/* wraparound ? */
+		cdid_count = 1;
+
+	/* check if id already in use */
+	
+	for(i=0; i < num_call_desc; i++)
+	{
+		if(call_desc[i].cdid == cdid_count)
+		{
+			cdid_count++;
+			goto again;
+		}
+	}
+
+	splx(x);
+	
+	return(cdid_count);
+}
+
+/*---------------------------------------------------------------------------*
+ *      reserve a calldescriptor for later usage
+ *      ----------------------------------------
+ *      searches the calldescriptor array until an unused
+ *      descriptor is found, gets a new calldescriptor id
+ *      and reserves it by putting the id into the cdid field.
+ *      returns pointer to the calldescriptor.
+ *---------------------------------------------------------------------------*/
+call_desc_t *
+reserve_cd(void)
+{
+	call_desc_t *cd;
+	int x;
+	int i;
+
+	x = splnet();
+
+	cd = NULL;
+	
+	for(i=0; i < num_call_desc; i++)
+	{
+		if(call_desc[i].cdid == CDID_UNUSED)
+		{
+			cd = &(call_desc[i]);	/* get pointer to descriptor */
+			NDBGL4(L4_MSG, "found free cd - index=%d cdid=%u",
+				 i, call_desc[i].cdid);
+			break;
+		}
+	}
+	if (cd == NULL && num_call_desc < N_CALL_DESC) {
+		i = num_call_desc++;
+		cd = &(call_desc[i]);	/* get pointer to descriptor */
+		NDBGL4(L4_MSG, "found free cd - index=%d cdid=%u",
+			 i, call_desc[i].cdid);
+	}
+	if (cd != NULL) {
+		memset(cd, 0, sizeof(call_desc_t)); /* clear it */
+		cd->cdid = get_cdid();	/* fill in new cdid */
+	}
+
+	splx(x);
+
+	if(cd == NULL)
+		panic("reserve_cd: no free call descriptor available!");
+
+	i4b_init_callout(cd);
+
+	return(cd);
+}
+
+/*---------------------------------------------------------------------------*
+ *      free a calldescriptor
+ *      ---------------------
+ *      free a unused calldescriptor by giving address of calldescriptor
+ *      and writing a 0 into the cdid field marking it as unused.
+ *---------------------------------------------------------------------------*/
+void
+freecd_by_cd(call_desc_t *cd)
+{
+	int i;
+	int x = splnet();
+	
+	for(i=0; i < num_call_desc; i++)
+	{
+		if( (call_desc[i].cdid != CDID_UNUSED) &&
+		    (&(call_desc[i]) == cd) )
+		{
+			NDBGL4(L4_MSG, "releasing cd - index=%d cdid=%u cr=%d",
+				i, call_desc[i].cdid, cd->cr);
+			call_desc[i].cdid = CDID_UNUSED;
+			break;
+		}
+	}
+
+	if(i == N_CALL_DESC)
+		panic("freecd_by_cd: ERROR, cd not found, cr = %d", cd->cr);
+
+	splx(x);		
+}
+
+/*
+ * ISDN is gone, get rid of all CDs for it
+ */
+void free_all_cd_of_isdnif(int isdnif)
+{
+	int i;
+	int x = splnet();
+	
+	for(i=0; i < num_call_desc; i++)
+	{
+		if( (call_desc[i].cdid != CDID_UNUSED) &&
+		    call_desc[i].isdnif == isdnif) {
+			NDBGL4(L4_MSG, "releasing cd - index=%d cdid=%u cr=%d",
+				i, call_desc[i].cdid, call_desc[i].cr);
+			if (call_desc[i].callouts_inited)
+				i4b_stop_callout(&call_desc[i]);
+			call_desc[i].cdid = CDID_UNUSED;
+			call_desc[i].isdnif = -1;
+			call_desc[i].l3drv = NULL;
+		}
+	}
+
+	splx(x);		
+}
+
+/*---------------------------------------------------------------------------*
+ *      return pointer to calldescriptor by giving the calldescriptor id
+ *      ----------------------------------------------------------------
+ *      lookup a calldescriptor in the calldescriptor array by looking
+ *      at the cdid field. return pointer to calldescriptor if found,
+ *      else return NULL if not found.
+ *---------------------------------------------------------------------------*/
+call_desc_t *
+cd_by_cdid(unsigned int cdid)
+{
+	int i;
+
+	for(i=0; i < num_call_desc; i++)
+	{
+		if(call_desc[i].cdid == cdid)
+		{
+			NDBGL4(L4_MSG, "found cdid - index=%d cdid=%u cr=%d",
+					i, call_desc[i].cdid, call_desc[i].cr);
+			i4b_init_callout(&call_desc[i]);
+			return(&(call_desc[i]));
+		}
+	}
+	return(NULL);
+}
+
+/*---------------------------------------------------------------------------*
+ *      search calldescriptor
+ *      ---------------------
+ *      This routine searches for the calldescriptor for a passive controller
+ *      given by unit number, callreference and callreference flag.
+ *	It returns a pointer to the calldescriptor if found, else a NULL.
+ *---------------------------------------------------------------------------*/
+call_desc_t *
+cd_by_isdnifcr(int isdnif, int cr, int crf)
+{
+	int i;
+
+	for(i=0; i < num_call_desc; i++) {
+		if (call_desc[i].cdid != CDID_UNUSED
+		    && call_desc[i].isdnif == isdnif
+		    && call_desc[i].cr == cr
+		    && call_desc[i].crflag == crf) {
+			NDBGL4(L4_MSG, "found cd, index=%d cdid=%u cr=%d",
+			    i, call_desc[i].cdid, call_desc[i].cr);
+			i4b_init_callout(&call_desc[i]);
+			return(&(call_desc[i]));
+		}
+	}
+	return(NULL);
+}
+
+/*---------------------------------------------------------------------------*
+ *	generate 7 bit "random" number used for outgoing Call Reference
+ *---------------------------------------------------------------------------*/
+unsigned char
+get_rand_cr(int unit)
+{
+	register int i, j;
+	static u_char val, retval;
+	static int called = 42;
+	
+	val += ++called;
+	
+	for(i=0; i < 50 ; i++, val++)
+	{
+		int found = 1;
+		
+#if defined(__FreeBSD__)
+
+#ifdef RANDOMDEV
+		read_random((char *)&val, sizeof(val));
+#else
+		val = (u_char)random();
+#endif /* RANDOMDEV */
+
+#else
+		val |= unit+i;
+		val <<= i;
+		val ^= (time.tv_sec >> 8) ^ time.tv_usec;
+		val <<= i;
+		val ^= time.tv_sec ^ (time.tv_usec >> 8);
+#endif
+
+		retval = val & 0x7f;
+		
+		if(retval == 0 || retval == 0x7f)
+			continue;
+
+		for(j=0; j < num_call_desc; j++)
+		{
+			if( (call_desc[j].cdid != CDID_UNUSED) &&
+			    (call_desc[j].cr == retval) )
+			{
+				found = 0;
+				break;
+			}
+		}
+
+		if(found)
+			return(retval);
+	}
+	return(0);	/* XXX */
+}
+
+static void
+i4b_stop_callout(call_desc_t *cd)
+{
+	if (!cd->callouts_inited)
+		return;
+
+	timeout_del(&cd->idle_timeout_handle);
+	timeout_del(&cd->T303_callout);
+	timeout_del(&cd->T305_callout);
+	timeout_del(&cd->T308_callout);
+	timeout_del(&cd->T309_callout);
+	timeout_del(&cd->T310_callout);
+	timeout_del(&cd->T313_callout);
+	timeout_del(&cd->T400_callout);
+}
+
+/*---------------------------------------------------------------------------*
+ *	initialize the callout handles for FreeBSD
+ *---------------------------------------------------------------------------*/
+void
+i4b_init_callout(call_desc_t *cd)
+{
+	/* callout_init() translates to a NOP for OpenBSD */
+}
+
+#ifdef I4B_CD_DEBUG_PRINT
+
+extern char *print_l3state(call_desc_t *cd);
+
+void i4b_print_cdp(call_desc_t *cdp);
+void i4b_print_cdx(int index);
+void i4b_print_cda(void);
+void i4b_print_cdaa(void);
+	
+/*---------------------------------------------------------------------------*
+ *	print a call descriptor by cd-pointer
+ *---------------------------------------------------------------------------*/
+void 
+i4b_print_cdp(call_desc_t *cdp)
+{
+	if((cdp > &(call_desc[num_call_desc])) || (cdp < &(call_desc[0])))
+	{
+		printf("i4b_print_cd: cdp out of range!\n");
+		return;
+	}
+
+	printf("i4b_print_cd: printing call descriptor %d at 0x%lx:\n", cdp - (&(call_desc[0])), (unsigned long)cdp);
+
+	printf("         cdid = %d\n", cdp->cdid);
+	printf("   controller = %d (u=%d, dl=%d, b1=%d, b2=%d)\n",
+			cdp->controller,
+			ctrl_desc[cdp->controller].unit,
+			ctrl_desc[cdp->controller].dl_est,
+			ctrl_desc[cdp->controller].bch_state[CHAN_B1],
+			ctrl_desc[cdp->controller].bch_state[CHAN_B2]);	
+	printf("           cr = 0x%02x\n", cdp->cr);
+	printf("       crflag = %d\n", cdp->crflag);
+	printf("    channelid = %d\n", cdp->channelid);
+	printf("        bprot = %d\n", cdp->bprot);
+	printf("       driver = %d\n", cdp->driver);
+	printf("  driver_unit = %d\n", cdp->driver_unit);
+	printf("   call_state = %d\n", cdp->call_state);
+	printf("    Q931state = %s\n", print_l3state(cdp));
+	printf("        event = %d\n", cdp->event);
+	printf("     response = %d\n", cdp->response);
+	printf("         T303 = %d\n", cdp->T303);
+	printf("T303_first_to = %d\n", cdp->T303_first_to);
+	printf("         T305 = %d\n", cdp->T305);
+	printf("         T308 = %d\n", cdp->T308);
+	printf("T308_first_to = %d\n", cdp->T308_first_to);
+	printf("         T309 = %d\n", cdp->T309);
+	printf("         T310 = %d\n", cdp->T310);
+	printf("         T313 = %d\n", cdp->T313);
+	printf("         T400 = %d\n", cdp->T400);
+	printf("          dir = %s\n", cdp->dir == DIR_OUTGOING ? "out" : "in");
+}
+
+/*---------------------------------------------------------------------------*
+ *	print a call descriptor by index
+ *---------------------------------------------------------------------------*/
+void 
+i4b_print_cdx(int index)
+{
+	if(index >= num_call_desc)
+	{
+		printf("i4b_print_cdx: index %d >= N_CALL_DESC %d\n", index, N_CALL_DESC);
+		return;
+	}
+	i4b_print_cdp(&(call_desc[index]));
+}
+
+/*---------------------------------------------------------------------------*
+ *	print all call descriptors
+ *---------------------------------------------------------------------------*/
+void 
+i4b_print_cda(void)
+{
+	int i;
+
+	for(i=0; i < num_call_desc; i++)
+	{
+		i4b_print_cdp(&(call_desc[i]));
+	}
+}
+
+/*---------------------------------------------------------------------------*
+ *	print all active call descriptors
+ *---------------------------------------------------------------------------*/
+void 
+i4b_print_cdaa(void)
+{
+	int i;
+
+	for(i=0; i < num_call_desc; i++)
+	{
+		if(call_desc[i].cdid != CDID_UNUSED)
+		{
+			i4b_print_cdp(&(call_desc[i]));
+		}
+	}
+}
+
+#endif /* I4B_CD_DEBUG_PRINT */
+
+#endif /* NISDN > 0 */
+@
+
+
+1.3
+log
+@Sync with NetBSD
+
+|| Among others, this gives us:
+
+Module Name:    src
+Committed By:   pooka
+Date:           Thu Sep 25 15:34:38 UTC 2003
+
+Added Files:
+        src/sys/netisdn: i4b_capi.h i4b_capi_l4if.c i4b_capi_llif.c
+            i4b_capi_msgs.c i4b_capi_msgs.h
+
+Log Message:
+Add a support layer for the ISDN CAPI (http://www.capi.org/), which should
+make it pretty simple to write drivers for cards which conform to CAPI.
+
+This code was originally written by Juha-Matti Liukkonen <jml@@cubical.fi>
+of Cubical Solutions Ltd. for FreeBSD, and was now adapted to NetBSD
+by myself for the same company.
+
+|| and
+
+Module Name:    src
+Committed By:   pooka
+Date:           Thu Sep 25 15:53:26 UTC 2003
+
+Added Files:
+        src/sys/dev/ic: iavc.c iavcreg.h iavcvar.h
+        src/sys/dev/pci: iavc_pci.c
+
+Log Message:
+Add a driver for the CAPI-compliant AVM B1/T1 cards.
+
+The driver backend is capable of supporting also ISA cards (no DMA)
+and primary rate (PRI) cards in addition to the basic rate ones,
+but I don't any to test on right now, so we don't support those
+currently.
+
+This code was originally written by Juha-Matti Liukkonen <jml@@cubical.fi>
+of Cubical Solutions Ltd. for FreeBSD, and was ported to NetBSD by
+myself for the same company.
+
+==================================================================
+
+The full list of ISDN files is now:
+
+src/etc/MAKEDEV.mi
+src/etc/Makefile
+src/etc/etc.i386/MAKEDEV
+src/etc/etc.i386/MAKEDEV.md
+src/etc/isdnd.rc.sample
+src/etc/isdnd.sppp.sample
+src/etc/mtree/4.4BSD.dist
+src/etc/ppp/ppp.conf.sample
+src/etc/rc
+src/etc/rc.conf
+src/include/Makefile
+src/share/man/man4/Makefile
+src/share/man/man4/daic.4
+src/share/man/man4/iavc.4
+src/share/man/man4/ifpci.4
+src/share/man/man4/ippp.4
+src/share/man/man4/irip.4
+src/share/man/man4/isdn.4
+src/share/man/man4/isdnbchan.4
+src/share/man/man4/isdncapi.4
+src/share/man/man4/isdnctl.4
+src/share/man/man4/isdntel.4
+src/share/man/man4/isdntrc.4
+src/share/man/man4/isic.4
+src/share/man/man4/iwic.4
+src/sys/arch/i386/conf/GENERIC
+src/sys/arch/i386/i386/conf.c
+src/sys/conf/files
+src/sys/dev/ic/daic.c
+src/sys/dev/ic/daicreg.h
+src/sys/dev/ic/daicvar.h
+src/sys/dev/ic/hscx.c
+src/sys/dev/ic/hscx.h
+src/sys/dev/ic/iavc.c
+src/sys/dev/ic/iavcreg.h
+src/sys/dev/ic/iavcvar.h
+src/sys/dev/ic/ipac.h
+src/sys/dev/ic/isac.c
+src/sys/dev/ic/isac.h
+src/sys/dev/ic/isacsx.c
+src/sys/dev/ic/isacsx.h
+src/sys/dev/ic/isic.c
+src/sys/dev/ic/isic_bchan.c
+src/sys/dev/ic/isic_l1.c
+src/sys/dev/ic/isic_l1.h
+src/sys/dev/ic/isic_l1fsm.c
+src/sys/dev/isa/daic_isa.c
+src/sys/dev/isa/files.isa
+src/sys/dev/isa/files.isapnp
+src/sys/dev/isa/isic_isa.c
+src/sys/dev/isa/isic_isa_avm_a1.c
+src/sys/dev/isa/isic_isa_itk_ix1.c
+src/sys/dev/isa/isic_isa_tel_s016.c
+src/sys/dev/isa/isic_isa_tel_s0163.c
+src/sys/dev/isa/isic_isa_tel_s08.c
+src/sys/dev/isa/isic_isa_usr_sti.c
+src/sys/dev/isa/isic_isapnp.c
+src/sys/dev/isa/isic_isapnp_ctx_s0P.c
+src/sys/dev/isa/isic_isapnp_drn_ngo.c
+src/sys/dev/isa/isic_isapnp_dynalink.c
+src/sys/dev/isa/isic_isapnp_elsa_qs1i.c
+src/sys/dev/isa/isic_isapnp_itkix.c
+src/sys/dev/isa/isic_isapnp_siemens_isurf.c
+src/sys/dev/isa/isic_isapnp_sws.c
+src/sys/dev/isa/isic_isapnp_tel_s0P.c
+src/sys/dev/microcode/daic/Makefile
+src/sys/dev/microcode/daic/dnload.h
+src/sys/dev/microcode/daic/dnload.h-dist
+src/sys/dev/microcode/daic/gendnloadh
+src/sys/dev/pci/files.pci
+src/sys/dev/pci/fwlynx_pci.c
+src/sys/dev/pci/iavc_pci.c
+src/sys/dev/pci/ifpci.c
+src/sys/dev/pci/ifpci2.c
+src/sys/dev/pci/isic_pci.c
+src/sys/dev/pci/isic_pci.h
+src/sys/dev/pci/isic_pci_elsa_qs1p.c
+src/sys/dev/pci/iwic_bchan.c
+src/sys/dev/pci/iwic_dchan.c
+src/sys/dev/pci/iwic_fsm.c
+src/sys/dev/pci/iwic_pci.c
+src/sys/dev/pci/iwicreg.h
+src/sys/dev/pci/iwicvar.h
+src/sys/dev/pci/pcidevs
+src/sys/dev/pci/pcidevs.h
+src/sys/dev/pci/pcidevs_data.h
+src/sys/dev/pci/pcireg.h
+src/sys/dev/pcmcia/files.pcmcia
+src/sys/dev/pcmcia/isic_pcmcia.c
+src/sys/dev/pcmcia/isic_pcmcia.h
+src/sys/dev/pcmcia/isic_pcmcia_avm_fritz.c
+src/sys/dev/pcmcia/isic_pcmcia_elsa_isdnmc.c
+src/sys/dev/pcmcia/isic_pcmcia_elsa_mcall.c
+src/sys/dev/pcmcia/isic_pcmcia_sbspeedstar2.c
+src/sys/net/if_sppp.h
+src/sys/netisdn/i4b_capi.h
+src/sys/netisdn/i4b_capi_l4if.c
+src/sys/netisdn/i4b_capi_llif.c
+src/sys/netisdn/i4b_capi_msgs.c
+src/sys/netisdn/i4b_capi_msgs.h
+src/sys/netisdn/i4b_cause.h
+src/sys/netisdn/i4b_ctl.c
+src/sys/netisdn/i4b_debug.h
+src/sys/netisdn/i4b_global.h
+src/sys/netisdn/i4b_i4bdrv.c
+src/sys/netisdn/i4b_iframe.c
+src/sys/netisdn/i4b_ioctl.h
+src/sys/netisdn/i4b_ipr.c
+src/sys/netisdn/i4b_isdnq931.h
+src/sys/netisdn/i4b_isppp.c
+src/sys/netisdn/i4b_isppp.h
+src/sys/netisdn/i4b_l1l2.h
+src/sys/netisdn/i4b_l2.c
+src/sys/netisdn/i4b_l2.h
+src/sys/netisdn/i4b_l2fsm.c
+src/sys/netisdn/i4b_l2fsm.h
+src/sys/netisdn/i4b_l2if.c
+src/sys/netisdn/i4b_l2timer.c
+src/sys/netisdn/i4b_l3.h
+src/sys/netisdn/i4b_l3fsm.c
+src/sys/netisdn/i4b_l3fsm.h
+src/sys/netisdn/i4b_l3l4.h
+src/sys/netisdn/i4b_l3timer.c
+src/sys/netisdn/i4b_l4.c
+src/sys/netisdn/i4b_l4.h
+src/sys/netisdn/i4b_l4if.c
+src/sys/netisdn/i4b_l4mgmt.c
+src/sys/netisdn/i4b_l4timer.c
+src/sys/netisdn/i4b_lme.c
+src/sys/netisdn/i4b_mbuf.c
+src/sys/netisdn/i4b_mbuf.h
+src/sys/netisdn/i4b_q931.c
+src/sys/netisdn/i4b_q931.h
+src/sys/netisdn/i4b_q932fac.c
+src/sys/netisdn/i4b_q932fac.h
+src/sys/netisdn/i4b_rbch.c
+src/sys/netisdn/i4b_rbch_ioctl.h
+src/sys/netisdn/i4b_sframe.c
+src/sys/netisdn/i4b_tei.c
+src/sys/netisdn/i4b_tel.c
+src/sys/netisdn/i4b_tel_ioctl.h
+src/sys/netisdn/i4b_trace.c
+src/sys/netisdn/i4b_trace.h
+src/sys/netisdn/i4b_uframe.c
+src/sys/netisdn/i4b_util.c
+src/sys/sys/cdefs.h
+src/sys/sys/device.h
+src/sys/sys/select.h
+src/usr.sbin/Makefile
+src/usr.sbin/isdnd/Makefile
+src/usr.sbin/isdnd/alias.c
+src/usr.sbin/isdnd/alias.h
+src/usr.sbin/isdnd/config.h
+src/usr.sbin/isdnd/controller.c
+src/usr.sbin/isdnd/curses.c
+src/usr.sbin/isdnd/dial.c
+src/usr.sbin/isdnd/exec.c
+src/usr.sbin/isdnd/fsm.c
+src/usr.sbin/isdnd/holiday.c
+src/usr.sbin/isdnd/isdnd.8
+src/usr.sbin/isdnd/isdnd.acct.5
+src/usr.sbin/isdnd/isdnd.h
+src/usr.sbin/isdnd/isdnd.rates.5
+src/usr.sbin/isdnd/isdnd.rc.5
+src/usr.sbin/isdnd/log.c
+src/usr.sbin/isdnd/main.c
+src/usr.sbin/isdnd/monitor.c
+src/usr.sbin/isdnd/monitor.h
+src/usr.sbin/isdnd/msghdl.c
+src/usr.sbin/isdnd/pathnames.h
+src/usr.sbin/isdnd/pcause.c
+src/usr.sbin/isdnd/process.c
+src/usr.sbin/isdnd/rates.c
+src/usr.sbin/isdnd/rc_config.c
+src/usr.sbin/isdnd/rc_parse.y
+src/usr.sbin/isdnd/rc_scan.l
+src/usr.sbin/isdnd/support.c
+src/usr.sbin/isdnd/timer.c
+src/usr.sbin/ppp/ppp/Makefile
+src/usr.sbin/ppp/ppp/i4b.c
+
+Please correct me if anything should be missing.
+@
+text
+@d1 2
+a2 2
+/*	$MirBSD$	*/
+/*	$NetBSD: i4b_l4mgmt.c,v 1.12 2003/09/26 21:05:33 pooka Exp $	*/
+d205 1
+a205 1
+ * BRI is gone, get rid of all CDs for it
+d207 1
+a207 1
+void free_all_cd_of_bri(int bri)
+d215 1
+a215 1
+		    call_desc[i].bri == bri) {
+d221 1
+a221 1
+			call_desc[i].bri = -1;
+d262 1
+a262 1
+cd_by_bricr(int bri, int cr, int crf)
+d266 10
+a275 10
+	for(i=0; i < num_call_desc; i++)
+	{
+	  if (call_desc[i].cdid != CDID_UNUSED && call_desc[i].bri == bri &&
+	     call_desc[i].cr == cr && call_desc[i].crflag == crf)
+	  {
+	    NDBGL4(L4_MSG, "found cd, index=%d cdid=%u cr=%d",
+			i, call_desc[i].cdid, call_desc[i].cr);
+	    i4b_init_callout(&call_desc[i]);
+	    return(&(call_desc[i]));
+	  }
+@
+
+
+1.2
+log
+@kill the NetBSD callout timeout-API, which was cloned
+from ours and introduced for I4B only anyways.
+
+feature: callout_init() translates to a NOP, because
+it just zeroed out the structure. This even saves us
+a couple of bytes and cycles.
+@
+text
+@d1 3
+a30 7
+ *	-----------------------------------------------------------
+ *
+ *	$Id: i4b_l4mgmt.c,v 1.1 2003/04/06 04:37:48 tg Exp $ 
+ *
+ * $FreeBSD$
+ *
+ *      last edit-date: [Fri Jan  5 11:33:47 2001]
+a34 1
+__KERNEL_RCSID(0, "$NetBSD: i4b_l4mgmt.c,v 1.10 2002/09/27 15:37:56 provos Exp $");
+a78 1
+#define N_CALL_DESC 40	/* XXX - make this sizeable */
+a222 1
+			break;
+@
+
+
+1.1
+log
+@Pull in ISDN support from NetBSD, push out the old
+one with the "I require you to send me a postcard"
+licence.
+
+This enables building a kernel with ISDN support
+(it's just slower and like 200 KiB bigger), but
+disables isdnd from userland and needs different
+manpages and other fixes from NetBSD.
+
+Also added:
+ - support for the callout API from NetBSD, which
+   is in fact our stolen new-style timeout API,
+   just with a bit more overhead and different names
+   for the structure
+ - some includes sync with NBSD
+ - a shitload of kludges to make ISDN build
+
+This needs security, style and bloat audits fast.
+And testing.
+@
+text
+@d30 1
+a30 1
+ *	$Id: i4b_l4mgmt.c,v 1.10 2002/09/27 15:37:56 provos Exp $ 
+d52 1
+a52 3
+#if defined(__NetBSD__) && __NetBSD_Version__ >= 104230000
+#include <sys/callout.h>
+#endif
+d346 8
+a353 8
+	callout_stop(&cd->idle_timeout_handle);
+	callout_stop(&cd->T303_callout);
+	callout_stop(&cd->T305_callout);
+	callout_stop(&cd->T308_callout);
+	callout_stop(&cd->T309_callout);
+	callout_stop(&cd->T310_callout);
+	callout_stop(&cd->T313_callout);
+	callout_stop(&cd->T400_callout);
+d362 1
+a362 12
+	if(cd->callouts_inited == 0)
+	{
+		callout_init(&cd->idle_timeout_handle);
+		callout_init(&cd->T303_callout);
+		callout_init(&cd->T305_callout);
+		callout_init(&cd->T308_callout);
+		callout_init(&cd->T309_callout);
+		callout_init(&cd->T310_callout);
+		callout_init(&cd->T313_callout);
+		callout_init(&cd->T400_callout);
+		cd->callouts_inited = 1;
+	}
+@
+

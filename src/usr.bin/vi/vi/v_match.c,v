@@ -1,0 +1,279 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.47;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.47;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: v_match.c,v 1.4 2002/02/16 21:27:58 millert Exp $	*/
+
+/*-
+ * Copyright (c) 1992, 1993, 1994
+ *	The Regents of the University of California.  All rights reserved.
+ * Copyright (c) 1992, 1993, 1994, 1995, 1996
+ *	Keith Bostic.  All rights reserved.
+ *
+ * See the LICENSE file for redistribution information.
+ */
+
+#include "config.h"
+
+#ifndef lint
+static const char sccsid[] = "@@(#)v_match.c	10.8 (Berkeley) 3/6/96";
+#endif /* not lint */
+
+#include <sys/types.h>
+#include <sys/queue.h>
+#include <sys/time.h>
+
+#include <bitstring.h>
+#include <limits.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "../common/common.h"
+#include "vi.h"
+
+/*
+ * v_match -- %
+ *	Search to matching character.
+ *
+ * PUBLIC: int v_match(SCR *, VICMD *);
+ */
+int
+v_match(sp, vp)
+	SCR *sp;
+	VICMD *vp;
+{
+	VCS cs;
+	MARK *mp;
+	size_t cno, len, off;
+	int cnt, isempty, matchc, startc, (*gc)(SCR *, VCS *);
+	char *p;
+
+	/*
+	 * !!!
+	 * Historic practice; ignore the count.
+	 *
+	 * !!!
+	 * Historical practice was to search for the initial character in the
+	 * forward direction only.
+	 */
+	if (db_eget(sp, vp->m_start.lno, &p, &len, &isempty)) {
+		if (isempty)
+			goto nomatch;
+		return (1);
+	}
+	for (off = vp->m_start.cno;; ++off) {
+		if (off >= len) {
+nomatch:		msgq(sp, M_BERR, "184|No match character on this line");
+			return (1);
+		}
+		switch (startc = p[off]) {
+		case '(':
+			matchc = ')';
+			gc = cs_next;
+			break;
+		case ')':
+			matchc = '(';
+			gc = cs_prev;
+			break;
+		case '[':
+			matchc = ']';
+			gc = cs_next;
+			break;
+		case ']':
+			matchc = '[';
+			gc = cs_prev;
+			break;
+		case '{':
+			matchc = '}';
+			gc = cs_next;
+			break;
+		case '}':
+			matchc = '{';
+			gc = cs_prev;
+			break;
+		case '<':
+			matchc = '>';
+			gc = cs_next;
+			break;
+		case '>':
+			matchc = '<';
+			gc = cs_prev;
+			break;
+		default:
+			continue;
+		}
+		break;
+	}
+
+	cs.cs_lno = vp->m_start.lno;
+	cs.cs_cno = off;
+	if (cs_init(sp, &cs))
+		return (1);
+	for (cnt = 1;;) {
+		if (gc(sp, &cs))
+			return (1);
+		if (cs.cs_flags != 0) {
+			if (cs.cs_flags == CS_EOF || cs.cs_flags == CS_SOF)
+				break;
+			continue;
+		}
+		if (cs.cs_ch == startc)
+			++cnt;
+		else if (cs.cs_ch == matchc && --cnt == 0)
+			break;
+	}
+	if (cnt) {
+		msgq(sp, M_BERR, "185|Matching character not found");
+		return (1);
+	}
+
+	vp->m_stop.lno = cs.cs_lno;
+	vp->m_stop.cno = cs.cs_cno;
+
+	/*
+	 * If moving right, non-motion commands move to the end of the range.
+	 * Delete and yank stay at the start.
+	 *
+	 * If moving left, all commands move to the end of the range.
+	 *
+	 * !!!
+	 * Don't correct for leftward movement -- historic vi deleted the
+	 * starting cursor position when deleting to a match.
+	 */
+	if (vp->m_start.lno < vp->m_stop.lno ||
+	    vp->m_start.lno == vp->m_stop.lno &&
+	    vp->m_start.cno < vp->m_stop.cno)
+		vp->m_final = ISMOTION(vp) ? vp->m_start : vp->m_stop;
+	else
+		vp->m_final = vp->m_stop;
+
+	/*
+	 * !!!
+	 * If the motion is across lines, and the earliest cursor position
+	 * is at or before any non-blank characters in the line, i.e. the
+	 * movement is cutting all of the line's text, and the later cursor
+	 * position has nothing other than whitespace characters between it
+	 * and the end of its line, the buffer is in line mode.
+	 */
+	if (!ISMOTION(vp) || vp->m_start.lno == vp->m_stop.lno)
+		return (0);
+	mp = vp->m_start.lno < vp->m_stop.lno ? &vp->m_start : &vp->m_stop;
+	if (mp->cno != 0) {
+		cno = 0;
+		if (nonblank(sp, mp->lno, &cno))
+			return (1);
+		if (cno < mp->cno)
+			return (0);
+	}
+	mp = vp->m_start.lno < vp->m_stop.lno ? &vp->m_stop : &vp->m_start;
+	if (db_get(sp, mp->lno, DBG_FATAL, &p, &len))
+		return (1);
+	for (p += mp->cno + 1, len -= mp->cno; --len; ++p)
+		if (!isblank(*p))
+			return (0);
+	F_SET(vp, VM_LMODE);
+	return (0);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

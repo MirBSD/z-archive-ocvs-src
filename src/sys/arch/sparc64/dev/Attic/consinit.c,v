@@ -1,0 +1,373 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.30.08;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.22;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.22;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.19.12.47.22;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: consinit.c,v 1.7 2002/03/14 01:26:44 millert Exp $	*/
+/*	$NetBSD: consinit.c,v 1.9 2000/10/20 05:32:35 mrg Exp $	*/
+
+/*-
+ * Copyright (c) 1999 Eduardo E. Horvath
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+ * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include "pcons.h"
+#include "ukbd.h"
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/conf.h>
+#include <sys/device.h>
+#include <sys/file.h>
+#include <sys/ioctl.h>
+#include <sys/kernel.h>
+#include <sys/proc.h>
+#include <sys/tty.h>
+#include <sys/time.h>
+#include <sys/syslog.h>
+
+#include <machine/autoconf.h>
+#include <machine/openfirm.h>
+#include <machine/bsd_openprom.h>
+#include <machine/conf.h>
+#include <machine/cpu.h>
+#include <machine/eeprom.h>
+#include <machine/psl.h>
+#include <machine/z8530var.h>
+#include <machine/sparc64.h>
+
+#include <dev/cons.h>
+
+#include <sparc64/dev/cons.h>
+
+#include <dev/usb/ukbdvar.h>
+
+static void prom_cnprobe(struct consdev *);
+static void prom_cninit(struct consdev *);
+int  prom_cngetc(dev_t);
+static void prom_cnputc(dev_t, int);
+static void prom_cnpollc(dev_t, int);
+static void prom_cnputc(dev_t, int);
+
+int stdin = NULL, stdout = NULL;
+
+/*
+ * The console is set to this one initially,
+ * which lets us use the PROM until consinit()
+ * is called to select a real console.
+ */
+struct consdev consdev_prom = {
+	prom_cnprobe,
+	prom_cninit,
+	prom_cngetc,
+	prom_cnputc,
+	prom_cnpollc,
+	NULL,
+};
+
+/*
+ * The console table pointer is statically initialized
+ * to point to the PROM (output only) table, so that
+ * early calls to printf will work.
+ */
+struct consdev *cn_tab = &consdev_prom;
+
+void
+prom_cnprobe(cd)
+	struct consdev *cd;
+{
+#if NPCONS > 0
+	int maj;
+
+	for (maj = 0; maj < nchrdev; maj++)
+		if (cdevsw[maj].d_open == pconsopen)
+			break;
+	cd->cn_dev = makedev(maj, 0);
+	cd->cn_pri = CN_INTERNAL;
+#endif
+}
+
+int
+prom_cngetc(dev)
+	dev_t dev;
+{
+	unsigned char ch = '\0';
+	int l;
+#ifdef DDB
+	static int nplus = 0;
+#endif
+	
+	while ((l = OF_read(stdin, &ch, 1)) != 1)
+		/* void */;
+#ifdef DDB
+	if (ch == '+') {
+		if (nplus++ > 3) Debugger();
+	} else nplus = 0;
+#endif
+	if (ch == '\r')
+		ch = '\n';
+	return ch;
+}
+
+static void
+prom_cninit(cn)
+	struct consdev *cn;
+{
+	if (!stdin) stdin = OF_stdin();
+	if (!stdout) stdout = OF_stdout();
+}
+
+/*
+ * PROM console output putchar.
+ */
+static void
+prom_cnputc(dev, c)
+	dev_t dev;
+	int c;
+{
+	int s;
+	char c0 = (c & 0x7f);
+
+#if 0
+	if (!stdout) stdout = OF_stdout();
+#endif
+	s = splhigh();
+	OF_write(stdout, &c0, 1);
+	splx(s);
+}
+
+void
+prom_cnpollc(dev, on)
+	dev_t dev;
+	int on;
+{
+	if (on) {
+                /* Entering debugger. */
+#if NFB > 0
+                fb_unblank();
+#endif  
+	} else {
+                /* Resuming kernel. */
+	}
+#if NPCONS > 0
+	pcons_cnpollc(dev, on);
+#endif  
+}
+
+/*****************************************************************/
+
+#ifdef	DEBUG
+#define	DBPRINT(x)	prom_printf x
+#else
+#define	DBPRINT(x)
+#endif
+
+/*
+ * This function replaces sys/dev/cninit.c
+ * Determine which device is the console using
+ * the PROM "input source" and "output sink".
+ */
+void
+consinit()
+{
+	register int chosen;
+	char buffer[128];
+	extern int stdinnode, fbnode;
+	char *consname = "unknown";
+	
+	DBPRINT(("consinit()\r\n"));
+	if (cn_tab != &consdev_prom) return;
+	
+	DBPRINT(("setting up stdin\r\n"));
+	chosen = OF_finddevice("/chosen");
+	OF_getprop(chosen, "stdin",  &stdin, sizeof(stdin));
+	DBPRINT(("stdin instance = %x\r\n", stdin));
+	
+	if ((stdinnode = OF_instance_to_package(stdin)) == 0) {
+		printf("WARNING: no PROM stdin\n");
+	}
+#if NUKBD > 0
+	else {
+		if (OF_getprop(stdinnode, "compatible", buffer,
+		    sizeof(buffer)) != -1 && strncmp("usb", buffer, 3) == 0)
+			ukbd_cnattach();
+	}
+#endif
+
+	DBPRINT(("setting up stdout\r\n"));
+	OF_getprop(chosen, "stdout", &stdout, sizeof(stdout));
+	
+	DBPRINT(("stdout instance = %x\r\n", stdout));
+	
+	if ((fbnode = OF_instance_to_package(stdout)) == 0)
+		printf("WARNING: no PROM stdout\n");
+	
+	DBPRINT(("stdout package = %x\r\n", fbnode));
+	
+	if (stdinnode && (OF_getproplen(stdinnode,"keyboard") >= 0)) {
+		consname = "keyboard/display";
+	} else if (fbnode && 
+		   (OF_instance_to_path(stdin, buffer, sizeof(buffer)) >= 0)) {
+		consname = buffer;
+	}
+	printf("console is %s\n", consname);
+ 
+	/* Initialize PROM console */
+	(*cn_tab->cn_probe)(cn_tab);
+	(*cn_tab->cn_init)(cn_tab);
+}
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@sync with OpenBSD, this gives us a fair amount of fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: consinit.c,v 1.8 2003/06/16 20:46:10 miod Exp $	*/
+d164 1
+d166 1
+@
+

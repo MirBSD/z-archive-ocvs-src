@@ -1,0 +1,196 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.18;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/usr/bin/perl5
+
+### Subject: Re: Fuller example of Net::NNTP?
+### Date:  Tue, 4 Feb 1997 10:37:58 -0800
+### From: "Paul E. Hoffman" <phoffman@@imc.org>
+### To: Graham Barr <gbarr@@ti.com>
+### 
+### Thanks for your reply. After looking at the examples, I realized that
+### you're not doing what I want, which is to store the messages on the local
+### hard disk with the same message number as what was on the remote. So, I
+### rolled my own program, although I haven't finished it yet (I have a hook
+### for expiring, but haven't done it yet).
+### 
+### You are welcome to use this in the Net:: distribution if you think it is
+### useful.
+###
+### NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE
+###
+### This script is included as-is, I give no guarantee that it will
+### work on every system
+###
+
+use Net::NNTP;
+
+$BaseDir = '/usr/usenet';
+chdir($BaseDir) or die "Could not cd to $BaseDir\n";
+
+# Format of grouplist is:
+#    groupname<tab>expirationdays
+# expirationdays is the number of days to leave the articles around;
+#    set it to 0 if you want the articles to stay forever
+# If the groupname starts with a #, it is skipped
+open(GROUPLIST, 'grouplist.txt') or die "Could not open grouplist.txt\n";
+while(<GROUPLIST>) {
+        $Line = $_; chomp($Line);
+        if($Line eq '') { next };  # Skip blank lines
+        if(substr($Line, 0, 1) eq '#') { next };  # Skip comments
+        push(@@Groups, $Line)
+}
+
+$NntpPtr = Net::NNTP->new('news.server.com');
+
+foreach $GroupLine (@@Groups) {
+        ($GroupName, $GroupExp) = split(/\s/, $GroupLine, 2);
+        # Process the expiration first (still to be done...)
+
+        # See if this is a new group
+        unless(-e "$BaseDir/$GroupName") {
+                unless(mkdir("$BaseDir/$GroupName", 0755))
+                        { die "Could not make $BaseDir/$GroupName\n" }
+        }
+        chdir("$BaseDir/$GroupName") or die "Couldn't chdir to $GroupName\n";
+        # Find the last article in the directory
+        @@AllInDir = <*>; @@RevSortedAllInDir = reverse(sort(@@AllInDir));
+        $LenArr = @@RevSortedAllInDir;
+        if($LenArr > 0) { $NumLastInDir = $RevSortedAllInDir[0] }
+        else { $NumLastInDir = 0 }
+        ($NumArt, $NumFirst, $NumLast, $XGroupName) =
+$NntpPtr->group($GroupName);
+
+        if($NumLast == $NumLastInDir) { next }  # No new articles
+        if($NumLast < $NumLastInDir)
+                { die "In $GroupName, the last number was $NumLast, but the " .
+                        " last number in the directory was $NumLastInDir\n" }
+        # Figure out which article to start from
+        if($NumLastInDir == 0) { $GetArtNum = $NumFirst }
+        else { $GetArtNum = $NumLastInDir + 1 }
+
+        # Now read each of the new articles
+        while(1) {  # Loop until "last" is called
+                $ArtRef = $NntpPtr->article($GetArtNum);
+                @@ArtArr = @@$ArtRef; $ArtArrLen = @@ArtArr;
+                if($ArtArrLen > 0 ) {  # Skip article numbers that had 0 len
+                        open(OUT, ">$GetArtNum") or
+                                die "Could not create $GroupName/$GetArtNum\n";
+                        print OUT @@$ArtRef; close(OUT);
+                }
+
+                # Check if we're at the end
+                if($GetArtNum == $NumLast) { last }
+                $GetArtNum += 1;  # Increment the article number to get
+        }
+}
+
+$NntpPtr->quit;
+exit;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

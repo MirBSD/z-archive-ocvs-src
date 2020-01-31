@@ -1,0 +1,360 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.45;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.54.00;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/* dl_dyld.xs
+ *
+ * Platform:	Darwin (Mac OS)
+ * Author:	Wilfredo Sanchez <wsanchez@@apple.com>
+ * Based on:	dl_next.xs by Paul Marquess
+ * Based on:	dl_dlopen.xs by Anno Siegel
+ * Created:	Aug 15th, 1994
+ *
+ */
+
+/*
+    And Gandalf said: 'Many folk like to know beforehand what is to
+    be set on the table; but those who have laboured to prepare the
+    feast like to keep their secret; for wonder makes the words of
+    praise louder.'
+*/
+
+/* Porting notes:
+
+dl_dyld.xs is based on dl_next.xs by Anno Siegel.
+
+dl_next.xs is in turn a port from dl_dlopen.xs by Paul Marquess.  It
+should not be used as a base for further ports though it may be used
+as an example for how dl_dlopen.xs can be ported to other platforms.
+
+The method used here is just to supply the sun style dlopen etc.
+functions in terms of NeXT's/Apple's dyld.  The xs code proper is
+unchanged from Paul's original.
+
+The port could use some streamlining.  For one, error handling could
+be simplified.
+
+This should be useable as a replacement for dl_next.xs, but it has not
+been tested on NeXT platforms.
+
+  Wilfredo Sanchez
+
+*/
+
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+#include "dlutils.c"	/* for SaveError() etc */
+
+#undef environ
+#undef bool
+#import <mach-o/dyld.h>
+
+static char *dlerror()
+{
+    dTHX;
+    dMY_CXT;
+    return dl_last_error;
+}
+
+int dlclose(handle) /* stub only */
+void *handle;
+{
+    return 0;
+}
+
+enum dyldErrorSource
+{
+    OFImage,
+};
+
+static void TranslateError
+    (const char *path, enum dyldErrorSource type, int number)
+{
+    dTHX;
+    dMY_CXT;
+    char *error;
+    unsigned int index;
+    static char *OFIErrorStrings[] =
+    {
+	"%s(%d): Object Image Load Failure\n",
+	"%s(%d): Object Image Load Success\n",
+	"%s(%d): Not a recognisable object file\n",
+	"%s(%d): No valid architecture\n",
+	"%s(%d): Object image has an invalid format\n",
+	"%s(%d): Invalid access (permissions?)\n",
+	"%s(%d): Unknown error code from NSCreateObjectFileImageFromFile\n",
+    };
+#define NUM_OFI_ERRORS (sizeof(OFIErrorStrings) / sizeof(OFIErrorStrings[0]))
+
+    switch (type)
+    {
+    case OFImage:
+	index = number;
+	if (index > NUM_OFI_ERRORS - 1)
+	    index = NUM_OFI_ERRORS - 1;
+	error = Perl_form_nocontext(OFIErrorStrings[index], path, number);
+	break;
+
+    default:
+	error = Perl_form_nocontext("%s(%d): Totally unknown error type %d\n",
+		     path, number, type);
+	break;
+    }
+    safefree(dl_last_error);
+    dl_last_error = savepv(error);
+}
+
+static char *dlopen(char *path, int mode /* mode is ignored */)
+{
+    int dyld_result;
+    NSObjectFileImage ofile;
+    NSModule handle = NULL;
+
+    dyld_result = NSCreateObjectFileImageFromFile(path, &ofile);
+    if (dyld_result != NSObjectFileImageSuccess)
+	TranslateError(path, OFImage, dyld_result);
+    else
+    {
+    	// NSLinkModule will cause the run to abort on any link error's
+	// not very friendly but the error recovery functionality is limited.
+	handle = NSLinkModule(ofile, path, TRUE);
+	NSDestroyObjectFileImage(ofile);
+    }
+
+    return handle;
+}
+
+void *
+dlsym(handle, symbol)
+void *handle;
+char *symbol;
+{
+    void *addr;
+
+    if (NSIsSymbolNameDefined(symbol))
+	addr = NSAddressOfSymbol(NSLookupAndBindSymbol(symbol));
+    else
+    	addr = NULL;
+
+    return addr;
+}
+
+
+
+/* ----- code from dl_dlopen.xs below here ----- */
+
+
+static void
+dl_private_init(pTHX)
+{
+    (void)dl_generic_private_init(aTHX);
+}
+
+MODULE = DynaLoader     PACKAGE = DynaLoader
+
+BOOT:
+    (void)dl_private_init(aTHX);
+
+
+
+void *
+dl_load_file(filename, flags=0)
+    char *	filename
+    int		flags
+    PREINIT:
+    int mode = 1;
+    CODE:
+    DLDEBUG(1,PerlIO_printf(Perl_debug_log, "dl_load_file(%s,%x):\n", filename,flags));
+    if (flags & 0x01)
+	Perl_warn(aTHX_ "Can't make loaded symbols global on this platform while loading %s",filename);
+    RETVAL = dlopen(filename, mode) ;
+    DLDEBUG(2,PerlIO_printf(Perl_debug_log, " libref=%x\n", RETVAL));
+    ST(0) = sv_newmortal() ;
+    if (RETVAL == NULL)
+	SaveError(aTHX_ "%s",dlerror()) ;
+    else
+	sv_setiv( ST(0), PTR2IV(RETVAL) );
+
+
+void *
+dl_find_symbol(libhandle, symbolname)
+    void *		libhandle
+    char *		symbolname
+    CODE:
+    symbolname = Perl_form_nocontext("_%s", symbolname);
+    DLDEBUG(2, PerlIO_printf(Perl_debug_log,
+			     "dl_find_symbol(handle=%lx, symbol=%s)\n",
+			     (unsigned long) libhandle, symbolname));
+    RETVAL = dlsym(libhandle, symbolname);
+    DLDEBUG(2, PerlIO_printf(Perl_debug_log,
+			     "  symbolref = %lx\n", (unsigned long) RETVAL));
+    ST(0) = sv_newmortal() ;
+    if (RETVAL == NULL)
+	SaveError(aTHX_ "%s",dlerror()) ;
+    else
+	sv_setiv( ST(0), PTR2IV(RETVAL) );
+
+
+void
+dl_undef_symbols()
+    PPCODE:
+
+
+
+# These functions should not need changing on any platform:
+
+void
+dl_install_xsub(perl_name, symref, filename="$Package")
+    char *	perl_name
+    void *	symref
+    char *	filename
+    CODE:
+    DLDEBUG(2,PerlIO_printf(Perl_debug_log, "dl_install_xsub(name=%s, symref=%x)\n",
+	    perl_name, symref));
+    ST(0) = sv_2mortal(newRV((SV*)newXS(perl_name,
+					(void(*)(pTHX_ CV *))symref,
+					filename)));
+
+
+char *
+dl_error()
+    CODE:
+    dMY_CXT;
+    RETVAL = dl_last_error ;
+    OUTPUT:
+    RETVAL
+
+# end.
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d57 1
+a57 1
+static int dlclose(handle) /* stub only */
+d125 1
+a125 1
+static void *
+@
+

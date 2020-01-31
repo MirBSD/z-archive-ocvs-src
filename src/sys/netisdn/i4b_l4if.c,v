@@ -1,0 +1,792 @@
+head	1.6;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.6
+	tg-mergefixes-1-branch:1.6.0.14
+	tg-mergefixes-1-base:1.6
+	MIROS_X:1.6.0.12
+	MIROS_X_BASE:1.6
+	MIRBSD_XP_MIRPPC:1.6.0.10
+	MIRBSD_XP_SPARC_BASE:1.6
+	MIRBSD_XP_SPARC:1.6.0.8
+	MIRBSD_7quater:1.6
+	MIRBSD_7_ALPHA:1.6.0.6
+	MIRBSD_7:1.6.0.4
+	MIRBSD_7ter:1.6
+	MIRBSD_7_DEV:1.6.0.2
+	MIRBSD_5:1.2
+	MIRBSD_4:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.6
+date	2003.10.03.17.24.16;	author tg;	state Stab;
+branches;
+next	1.5;
+
+1.5
+date	2003.10.03.15.20.49;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2003.09.01.22.42.50;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2003.09.01.22.31.25;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.05.14.19.55.16;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.04.06.04.37.48;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.6
+log
+@kernel-side support for ISDN BRI/PRI rate-independent interface
+makes us support, in addition to BRI (basic rate interface,
+ 2x64 kbps B channels, 1x16 kbps D channel, BASIC ACCESS), PRI cards
+(primary rate interface, 30x64 kbps B channels, 1x64 kbps D channel,
+ 1x64 kbps SYNC channel -> 2048 kbps E1 line; PRIMARY MULTIPLEX;
+ as well as its US/japanese equivalent).
+
+This is the theory. This is live code from NetBSD.
+@
+text
+@/* $MirBSD: i4b_l4if.c,v 1.5 2003/10/03 15:20:49 tg Exp $ */
+
+/*
+ * Copyright (c) 1997, 2000 Hellmuth Michaelis. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *---------------------------------------------------------------------------
+ *
+ *	i4b_l4if.c - Layer 3 interface to Layer 4
+ *
+ *---------------------------------------------------------------------------*/
+
+#include <sys/cdefs.h>
+
+#ifdef __FreeBSD__
+#include "i4bq931.h"
+#else
+#define	NI4BQ931	1
+#endif
+#if NI4BQ931 > 0
+
+#include <sys/param.h>
+#include <sys/kernel.h>
+#include <sys/systm.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+#include <net/if.h>
+
+#include <sys/timeout.h>
+
+#ifdef __FreeBSD__
+#include <machine/i4b_debug.h>
+#include <machine/i4b_ioctl.h>
+#include <machine/i4b_cause.h>
+#else
+#include <netisdn/i4b_debug.h>
+#include <netisdn/i4b_ioctl.h>
+#include <netisdn/i4b_cause.h>
+#endif
+
+#include <netisdn/i4b_isdnq931.h>
+#include <netisdn/i4b_l2.h>
+#include <netisdn/i4b_l1l2.h>
+#include <netisdn/i4b_l3l4.h>
+#include <netisdn/i4b_mbuf.h>
+#include <netisdn/i4b_global.h>
+
+#include <netisdn/i4b_l3.h>
+#include <netisdn/i4b_l3fsm.h>
+#include <netisdn/i4b_q931.h>
+
+#include <netisdn/i4b_l4.h>
+
+void n_connect_request(struct call_desc *cd);
+void n_connect_response(struct call_desc *cd, int response, int cause);
+void n_disconnect_request(struct call_desc *cd, int cause);
+void n_alert_request(struct call_desc *cd);
+void n_mgmt_command(struct isdn_l3_driver *drv, int cmd, void *parm);
+
+/*---------------------------------------------------------------------------*
+ *	i4b_mdl_status_ind - status indication from lower layers
+ *---------------------------------------------------------------------------*/
+int
+i4b_mdl_status_ind(struct isdn_l3_driver *d, int status, int parm)
+{
+	int sendup, update_leds = 0;
+	int i;
+	
+	NDBGL3(L3_MSG, "isdnif = %d, status = %d, parm = %d",
+	    d->isdnif, status, parm);
+
+	switch(status)
+	{
+		case STI_ATTACH:
+			if (parm) {
+				NDBGL3(L3_MSG, "STI_ATTACH: attaching isdnif %d", d->isdnif);
+			} else {
+				NDBGL3(L3_MSG, "STI_ATTACH: dettaching isdnif %d", d->isdnif);
+			}
+			break;
+
+		case STI_L1STAT:
+			i4b_l4_l12stat(d, 1, parm);
+			update_leds = 1;
+			NDBGL3(L3_MSG, "STI_L1STAT: isdnif %d layer 1 = %s", d->isdnif, status ? "up" : "down");
+			break;
+			
+		case STI_L2STAT:
+			i4b_l4_l12stat(d, 2, parm);
+			update_leds = 1;
+			NDBGL3(L3_MSG, "STI_L2STAT: isdnif %d layer 2 = %s", d->isdnif, status ? "up" : "down");
+			break;
+
+		case STI_TEIASG:
+			d->tei = parm;
+			i4b_l4_teiasg(d, parm);
+			update_leds = 1;
+			NDBGL3(L3_MSG, "STI_TEIASG: isdnif %d TEI = %d = 0x%02x", d->isdnif, parm, parm);
+			break;
+
+		case STI_PDEACT:	/* L1 T4 timeout */
+			NDBGL3(L3_ERR, "STI_PDEACT: isdnif %d TEI = %d = 0x%02x", d->isdnif, parm, parm);
+
+			update_leds = 1;
+			sendup = 0;
+
+			for(i=0; i < num_call_desc; i++)
+			{
+				if(call_desc[i].isdnif == d->isdnif)
+                		{
+					i4b_l3_stop_all_timers(&(call_desc[i]));
+					if(call_desc[i].cdid != CDID_UNUSED) {
+						sendup++;
+						call_desc[i].cdid = CDID_UNUSED;
+					}
+				}
+			}
+
+			d->dl_est = DL_DOWN;
+
+			for (i = 0; i < d->nbch; i++)
+				d->bch_state[i] = BCH_ST_FREE;
+			d->tei = -1;
+
+			if(sendup)
+			{
+				i4b_l4_pdeact(d, sendup);
+			}
+			break;
+
+		case STI_NOL1ACC:	/* no outgoing access to S0 */
+			NDBGL3(L3_ERR, "STI_NOL1ACC: isdnif %d no outgoing access to S0", d->isdnif);
+			update_leds = 1;
+
+			for(i=0; i < num_call_desc; i++)
+			{
+				if(call_desc[i].isdnif == d->isdnif)
+                		{
+					if(call_desc[i].cdid != CDID_UNUSED)
+					{
+						SET_CAUSE_TYPE(call_desc[i].cause_in, CAUSET_I4B);
+						SET_CAUSE_VAL(call_desc[i].cause_in, CAUSE_I4B_L1ERROR);
+						i4b_l4_disconnect_ind(&(call_desc[i]));
+					}
+				}
+			}
+			d->dl_est = DL_DOWN;
+
+			for (i = 0; i < d->nbch; i++)
+				d->bch_state[i] = BCH_ST_FREE;
+			d->tei = -1;
+
+			break;
+
+		default:
+			NDBGL3(L3_ERR, "ERROR, isdnif %d, unknown status value %d!", d->isdnif, status);
+			break;
+	}
+
+	if (update_leds && d != NULL)
+		update_controller_leds(d);
+
+	return(0);
+}
+
+void
+update_controller_leds(struct isdn_l3_driver *d)
+{
+	long leds = 0;
+
+	if (d->tei != -1)
+		leds |= CMRLEDS_TEI;
+	if (d->bch_state[CHAN_B1] != BCH_ST_FREE)
+		leds |= CMRLEDS_B0;
+	if (d->bch_state[CHAN_B2] != BCH_ST_FREE)
+		leds |= CMRLEDS_B1;
+
+	d->l3driver->N_MGMT_COMMAND(d, CMR_SETLEDS, (void*)leds);
+}
+
+/*---------------------------------------------------------------------------*
+ *	send command to the lower layers
+ *---------------------------------------------------------------------------*/
+void
+n_mgmt_command(struct isdn_l3_driver *d, int cmd, void *parm)
+{
+	int i;
+
+	switch(cmd)
+	{
+		case CMR_DOPEN:
+			NDBGL3(L3_MSG, "CMR_DOPEN for isdnif %d", d->isdnif);
+			
+			for(i=0; i < num_call_desc; i++)
+			{
+				if(call_desc[i].isdnif == d->isdnif)
+                		{
+                			call_desc[i].cdid = CDID_UNUSED;
+				}
+			}
+			d->dl_est = DL_DOWN;
+			for (i = 0; i < d->nbch; i++)
+				d->bch_state[i] = BCH_ST_FREE;
+			d->tei = -1;
+
+			break;
+
+		case CMR_DCLOSE:
+			NDBGL3(L3_MSG, "CMR_DCLOSE for isdnif %d", d->isdnif);
+			break;
+			
+		default:
+			NDBGL3(L3_MSG, "unknown cmd %d for isdnif %d",
+			    cmd, d->isdnif);
+			break;
+	}
+
+	i4b_mdl_command_req(d, cmd, parm);
+}
+
+/*---------------------------------------------------------------------------*
+ *	handle connect request message from userland
+ *---------------------------------------------------------------------------*/
+void
+n_connect_request(struct call_desc *cd)
+{
+	next_l3state(cd, EV_SETUPRQ);	
+}
+
+/*---------------------------------------------------------------------------*
+ *	handle setup response message from userland
+ *---------------------------------------------------------------------------*/
+void
+n_connect_response(struct call_desc *cd, int response, int cause)
+{
+	struct isdn_l3_driver *d = cd->l3drv;
+	int chstate;
+
+	T400_stop(cd);
+	
+	cd->response = response;
+	cd->cause_out = cause;
+
+	switch(response)
+	{
+		case SETUP_RESP_ACCEPT:
+			next_l3state(cd, EV_SETACRS);
+			chstate = BCH_ST_USED;
+			break;
+		
+		case SETUP_RESP_REJECT:
+			next_l3state(cd, EV_SETRJRS);
+			chstate = BCH_ST_FREE;
+			break;
+			
+		case SETUP_RESP_DNTCRE:
+			next_l3state(cd, EV_SETDCRS);
+			chstate = BCH_ST_FREE;
+			break;
+
+		default:	/* failsafe */
+			next_l3state(cd, EV_SETDCRS);
+			chstate = BCH_ST_FREE;
+			NDBGL3(L3_ERR, "unknown response, doing SETUP_RESP_DNTCRE");
+			break;
+	}
+
+	if((cd->channelid >= 0) && (cd->channelid < d->nbch))
+	{
+		d->bch_state[cd->channelid] = chstate;
+		/*
+		 * XXX: don't call l2 function for active cards
+		 */
+		if (d->l3driver->N_DOWNLOAD == NULL)
+			i4b_l2_channel_set_state(cd->l3drv,
+			    cd->channelid, chstate);
+		update_controller_leds(d);
+	}
+	else
+	{
+		NDBGL3(L3_MSG, "Warning, invalid channelid %d, response = %d\n", cd->channelid, response);
+	}
+}
+
+/*---------------------------------------------------------------------------*
+ *	handle disconnect request message from userland
+ *---------------------------------------------------------------------------*/
+void
+n_disconnect_request(struct call_desc *cd, int cause)
+{
+	cd->cause_out = cause;
+
+	next_l3state(cd, EV_DISCRQ);
+}
+
+/*---------------------------------------------------------------------------*
+ *	handle alert request message from userland
+ *---------------------------------------------------------------------------*/
+void
+n_alert_request(struct call_desc *cd)
+{
+	next_l3state(cd, EV_ALERTRQ);
+}
+
+#endif /* NI4BQ931 > 0 */
+@
+
+
+1.5
+log
+@Sync with NetBSD
+
+|| Among others, this gives us:
+
+Module Name:    src
+Committed By:   pooka
+Date:           Thu Sep 25 15:34:38 UTC 2003
+
+Added Files:
+        src/sys/netisdn: i4b_capi.h i4b_capi_l4if.c i4b_capi_llif.c
+            i4b_capi_msgs.c i4b_capi_msgs.h
+
+Log Message:
+Add a support layer for the ISDN CAPI (http://www.capi.org/), which should
+make it pretty simple to write drivers for cards which conform to CAPI.
+
+This code was originally written by Juha-Matti Liukkonen <jml@@cubical.fi>
+of Cubical Solutions Ltd. for FreeBSD, and was now adapted to NetBSD
+by myself for the same company.
+
+|| and
+
+Module Name:    src
+Committed By:   pooka
+Date:           Thu Sep 25 15:53:26 UTC 2003
+
+Added Files:
+        src/sys/dev/ic: iavc.c iavcreg.h iavcvar.h
+        src/sys/dev/pci: iavc_pci.c
+
+Log Message:
+Add a driver for the CAPI-compliant AVM B1/T1 cards.
+
+The driver backend is capable of supporting also ISA cards (no DMA)
+and primary rate (PRI) cards in addition to the basic rate ones,
+but I don't any to test on right now, so we don't support those
+currently.
+
+This code was originally written by Juha-Matti Liukkonen <jml@@cubical.fi>
+of Cubical Solutions Ltd. for FreeBSD, and was ported to NetBSD by
+myself for the same company.
+
+==================================================================
+
+The full list of ISDN files is now:
+
+src/etc/MAKEDEV.mi
+src/etc/Makefile
+src/etc/etc.i386/MAKEDEV
+src/etc/etc.i386/MAKEDEV.md
+src/etc/isdnd.rc.sample
+src/etc/isdnd.sppp.sample
+src/etc/mtree/4.4BSD.dist
+src/etc/ppp/ppp.conf.sample
+src/etc/rc
+src/etc/rc.conf
+src/include/Makefile
+src/share/man/man4/Makefile
+src/share/man/man4/daic.4
+src/share/man/man4/iavc.4
+src/share/man/man4/ifpci.4
+src/share/man/man4/ippp.4
+src/share/man/man4/irip.4
+src/share/man/man4/isdn.4
+src/share/man/man4/isdnbchan.4
+src/share/man/man4/isdncapi.4
+src/share/man/man4/isdnctl.4
+src/share/man/man4/isdntel.4
+src/share/man/man4/isdntrc.4
+src/share/man/man4/isic.4
+src/share/man/man4/iwic.4
+src/sys/arch/i386/conf/GENERIC
+src/sys/arch/i386/i386/conf.c
+src/sys/conf/files
+src/sys/dev/ic/daic.c
+src/sys/dev/ic/daicreg.h
+src/sys/dev/ic/daicvar.h
+src/sys/dev/ic/hscx.c
+src/sys/dev/ic/hscx.h
+src/sys/dev/ic/iavc.c
+src/sys/dev/ic/iavcreg.h
+src/sys/dev/ic/iavcvar.h
+src/sys/dev/ic/ipac.h
+src/sys/dev/ic/isac.c
+src/sys/dev/ic/isac.h
+src/sys/dev/ic/isacsx.c
+src/sys/dev/ic/isacsx.h
+src/sys/dev/ic/isic.c
+src/sys/dev/ic/isic_bchan.c
+src/sys/dev/ic/isic_l1.c
+src/sys/dev/ic/isic_l1.h
+src/sys/dev/ic/isic_l1fsm.c
+src/sys/dev/isa/daic_isa.c
+src/sys/dev/isa/files.isa
+src/sys/dev/isa/files.isapnp
+src/sys/dev/isa/isic_isa.c
+src/sys/dev/isa/isic_isa_avm_a1.c
+src/sys/dev/isa/isic_isa_itk_ix1.c
+src/sys/dev/isa/isic_isa_tel_s016.c
+src/sys/dev/isa/isic_isa_tel_s0163.c
+src/sys/dev/isa/isic_isa_tel_s08.c
+src/sys/dev/isa/isic_isa_usr_sti.c
+src/sys/dev/isa/isic_isapnp.c
+src/sys/dev/isa/isic_isapnp_ctx_s0P.c
+src/sys/dev/isa/isic_isapnp_drn_ngo.c
+src/sys/dev/isa/isic_isapnp_dynalink.c
+src/sys/dev/isa/isic_isapnp_elsa_qs1i.c
+src/sys/dev/isa/isic_isapnp_itkix.c
+src/sys/dev/isa/isic_isapnp_siemens_isurf.c
+src/sys/dev/isa/isic_isapnp_sws.c
+src/sys/dev/isa/isic_isapnp_tel_s0P.c
+src/sys/dev/microcode/daic/Makefile
+src/sys/dev/microcode/daic/dnload.h
+src/sys/dev/microcode/daic/dnload.h-dist
+src/sys/dev/microcode/daic/gendnloadh
+src/sys/dev/pci/files.pci
+src/sys/dev/pci/fwlynx_pci.c
+src/sys/dev/pci/iavc_pci.c
+src/sys/dev/pci/ifpci.c
+src/sys/dev/pci/ifpci2.c
+src/sys/dev/pci/isic_pci.c
+src/sys/dev/pci/isic_pci.h
+src/sys/dev/pci/isic_pci_elsa_qs1p.c
+src/sys/dev/pci/iwic_bchan.c
+src/sys/dev/pci/iwic_dchan.c
+src/sys/dev/pci/iwic_fsm.c
+src/sys/dev/pci/iwic_pci.c
+src/sys/dev/pci/iwicreg.h
+src/sys/dev/pci/iwicvar.h
+src/sys/dev/pci/pcidevs
+src/sys/dev/pci/pcidevs.h
+src/sys/dev/pci/pcidevs_data.h
+src/sys/dev/pci/pcireg.h
+src/sys/dev/pcmcia/files.pcmcia
+src/sys/dev/pcmcia/isic_pcmcia.c
+src/sys/dev/pcmcia/isic_pcmcia.h
+src/sys/dev/pcmcia/isic_pcmcia_avm_fritz.c
+src/sys/dev/pcmcia/isic_pcmcia_elsa_isdnmc.c
+src/sys/dev/pcmcia/isic_pcmcia_elsa_mcall.c
+src/sys/dev/pcmcia/isic_pcmcia_sbspeedstar2.c
+src/sys/net/if_sppp.h
+src/sys/netisdn/i4b_capi.h
+src/sys/netisdn/i4b_capi_l4if.c
+src/sys/netisdn/i4b_capi_llif.c
+src/sys/netisdn/i4b_capi_msgs.c
+src/sys/netisdn/i4b_capi_msgs.h
+src/sys/netisdn/i4b_cause.h
+src/sys/netisdn/i4b_ctl.c
+src/sys/netisdn/i4b_debug.h
+src/sys/netisdn/i4b_global.h
+src/sys/netisdn/i4b_i4bdrv.c
+src/sys/netisdn/i4b_iframe.c
+src/sys/netisdn/i4b_ioctl.h
+src/sys/netisdn/i4b_ipr.c
+src/sys/netisdn/i4b_isdnq931.h
+src/sys/netisdn/i4b_isppp.c
+src/sys/netisdn/i4b_isppp.h
+src/sys/netisdn/i4b_l1l2.h
+src/sys/netisdn/i4b_l2.c
+src/sys/netisdn/i4b_l2.h
+src/sys/netisdn/i4b_l2fsm.c
+src/sys/netisdn/i4b_l2fsm.h
+src/sys/netisdn/i4b_l2if.c
+src/sys/netisdn/i4b_l2timer.c
+src/sys/netisdn/i4b_l3.h
+src/sys/netisdn/i4b_l3fsm.c
+src/sys/netisdn/i4b_l3fsm.h
+src/sys/netisdn/i4b_l3l4.h
+src/sys/netisdn/i4b_l3timer.c
+src/sys/netisdn/i4b_l4.c
+src/sys/netisdn/i4b_l4.h
+src/sys/netisdn/i4b_l4if.c
+src/sys/netisdn/i4b_l4mgmt.c
+src/sys/netisdn/i4b_l4timer.c
+src/sys/netisdn/i4b_lme.c
+src/sys/netisdn/i4b_mbuf.c
+src/sys/netisdn/i4b_mbuf.h
+src/sys/netisdn/i4b_q931.c
+src/sys/netisdn/i4b_q931.h
+src/sys/netisdn/i4b_q932fac.c
+src/sys/netisdn/i4b_q932fac.h
+src/sys/netisdn/i4b_rbch.c
+src/sys/netisdn/i4b_rbch_ioctl.h
+src/sys/netisdn/i4b_sframe.c
+src/sys/netisdn/i4b_tei.c
+src/sys/netisdn/i4b_tel.c
+src/sys/netisdn/i4b_tel_ioctl.h
+src/sys/netisdn/i4b_trace.c
+src/sys/netisdn/i4b_trace.h
+src/sys/netisdn/i4b_uframe.c
+src/sys/netisdn/i4b_util.c
+src/sys/sys/cdefs.h
+src/sys/sys/device.h
+src/sys/sys/select.h
+src/usr.sbin/Makefile
+src/usr.sbin/isdnd/Makefile
+src/usr.sbin/isdnd/alias.c
+src/usr.sbin/isdnd/alias.h
+src/usr.sbin/isdnd/config.h
+src/usr.sbin/isdnd/controller.c
+src/usr.sbin/isdnd/curses.c
+src/usr.sbin/isdnd/dial.c
+src/usr.sbin/isdnd/exec.c
+src/usr.sbin/isdnd/fsm.c
+src/usr.sbin/isdnd/holiday.c
+src/usr.sbin/isdnd/isdnd.8
+src/usr.sbin/isdnd/isdnd.acct.5
+src/usr.sbin/isdnd/isdnd.h
+src/usr.sbin/isdnd/isdnd.rates.5
+src/usr.sbin/isdnd/isdnd.rc.5
+src/usr.sbin/isdnd/log.c
+src/usr.sbin/isdnd/main.c
+src/usr.sbin/isdnd/monitor.c
+src/usr.sbin/isdnd/monitor.h
+src/usr.sbin/isdnd/msghdl.c
+src/usr.sbin/isdnd/pathnames.h
+src/usr.sbin/isdnd/pcause.c
+src/usr.sbin/isdnd/process.c
+src/usr.sbin/isdnd/rates.c
+src/usr.sbin/isdnd/rc_config.c
+src/usr.sbin/isdnd/rc_parse.y
+src/usr.sbin/isdnd/rc_scan.l
+src/usr.sbin/isdnd/support.c
+src/usr.sbin/isdnd/timer.c
+src/usr.sbin/ppp/ppp/Makefile
+src/usr.sbin/ppp/ppp/i4b.c
+
+Please correct me if anything should be missing.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD$ */
+d89 2
+a90 1
+	NDBGL3(L3_MSG, "bri = %d, status = %d, parm = %d", d->bri, status, parm);
+d96 1
+a96 1
+				NDBGL3(L3_MSG, "STI_ATTACH: attaching bri %d", d->bri);
+d98 1
+a98 1
+				NDBGL3(L3_MSG, "STI_ATTACH: dettaching bri %d", d->bri);
+d105 1
+a105 1
+			NDBGL3(L3_MSG, "STI_L1STAT: bri %d layer 1 = %s", d->bri, status ? "up" : "down");
+d111 1
+a111 1
+			NDBGL3(L3_MSG, "STI_L2STAT: bri %d layer 2 = %s", d->bri, status ? "up" : "down");
+d118 1
+a118 1
+			NDBGL3(L3_MSG, "STI_TEIASG: bri %d TEI = %d = 0x%02x", d->bri, parm, parm);
+d122 1
+a122 1
+			NDBGL3(L3_ERR, "STI_PDEACT: bri %d TEI = %d = 0x%02x", d->bri, parm, parm);
+d129 1
+a129 1
+				if(call_desc[i].bri == d->bri)
+d140 3
+a142 2
+			d->bch_state[CHAN_B1] = BCH_ST_FREE;
+			d->bch_state[CHAN_B2] = BCH_ST_FREE;
+d152 1
+a152 1
+			NDBGL3(L3_ERR, "STI_NOL1ACC: bri %d no outgoing access to S0", d->bri);
+d157 1
+a157 1
+				if(call_desc[i].bri == d->bri)
+d168 3
+a170 2
+			d->bch_state[CHAN_B1] = BCH_ST_FREE;
+			d->bch_state[CHAN_B2] = BCH_ST_FREE;
+d176 1
+a176 1
+			NDBGL3(L3_ERR, "ERROR, bri %d, unknown status value %d!", d->bri, status);
+d212 1
+a212 1
+			NDBGL3(L3_MSG, "CMR_DOPEN for bri %d", d->bri);
+d216 1
+a216 1
+				if(call_desc[i].bri == d->bri)
+d222 2
+a223 2
+			d->bch_state[CHAN_B1] = BCH_ST_FREE;
+			d->bch_state[CHAN_B2] = BCH_ST_FREE;
+d229 1
+a229 1
+			NDBGL3(L3_MSG, "CMR_DCLOSE for bri %d", d->bri);
+d233 2
+a234 1
+			NDBGL3(L3_MSG, "unknown cmd %d for bri %d", cmd, d->bri);
+d288 1
+a288 1
+	if((cd->channelid == CHAN_B1) || (cd->channelid == CHAN_B2))
+@
+
+
+1.4
+log
+@compile fixes (assuming intptr_t == long)
+@
+text
+@d1 2
+a29 7
+ *	-------------------------------------------
+ *
+ *	$Id: i4b_l4if.c,v 1.3 2003/09/01 22:31:25 tg Exp $ 
+ *
+ * $FreeBSD$
+ *
+ *      last edit-date: [Fri Jan  5 11:33:47 2001]
+a33 1
+__KERNEL_RCSID(0, "$NetBSD: i4b_l4if.c,v 1.14 2003/05/08 21:15:13 martin Exp $");
+d131 1
+a131 1
+					if(call_desc[i].cdid != CDID_UNUSED)
+d133 2
+a145 1
+				call_desc[i].cdid = CDID_UNUSED;
+d287 6
+a292 1
+		i4b_l2_channel_set_state(cd->l3drv, cd->channelid, chstate);
+@
+
+
+1.3
+log
+@updates from NetBSD
+@
+text
+@d30 1
+a30 1
+ *	$Id: i4b_l4if.c,v 1.2 2003/05/14 19:55:16 tg Exp $ 
+d191 1
+a191 1
+	intptr_t leds = 0;
+@
+
+
+1.2
+log
+@kill the NetBSD callout timeout-API, which was cloned
+from ours and introduced for I4B only anyways.
+
+feature: callout_init() translates to a NOP, because
+it just zeroed out the structure. This even saves us
+a couple of bytes and cycles.
+@
+text
+@d30 1
+a30 1
+ *	$Id: i4b_l4if.c,v 1.1 2003/04/06 04:37:48 tg Exp $ 
+d39 1
+a39 1
+__KERNEL_RCSID(0, "$NetBSD: i4b_l4if.c,v 1.13 2002/05/21 10:31:11 martin Exp $");
+d191 1
+a191 1
+	int leds = 0;
+@
+
+
+1.1
+log
+@Pull in ISDN support from NetBSD, push out the old
+one with the "I require you to send me a postcard"
+licence.
+
+This enables building a kernel with ISDN support
+(it's just slower and like 200 KiB bigger), but
+disables isdnd from userland and needs different
+manpages and other fixes from NetBSD.
+
+Also added:
+ - support for the callout API from NetBSD, which
+   is in fact our stolen new-style timeout API,
+   just with a bit more overhead and different names
+   for the structure
+ - some includes sync with NBSD
+ - a shitload of kludges to make ISDN build
+
+This needs security, style and bloat audits fast.
+And testing.
+@
+text
+@d30 1
+a30 1
+ *	$Id: i4b_l4if.c,v 1.13 2002/05/21 10:31:11 martin Exp $ 
+d55 1
+a55 3
+#if defined(__NetBSD__) && __NetBSD_Version__ >= 104230000
+#include <sys/callout.h>
+#endif
+@
+

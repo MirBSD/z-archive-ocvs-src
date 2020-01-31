@@ -1,0 +1,219 @@
+head	1.2;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	binutils_2_14:1.1.2.1
+	FSF:1.1.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.09.23.21.06.34;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.09.23.16.08.58;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2003.09.23.16.08.58;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2004.07.15.17.19.21;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@# Expect script for common symbol tests
+#   Copyright 2003 Free Software Foundation, Inc.
+#
+# This file is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+#
+# Written by H.J. Lu (hjl@@gnu.org)
+#
+
+# Make sure that ld correctly handles common symbols in ELF.
+
+# This test can only be run on ELF platforms.
+# Square bracket expressions seem to confuse istarget.
+if { ![istarget hppa*64*-*-hpux*] \
+     && ![istarget *-*-gnu] \
+     && ![istarget *-*-linux*] \
+     && ![istarget *-*-elf] } {
+    return
+}
+
+if { [istarget *-*-linux*aout*] \
+     || [istarget *-*-linux*oldld*] } {
+    return
+}
+
+proc dump_common1 { testname } {
+    global exec_output
+
+    send_log "readelf -s tmpdir/common1.o | grep foo\n"
+    catch "exec readelf -s tmpdir/common1.o | grep foo" exec_output
+    if { ![regexp "(\[ 	\]*)(\[0-9\]+):(\[ 	\]*)(\[0\]*)80(\[ 	\]+)4(\[ 	\]+)OBJECT(\[ 	\]+)GLOBAL(\[ 	\]+)DEFAULT(\[ 	\]+)COM(\[ 	\]+)_?foo2" $exec_output]
+ 	 || ![regexp "(\[ 	\]*)(\[0-9\]+):(\[ 	\]*)(\[0-9\]+)(\[ 	\]+)21(\[ 	\]+)OBJECT(\[ 	\]+)GLOBAL(\[ 	\]+)DEFAULT(\[ 	\]+)(\[0-9\]+)(\[ 	\]+)_?foo1" $exec_output] } {
+	send_log "$exec_output\n"
+	verbose $exec_output
+	fail $testname
+	return 0
+    }
+
+    return 1
+}
+
+set test1 "size/aligment change of common symbols"
+if { ![ld_compile "$CC $CFLAGS" $srcdir/$subdir/common1a.c tmpdir/common1a.o]
+    || ![ld_compile "$CC $CFLAGS" $srcdir/$subdir/common1b.c tmpdir/common1b.o] } {
+    unresolved $test1
+    return
+}
+
+global ld
+global link_output
+
+if { [ld_simple_link $ld tmpdir/common1.o "-r tmpdir/common1a.o tmpdir/common1b.o"] } {
+    unresolved "$test1 (warning 1)"
+    return
+}
+
+if { ![regexp "Warning: alignment (\[0-9\]+) of symbol \`_?foo1\' in tmpdir/common1b.o is smaller than 64 in tmpdir/common1a.o" $link_output]
+     || ![regexp "Warning: size of symbol \`_?foo1\' changed from 2 in tmpdir/common1a.o to 21 in tmpdir/common1b.o" $link_output] } {
+    fail "$test1 (warning 1)"
+} else {
+    pass "$test1 (warning 1)"
+}
+
+if { [dump_common1 "$test1 (change 1)"] } {
+    pass "$test1 (change 1)"
+}
+
+if { [ld_simple_link $ld tmpdir/common1.o "-r tmpdir/common1b.o tmpdir/common1a.o"] } {
+    unresolved "$test1 (warning 2)"
+    return
+}
+
+if { ![regexp "Warning: alignment (\[0-9\]+) of symbol \`_?foo1\' in tmpdir/common1b.o is smaller than 64 in tmpdir/common1a.o" $link_output] } {
+    fail "$test1 (warning 2)"
+} else {
+    pass "$test1 (warning 2)"
+}
+
+if { [dump_common1 "$test1 (change 2)"] } {
+    pass "$test1 (change 2)"
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@@
+
+
+1.1.2.2
+log
+@GNU Binutils, version 2.15
+@
+text
+@d24 5
+a28 1
+if ![is_elf_format] {
+d32 2
+a33 11
+set test1	"size/aligment change of common symbols"
+set test1w1	"$test1 (warning 1)"
+set test1w2	"$test1 (warning 2)"
+set test1c1	"$test1 (change 1)"
+set test1c2	"$test1 (change 2)"
+
+if { [which $CC] == 0 } {
+    untested $test1w1
+    untested $test1w2
+    untested $test1c1
+    untested $test1c2
+a38 1
+    global READELF
+d40 2
+a41 2
+    send_log "$READELF -s tmpdir/common1.o | grep foo\n"
+    catch "exec $READELF -s tmpdir/common1.o | grep foo" exec_output
+d53 1
+d64 1
+a64 1
+    unresolved $test1w1
+d70 1
+a70 1
+    fail $test1w1
+d72 1
+a72 1
+    pass $test1w1
+d75 2
+a76 2
+if { [dump_common1 $test1c1] } {
+    pass $test1c1
+d80 1
+a80 1
+    unresolved $test1w2
+d85 1
+a85 1
+    fail $test1w2
+d87 1
+a87 1
+    pass $test1w2
+d90 2
+a91 2
+if { [dump_common1 $test1c2] } {
+    pass $test1c2
+@
+

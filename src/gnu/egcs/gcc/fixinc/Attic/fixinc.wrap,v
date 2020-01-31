@@ -1,0 +1,250 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.07.20.18.25.16;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.37.00;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.37.00;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Now that most stuff is updated and/or deprecated, it's amazing with how few other infrastructure you can build fallback-gcc
+@
+text
+@#! /bin/sh
+# Create wrappers for include files instead of replacing them.
+#
+# This script is designed for systems whose include files can be fixed
+# by creating small wrappers around them.
+# An advantage of this method is that if the system include files are changed
+# (e.g. by OS upgrade), you need not re-run fixincludes.
+#
+# See README-fixinc for more information.
+
+# Directory in which to store the results.
+LIB=${1?"fixincludes: output directory not specified"}
+
+# Make sure it exists.
+if [ ! -d $LIB ]; then
+  mkdir $LIB || exit 1
+fi
+
+ORIG_DIR=`${PWDCMD-pwd}`
+
+# Make LIB absolute if it is relative.
+# Don't do this if not necessary, since may screw up automounters.
+case $LIB in
+/*)
+	;;
+*)
+	cd $LIB; LIB=`${PWDCMD-pwd}`
+	;;
+esac
+
+echo Building fixed headers in ${LIB}
+# Directory containing the original header files.
+shift
+if [ $# -eq 0 ] ; then
+  set /usr/include
+fi
+
+INLIST="$@@"
+
+for INPUT in ${INLIST} ; do
+cd ${ORIG_DIR}
+cd ${INPUT}
+
+# Some math.h files define struct exception, which conflicts with
+# the class exception defined in the C++ file std/stdexcept.h.  We
+# redefine it to __math_exception.  This is not a great fix, but I
+# haven't been able to think of anything better.
+file=math.h
+if [ -r $INPUT/$file ]; then
+  echo Checking $INPUT/$file
+  if grep 'struct exception' $INPUT/$file >/dev/null
+  then
+    echo Fixed $file
+    rm -f $LIB/$file
+    cat <<'__EOF__' >$LIB/$file
+#ifndef _MATH_H_WRAPPER
+#ifdef __cplusplus
+# define exception __math_exception
+#endif
+#include_next <math.h>
+#ifdef __cplusplus
+# undef exception
+#endif
+#define _MATH_H_WRAPPER
+#endif /* _MATH_H_WRAPPER */
+__EOF__
+    # Define _MATH_H_WRAPPER at the end of the wrapper, not the start,
+    # so that if #include_next gets another instance of the wrapper,
+    # this will follow the #include_next chain until we arrive at
+    # the real <math.h>.
+    chmod a+r $LIB/$file
+  fi
+fi
+
+# Similarly for struct queue in sys/stream.h.
+file=sys/stream.h
+if [ -r $INPUT/$file ]; then
+  echo Checking $INPUT/$file
+  if grep 'struct[ 	]*queue' $INPUT/$file >/dev/null
+  then
+    echo Fixed $file
+    mkdir -p $LIB/`dirname $file`
+    rm -f $LIB/$file
+    cat <<'__EOF__' >$LIB/$file
+#ifndef _SYS_STREAM_H_WRAPPER
+#ifdef __cplusplus
+# define queue __stream_queue
+#endif
+#include_next <sys/stream.h>
+#ifdef __cplusplus
+# undef queue
+#endif
+#define _SYS_STREAM_H_WRAPPER
+#endif /* _SYS_STREAM_H_WRAPPER */
+__EOF__
+    # Define _SYS_STREAM_H_WRAPPER at the end of the wrapper, not the start,
+    # so that if #include_next gets another instance of the wrapper,
+    # this will follow the #include_next chain until we arrive at
+    # the real <sys/stream.h>.
+    chmod a+r $LIB/$file
+  fi
+fi
+
+# Avoid the definition of the bool type in the Solaris 2.x curses.h when using
+# g++, since it's now an official type in the C++ language.
+file=curses.h
+if [ -r $INPUT/$file ]; then
+  echo Checking $INPUT/$file
+  w='[	 ]'
+  if grep "typedef$w$w*char$w$w*bool$w*;" $INPUT/$file >/dev/null
+  then
+    echo Fixed $file
+    rm -f $LIB/$file
+    cat <<'__EOF__' >$LIB/$file
+#ifndef _CURSES_H_WRAPPER
+#ifdef __cplusplus
+# define bool __curses_bool_t
+#endif
+#include_next <curses.h>
+#ifdef __cplusplus
+# undef bool
+#endif
+#define _CURSES_H_WRAPPER
+#endif /* _CURSES_H_WRAPPER */
+__EOF__
+    # Define _CURSES_H_WRAPPER at the end of the wrapper, not the start,
+    # so that if #include_next gets another instance of the wrapper,
+    # this will follow the #include_next chain until we arrive at
+    # the real <curses.h>.
+    chmod a+r $LIB/$file
+  fi
+fi
+
+done
+
+if [ x${INSTALL_ASSERT_H} != x ]
+then
+  cd ${ORIG_DIR}
+  rm -f include/assert.h
+  cp ${srcdir}/assert.h include/assert.h || exit 1
+  chmod a+r include/assert.h
+fi
+
+exit 0
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

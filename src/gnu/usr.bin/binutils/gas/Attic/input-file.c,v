@@ -1,0 +1,790 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.59.11;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.01.41;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.25;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.25;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.30.48;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.41.16;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.05.07;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.09.48;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* input_file.c - Deal with Input Files -
+   Copyright 1987, 1990, 1991, 1992, 1993, 1994, 1995, 1999, 2000, 2001
+   Free Software Foundation, Inc.
+
+   This file is part of GAS, the GNU Assembler.
+
+   GAS is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   GAS is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with GAS; see the file COPYING.  If not, write to the Free
+   Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+   02111-1307, USA.  */
+
+/* Confines all details of reading source bytes to this module.
+   All O/S specific crocks should live here.
+   What we lose in "efficiency" we gain in modularity.
+   Note we don't need to #include the "as.h" file. No common coupling!  */
+
+#include <stdio.h>
+#include <string.h>
+#include "as.h"
+#include "input-file.h"
+#include "safe-ctype.h"
+
+static int input_file_get PARAMS ((char *, int));
+
+/* This variable is non-zero if the file currently being read should be
+   preprocessed by app.  It is zero if the file can be read straight in.  */
+int preprocess = 0;
+
+/* This code opens a file, then delivers BUFFER_SIZE character
+   chunks of the file on demand.
+   BUFFER_SIZE is supposed to be a number chosen for speed.
+   The caller only asks once what BUFFER_SIZE is, and asks before
+   the nature of the input files (if any) is known.  */
+
+#define BUFFER_SIZE (32 * 1024)
+
+/* We use static data: the data area is not sharable.  */
+
+static FILE *f_in;
+static char *file_name;
+
+/* Struct for saving the state of this module for file includes.  */
+struct saved_file
+  {
+    FILE * f_in;
+    char * file_name;
+    int    preprocess;
+    char * app_save;
+  };
+
+/* These hooks accomodate most operating systems.  */
+
+void
+input_file_begin ()
+{
+  f_in = (FILE *) 0;
+}
+
+void
+input_file_end ()
+{
+}
+
+/* Return BUFFER_SIZE.  */
+unsigned int
+input_file_buffer_size ()
+{
+  return (BUFFER_SIZE);
+}
+
+int
+input_file_is_open ()
+{
+  return f_in != (FILE *) 0;
+}
+
+/* Push the state of our input, returning a pointer to saved info that
+   can be restored with input_file_pop ().  */
+
+char *
+input_file_push ()
+{
+  register struct saved_file *saved;
+
+  saved = (struct saved_file *) xmalloc (sizeof *saved);
+
+  saved->f_in = f_in;
+  saved->file_name = file_name;
+  saved->preprocess = preprocess;
+  if (preprocess)
+    saved->app_save = app_push ();
+
+  /* Initialize for new file.  */
+  input_file_begin ();
+
+  return (char *) saved;
+}
+
+void
+input_file_pop (arg)
+     char *arg;
+{
+  register struct saved_file *saved = (struct saved_file *) arg;
+
+  input_file_end ();		/* Close out old file.  */
+
+  f_in = saved->f_in;
+  file_name = saved->file_name;
+  preprocess = saved->preprocess;
+  if (preprocess)
+    app_pop (saved->app_save);
+
+  free (arg);
+}
+
+void
+input_file_open (filename, pre)
+     char *filename;		/* "" means use stdin. Must not be 0.  */
+     int pre;
+{
+  int c;
+  char buf[80];
+
+  preprocess = pre;
+
+  assert (filename != 0);	/* Filename may not be NULL.  */
+  if (filename[0])
+    {				/* We have a file name. Suck it and see.  */
+      f_in = fopen (filename, FOPEN_RT);
+      file_name = filename;
+    }
+  else
+    {				/* use stdin for the input file.  */
+      f_in = stdin;
+      file_name = _("{standard input}");	/* For error messages.  */
+    }
+  if (f_in == (FILE *) 0)
+    {
+      as_bad (_("can't open %s for reading"), file_name);
+      as_perror ("%s", file_name);
+      return;
+    }
+
+  c = getc (f_in);
+  if (c == '#')
+    {
+      /* Begins with comment, may not want to preprocess.  */
+      c = getc (f_in);
+      if (c == 'N')
+	{
+	  fgets (buf, 80, f_in);
+	  if (!strncmp (buf, "O_APP", 5) && ISSPACE (buf[5]))
+	    preprocess = 0;
+	  if (!strchr (buf, '\n'))
+	    ungetc ('#', f_in);	/* It was longer.  */
+	  else
+	    ungetc ('\n', f_in);
+	}
+      else if (c == 'A')
+	{
+	  fgets (buf, 80, f_in);
+	  if (!strncmp (buf, "PP", 2) && ISSPACE (buf[2]))
+	    preprocess = 1;
+	  if (!strchr (buf, '\n'))
+	    ungetc ('#', f_in);
+	  else
+	    ungetc ('\n', f_in);
+	}
+      else if (c == '\n')
+	ungetc ('\n', f_in);
+      else
+	ungetc ('#', f_in);
+    }
+  else
+    ungetc (c, f_in);
+}
+
+/* Close input file.  */
+
+void
+input_file_close ()
+{
+  /* Don't close a null file pointer.  */
+  if (f_in != NULL)
+    fclose (f_in);
+
+  f_in = 0;
+}
+
+/* This function is passed to do_scrub_chars.  */
+
+static int
+input_file_get (buf, buflen)
+     char *buf;
+     int buflen;
+{
+  int size;
+
+  size = fread (buf, sizeof (char), buflen, f_in);
+  if (size < 0)
+    {
+      as_perror (_("Can't read from %s"), file_name);
+      size = 0;
+    }
+  return size;
+}
+
+/* Read a buffer from the input file.  */
+
+char *
+input_file_give_next_buffer (where)
+     char *where;		/* Where to place 1st character of new buffer.  */
+{
+  char *return_value;		/* -> Last char of what we read, + 1.  */
+  register int size;
+
+  if (f_in == (FILE *) 0)
+    return 0;
+  /* fflush (stdin); could be done here if you want to synchronise
+     stdin and stdout, for the case where our input file is stdin.
+     Since the assembler shouldn't do any output to stdout, we
+     don't bother to synch output and input.  */
+  if (preprocess)
+    size = do_scrub_chars (input_file_get, where, BUFFER_SIZE);
+  else
+    size = fread (where, sizeof (char), BUFFER_SIZE, f_in);
+  if (size < 0)
+    {
+      as_perror (_("Can't read from %s"), file_name);
+      size = 0;
+    }
+  if (size)
+    return_value = where + size;
+  else
+    {
+      if (fclose (f_in))
+	as_perror (_("Can't close %s"), file_name);
+      f_in = (FILE *) 0;
+      return_value = 0;
+    }
+
+  return return_value;
+}
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweißer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1987, 1990, 1991, 1992, 1993, 1994, 1995, 1999, 2000
+d22 4
+a25 6
+/*
+ * Confines all details of reading source bytes to this module.
+ * All O/S specific crocks should live here.
+ * What we lose in "efficiency" we gain in modularity.
+ * Note we don't need to #include the "as.h" file. No common coupling!
+ */
+a28 1
+
+d31 1
+d36 1
+a36 2
+   preprocessed by app.  It is zero if the file can be read straight in.
+   */
+d39 5
+a43 7
+/*
+ * This code opens a file, then delivers BUFFER_SIZE character
+ * chunks of the file on demand.
+ * BUFFER_SIZE is supposed to be a number chosen for speed.
+ * The caller only asks once what BUFFER_SIZE is, and asks before
+ * the nature of the input files (if any) is known.
+ */
+d47 1
+a47 3
+/*
+ * We use static data: the data area is not sharable.
+ */
+d53 7
+a59 6
+struct saved_file {
+  FILE *f_in;
+  char *file_name;
+  int preprocess;
+  char *app_save;
+};
+d89 1
+d103 2
+a104 1
+  input_file_begin ();		/* Initialize for new file */
+d115 1
+a115 1
+  input_file_end ();		/* Close out old file */
+d139 1
+a139 1
+      f_in = fopen (filename, "r");
+d149 1
+a149 1
+      as_bad (_("Can't open %s for reading."), file_name);
+d156 2
+a157 1
+    {				/* Begins with comment, may not want to preprocess */
+d162 1
+a162 1
+	  if (!strcmp (buf, "O_APP\n"))
+d165 11
+a175 1
+	    ungetc ('#', f_in);	/* It was longer */
+d189 1
+d193 1
+d195 2
+a196 3
+    {
+      fclose (f_in);
+    }				/* don't close a null file pointer */
+d229 4
+a232 6
+  /*
+   * fflush (stdin); could be done here if you want to synchronise
+   * stdin and stdout, for the case where our input file is stdin.
+   * Since the assembler shouldn't do any output to stdout, we
+   * don't bother to synch output and input.
+   */
+d251 2
+a252 1
+  return (return_value);
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1987, 1990, 1991, 1992, 1993, 1994, 1995, 1999, 2000, 2001
+d22 6
+a27 4
+/* Confines all details of reading source bytes to this module.
+   All O/S specific crocks should live here.
+   What we lose in "efficiency" we gain in modularity.
+   Note we don't need to #include the "as.h" file. No common coupling!  */
+d31 1
+a33 1
+#include "safe-ctype.h"
+d38 2
+a39 1
+   preprocessed by app.  It is zero if the file can be read straight in.  */
+d42 7
+a48 5
+/* This code opens a file, then delivers BUFFER_SIZE character
+   chunks of the file on demand.
+   BUFFER_SIZE is supposed to be a number chosen for speed.
+   The caller only asks once what BUFFER_SIZE is, and asks before
+   the nature of the input files (if any) is known.  */
+d52 3
+a54 1
+/* We use static data: the data area is not sharable.  */
+d60 6
+a65 7
+struct saved_file
+  {
+    FILE * f_in;
+    char * file_name;
+    int    preprocess;
+    char * app_save;
+  };
+a94 1
+
+d108 1
+a108 2
+  /* Initialize for new file.  */
+  input_file_begin ();
+d119 1
+a119 1
+  input_file_end ();		/* Close out old file.  */
+d143 1
+a143 1
+      f_in = fopen (filename, FOPEN_RT);
+d153 1
+a153 1
+      as_bad (_("can't open %s for reading"), file_name);
+d160 1
+a160 2
+    {
+      /* Begins with comment, may not want to preprocess.  */
+d165 1
+a165 1
+	  if (!strncmp (buf, "O_APP", 5) && ISSPACE (buf[5]))
+d168 1
+a168 11
+	    ungetc ('#', f_in);	/* It was longer.  */
+	  else
+	    ungetc ('\n', f_in);
+	}
+      else if (c == 'A')
+	{
+	  fgets (buf, 80, f_in);
+	  if (!strncmp (buf, "PP", 2) && ISSPACE (buf[2]))
+	    preprocess = 1;
+	  if (!strchr (buf, '\n'))
+	    ungetc ('#', f_in);
+a181 1
+
+a184 1
+  /* Don't close a null file pointer.  */
+d186 3
+a188 2
+    fclose (f_in);
+
+d221 6
+a226 4
+  /* fflush (stdin); could be done here if you want to synchronise
+     stdin and stdout, for the case where our input file is stdin.
+     Since the assembler shouldn't do any output to stdout, we
+     don't bother to synch output and input.  */
+d245 1
+a245 2
+
+  return return_value;
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d2 1
+a2 1
+   Copyright 1987, 1990, 1991, 1992, 1993, 1994, 1995, 1999, 2000, 2001, 2003
+a28 1
+#include <errno.h>
+d33 1
+a33 1
+static int input_file_get (char *, int);
+d61 1
+a61 1
+/* These hooks accommodate most operating systems.  */
+d64 1
+a64 1
+input_file_begin (void)
+d70 1
+a70 1
+input_file_end (void)
+d76 1
+a76 1
+input_file_buffer_size (void)
+d82 1
+a82 1
+input_file_is_open (void)
+d91 1
+a91 1
+input_file_push (void)
+d110 2
+a111 1
+input_file_pop (char *arg)
+d127 3
+a129 2
+input_file_open (char *filename, /* "" means use stdin. Must not be 0.  */
+		 int pre)
+d138 1
+a138 1
+    {
+d143 1
+a143 2
+    {
+      /* Use stdin for the input file.  */
+d145 1
+a145 2
+      /* For error messages.  */
+      file_name = _("{standard input}");
+d147 1
+a147 5
+
+  if (f_in)
+    c = getc (f_in);
+
+  if (f_in == NULL || ferror (f_in))
+d149 2
+a150 10
+#ifdef BFD_ASSEMBLER
+      bfd_set_error (bfd_error_system_call);
+#endif
+      as_perror (_("Can't open %s for reading"), file_name);
+
+      if (f_in)
+	{
+	  fclose (f_in);
+	  f_in = NULL;
+	}
+d154 1
+d191 1
+a191 1
+input_file_close (void)
+d203 3
+a205 1
+input_file_get (char *buf, int buflen)
+a211 3
+#ifdef BFD_ASSEMBLER
+      bfd_set_error (bfd_error_system_call);
+#endif
+d221 2
+a222 1
+input_file_give_next_buffer (char *where /* Where to place 1st character of new buffer.  */)
+a238 3
+#ifdef BFD_ASSEMBLER
+      bfd_set_error (bfd_error_system_call);
+#endif
+d247 1
+a247 6
+	{
+#ifdef BFD_ASSEMBLER
+	  bfd_set_error (bfd_error_system_call);
+#endif
+	  as_perror (_("Can't close %s"), file_name);
+	}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1987, 1990, 1991, 1992, 1993, 1994, 1995, 1999, 2000, 2001
+d22 6
+a27 4
+/* Confines all details of reading source bytes to this module.
+   All O/S specific crocks should live here.
+   What we lose in "efficiency" we gain in modularity.
+   Note we don't need to #include the "as.h" file. No common coupling!  */
+d31 1
+a33 1
+#include "safe-ctype.h"
+d38 2
+a39 1
+   preprocessed by app.  It is zero if the file can be read straight in.  */
+d42 7
+a48 5
+/* This code opens a file, then delivers BUFFER_SIZE character
+   chunks of the file on demand.
+   BUFFER_SIZE is supposed to be a number chosen for speed.
+   The caller only asks once what BUFFER_SIZE is, and asks before
+   the nature of the input files (if any) is known.  */
+d52 3
+a54 1
+/* We use static data: the data area is not sharable.  */
+d60 6
+a65 7
+struct saved_file
+  {
+    FILE * f_in;
+    char * file_name;
+    int    preprocess;
+    char * app_save;
+  };
+a94 1
+
+d108 1
+a108 2
+  /* Initialize for new file.  */
+  input_file_begin ();
+d119 1
+a119 1
+  input_file_end ();		/* Close out old file.  */
+d143 1
+a143 1
+      f_in = fopen (filename, FOPEN_RT);
+d153 1
+a153 1
+      as_bad (_("can't open %s for reading"), file_name);
+d160 1
+a160 2
+    {
+      /* Begins with comment, may not want to preprocess.  */
+d165 1
+a165 1
+	  if (!strncmp (buf, "O_APP", 5) && ISSPACE (buf[5]))
+d168 1
+a168 11
+	    ungetc ('#', f_in);	/* It was longer.  */
+	  else
+	    ungetc ('\n', f_in);
+	}
+      else if (c == 'A')
+	{
+	  fgets (buf, 80, f_in);
+	  if (!strncmp (buf, "PP", 2) && ISSPACE (buf[2]))
+	    preprocess = 1;
+	  if (!strchr (buf, '\n'))
+	    ungetc ('#', f_in);
+a181 1
+
+a184 1
+  /* Don't close a null file pointer.  */
+d186 3
+a188 2
+    fclose (f_in);
+
+d221 6
+a226 4
+  /* fflush (stdin); could be done here if you want to synchronise
+     stdin and stdout, for the case where our input file is stdin.
+     Since the assembler shouldn't do any output to stdout, we
+     don't bother to synch output and input.  */
+d245 1
+a245 2
+
+  return return_value;
+@
+

@@ -1,0 +1,512 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.6
+	tg-mergefixes-1-branch:1.1.1.6.0.8
+	tg-mergefixes-1-base:1.1.1.6
+	MIROS_X:1.1.1.6.0.6
+	MIROS_X_BASE:1.1.1.6
+	tg-mergetmp-3:1.1.1.6
+	cvs-200411231430:1.1.1.6
+	MIRBSD_XP_MIRPPC:1.1.1.6.0.4
+	cvs-200410222040:1.1.1.6
+	tg-mergetmp-1:1.1.1.6
+	MIRBSD_XP_SPARC_BASE:1.1.1.6
+	MIRBSD_XP_SPARC:1.1.1.6.0.2
+	MIRBSD_7quater:1.1.1.5
+	cvs-200405160640:1.1.1.6
+	cvs-200401271800:1.1.1.5
+	cvs-200401261630:1.1.1.5
+	cvs-200401021645:1.1.1.5
+	MIRBSD_7_ALPHA:1.1.1.5.0.6
+	MIRBSD_7:1.1.1.5.0.4
+	cvs-200312222040:1.1.1.5
+	MIRBSD_7ter:1.1.1.5
+	MIRBSD_7_DEV:1.1.1.5.0.2
+	cvs-200310020700:1.1.1.5
+	cvs-200309271030:1.1.1.5
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.48.04;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.48.04;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.07.07.21.27.42;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.08.30.22.55.00;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.09.25.16.31.28;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2003.09.27.11.16.27;	author tg;	state Exp;
+branches;
+next	1.1.1.6;
+
+1.1.1.6
+date	2004.05.16.08.17.08;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: sdl.c,v 1.6 2003/03/03 22:22:23 cloder Exp $ */
+/*
+ * Copyright (c) 2003 Bob Beck.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * sdl.c - Implement spamd source lists
+ *
+ * This consists of everything we need to do to determine which lists
+ * someone is on. Spamd gets the connecting address, and looks it up
+ * against all lists to determine what deferral messages to feed back
+ * to the connecting machine. - The redirection to spamd will happen
+ * from pf in the kernel, first macth will rdr to us. Spamd (along with
+ * setup) must keep track of *all* matches, so as to tell someone all the
+ * lists that they are on.
+ */
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "sdl.h"
+
+static void sdl_free(struct sdlist *);
+static void sdl_clear(struct sdlist *);
+
+extern int debug;
+struct sdlist *blacklists = NULL;
+int blc = 0, blu = 0;
+
+int
+sdl_add(char *sdname, char *sdstring, char ** addrs, int addrc)
+{
+	int i, index = -1;
+	char astring[40];
+	unsigned int maskbits;
+	struct sdaddr *m, *n;
+
+	/*
+	 * if a blacklist of same tag name is already there, replace it,
+	 * otherwise append.
+	 */
+	for (i = 0; i < blu; i++) {
+		if (strcmp(blacklists[i].tag, sdname) == 0) {
+				index = i;
+				break;
+		}
+	}
+	if (index != -1) {
+		if (debug > 0)
+			printf("replacing list %s\n", blacklists[index].tag);
+		sdl_free(&blacklists[index]);
+	} else {
+		if (debug > 0)
+			printf("adding list %s\n", sdname);
+		index = blu;
+	}
+	if (index == blu && blu == blc) {
+		struct sdlist *tmp;
+		tmp = realloc (blacklists, (blc + 128) *
+		    sizeof(struct sdlist));
+		if (tmp == NULL)
+			return (-1);
+		blacklists = tmp;
+		blc += 128;
+		sdl_clear(&blacklists[index]);
+	}
+
+	if ((blacklists[index].tag = strdup(sdname)) == NULL)
+		goto misc_error;
+	if ((blacklists[index].string = strdup(sdstring)) == NULL)
+		goto misc_error;
+
+	blacklists[index].naddrs = addrc;
+
+	/*
+	 * Cycle through addrs, converting. We assume they are correctly
+	 * formatted v4 and v6 addrs, if they don't all convert correcly, the
+	 * add fails. Each address should be address/maskbits
+	 */
+	blacklists[index].addrs = malloc(addrc * sizeof(struct sdentry));
+	if (blacklists[index].addrs == NULL)
+		goto misc_error;
+
+	for(i = 0; i < addrc; i++) {
+		int j, k, af;
+
+		n = &blacklists[index].addrs[i].sda;
+		m = &blacklists[index].addrs[i].sdm;
+
+		j = sscanf(addrs[i], "%39[^/]/%u", astring, &maskbits);
+		if (j != 2)
+			goto parse_error;
+		if (maskbits > 128)
+			goto parse_error;
+		/*
+		 * sanity check! we don't allow a 0 mask -
+		 * don't blacklist the entire net.
+		 */
+		if (maskbits == 0)
+			goto parse_error;
+		if (strchr(astring, ':') != NULL)
+			af = AF_INET6;
+		else
+			af = AF_INET;
+		if (af == AF_INET && maskbits > 32)
+			goto parse_error;
+		j = inet_pton(af, astring, n);
+		if (j != 1)
+			goto parse_error;
+		if (debug > 0)
+			printf("added %s/%u\n", astring, maskbits);
+
+		/* set mask, borrowed from pf */
+		k = 0;
+		for (j = 0; j < 4; j++)
+			m->addr32[j] = 0;
+		while (maskbits >= 32) {
+			m->addr32[k++] = 0xffffffff;
+			maskbits -= 32;
+		}
+		for (j = 31; j > 31 - maskbits; --j)
+			m->addr32[k] |= (1 << j);
+		if (maskbits)
+			m->addr32[k] = htonl(m->addr32[k]);
+
+		/* mask off address bits that won't ever be used */
+		for (j = 0; j < 4; j++)
+			n->addr32[j] = n->addr32[j] & m->addr32[j];
+	}
+	if (index == blu) {
+		blu++;
+		blacklists[blu].tag = NULL;
+	}
+	return (0);
+ parse_error:
+	if (debug > 0)
+		printf("sdl_add: parse error, \"%s\"\n", addrs[i]);
+ misc_error:
+	sdl_free(&blacklists[index]);
+	return (-1);
+}
+
+
+/*
+ * Return 1 if the addresses a (with mask m) matches address b
+ * otherwise return 0. It is assumed that address a has been
+ * pre-masked out, we only need to mask b.
+ */
+int
+match_addr(struct sdaddr *a, struct sdaddr *m, struct sdaddr *b,
+    sa_family_t af)
+{
+	int	match = 0;
+
+	switch (af) {
+	case AF_INET:
+		if ((a->addr32[0]) ==
+		    (b->addr32[0] & m->addr32[0]))
+			match++;
+		break;
+	case AF_INET6:
+		if (((a->addr32[0]) ==
+		     (b->addr32[0] & m->addr32[0])) &&
+		    ((a->addr32[1]) ==
+		     (b->addr32[1] & m->addr32[1])) &&
+		    ((a->addr32[2]) ==
+		     (b->addr32[2] & m->addr32[2])) &&
+		    ((a->addr32[3]) ==
+		     (b->addr32[3] & m->addr32[3])))
+			match++;
+		break;
+	}
+	return (match);
+}
+
+
+/*
+ * Given an address and address family
+ * return list of pointers to matching nodes. or NULL if none.
+ */
+struct sdlist **
+sdl_lookup(struct sdlist *head, int af, void * src)
+{
+	int i, matches = 0;
+	struct sdlist *sdl;
+	struct sdentry *sda;
+	struct sdaddr *source = (struct sdaddr *) src;
+	static int sdnewlen = 0;
+	static struct sdlist **sdnew = NULL;
+
+	if (head == NULL)
+		return (NULL);
+	else
+		sdl = head;
+	while (sdl->tag != NULL) {
+		for (i = 0; i < sdl->naddrs; i++) {
+			sda = sdl->addrs + i;
+			if (match_addr(&sda->sda, &sda->sdm, source, af)) {
+				if (matches == sdnewlen) {
+					struct sdlist **tmp;
+
+					tmp = realloc(sdnew,
+					    (sdnewlen + 128) *
+					     sizeof(struct sdlist *));
+					if (tmp == NULL)
+						/*
+						 * XXX out of memory -
+						 * return what we have
+						 */
+						return (sdnew);
+					sdnew = tmp;
+					sdnewlen += 128;
+				}
+				sdnew[matches]= sdl;
+				matches++;
+				sdnew[matches]=NULL;
+				break;
+			}
+		}
+		sdl++;
+	}
+	return (sdnew);
+}
+
+static void
+sdl_free(struct sdlist *sdl)
+{
+	if (sdl->tag != NULL)
+		free(sdl->tag);
+
+	if (sdl->string != NULL)
+		free(sdl->string);
+
+	if (sdl->addrs != NULL)
+		free(sdl->addrs);
+
+	sdl_clear(sdl);
+}
+
+static void
+sdl_clear(struct sdlist *sdl)
+{
+	sdl->tag = NULL;
+	sdl->string = NULL;
+	sdl->addrs = NULL;
+	sdl->naddrs = 0;
+}
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync some stuff with OpenBSD
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: sdl.c,v 1.7 2003/07/06 21:57:27 deraadt Exp $ */
+a49 2
+int match_addr(struct sdaddr *a, struct sdaddr *m, struct sdaddr *b,
+    sa_family_t af);
+@
+
+
+1.1.1.3
+log
+@Synchronize with OpenBSD 3.4-beta
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: sdl.c,v 1.8 2003/08/22 21:50:34 david Exp $ */
+d104 1
+a104 1
+	 * formatted v4 and v6 addrs, if they don't all convert correctly, the
+@
+
+
+1.1.1.4
+log
+@Release Time. Synchronize with OpenBSD 3.4-current (base system).
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: sdl.c,v 1.9 2003/09/20 00:43:10 deraadt Exp $ */
+d71 2
+a72 2
+			index = i;
+			break;
+d86 1
+a86 2
+
+		tmp = realloc(blacklists, (blc + 128) *
+@
+
+
+1.1.1.5
+log
+@cvs is playing games with me.
+
+@@@@@@ CONSIDER THE TREE LOCKED NOW @@@@@@
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: sdl.c,v 1.10 2003/09/26 16:07:29 deraadt Exp $ */
+d256 9
+a264 3
+	free(sdl->tag);
+	free(sdl->string);
+	free(sdl->addrs);
+@
+
+
+1.1.1.6
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 2
+/*	$OpenBSD: sdl.c,v 1.12 2004/02/26 08:18:56 deraadt Exp $ */
+
+d191 1
+a191 1
+		    (b->addr32[0] & m->addr32[0])) &&
+d193 1
+a193 1
+		    (b->addr32[1] & m->addr32[1])) &&
+d195 1
+a195 1
+		    (b->addr32[2] & m->addr32[2])) &&
+d197 1
+a197 1
+		    (b->addr32[3] & m->addr32[3])))
+d216 2
+a217 2
+	int sdnewlen = 0;
+	struct sdlist **sdnew = NULL;
+d232 1
+a232 1
+					    sizeof(struct sdlist *));
+@
+
+

@@ -1,0 +1,245 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.04.06.04.30.23;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.30;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.30;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: consio2.S,v 1.1 2002/06/11 09:36:23 hugh Exp $ */
+/*	$NetBSD: consio2.S,v 1.1 2002/02/24 01:04:24 matt Exp $ */
+/*
+ * Copyright (c) 1994, 1998 Ludd, University of Lule}, Sweden.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *     This product includes software developed at Ludd, University of Lule}.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <machine/asm.h>
+
+/*
+ * int rom_putchar (int c)	==> putchar() using ROM-routines
+ */
+ENTRY(rom_putchar, 0x0004)		# save-mask: R2
+	movl	4(ap), r2		# move argument to R2
+	jsb	*_C_LABEL(rom_putc)	# write it
+	ret				# that is all
+
+
+/*
+ * int rom_getchar (void)	==> getchar() using ROM-routines
+ */
+ENTRY(rom_getchar, 0x0002)		# save-mask: R1
+loop:					# do {
+	jsb	*_C_LABEL(rom_getc)	#   call the getc-routine
+	tstl	r0			#   check if char ready
+	beql	loop			# } while (R0 == 0)
+	movl	r1, r0			# R1 holds char
+	ret				# we are done
+
+ENTRY(rom_testchar, 0)
+	mnegl	$1,r0
+	jsb	*_C_LABEL(rom_getc)
+	tstl	r0
+	beql	1f
+	movl	r1,r0
+1:	ret
+
+ENTRY(_rtt, 0)
+	halt
+
+
+/*
+ * int ka630_rom_getchar (void) ==> getchar() using ROM-routines on KA630
+ */
+ENTRY(ka630_rom_getchar, 0x0802)	# save-mask: R1, R11
+	movl	_C_LABEL(ka630_conspage),r11  # load location of console page
+1:					# do {
+	jsb	*0x1C(r11)		#   call the getc-routine (KA630_GETC)
+	blbc	r0,1b			# } while (R0 == 0)
+	movl	r1,r0			# R1 holds char
+	ret				# we are done
+
+ENTRY(ka630_rom_testchar, 0)
+	movl	_C_LABEL(ka630_conspage),r3
+	jsb	*0x1C(r3)
+	blbc	r0,1f
+	movl	r1,r0
+1:	ret
+
+/*
+ * int ka630_rom_putchar (int c) ==> putchar() using ROM-routines on KA630
+ */
+ENTRY(ka630_rom_putchar, 0x802)	# save-mask: R1, R11
+	movl	_C_LABEL(ka630_conspage),r11
+				# load location of console page
+1:				# do {
+	jsb	*0x20(r11)	#   is rom ready? (KA630_PUTC_POLL)
+	blbc	r0,1b		# } while (R0 == 0)
+	movl	4(ap),r1	# R1 holds char
+	jsb	*0x24(r11)	# output character (KA630_PUTC)
+	ret			# we are done
+
+/*
+ * int ka53_rom_getchar (void)	==> getchar() using ROM-routines on KA53
+ */
+ENTRY(ka53_rom_getchar, 0x0802)	# save-mask: R1, R11
+	movl	_C_LABEL(ka53_conspage),r11
+				# load location of console page
+1:				# do {
+	jsb	*0x64(r11)	#   test for char
+	blbc	r0,1b		# } while (R0 == 0)
+	jsb	*0x6c(r11)	# get the char
+	ret			# we are done
+
+ENTRY(ka53_rom_testchar, 0)
+	movl	_C_LABEL(ka53_conspage),r3
+	jsb	*0x64(r3)
+	blbc	r0,1f
+	jsb	*0x6c(r3)	# get the char
+1:	ret
+
+/*
+ * int ka53_rom_putchar (int c) ==> putchar() using ROM-routines on KA53
+ */
+ENTRY(ka53_rom_putchar, 0x0802)	# save-mask: R1, R11
+	movl	_C_LABEL(ka53_conspage),r11
+				# load location of console page
+1:				# do {
+	jsb	*0x20(r11)	#   is rom ready?
+	blbc	r0,1b		# } whi	le (R0 == 0)
+	movl	4(ap),r1	# R1 holds char
+	jsb	*0x24(r11)	# output character
+	ret			# we are done
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

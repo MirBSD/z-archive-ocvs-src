@@ -1,0 +1,279 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.10.30.18.07.50;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.44.24;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.24;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@It turns out that
+* mkisofs works
+* the "old-style" image built on cdrom34.fs works
+* the "new-style" image built on cdboot and with bsd.rd doesn't
+  (cdboot seems to be not initialized correctly, will
+   look after that later)
+* mkhybrid has lived out its life (report regressions
+  against mkisofs please)
+* we should bump the patchlevel and issue a warning if
+  the user installs the cdrtools port
+  (I don't delete mkisofs from the port yet, the MirPorts
+   framework is currently following MirOS #7 stable)
+* I should get my hands on the El Torito standard, and
+  a good copy of bochs :)
+@
+text
+@#
+# $Id: Makefile.in,v 1.1 2003/03/22 17:44:24 tg Exp $
+#
+## Makefile for mkhybrid - based on mkisofs v1.12
+# James Pearson 16/3/1999
+
+#### Start of system configuration section. ####
+
+srcdir = @@srcdir@@
+VPATH = @@srcdir@@
+
+CC = @@CC@@
+
+INSTALL = @@INSTALL@@
+INSTALL_PROGRAM = @@INSTALL_PROGRAM@@
+INSTALL_DATA = @@INSTALL_DATA@@
+
+LIBS = @@LIBS@@ -lhfs -lfile
+
+prefix = @@prefix@@
+exec_prefix =  @@exec_prefix@@
+
+bindir = @@bindir@@
+
+RANLIB = @@RANLIB@@
+
+libhfsdir = libhfs_iso
+LIBHFS = $(libhfsdir)/libhfs.a
+INCHFS = $(libhfsdir)/hfs.h
+
+libfiledir = libfile
+LIBFILE = $(libfiledir)/libfile.a
+
+DEFINES = -DAPPLE_HYB
+
+COPTS=@@CFLAGS@@
+
+# Where to put the manual pages.
+mandir = $(prefix)/man/man8
+# Extension (not including `.') for the manual page filenames.
+manext = 8
+
+#### End of system configuration section. ####
+
+CFLAGS=$(COPTS) $(DEFINES) -I. -Iinclude -I$(libhfsdir) -DVANILLA_AUTOCONF
+LDFLAGS=@@LDFLAGS@@ -L$(libhfsdir) -L$(libfiledir)
+OBJS=mkisofs.o tree.o write.o hash.o rock.o multi.o \
+		joliet.o match.o name.o fnmatch.o eltorito.o \
+		apple.o volume.o desktop.o mac_label.o
+
+World: mkhybrid
+
+Makefile: Makefile.in config.status
+	CONFIG_FILES=Makefile CONFIG_HEADERS= $(SHELL) ./config.status
+
+config.status: configure
+	$(SHELL) config.status --recheck
+
+configure:  configure.in
+	cd $(srcdir) && autoconf
+
+mkhybrid: Makefile $(OBJS) $(LIBHFS) $(LIBFILE)
+	$(CC) $(LDFLAGS) -o mkhybrid $(OBJS) $(LIBS)
+
+mkisofs: Makefile $(OBJS) $(LIBHFS) $(LIBFILE)
+	$(CC) $(LDFLAGS) -o mkisofs $(OBJS) $(LIBS)
+
+apple_driver: apple_driver.o
+	$(CC) $(LDFLAGS) -o apple_driver  apple_driver.o
+apple_driver.o: apple_driver.c mac_label.h
+	$(CC) -c $(CFLAGS) $(srcdir)/apple_driver.c
+
+install: mkisofs mkisofs.8
+	[ -d $(bindir) ] || mkdir $(bindir)
+	[ -d $(mandir) ] || mkdir $(mandir)
+	$(INSTALL_PROGRAM) mkhybrid $(bindir)/mkhybrid
+	-$(INSTALL_DATA) $(srcdir)/mkhybrid.8 $(mandir)/mkhybrid.$(manext)
+
+tree.o: tree.c mkisofs.h iso9660.h exclude.h config.h Makefile
+	$(CC) -c $(CFLAGS) $(srcdir)/tree.c
+
+write.o: write.c mkisofs.h iso9660.h config.h Makefile
+	$(CC) -c $(CFLAGS) $(srcdir)/write.c
+
+hash.o: hash.c mkisofs.h  config.h Makefile
+	$(CC) -c $(CFLAGS) $(srcdir)/hash.c
+
+rock.o: rock.c mkisofs.h iso9660.h config.h Makefile
+	$(CC) -c $(CFLAGS) $(srcdir)/rock.c
+
+joliet.o: joliet.c mkisofs.h iso9660.h config.h Makefile
+	$(CC) -c $(CFLAGS) $(srcdir)/joliet.c
+
+match.o: match.c match.h config.h Makefile
+	$(CC) -c $(CFLAGS) $(srcdir)/match.c
+
+fnmatch.o: fnmatch.c fnmatch.h config.h Makefile
+	$(CC) -c $(CFLAGS) $(srcdir)/fnmatch.c
+
+multi.o: multi.c iso9660.h mkisofs.h config.h Makefile
+	$(CC) -c $(CFLAGS) $(srcdir)/multi.c
+
+name.o: name.c iso9660.h mkisofs.h config.h Makefile
+	$(CC) -c $(CFLAGS) $(srcdir)/name.c
+
+mkisofs.o: mkisofs.c iso9660.h mkisofs.h exclude.h config.h Makefile $(LIBHFS) $(INCHFS) $(LIBFILE)
+	$(CC) -c $(CFLAGS) $(srcdir)/mkisofs.c
+
+eltorito.o: eltorito.c iso9660.h mkisofs.h config.h Makefile
+	$(CC) -c $(CFLAGS) $(srcdir)/eltorito.c
+
+apple.o: apple.c apple.h Makefile mkisofs.h
+	$(CC) -c $(CFLAGS) $(srcdir)/apple.c
+
+volume.o: volume.c mkisofs.h config.h Makefile $(LIBHFS) $(INCHFS)
+	$(CC) -c $(CFLAGS) $(srcdir)/volume.c
+
+desktop.o: desktop.c mkisofs.h config.h Makefile $(LIBHFS) $(INCHFS)
+	$(CC) -c $(CFLAGS) $(srcdir)/desktop.c
+
+mac_label.o: mac_label.c mac_label.h Makefile config.h mkisofs.h
+	$(CC) -c $(CFLAGS) $(srcdir)/mac_label.c
+
+$(LIBHFS) ::
+	cd $(libhfsdir) && $(MAKE) CC="$(CC)" COPTS="$(COPTS)" DEFINES="$(DEFINES)" RANLIB="$(RANLIB)"
+
+$(LIBFILE) ::
+	cd $(libfiledir) && $(MAKE) CC="$(CC)" COPTS="$(COPTS)" DEFINES="$(DEFINES)" RANLIB="$(RANLIB)"
+
+clean:
+	/bin/rm -f *.o core mkhybrid apple_driver *~ #*#
+	/bin/rm -f config.status config.log config.cache config.h
+	(cd diag/; make clean)
+	(cd $(libhfsdir); make clean)
+	(cd $(libfiledir); make clean)
+
+#
+# All .h files except for config.h get copied.
+#
+dist:   Makefile
+	(mydir=`basename \`pwd\``;\
+	cd .. && tar -cvvf - $$mydir/README $$mydir/README.eltorito \
+	$$mydir/configure.in $$mydir/configure $$mydir/config.h.in \
+	$$mydir/Makefile.in  $$mydir/make.com $$mydir/TODO \
+	$$mydir/COPYING $$mydir/ChangeLog $$mydir/*.8 $$mydir/*.c \
+	$$mydir/mkisofs.spec $$mydir/acconfig.h \
+	$$mydir/install-sh $$mydir/[d-z]*.h \
+	$$mydir/README.session $$mydir/diag/Makefile.in \
+	$$mydir/diag/README $$mydir/diag/*.c $$mydir/diag/isoinfo.8 \
+	$$mydir/include/*.h | gzip -9 > $${mydir}.tar.gz)
+
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+# $Id: Makefile.in,v 1.2 2002/12/13 03:12:26 millert Exp $
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

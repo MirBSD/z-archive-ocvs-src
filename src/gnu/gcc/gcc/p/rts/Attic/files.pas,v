@@ -1,0 +1,454 @@
+head	1.2;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.13.04.53.47;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.01.26;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.01.26;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@no C++, Java(TM), Pascal, Objective C or Fortran 77 for a while
+as discussed on the mailing list
+@
+text
+@{ File handling routines
+
+  Copyright (C) 1997-2003 Free Software Foundation, Inc.
+
+  Authors: Jukka Virtanen <jtv@@hut.fi>
+           Frank Heckenbach <frank@@pascal.gnu.de>
+
+  This file is part of GNU Pascal.
+
+  GNU Pascal is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published
+  by the Free Software Foundation; either version 2, or (at your
+  option) any later version.
+
+  GNU Pascal is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with GNU Pascal; see the file COPYING. If not, write to the
+  Free Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+  02111-1307, USA.
+
+  As a special exception, if you link this file with files compiled
+  with a GNU compiler to produce an executable, this does not cause
+  the resulting executable to be covered by the GNU General Public
+  License. This exception does not however invalidate any other
+  reasons why the executable file might be covered by the GNU
+  General Public License. }
+
+{$gnu-pascal,I-}
+
+unit Files; attribute (name = 'GPC');
+
+interface
+
+uses RTSC, Error, Time, String, String2, FileName;
+
+type
+  Natural = 1 .. MaxInt;
+  IOSelectEvents = (SelectReadOrEOF, SelectRead, SelectEOF, SelectWrite, SelectException, SelectAlways);
+
+const
+  IOSelectEventMin = { @@@@ Low (IOSelectEvents); } SelectReadOrEOF;
+  IOSelectEventMax = Pred (SelectAlways);
+
+type
+  IOSelectType = record
+    f: PAnyFile;
+    Wanted: set of IOSelectEvents;
+    Occurred: set of IOSelectEventMin .. IOSelectEventMax
+  end;
+
+{ Waits for one of several events to happen. Returns when one or
+  more of the wanted events for one of the files occur. If they have
+  already occurred before calling the function, it returns
+  immediately. MicroSeconds can specify a timeout. If it is 0, the
+  function will return immediately, whether or not an event has
+  occurred. If it is negative, the function will wait forever until
+  an event occurs. The Events parameter can be Null, in which case
+  the function only waits for the timeout. If any of the file
+  pointers (f) in Events are nil or the files pointed to are closed,
+  they are simply ignored for convenience.
+
+  It returns the index of one of the files for which any event has
+  occurred. If events have occurred for several files, is it
+  undefined which of these file's index is returned. If no event
+  occurs until the timeout, 0 is returned. If an error occurs or the
+  target system does not have a select() system call and Events is
+  not Null, a negative value is returned. In the Occurred field of
+  the elements of Events, events that have occurred are set. The
+  state of events not wanted is undefined.
+
+  The possible events are:
+  SelectReadOrEOF: the file is at EOF or data can be read now.
+  SelectRead:      data can be read now.
+  SelectEOF:       the file is at EOF.
+  SelectWrite:     data can be written now.
+  SelectException: an exception occurred on the file.
+  SelectAlways:    if this is set, *all* requested events will be
+                   checked for this file in any case. Otherwise,
+                   checks may be skipped if already another event
+                   for this or another file was found.
+
+  Notes:
+  Checking for EOF requires some reading ahead internally (just like
+  the EOF function) which can be avoided by setting SelectReadOrEOF
+  instead of SelectRead and SelectEOF. If this is followed by, e.g.,
+  a BlockRead with 4 parameters, the last parameter will be 0 if and
+  only the file is at EOF, and otherwise, data will be read directly
+  from the file without reading ahead and buffering.
+
+  SelectAlways should be set for files for which events are
+  considered to be of higher priority than others. Otherwise, if one
+  is interested in just any event, not setting SelectAlways may be a
+  little faster. }
+function  IOSelect (var Events: array [m .. n: Natural] of IOSelectType; MicroSeconds: MicroSecondTimeType): Integer; attribute (name = '_p_IOSelect');
+
+{ A simpler interface to SelectIO for the most common use. Waits for
+  SelectReadOrEOF on all files and returns an index. }
+function  IOSelectRead (const Files: array [m .. n: Natural] of PAnyFile; MicroSeconds: MicroSecondTimeType): Integer; attribute (name = '_p_IOSelectRead');
+
+{ Bind a filename to an external file }
+procedure AssignFile   (var t: AnyFile; const FileName: String); attribute (name = '_p_Assign');
+procedure AssignBinary (var t: Text; const FileName: String); attribute (name = '_p_AssignBinary');
+procedure AssignHandle (var t: AnyFile; Handle: Integer; CloseFlag: Boolean); attribute (name = '_p_AssignHandle');
+
+{ BP compatible seeking routines }
+function  Internal_SeekEOF  (var f: Text): Boolean; attribute (name = '_p_SeekEOF');
+function  Internal_SeekEOLn (var f: Text): Boolean; attribute (name = '_p_SeekEOLn');
+
+{ Under development }
+procedure AnyStringTFDD_Reset (var f: AnyFile; var Buf: ConstAnyString); attribute (name = '_p_AnyStringTFDD_Reset');
+{ @@@@ procedure AnyStringTFDD_Rewrite (var f: AnyFile; var Buf: VarAnyString); attribute (name = '_p_AnyStringTFDD_Rewrite'); }
+procedure StringTFDD_Reset (var f: AnyFile; var Buf: ConstAnyString; const s: String); attribute (name = '_p_StringTFDD_Reset');
+{ @@@@ procedure StringTFDD_Rewrite (var f: AnyFile; var Buf: VarAnyString; var s: String); attribute (name = '_p_StringTFDD_Rewrite'); }
+
+{@@internal}
+procedure Internal_Assign (var t: AnyFile; FileName: CString; NameLength: Integer); attribute (name = '_p_InternalAssign');
+procedure Internal_Rename (var aFile: AnyFile; const NewName: String); attribute (name = '_p_Rename');
+procedure Internal_ChDir (const Path: String); attribute (name = '_p_ChDir');
+procedure Internal_MkDir (const Path: String); attribute (name = '_p_MkDir');
+procedure Internal_RmDir (const Path: String); attribute (name = '_p_RmDir');
+
+{ Various other versions of Reset, Rewrite and Extend are still overloaded magically }
+procedure Internal_Reset   (var f: AnyFile; const aFileName: String; FileNameGiven: Boolean; BufferSize: Integer); attribute (name = '_p_Reset');
+procedure Internal_Rewrite (var f: AnyFile; const aFileName: String; FileNameGiven: Boolean; BufferSize: Integer); attribute (name = '_p_Rewrite');
+procedure Internal_Extend  (var f: AnyFile; const aFileName: String; FileNameGiven: Boolean; BufferSize: Integer); attribute (name = '_p_Extend');
+{@@endinternal}
+
+{ Returns True is a terminal device is open on the file f, False if
+  f is not open or not connected to a terminal. }
+function  IsTerminal (protected var f: AnyFile): Boolean; attribute (name = '_p_IsTerminal');
+
+{ Returns the file name of the terminal device that is open on the
+  file f. Returns the empty string if (and only if) f is not open or
+  not connected to a terminal. }
+function  GetTerminalName (protected var f: AnyFile): TString; attribute (name = '_p_GetTerminalName');
+
+implementation
+
+procedure AssignFile (var t: AnyFile; const FileName: String);
+var B: BindingType;
+begin
+  Unbind (t);
+  B := Binding (t);
+  B.Name := FileName;
+  B.Force := True;
+  SetReturnAddress (ReturnAddress (0));
+  Bind (t, B);
+  RestoreReturnAddress
+end;
+
+procedure Internal_Assign (var t: AnyFile; FileName: CString; NameLength: Integer);
+var B: BindingType;
+begin
+  Unbind (t);
+  B := Binding (t);
+  if NameLength = 0 then
+    B.Name := ''
+  else
+    B.Name := {$local cstrings-as-strings} FileName[0 .. NameLength - 1] {$endlocal};
+  Bind (t, B)
+end;
+
+procedure Internal_Rename (var aFile: AnyFile; const NewName: String);
+begin
+  FileMove (aFile, NewName, False)
+end;
+
+procedure Internal_ChDir (const Path: String);
+begin
+  if (InOutRes = 0) and (CStringChDir (Path) <> 0) then
+    IOErrorCString (483, Path, True);  { cannot change to directory `%s' }
+end;
+
+procedure Internal_MkDir (const Path: String);
+begin
+  if (InOutRes = 0) and (CStringMkDir (Path) <> 0) then
+    IOErrorCString (484, Path, True);  { cannot make directory `%s' }
+end;
+
+procedure Internal_RmDir (const Path: String);
+begin
+  if (InOutRes = 0) and (CStringRmDir (Path) <> 0) then
+    IOErrorCString (485, Path, True);  { cannot remove directory `%s' }
+end;
+
+procedure Internal_Reset (var f: AnyFile; const aFileName: String; FileNameGiven: Boolean; BufferSize: Integer);
+begin
+  SetReturnAddress (ReturnAddress (0));
+  if FileNameGiven then
+    GPC_Internal_Open (f, aFileName, Length (aFileName), BufferSize, fo_Reset)
+  else
+    GPC_Internal_Open (f, nil, 0, BufferSize, fo_Reset);
+  RestoreReturnAddress
+end;
+
+procedure Internal_Rewrite (var f: AnyFile; const aFileName: String; FileNameGiven: Boolean; BufferSize: Integer);
+begin
+  SetReturnAddress (ReturnAddress (0));
+  if FileNameGiven then
+    GPC_Internal_Open (f, aFileName, Length (aFileName), BufferSize, fo_Rewrite)
+  else
+    GPC_Internal_Open (f, nil, 0, BufferSize, fo_Rewrite);
+  RestoreReturnAddress
+end;
+
+procedure Internal_Extend (var f: AnyFile; const aFileName: String; FileNameGiven: Boolean; BufferSize: Integer);
+begin
+  SetReturnAddress (ReturnAddress (0));
+  if FileNameGiven then
+    GPC_Internal_Open (f, aFileName, Length (aFileName), BufferSize, fo_Append)
+  else
+    GPC_Internal_Open (f, nil, 0, BufferSize, fo_Append);
+  RestoreReturnAddress
+end;
+
+procedure AssignBinary (var t: Text; const FileName: String);
+var B: BindingType;
+begin
+  Unbind (t);
+  B := Binding (t);
+  B.Name := FileName;
+  B.Force := True;
+  B.TextBinary := True;
+  SetReturnAddress (ReturnAddress (0));
+  Bind (t, B);
+  RestoreReturnAddress
+end;
+
+procedure AssignHandle (var t: AnyFile; Handle: Integer; CloseFlag: Boolean);
+var B: BindingType;
+begin
+  Unbind (t);
+  B := Binding (t);
+  B.Handle := Handle;
+  B.CloseFlag := CloseFlag;
+  SetReturnAddress (ReturnAddress (0));
+  Bind (t, B);
+  RestoreReturnAddress
+end;
+
+function Internal_SeekEOF (var f: Text): Boolean;
+begin
+  repeat
+    if EOF (f) then
+      Return True
+    else if EOLn (f) then
+      ReadLn (f)
+    else if f^ > ' ' then
+      Return False
+    else
+      Get (f)
+  until False
+end;
+
+function Internal_SeekEOLn (var f: Text): Boolean;
+begin
+  repeat
+    if EOF (f) or EOLn (f) then
+      Return True
+    else if f^ > ' ' then
+      Return False
+    else
+      Get (f)
+  until False
+end;
+
+function IOSelect (var Events: array [m .. n: Natural] of IOSelectType; MicroSeconds: MicroSecondTimeType): Integer;
+var i: Integer;
+begin
+  SetReturnAddress (ReturnAddress (0));
+  if (@@Events = nil) or (m > n) then
+    IOSelect := InternalIOSelect (nil, 0, 0, MicroSeconds)
+  else
+    begin
+      var InternalEvents: array [m .. n] of InternalIOSelectType;
+      for i := m to n do
+        with Events[i], InternalEvents[i] do
+          begin
+            WantedReadOrEOF := SelectReadOrEOF in Wanted;
+            WantedRead      := SelectRead      in Wanted;
+            WantedEOF       := SelectEOF       in Wanted;
+            WantedWrite     := SelectWrite     in Wanted;
+            WantedException := SelectException in Wanted;
+            WantedAlways    := SelectAlways    in Wanted;
+            fi := f
+          end;
+      IOSelect := InternalIOSelect (@@InternalEvents[m], m, n - m + 1, MicroSeconds);
+      for i := m to n do
+        with Events[i], InternalEvents[i] do
+          begin
+            Occurred := [];
+            if OccurredReadOrEOF then Include (Occurred, SelectReadOrEOF);
+            if OccurredRead      then Include (Occurred, SelectRead);
+            if OccurredEOF       then Include (Occurred, SelectEOF);
+            if OccurredWrite     then Include (Occurred, SelectWrite);
+            if OccurredException then Include (Occurred, SelectException)
+          end
+    end;
+  RestoreReturnAddress
+end;
+
+function IOSelectRead (const Files: array [m .. n: Natural] of PAnyFile; MicroSeconds: MicroSecondTimeType): Integer;
+var i: Integer;
+begin
+  SetReturnAddress (ReturnAddress (0));
+  if (@@Files = nil) or (m > n) then
+    IOSelectRead := InternalIOSelect (nil, 0, 0, MicroSeconds)
+  else
+    begin
+      var InternalEvents: array [m .. n] of InternalIOSelectType;
+      for i := m to n do
+        with InternalEvents[i] do
+          begin
+            WantedReadOrEOF := True;
+            WantedRead      := False;
+            WantedEOF       := False;
+            WantedWrite     := False;
+            WantedException := False;
+            WantedAlways    := False;
+            fi := Files[i]
+          end;
+      IOSelectRead := InternalIOSelect (@@InternalEvents[m], m, n - m + 1, MicroSeconds)
+    end;
+  RestoreReturnAddress
+end;
+
+function StringTFDD_Read (var PrivateData; var Buffer; Size: SizeType) = Result: SizeType;
+begin
+  with ConstAnyString (PrivateData) do
+    begin
+      Result := Min (Size, Length);
+      Move (Chars^, Buffer, Result);
+      Chars := PChars (@@Chars^[Result + 1]);
+      Dec (Length, Result)
+    end
+end;
+
+procedure AnyStringTFDD_Reset (var f: AnyFile; var Buf: ConstAnyString);
+begin
+  AssignTFDD (f, nil, nil, nil, StringTFDD_Read, nil, nil, nil, nil, @@Buf);
+  Reset (f)
+end;
+
+procedure StringTFDD_Reset (var f: AnyFile; var Buf: ConstAnyString; const s: String);
+begin
+  Buf.Length := Length (s);
+  Buf.Chars := PChars (@@s[1]);
+  AnyStringTFDD_Reset (f, Buf)
+end;
+
+{$if False}  { @@@@ not used yet }
+function StringTFDD_Write (var PrivateData; const Buffer; Size: SizeType) = Result: SizeType;
+var CurLength: Cardinal;
+begin
+  with VarAnyString (PrivateData) do
+    begin
+      CurLength := VarAnyStringLength (VarAnyString (PrivateData));
+      Result := Max (0, VarAnyStringSetLength (VarAnyString (PrivateData),
+        Min (Capacity, CurLength + Size)) - CurLength);
+      Move (Buffer, Chars^[CurLength + 1], Result);
+      if Truncate then Result := Size
+    end
+end;
+
+procedure AnyStringTFDD_Rewrite (var f: AnyFile; var Buf: VarAnyString);
+var Dummy: Integer;
+begin
+  Dummy := VarAnyStringSetLength (Buf, 0);
+  AssignTFDD (f, nil, nil, nil, nil, StringTFDD_Write, nil, nil, nil, @@Buf);
+  Rewrite (f)
+end;
+
+procedure StringTFDD_Rewrite (var f: AnyFile; var Buf: VarAnyString; var s: String);
+begin
+  Buf.Capacity := s.Capacity;
+  Buf.Chars := PChars (@@s[1]);
+  Buf.Truncate := True;  { @@@@ }
+  Buf.StringType := AnyStringLong;
+  Buf.PLongLength := @@Cardinal (GPC_PString (@@s)^.Length);
+  AnyStringTFDD_Rewrite (f, Buf)
+end;
+{$endif}
+
+function IsTerminal (protected var f: AnyFile): Boolean;
+begin
+  IsTerminal := GetTerminalNameHandle (FileHandle (f), False, TtyDeviceName) <> nil
+end;
+
+function GetTerminalName (protected var f: AnyFile): TString;
+begin
+  GetTerminalName := CString2String (GetTerminalNameHandle (FileHandle (f), True, TtyDeviceName))
+end;
+
+end.
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

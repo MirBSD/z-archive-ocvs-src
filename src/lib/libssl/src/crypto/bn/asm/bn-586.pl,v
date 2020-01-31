@@ -1,0 +1,821 @@
+head	1.3;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	cvs-200408220000:1.1.1.3
+	MIRBSD_7quater:1.1.1.1
+	openssl-0_9_7d:1.1.3.2
+	cvs-200405160640:1.1.1.3
+	cvs-200403222025:1.1.1.2
+	cvs-200403181737:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	openssl-0_9_7c:1.1.3.1
+	openssl-0_9_7b:1.1.3.1
+	tg:1.1.3
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.3
+date	2004.05.23.17.25.27;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2003.12.26.23.09.02;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.47.23;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.23;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.21.08.14;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.09.33.01;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2003.10.29.15.53.36;	author tg;	state Exp;
+branches;
+next	1.1.3.2;
+
+1.1.3.2
+date	2004.05.23.17.05.09;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@triple-merge:
+* OpenBSD 3.5-current: libssl/libcrypto/manpages
+* OpenSSL 0.9.7d
+* v3_alt.c from OpenSSL HEAD revision
+
+also included: fixes and the like
+@
+text
+@#!/usr/local/bin/perl
+
+push(@@INC,"perlasm","../../perlasm");
+require "x86asm.pl";
+
+&asm_init($ARGV[0],$0);
+
+&bn_mul_add_words("bn_mul_add_words");
+&bn_mul_words("bn_mul_words");
+&bn_sqr_words("bn_sqr_words");
+&bn_div_words("bn_div_words");
+&bn_add_words("bn_add_words");
+&bn_sub_words("bn_sub_words");
+#&bn_sub_part_words("bn_sub_part_words");
+
+&asm_finish();
+
+sub bn_mul_add_words
+	{
+	local($name)=@@_;
+
+	&function_begin($name,"");
+
+	&comment("");
+	$Low="eax";
+	$High="edx";
+	$a="ebx";
+	$w="ebp";
+	$r="edi";
+	$c="esi";
+
+	&xor($c,$c);		# clear carry
+	&mov($r,&wparam(0));	#
+
+	&mov("ecx",&wparam(2));	#
+	&mov($a,&wparam(1));	#
+
+	&and("ecx",0xfffffff8);	# num / 8
+	&mov($w,&wparam(3));	#
+
+	&push("ecx");		# Up the stack for a tmp variable
+
+	&jz(&label("maw_finish"));
+
+	&set_label("maw_loop",0);
+
+	&mov(&swtmp(0),"ecx");	#
+
+	for ($i=0; $i<32; $i+=4)
+		{
+		&comment("Round $i");
+
+		 &mov("eax",&DWP($i,$a,"",0)); 	# *a
+		&mul($w);			# *a * w
+		&add("eax",$c);		# L(t)+= *r
+		 &mov($c,&DWP($i,$r,"",0));	# L(t)+= *r
+		&adc("edx",0);			# H(t)+=carry
+		 &add("eax",$c);		# L(t)+=c
+		&adc("edx",0);			# H(t)+=carry
+		 &mov(&DWP($i,$r,"",0),"eax");	# *r= L(t);
+		&mov($c,"edx");			# c=  H(t);
+		}
+
+	&comment("");
+	&mov("ecx",&swtmp(0));	#
+	&add($a,32);
+	&add($r,32);
+	&sub("ecx",8);
+	&jnz(&label("maw_loop"));
+
+	&set_label("maw_finish",0);
+	&mov("ecx",&wparam(2));	# get num
+	&and("ecx",7);
+	&jnz(&label("maw_finish2"));	# helps branch prediction
+	&jmp(&label("maw_end"));
+
+	&set_label("maw_finish2",1);
+	for ($i=0; $i<7; $i++)
+		{
+		&comment("Tail Round $i");
+		 &mov("eax",&DWP($i*4,$a,"",0));# *a
+		&mul($w);			# *a * w
+		&add("eax",$c);			# L(t)+=c
+		 &mov($c,&DWP($i*4,$r,"",0));	# L(t)+= *r
+		&adc("edx",0);			# H(t)+=carry
+		 &add("eax",$c);
+		&adc("edx",0);			# H(t)+=carry
+		 &dec("ecx") if ($i != 7-1);
+		&mov(&DWP($i*4,$r,"",0),"eax");	# *r= L(t);
+		 &mov($c,"edx");			# c=  H(t);
+		&jz(&label("maw_end")) if ($i != 7-1);
+		}
+	&set_label("maw_end",0);
+	&mov("eax",$c);
+
+	&pop("ecx");	# clear variable from
+
+	&function_end($name);
+	}
+
+sub bn_mul_words
+	{
+	local($name)=@@_;
+
+	&function_begin($name,"");
+
+	&comment("");
+	$Low="eax";
+	$High="edx";
+	$a="ebx";
+	$w="ecx";
+	$r="edi";
+	$c="esi";
+	$num="ebp";
+
+	&xor($c,$c);		# clear carry
+	&mov($r,&wparam(0));	#
+	&mov($a,&wparam(1));	#
+	&mov($num,&wparam(2));	#
+	&mov($w,&wparam(3));	#
+
+	&and($num,0xfffffff8);	# num / 8
+	&jz(&label("mw_finish"));
+
+	&set_label("mw_loop",0);
+	for ($i=0; $i<32; $i+=4)
+		{
+		&comment("Round $i");
+
+		 &mov("eax",&DWP($i,$a,"",0)); 	# *a
+		&mul($w);			# *a * w
+		&add("eax",$c);			# L(t)+=c
+		 # XXX
+
+		&adc("edx",0);			# H(t)+=carry
+		 &mov(&DWP($i,$r,"",0),"eax");	# *r= L(t);
+
+		&mov($c,"edx");			# c=  H(t);
+		}
+
+	&comment("");
+	&add($a,32);
+	&add($r,32);
+	&sub($num,8);
+	&jz(&label("mw_finish"));
+	&jmp(&label("mw_loop"));
+
+	&set_label("mw_finish",0);
+	&mov($num,&wparam(2));	# get num
+	&and($num,7);
+	&jnz(&label("mw_finish2"));
+	&jmp(&label("mw_end"));
+
+	&set_label("mw_finish2",1);
+	for ($i=0; $i<7; $i++)
+		{
+		&comment("Tail Round $i");
+		 &mov("eax",&DWP($i*4,$a,"",0));# *a
+		&mul($w);			# *a * w
+		&add("eax",$c);			# L(t)+=c
+		 # XXX
+		&adc("edx",0);			# H(t)+=carry
+		 &mov(&DWP($i*4,$r,"",0),"eax");# *r= L(t);
+		&mov($c,"edx");			# c=  H(t);
+		 &dec($num) if ($i != 7-1);
+		&jz(&label("mw_end")) if ($i != 7-1);
+		}
+	&set_label("mw_end",0);
+	&mov("eax",$c);
+
+	&function_end($name);
+	}
+
+sub bn_sqr_words
+	{
+	local($name)=@@_;
+
+	&function_begin($name,"");
+
+	&comment("");
+	$r="esi";
+	$a="edi";
+	$num="ebx";
+
+	&mov($r,&wparam(0));	#
+	&mov($a,&wparam(1));	#
+	&mov($num,&wparam(2));	#
+
+	&and($num,0xfffffff8);	# num / 8
+	&jz(&label("sw_finish"));
+
+	&set_label("sw_loop",0);
+	for ($i=0; $i<32; $i+=4)
+		{
+		&comment("Round $i");
+		&mov("eax",&DWP($i,$a,"",0)); 	# *a
+		 # XXX
+		&mul("eax");			# *a * *a
+		&mov(&DWP($i*2,$r,"",0),"eax");	#
+		 &mov(&DWP($i*2+4,$r,"",0),"edx");#
+		}
+
+	&comment("");
+	&add($a,32);
+	&add($r,64);
+	&sub($num,8);
+	&jnz(&label("sw_loop"));
+
+	&set_label("sw_finish",0);
+	&mov($num,&wparam(2));	# get num
+	&and($num,7);
+	&jz(&label("sw_end"));
+
+	for ($i=0; $i<7; $i++)
+		{
+		&comment("Tail Round $i");
+		&mov("eax",&DWP($i*4,$a,"",0));	# *a
+		 # XXX
+		&mul("eax");			# *a * *a
+		&mov(&DWP($i*8,$r,"",0),"eax");	#
+		 &dec($num) if ($i != 7-1);
+		&mov(&DWP($i*8+4,$r,"",0),"edx");
+		 &jz(&label("sw_end")) if ($i != 7-1);
+		}
+	&set_label("sw_end",0);
+
+	&function_end($name);
+	}
+
+sub bn_div_words
+	{
+	local($name)=@@_;
+
+	&function_begin($name,"");
+	&mov("edx",&wparam(0));	#
+	&mov("eax",&wparam(1));	#
+	&mov("ebx",&wparam(2));	#
+	&div("ebx");
+	&function_end($name);
+	}
+
+sub bn_add_words
+	{
+	local($name)=@@_;
+
+	&function_begin($name,"");
+
+	&comment("");
+	$a="esi";
+	$b="edi";
+	$c="eax";
+	$r="ebx";
+	$tmp1="ecx";
+	$tmp2="edx";
+	$num="ebp";
+
+	&mov($r,&wparam(0));	# get r
+	 &mov($a,&wparam(1));	# get a
+	&mov($b,&wparam(2));	# get b
+	 &mov($num,&wparam(3));	# get num
+	&xor($c,$c);		# clear carry
+	 &and($num,0xfffffff8);	# num / 8
+
+	&jz(&label("aw_finish"));
+
+	&set_label("aw_loop",0);
+	for ($i=0; $i<8; $i++)
+		{
+		&comment("Round $i");
+
+		&mov($tmp1,&DWP($i*4,$a,"",0)); 	# *a
+		 &mov($tmp2,&DWP($i*4,$b,"",0)); 	# *b
+		&add($tmp1,$c);
+		 &mov($c,0);
+		&adc($c,$c);
+		 &add($tmp1,$tmp2);
+		&adc($c,0);
+		 &mov(&DWP($i*4,$r,"",0),$tmp1); 	# *r
+		}
+
+	&comment("");
+	&add($a,32);
+	 &add($b,32);
+	&add($r,32);
+	 &sub($num,8);
+	&jnz(&label("aw_loop"));
+
+	&set_label("aw_finish",0);
+	&mov($num,&wparam(3));	# get num
+	&and($num,7);
+	 &jz(&label("aw_end"));
+
+	for ($i=0; $i<7; $i++)
+		{
+		&comment("Tail Round $i");
+		&mov($tmp1,&DWP($i*4,$a,"",0));	# *a
+		 &mov($tmp2,&DWP($i*4,$b,"",0));# *b
+		&add($tmp1,$c);
+		 &mov($c,0);
+		&adc($c,$c);
+		 &add($tmp1,$tmp2);
+		&adc($c,0);
+		 &dec($num) if ($i != 6);
+		&mov(&DWP($i*4,$r,"",0),$tmp1);	# *r
+		 &jz(&label("aw_end")) if ($i != 6);
+		}
+	&set_label("aw_end",0);
+
+#	&mov("eax",$c);		# $c is "eax"
+
+	&function_end($name);
+	}
+
+sub bn_sub_words
+	{
+	local($name)=@@_;
+
+	&function_begin($name,"");
+
+	&comment("");
+	$a="esi";
+	$b="edi";
+	$c="eax";
+	$r="ebx";
+	$tmp1="ecx";
+	$tmp2="edx";
+	$num="ebp";
+
+	&mov($r,&wparam(0));	# get r
+	 &mov($a,&wparam(1));	# get a
+	&mov($b,&wparam(2));	# get b
+	 &mov($num,&wparam(3));	# get num
+	&xor($c,$c);		# clear carry
+	 &and($num,0xfffffff8);	# num / 8
+
+	&jz(&label("aw_finish"));
+
+	&set_label("aw_loop",0);
+	for ($i=0; $i<8; $i++)
+		{
+		&comment("Round $i");
+
+		&mov($tmp1,&DWP($i*4,$a,"",0)); 	# *a
+		 &mov($tmp2,&DWP($i*4,$b,"",0)); 	# *b
+		&sub($tmp1,$c);
+		 &mov($c,0);
+		&adc($c,$c);
+		 &sub($tmp1,$tmp2);
+		&adc($c,0);
+		 &mov(&DWP($i*4,$r,"",0),$tmp1); 	# *r
+		}
+
+	&comment("");
+	&add($a,32);
+	 &add($b,32);
+	&add($r,32);
+	 &sub($num,8);
+	&jnz(&label("aw_loop"));
+
+	&set_label("aw_finish",0);
+	&mov($num,&wparam(3));	# get num
+	&and($num,7);
+	 &jz(&label("aw_end"));
+
+	for ($i=0; $i<7; $i++)
+		{
+		&comment("Tail Round $i");
+		&mov($tmp1,&DWP($i*4,$a,"",0));	# *a
+		 &mov($tmp2,&DWP($i*4,$b,"",0));# *b
+		&sub($tmp1,$c);
+		 &mov($c,0);
+		&adc($c,$c);
+		 &sub($tmp1,$tmp2);
+		&adc($c,0);
+		 &dec($num) if ($i != 6);
+		&mov(&DWP($i*4,$r,"",0),$tmp1);	# *r
+		 &jz(&label("aw_end")) if ($i != 6);
+		}
+	&set_label("aw_end",0);
+
+#	&mov("eax",$c);		# $c is "eax"
+
+	&function_end($name);
+	}
+
+sub bn_sub_part_words
+	{
+	local($name)=@@_;
+
+	&function_begin($name,"");
+
+	&comment("");
+	$a="esi";
+	$b="edi";
+	$c="eax";
+	$r="ebx";
+	$tmp1="ecx";
+	$tmp2="edx";
+	$num="ebp";
+
+	&mov($r,&wparam(0));	# get r
+	 &mov($a,&wparam(1));	# get a
+	&mov($b,&wparam(2));	# get b
+	 &mov($num,&wparam(3));	# get num
+	&xor($c,$c);		# clear carry
+	 &and($num,0xfffffff8);	# num / 8
+
+	&jz(&label("aw_finish"));
+
+	&set_label("aw_loop",0);
+	for ($i=0; $i<8; $i++)
+		{
+		&comment("Round $i");
+
+		&mov($tmp1,&DWP($i*4,$a,"",0)); 	# *a
+		 &mov($tmp2,&DWP($i*4,$b,"",0)); 	# *b
+		&sub($tmp1,$c);
+		 &mov($c,0);
+		&adc($c,$c);
+		 &sub($tmp1,$tmp2);
+		&adc($c,0);
+		 &mov(&DWP($i*4,$r,"",0),$tmp1); 	# *r
+		}
+
+	&comment("");
+	&add($a,32);
+	 &add($b,32);
+	&add($r,32);
+	 &sub($num,8);
+	&jnz(&label("aw_loop"));
+
+	&set_label("aw_finish",0);
+	&mov($num,&wparam(3));	# get num
+	&and($num,7);
+	 &jz(&label("aw_end"));
+
+	for ($i=0; $i<7; $i++)
+		{
+		&comment("Tail Round $i");
+		&mov($tmp1,&DWP(0,$a,"",0));	# *a
+		 &mov($tmp2,&DWP(0,$b,"",0));# *b
+		&sub($tmp1,$c);
+		 &mov($c,0);
+		&adc($c,$c);
+		 &sub($tmp1,$tmp2);
+		&adc($c,0);
+		&mov(&DWP(0,$r,"",0),$tmp1);	# *r
+		&add($a, 4);
+		&add($b, 4);
+		&add($r, 4);
+		 &dec($num) if ($i != 6);
+		 &jz(&label("aw_end")) if ($i != 6);
+		}
+	&set_label("aw_end",0);
+
+	&cmp(&wparam(4),0);
+	&je(&label("pw_end"));
+
+	&mov($num,&wparam(4));	# get dl
+	&cmp($num,0);
+	&je(&label("pw_end"));
+	&jge(&label("pw_pos"));
+
+	&comment("pw_neg");
+	&mov($tmp2,0);
+	&sub($tmp2,$num);
+	&mov($num,$tmp2);
+	&and($num,0xfffffff8);	# num / 8
+	&jz(&label("pw_neg_finish"));
+
+	&set_label("pw_neg_loop",0);
+	for ($i=0; $i<8; $i++)
+	{
+	    &comment("dl<0 Round $i");
+
+	    &mov($tmp1,0);
+	    &mov($tmp2,&DWP($i*4,$b,"",0)); 	# *b
+	    &sub($tmp1,$c);
+	    &mov($c,0);
+	    &adc($c,$c);
+	    &sub($tmp1,$tmp2);
+	    &adc($c,0);
+	    &mov(&DWP($i*4,$r,"",0),$tmp1); 	# *r
+	}
+	    
+	&comment("");
+	&add($b,32);
+	&add($r,32);
+	&sub($num,8);
+	&jnz(&label("pw_neg_loop"));
+	    
+	&set_label("pw_neg_finish",0);
+	&mov($tmp2,&wparam(4));	# get dl
+	&mov($num,0);
+	&sub($num,$tmp2);
+	&and($num,7);
+	&jz(&label("pw_end"));
+	    
+	for ($i=0; $i<7; $i++)
+	{
+	    &comment("dl<0 Tail Round $i");
+	    &mov($tmp1,0);
+	    &mov($tmp2,&DWP($i*4,$b,"",0));# *b
+	    &sub($tmp1,$c);
+	    &mov($c,0);
+	    &adc($c,$c);
+	    &sub($tmp1,$tmp2);
+	    &adc($c,0);
+	    &dec($num) if ($i != 6);
+	    &mov(&DWP($i*4,$r,"",0),$tmp1);	# *r
+	    &jz(&label("pw_end")) if ($i != 6);
+	}
+
+	&jmp(&label("pw_end"));
+	
+	&set_label("pw_pos",0);
+	
+	&and($num,0xfffffff8);	# num / 8
+	&jz(&label("pw_pos_finish"));
+
+	&set_label("pw_pos_loop",0);
+
+	for ($i=0; $i<8; $i++)
+	{
+	    &comment("dl>0 Round $i");
+
+	    &mov($tmp1,&DWP($i*4,$a,"",0));	# *a
+	    &sub($tmp1,$c);
+	    &mov(&DWP($i*4,$r,"",0),$tmp1);	# *r
+	    &jnc(&label("pw_nc".$i));
+	}
+	    
+	&comment("");
+	&add($a,32);
+	&add($r,32);
+	&sub($num,8);
+	&jnz(&label("pw_pos_loop"));
+	    
+	&set_label("pw_pos_finish",0);
+	&mov($num,&wparam(4));	# get dl
+	&and($num,7);
+	&jz(&label("pw_end"));
+	    
+	for ($i=0; $i<7; $i++)
+	{
+	    &comment("dl>0 Tail Round $i");
+	    &mov($tmp1,&DWP($i*4,$a,"",0));	# *a
+	    &sub($tmp1,$c);
+	    &mov(&DWP($i*4,$r,"",0),$tmp1);	# *r
+	    &jnc(&label("pw_tail_nc".$i));
+	    &dec($num) if ($i != 6);
+	    &jz(&label("pw_end")) if ($i != 6);
+	}
+	&mov($c,1);
+	&jmp(&label("pw_end"));
+
+	&set_label("pw_nc_loop",0);
+	for ($i=0; $i<8; $i++)
+	{
+	    &mov($tmp1,&DWP($i*4,$a,"",0));	# *a
+	    &mov(&DWP($i*4,$r,"",0),$tmp1);	# *r
+	    &set_label("pw_nc".$i,0);
+	}
+	    
+	&comment("");
+	&add($a,32);
+	&add($r,32);
+	&sub($num,8);
+	&jnz(&label("pw_nc_loop"));
+	    
+	&mov($num,&wparam(4));	# get dl
+	&and($num,7);
+	&jz(&label("pw_nc_end"));
+	    
+	for ($i=0; $i<7; $i++)
+	{
+	    &mov($tmp1,&DWP($i*4,$a,"",0));	# *a
+	    &mov(&DWP($i*4,$r,"",0),$tmp1);	# *r
+	    &set_label("pw_tail_nc".$i,0);
+	    &dec($num) if ($i != 6);
+	    &jz(&label("pw_nc_end")) if ($i != 6);
+	}
+
+	&set_label("pw_nc_end",0);
+	&mov($c,0);
+
+	&set_label("pw_end",0);
+
+#	&mov("eax",$c);		# $c is "eax"
+
+	&function_end($name);
+	}
+
+@
+
+
+1.2
+log
+@merge conflicts
+remove unused files
+@
+text
+@d14 1
+a14 1
+&bn_sub_part_words("bn_sub_part_words") unless $main'openbsd;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d14 1
+a14 1
+&bn_sub_part_words("bn_sub_part_words");
+@
+
+
+1.1.3.1
+log
+@for the damned sixth time: try to import (stock) OpenSSL 0.9.7b (on which
+the OpenBSD-openssl and our libcrypto and libssl are based) into a vendor
+branch in order to schedule an update to OpenSSL.
+
+CVS hates me today.
+@
+text
+@@
+
+
+1.1.3.2
+log
+@Import OpenSSL 0.9.7d into vendor branch to ease future updates
+OpenBSD has patched libssl up to 0.9.7d as well.
+@
+text
+@d14 1
+a14 1
+#&bn_sub_part_words("bn_sub_part_words");
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d14 1
+a14 1
+&bn_sub_part_words("bn_sub_part_words") unless $main'openbsd;
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d14 1
+a14 1
+#&bn_sub_part_words("bn_sub_part_words");
+@
+
+

@@ -1,0 +1,365 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410222320:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200309171845:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	cvs-20030329-2200:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.44.37;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.37;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+ * Copyright (c) 2000-2001 Sendmail, Inc. and its suppliers.
+ *      All rights reserved.
+ * Copyright (c) 1992
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * By using this file, you agree to the terms and conditions set
+ * forth in the LICENSE file which can be found at the top level of
+ * the sendmail distribution.
+ */
+
+#include <sm/gen.h>
+SM_IDSTR(id, "@@(#)$Sendmail: strto.c,v 1.18 2001/12/30 04:59:37 gshapiro Exp $")
+
+#include <sys/param.h>
+#include <sys/types.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <errno.h>
+#include <sm/limits.h>
+#include <sm/conf.h>
+#include <sm/string.h>
+
+/*
+**  SM_STRTOLL --  Convert a string to a (signed) long long integer.
+**
+**  Ignores `locale' stuff.  Assumes that the upper and lower case
+**  alphabets and digits are each contiguous.
+**
+**	Parameters:
+**		nptr -- string containing number
+**		endptr -- location of first invalid character
+**		base -- numeric base that 'nptr' number is based in
+**
+**	Returns:
+**		Failure: on underflow LLONG_MIN is returned; on overflow
+**			LLONG_MAX is returned and errno is set.
+**			When 'endptr' == '\0' then the entire string 'nptr'
+**			was valid.
+**		Success: returns the converted number
+*/
+
+LONGLONG_T
+sm_strtoll(nptr, endptr, base)
+	const char *nptr;
+	char **endptr;
+	register int base;
+{
+	register bool neg;
+	register const char *s;
+	register LONGLONG_T acc, cutoff;
+	register int c;
+	register int any, cutlim;
+
+	/*
+	**  Skip white space and pick up leading +/- sign if any.
+	**  If base is 0, allow 0x for hex and 0 for octal, else
+	**  assume decimal; if base is already 16, allow 0x.
+	*/
+
+	s = nptr;
+	do
+	{
+		c = (unsigned char) *s++;
+	} while (isascii(c) && isspace(c));
+	if (c == '-')
+	{
+		neg = true;
+		c = *s++;
+	}
+	else
+	{
+		neg = false;
+		if (c == '+')
+			c = *s++;
+	}
+	if ((base == 0 || base == 16) &&
+	    c == '0' && (*s == 'x' || *s == 'X'))
+	{
+		c = s[1];
+		s += 2;
+		base = 16;
+	}
+	if (base == 0)
+		base = c == '0' ? 8 : 10;
+
+	/*
+	**  Compute the cutoff value between legal numbers and illegal
+	**  numbers.  That is the largest legal value, divided by the
+	**  base.  An input number that is greater than this value, if
+	**  followed by a legal input character, is too big.  One that
+	**  is equal to this value may be valid or not; the limit
+	**  between valid and invalid numbers is then based on the last
+	**  digit.  For instance, if the range for long-long's is
+	**  [-9223372036854775808..9223372036854775807] and the input base
+	**  is 10, cutoff will be set to 922337203685477580 and cutlim to
+	**  either 7 (!neg) or 8 (neg), meaning that if we have
+	**  accumulated a value > 922337203685477580, or equal but the
+	**  next digit is > 7 (or 8), the number is too big, and we will
+	**  return a range error.
+	**
+	**  Set any if any `digits' consumed; make it negative to indicate
+	**  overflow.
+	*/
+
+	cutoff = neg ? LLONG_MIN : LLONG_MAX;
+	cutlim = cutoff % base;
+	cutoff /= base;
+	if (neg)
+	{
+		if (cutlim > 0)
+		{
+			cutlim -= base;
+			cutoff += 1;
+		}
+		cutlim = -cutlim;
+	}
+	for (acc = 0, any = 0;; c = (unsigned char) *s++)
+	{
+		if (isascii(c) && isdigit(c))
+			c -= '0';
+		else if (isascii(c) && isalpha(c))
+			c -= isupper(c) ? 'A' - 10 : 'a' - 10;
+		else
+			break;
+		if (c >= base)
+			break;
+		if (any < 0)
+			continue;
+		if (neg)
+		{
+			if (acc < cutoff || (acc == cutoff && c > cutlim))
+			{
+				any = -1;
+				acc = LLONG_MIN;
+				errno = ERANGE;
+			}
+			else
+			{
+				any = 1;
+				acc *= base;
+				acc -= c;
+			}
+		}
+		else
+		{
+			if (acc > cutoff || (acc == cutoff && c > cutlim))
+			{
+				any = -1;
+				acc = LLONG_MAX;
+				errno = ERANGE;
+			}
+			else
+			{
+				any = 1;
+				acc *= base;
+				acc += c;
+			}
+		}
+	}
+	if (endptr != 0)
+		*endptr = (char *) (any ? s - 1 : nptr);
+	return acc;
+}
+
+/*
+**  SM_STRTOULL --  Convert a string to an unsigned long long integer.
+**
+**  Ignores `locale' stuff.  Assumes that the upper and lower case
+**  alphabets and digits are each contiguous.
+**
+**	Parameters:
+**		nptr -- string containing (unsigned) number
+**		endptr -- location of first invalid character
+**		base -- numeric base that 'nptr' number is based in
+**
+**	Returns:
+**		Failure: on overflow ULLONG_MAX is returned and errno is set.
+**			When 'endptr' == '\0' then the entire string 'nptr'
+**			was valid.
+**		Success: returns the converted number
+*/
+
+ULONGLONG_T
+sm_strtoull(nptr, endptr, base)
+	const char *nptr;
+	char **endptr;
+	register int base;
+{
+	register const char *s;
+	register ULONGLONG_T acc, cutoff;
+	register int c;
+	register bool neg;
+	register int any, cutlim;
+
+	/* See sm_strtoll for comments as to the logic used. */
+	s = nptr;
+	do
+	{
+		c = (unsigned char) *s++;
+	} while (isascii(c) && isspace(c));
+	neg = (c == '-');
+	if (neg)
+	{
+		c = *s++;
+	}
+	else
+	{
+		if (c == '+')
+			c = *s++;
+	}
+	if ((base == 0 || base == 16) &&
+	    c == '0' && (*s == 'x' || *s == 'X'))
+	{
+		c = s[1];
+		s += 2;
+		base = 16;
+	}
+	if (base == 0)
+		base = c == '0' ? 8 : 10;
+
+	cutoff = ULLONG_MAX / (ULONGLONG_T)base;
+	cutlim = ULLONG_MAX % (ULONGLONG_T)base;
+	for (acc = 0, any = 0;; c = (unsigned char) *s++)
+	{
+		if (isascii(c) && isdigit(c))
+			c -= '0';
+		else if (isascii(c) && isalpha(c))
+			c -= isupper(c) ? 'A' - 10 : 'a' - 10;
+		else
+			break;
+		if (c >= base)
+			break;
+		if (any < 0)
+			continue;
+		if (acc > cutoff || (acc == cutoff && c > cutlim))
+		{
+			any = -1;
+			acc = ULLONG_MAX;
+			errno = ERANGE;
+		}
+		else
+		{
+			any = 1;
+			acc *= (ULONGLONG_T)base;
+			acc += c;
+		}
+	}
+	if (neg && any > 0)
+		acc = -((LONGLONG_T) acc);
+	if (endptr != 0)
+		*endptr = (char *) (any ? s - 1 : nptr);
+	return acc;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

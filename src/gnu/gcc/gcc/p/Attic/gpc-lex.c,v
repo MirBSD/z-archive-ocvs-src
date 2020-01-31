@@ -1,0 +1,1580 @@
+head	1.2;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.13.04.53.19;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.00.25;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.00.25;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@no C++, Java(TM), Pascal, Objective C or Fortran 77 for a while
+as discussed on the mailing list
+@
+text
+@/*GNU Pascal compiler lexical analyzer
+
+  Copyright (C) 1989-2003, Free Software Foundation, Inc.
+
+  Authors: Jukka Virtanen <jtv@@hut.fi>
+           Peter Gerwinski <peter@@gerwinski.de>
+           Frank Heckenbach <frank@@pascal.gnu.de>
+
+  This file was originally derived from GCC's `c-lex.c'.
+
+  This file is part of GNU Pascal.
+
+  GNU Pascal is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published
+  by the Free Software Foundation; either version 1, or (at your
+  option) any later version.
+
+  GNU Pascal is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with GNU Pascal; see the file COPYING. If not, write to the
+  Free Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+  02111-1307, USA. */
+
+#include "gpc.h"
+
+#ifdef MULTIBYTE_CHARS
+#include <locale.h>
+#endif
+
+/* Don't use the locale dependent routines. */
+#undef isdigit
+#define isdigit new_isdigit
+static inline int isdigit PARAMS ((int));
+static inline int
+isdigit (c)
+     int c;
+{
+  return c >= '0' && c <= '9';
+}
+
+#undef isalnum
+#define isalnum new_isalnum
+static inline int isalnum PARAMS ((int));
+static inline int
+isalnum (c)
+     int c;
+{
+  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || isdigit (c);
+}
+
+int syntax_errors = 0;
+
+filename_t lexer_filename = NULL, compiler_filename = NULL;
+int lexer_lineno = 0, compiler_lineno = 0;
+
+/* Determines what the lexer currently returns for `=':
+   < 0 means: `='
+   = 0 means: LEX_CONST_EQUAL
+   > 0 means: `=', but after that many closing parentheses/brackets, return LEX_CONST_EQUAL */
+int lex_const_equal = -1;
+
+#ifdef EGCS
+FILE *finput;
+#endif
+
+/* Pointer to token buffer. Actual allocated length is maxtoken + 2. */
+static char *token_buffer;
+
+/* Newlines encountered in the preprocessed input (all files). */
+static int preprocessed_lineno = 0;
+
+/* Current nominal length of token buffer. */
+static int maxtoken;
+
+/* Nonzero if end-of-file has been seen on input. */
+static int end_of_file;
+
+/* Flag used for parsing `#line' directives. */
+int is_pascal_source = 1;
+
+/* Input stack for gpc_ungetc() below. */
+#define UNGETC_STACK_SIZE 42
+static char ungetc_stack[UNGETC_STACK_SIZE];
+static int ungetc_stack_position = 0;
+
+#ifndef HAVE_SIGALRM
+#ifdef SIGALRM
+#define HAVE_SIGALRM 1
+#endif
+#endif
+
+static void handle_progress_messages PARAMS ((int));
+static inline int gpc_getc PARAMS ((void));
+static inline void gpc_ungetc PARAMS ((int));
+static void store_exp PARAMS ((char **, int));
+static int compress_float PARAMS ((char *, char **));
+static int readescape PARAMS ((int *));
+static void do_comment PARAMS ((int));
+static inline int skip_white_space PARAMS ((int));
+static char *extend_token_buffer PARAMS ((char *));
+static int yylex_internal PARAMS ((void));
+
+#ifdef HAVE_SIGALRM
+/* Triggers for periodic progress output; set every
+   PROGRESS_TIME_INTERVAL microseconds. */
+#define PROGRESS_TIME_INTERVAL 200000  /* 5 Hz */
+static volatile int progress_message_alarm = 0;
+static void alarm_handler PARAMS ((int));
+
+/* Called periodically for outputting status messages. */
+static void alarm_handler (int sig)
+{
+  progress_message_alarm = 1;
+  signal (sig, &alarm_handler);
+#ifdef linux
+  siginterrupt (sig, 0);
+#endif
+}
+#endif
+
+/* Non-inline subroutine of gpc_getc () below. */
+static void
+handle_progress_messages (force)
+     int force;
+{
+  preprocessed_lineno++;
+#ifdef HAVE_SIGALRM
+  if (force || progress_message_alarm)
+    {
+      if (flag_progress_messages)
+        fprintf (stderr, "\001#progress# %s (%d)\n", input_filename, lineno);
+      if (flag_progress_bar)
+        fprintf (stderr, "\001#progress-bar# %d\n", preprocessed_lineno);
+      progress_message_alarm = 0;
+    }
+#else
+  if (flag_progress_messages && (force || lineno % 16 == 0))
+    fprintf (stderr, "\001#progress# %s (%d)\n", input_filename, lineno);
+  if (flag_progress_bar && (force || preprocessed_lineno % 16 == 0))
+    fprintf (stderr, "\001#progress-bar# %d\n", preprocessed_lineno);
+#endif
+}
+
+/* Read one character while handling `--debug-source',
+   `--progress-messages', and `--progress-bar'. */
+static inline int
+gpc_getc ()
+{
+  if (ungetc_stack_position)
+    return (ungetc_stack[--ungetc_stack_position]);
+  else
+    {
+      int ch = getc (finput);
+      if (co->debug_source && ch != EOF)
+        fputc (ch, stderr);
+      if ((ch == '\n' || ch == EOF) && (flag_progress_messages || flag_progress_bar))
+        handle_progress_messages (ch == EOF);
+      return ch;
+    }
+}
+
+/* Put one character back onto the input stack.
+   Since we are only gpc_ungetc()ing a *finite* (and small) number
+   of characters in sequence, there is no point in bothering with
+   dynamically growing stacks, but we use a static buffer. */
+static inline void
+gpc_ungetc (ch)
+     int ch;
+{
+  assert (ungetc_stack_position < UNGETC_STACK_SIZE);
+  ungetc_stack[ungetc_stack_position++] = ch;
+}
+
+void
+discard_input ()
+{
+  while (gpc_getc () != EOF) ;
+}
+
+/* Initialize the lexical analyzer. */
+void
+init_lex ()
+{
+#ifndef EGCS  /* otherwise done in lang_init */
+  add_pascal_tree_codes ();
+#endif
+
+#ifndef EGCS97
+  /* Make identifier nodes long enough for the language-specific slots. */
+  set_identifier_size (sizeof (struct lang_identifier));
+#endif
+
+  /* Start it at 0, because check_newline is called at the very beginning
+     and will increment it to 1. */
+  lineno = 0;
+
+#ifdef MULTIBYTE_CHARS
+  /* Change to the native locale for multibyte conversions. */
+  setlocale (LC_CTYPE, "");
+#endif
+
+  maxtoken = 40;
+  token_buffer = (char *) xmalloc (maxtoken + 2);
+
+#ifdef HAVE_SIGALRM
+  /* Periodically trigger the output of progress messages. */
+  if (flag_progress_messages || flag_progress_bar)
+    {
+      static struct itimerval timerval = { { 0, PROGRESS_TIME_INTERVAL },
+                                           { 0, PROGRESS_TIME_INTERVAL } };
+      signal (SIGALRM, &alarm_handler);
+#ifdef linux
+      siginterrupt (SIGALRM, 0);
+#endif
+      setitimer (ITIMER_REAL, &timerval, 0);
+    }
+#endif
+}
+
+static void
+do_comment (comment_type)
+     int comment_type;
+{
+  int comment_count = 1, comment1 = 1, comment2 = 1, c, c0, comment_is_directive, need_comma = 0;
+  int directive_name_size = 256, directive_name_length = 0, is_whole_directive = 0, first = 1;
+  char in_string = 0, *directive_name = (char *) xmalloc (directive_name_size);
+  *directive_name = 0;
+  if (comment_type == 1)
+    comment2 = co->mixed_comments;
+  else
+    comment1 = co->mixed_comments;
+  c = gpc_getc ();
+  comment_is_directive = c == '$';
+  if (comment_is_directive)
+    {
+      c = gpc_getc ();
+      co = (struct options *) xmalloc (sizeof (struct options));
+      memcpy (co, lexer_options, sizeof (struct options));
+      lexer_options->next = co;
+      lexer_options = co;
+      co->counter++;
+    }
+  c0 = 0;
+  do
+    {
+      int is_white = c == ' ' || c == '\t' || c == '\n' || c == '\r';
+      int d = gpc_getc ();
+      gpc_ungetc (d);
+      if (c == EOF)
+        {
+          error ("unterminated comment");
+          break;
+        }
+      if (c == '\n')
+        lineno++;
+      if (in_string && c == in_string)
+        in_string = 0;
+      else if (!in_string && comment_count == 1 && c0 != '^' && (c == '"' || c == '\''))
+        in_string = c;
+      else if (!in_string && ((comment1 && c == '}') || (comment2 && c == '*' && d == ')' && gpc_getc ())))
+        comment_count--;
+      else if (!in_string && co->nested_comments && ((comment1 && c == '{') || (comment2 && c == '(' && d == '*' && gpc_getc ())))
+        comment_count++;
+      else if (!in_string && comment_count == 1 && co->delphi_comments && c == '/' && d == '/' && gpc_getc ())
+        comment_is_directive = 0;
+      else if (comment_count != 1 || !comment_is_directive || (directive_name_length == 0 && is_white))
+        /* NOTHING */;
+      else if (need_comma)
+        {
+          need_comma = 0;
+          if (in_string || c != ',')
+            comment_is_directive = 0;
+        }
+      else if (!in_string && is_white && first && !strcmp (directive_name, "local"))
+        {
+          char tmp[6];
+          strcpy (tmp, "local");
+          process_pascal_directive (tmp, strlen (tmp));
+          first = 0;
+          directive_name_length = 0;
+          *directive_name = 0;
+        }
+      else if (in_string || is_whole_directive || c != ',')
+        {
+          if (!in_string && !is_whole_directive && c >= 'A' && c <= 'Z')
+            c += 'a' - 'A';
+          directive_name[directive_name_length++] = c;
+          if (directive_name_length == 2)
+            is_whole_directive = is_white
+              && (directive_name[0] == 'm' || directive_name[0] == 'l' || directive_name[0] == 'r');
+          if (directive_name_length >= directive_name_size)
+            directive_name = (char *) xrealloc (directive_name, directive_name_size *= 2);
+          directive_name[directive_name_length] = 0;
+        }
+      else
+        {
+          comment_is_directive = process_pascal_directive (directive_name, directive_name_length);
+          directive_name_length = 0;
+          is_whole_directive = 0;
+          need_comma = c != ',';
+          first = 0;
+        }
+      c0 = c;
+      c = gpc_getc ();
+    }
+  while (comment_count != 0);
+  gpc_ungetc (c);
+  if (in_string)
+    warning ("unterminated string in compiler directive");
+  if (comment_is_directive && !need_comma)
+    process_pascal_directive (directive_name, directive_name_length);
+  free (directive_name);
+}
+
+/* Skip white space, including comments, and dispatch compiler directives. */
+static inline int
+skip_white_space (c)
+     int c;
+{
+  while (1)
+    switch (c)
+    {
+      case '(':
+        c = gpc_getc ();
+        if (c != '*')
+          {
+            gpc_ungetc (c);
+            return '(';
+          }
+        do_comment (2);
+        c = gpc_getc ();
+        break;
+
+      case '{':
+        do_comment (1);
+        c = gpc_getc ();
+        break;
+
+      case '\n':
+        c = check_newline ();
+        break;
+
+      case ' ':
+      case '\t':
+      case '\f':
+      case '\v':
+      case '\r':
+      case '\b':
+        c = gpc_getc ();
+        break;
+
+      default:
+        return c;
+    }
+}
+
+/* The lexical analzyer itself. */
+
+/* Make the token buffer longer, preserving the data in it.
+   P should point to just beyond the last valid character in the old buffer.
+   The value we return is a pointer to the new buffer
+   at a place corresponding to P. */
+static char *
+extend_token_buffer (p)
+     char *p;
+{
+  int offset = p - token_buffer;
+  maxtoken = maxtoken * 2 + 10;
+  token_buffer = (char *) xrealloc (token_buffer, maxtoken + 2);
+  return token_buffer + offset;
+}
+
+/* At the beginning of a line, increment the line number
+   and handle a #line directive immediately following. */
+int
+check_newline ()
+{
+  int c, token, this_can_be_a_char_constant = 1;
+
+  lineno++;
+
+  /* Read first nonwhite char on the line. */
+  c = gpc_getc ();
+  while (c == ' ' || c == '\t' || c == '\r')
+    c = gpc_getc ();
+
+  /* If not #, return it so caller will use it. */
+  if (c != '#')
+    return c;
+
+  /* Read first nonwhite char after the `#'. */
+  c = gpc_getc ();
+  while (c == ' ' || c == '\t' || c == '\r')
+    {
+      this_can_be_a_char_constant = 0;
+      c = gpc_getc ();
+    }
+
+  /* If a letter follows, then if the word here is `line', skip
+     it and ignore it; otherwise, ignore the line, with an error
+     if the word isn't `pragma', `ident', `define', or `undef'. */
+  if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+    {
+      if (c == 'l')
+        {
+          if (gpc_getc () == 'i'
+              && gpc_getc () == 'n'
+              && gpc_getc () == 'e'
+              && ((c = gpc_getc ()) == ' ' || c == '\t' || c == '\r'))
+            {
+              this_can_be_a_char_constant = 0;
+              goto linenum;
+            }
+        }
+      else if (c == 'd')
+        {
+          if (gpc_getc () == 'e'
+              && gpc_getc () == 'f'
+              && gpc_getc () == 'i'
+              && gpc_getc () == 'n'
+              && gpc_getc () == 'e'
+              && ((c = gpc_getc ()) == ' ' || c == '\t' || c == '\n' || c == '\r'))
+            {
+              /* This is debugging output from `gpcpp'. */
+              goto skipline;
+            }
+        }
+      else if (c == 'u')
+        {
+          if (gpc_getc () == 'n'
+              && gpc_getc () == 'd'
+              && gpc_getc () == 'e'
+              && gpc_getc () == 'f'
+              && ((c = gpc_getc ()) == ' ' || c == '\t' || c == '\n' || c == '\r'))
+            {
+              /* This is debugging output from `gpcpp'. */
+              goto skipline;
+            }
+        }
+
+      error ("undefined or invalid # directive");
+      goto skipline;
+    }
+
+linenum:
+  /* Here we have either `#line' or `#<nonletter>'.
+
+     With `#line' it is clear that we are reading a line number;
+     with `#<nonletter>' it could be a Borland Pascal character
+     constant. In all cases, a digit should follow.
+
+     We interpret this as a line number if a whitespace follows.
+     (The preprocessor generates line number information of this kind.)
+     If the number follows immediately the `#', it is a character
+     constant unless this mechanism is disabled.
+
+     This is a kludge. It depends on the fact that gpcpp inserts
+     whitespace between the `#' and the number. */
+
+  while (c == ' ' || c == '\t' || c == '\r')
+    {
+      this_can_be_a_char_constant = 0;
+      c = gpc_getc ();
+    }
+
+  if (this_can_be_a_char_constant && (c == '$' || (c >= '0' && c <= '9')))
+    {
+      gpc_ungetc (c);
+      return '#';
+    }
+
+  /* If the # is the only nonwhite char on the line, just ignore it. Check the new newline. */
+  if (c == '\n')
+    return c;
+
+  /* Something follows the #; read a token. */
+  gpc_ungetc (c);
+  token = yylex_internal ();
+
+  if (token == LEX_INTCONST && TREE_CODE (yylval.ttype) == INTEGER_CST)
+    {
+      int old_lineno = lineno;
+
+      /* Subtract one, because it is the following line that gets the specified number. */
+      int l = TREE_INT_CST_LOW (yylval.ttype) - 1;
+
+      /* Is this the last nonwhite stuff on the line? */
+      c = gpc_getc ();
+      while (c == ' ' || c == '\t' || c == '\r')
+        c = gpc_getc ();
+      if (c == '\n')
+        {
+          /* No more: store the line number and check following line. */
+          lineno = l;
+          return c;
+        }
+      gpc_ungetc (c);
+
+      /* More follows: it must be a string constant (filename). */
+
+      /* The #line directives are generated by gpcpp. */
+      is_pascal_source = 0;
+
+      token = yylex_internal ();
+
+      is_pascal_source = 1;
+
+      if (token != LEX_STRCONST || TREE_CODE (yylval.ttype) != STRING_CST)
+        {
+          error ("invalid #line");
+          goto skipline;
+        }
+
+      /* Never free an input filename, since copies of the pointer are
+         kept around (in DECL_SOURCE_FILE etc.). */
+      input_filename = save_string (TREE_STRING_POINTER (yylval.ttype));
+      lineno = l;
+
+      if (!main_input_filename)
+        main_input_filename = input_filename;
+
+      /* Is this the last nonwhite stuff on the line? */
+      c = gpc_getc ();
+      while (c == ' ' || c == '\t' || c == '\r')
+        c = gpc_getc ();
+      if (c == '\n')
+        {
+          /* Update the name in the top element of input_file_stack. */
+          if (input_file_stack)
+            input_file_stack->name = input_filename;
+          return c;
+        }
+      gpc_ungetc (c);
+
+      token = yylex_internal ();
+
+      /* `1' after file name means entering new file.
+         `2' after file name means just left a file. */
+
+      if (token == LEX_INTCONST && TREE_CODE (yylval.ttype) == INTEGER_CST)
+        {
+          if (TREE_INT_CST_LOW (yylval.ttype) == 1)
+            {
+              /* Pushing to a new file. */
+              struct file_stack *p
+                = (struct file_stack *) xmalloc (sizeof (struct file_stack));
+              input_file_stack->line = old_lineno;
+              p->next = input_file_stack;
+              p->name = input_filename;
+              input_file_stack = p;
+              input_file_stack_tick++;
+#ifdef EGCS97
+              (*debug_hooks->start_source_file) (old_lineno, input_filename);
+#else
+              debug_start_source_file (input_filename);
+#endif
+            }
+          else if (TREE_INT_CST_LOW (yylval.ttype) == 2)
+            {
+              /* Popping out of a file. */
+              if (input_file_stack->next)
+                {
+                  struct file_stack *p = input_file_stack;
+                  input_file_stack = p->next;
+                  free (p);
+                  input_file_stack_tick++;
+#ifdef EGCS97
+                  (*debug_hooks->end_source_file) (input_file_stack->line);
+#else
+                  debug_end_source_file (input_file_stack->line);
+#endif
+                }
+              else
+                error ("#-lines for entering and leaving files don't match");
+            }
+        }
+
+      /* Now that we've pushed or popped the input stack,
+         update the name in the top element. */
+      if (input_file_stack)
+        input_file_stack->name = input_filename;
+    }
+  else
+    error ("invalid #-line");
+
+  /* skip the rest of this line. */
+ skipline:
+  if (c == '\n')
+    return c;
+  while ((c = gpc_getc ()) != EOF && c != '\n');
+  return c;
+}
+
+#define ENDFILE -1  /* token that represents end-of-file */
+
+/* Read an escape sequence, returning its equivalent as a character,
+   or store 1 in *ignore_ptr if it is backslash-newline. */
+static int
+readescape (ignore_ptr)
+     int *ignore_ptr;
+{
+  int c = gpc_getc ();
+  int code;
+  unsigned count;
+  int firstdig = 0;
+  int nonnull;
+
+  switch (c)
+  {
+    case 'x':
+      code = 0;
+      count = 0;
+      nonnull = 0;
+      while (1)
+        {
+          c = gpc_getc ();
+          if (!(c >= 'a' && c <= 'f')
+              && !(c >= 'A' && c <= 'F')
+              && !(c >= '0' && c <= '9'))
+            {
+              gpc_ungetc (c);
+              break;
+            }
+          code *= 16;
+          if (c >= 'a' && c <= 'f')
+            code += c - 'a' + 10;
+          if (c >= 'A' && c <= 'F')
+            code += c - 'A' + 10;
+          if (c >= '0' && c <= '9')
+            code += c - '0';
+          if (code != 0 || count != 0)
+            {
+              if (count == 0)
+                firstdig = code;
+              count++;
+            }
+          nonnull = 1;
+        }
+      if (!nonnull)
+        error ("\\x used with no following hex digits");
+      else if (count == 0)
+        /* Digits are all 0's. Ok. */
+        ;
+      else if ((count - 1) * 4 >= TYPE_PRECISION (integer_type_node)
+               || (count > 1
+                   && ((1 << (TYPE_PRECISION (integer_type_node) - (count - 1) * 4)) <= firstdig)))
+        pedwarn ("hex escape out of range");
+      return code;
+
+    case '0':  case '1':  case '2':  case '3':  case '4':
+    case '5':  case '6':  case '7':
+      code = 0;
+      count = 0;
+      while ((c <= '7') && (c >= '0') && (count++ < 3))
+        {
+          code = (code * 8) + (c - '0');
+          c = gpc_getc ();
+        }
+      gpc_ungetc (c);
+      return code;
+
+    case '\\': case '\'': case '"':
+      return c;
+
+    case '\n':
+      lineno++;
+      *ignore_ptr = 1;
+      return 0;
+
+    case 'n':
+      return TARGET_NEWLINE;
+
+    case 't':
+      return TARGET_TAB;
+
+    case 'r':
+      return TARGET_CR;
+
+    case 'f':
+      return TARGET_FF;
+
+    case 'b':
+      return TARGET_BS;
+
+    case 'a':
+      return TARGET_BELL;
+
+    case 'v':
+      return TARGET_VT;
+
+    case 'e':
+    case 'E':
+      return 033;
+
+    case '?':
+      return c;
+
+      /* `\(', etc, are used at beginning of line to avoid confusing Emacs. */
+    case '(':
+    case '{':
+    case '[':
+      /* `\%' is used to prevent SCCS from getting confused. */
+    case '%':
+      return c;
+  }
+  if (c >= 040 && c < 0177)
+    pedwarn ("unknown escape sequence `\\%c'", c);
+  else
+    pedwarn ("unknown escape sequence: `\\' followed by char code 0x%x", c);
+  return c;
+}
+
+static void
+store_exp (pp, what)
+     char **pp;
+     int what;
+{
+  if (what > 9)
+    store_exp (pp, what / 10);
+  *(*pp)++ = (what % 10) + '0';
+}
+
+/* Pack the valid floating point number starting from start by
+   skipping the leading fractional zeroes if the mantissa is zero.
+   Return the adjust value. */
+static int
+compress_float (start, end)
+     char *start;
+     char **end;
+{
+  int adjust  = 0;
+  char *first = start;
+
+  while (*first == '0')
+    first++;
+  if (*first == '.')
+    adjust = -1;
+  else
+    return 0;   /* Nonzero mantissa */
+
+  first++;  /* Skip '.' */
+
+  while (*first == '0')
+    {
+      first++;
+      adjust--;
+    }
+
+  if (!*first) /* A zero */
+    return 0;
+
+  *start++ = *first++;
+  *start++ = '.';
+
+  if (!*first)
+    *start++ = '0';
+  else
+    while ((*start++ = *first++));
+
+  *--start = '\000';
+  *end = start;
+
+  return adjust;
+}
+
+/* Hooks for parse.y: error handling. */
+void
+yyerror (string)
+     const char *string;
+{
+  const char *s = token_buffer;
+  char buf[200];
+  syntax_errors++;
+  strcpy (buf, string);
+  /* We can't print string and character constants well because the
+     token buffer contains the result of processing escapes. */
+  if (end_of_file)
+    strcat (buf, " at end of input");
+  else if (s[0] == 0)
+    strcat (buf, " at null character");
+  else if (s[0] == '"' || s[0] == '\'')
+    strcat (buf, " before string constant");
+  else if (s[0] < 0x20 || (unsigned char) s[0] >= 0x7f)
+    sprintf (buf + strlen (buf), " before character #%i",
+             (unsigned char) s[0]);
+  else
+    strcat (buf, " before `%s'");
+  error_with_file_and_line (lexer_filename, lexer_lineno, buf, s);
+}
+
+void
+yyerror_id (id, location)
+     tree id;
+     YYLTYPE *location;
+{
+  syntax_errors++;
+  error_with_file_and_line (location->last_file, location->last_line,
+                            "syntax error before `%s'", IDENTIFIER_NAME (id));
+}
+
+/* The main function of the lexical analyzer, as called from the parser. */
+static int
+yylex_internal ()
+{
+  char *p;
+  int c, value, length;
+
+  /* Zero means to allow GPC to read ISO-style non-10-based numbers `16#deadbeef'. */
+  static int baseflag = 0;
+
+#ifndef EGCS97
+  int old_momentary = suspend_momentary ();
+#endif
+
+  static int caret_flag = 0;
+
+  c = skip_white_space (gpc_getc ());
+  yylloc.first_file = input_filename;
+  yylloc.first_line = lineno;
+
+  yylval.itype = c;  /* for `^(' etc. */
+  token_buffer[0] = c;
+  token_buffer[1] = 0;
+  p = token_buffer;
+
+  /* Handle Borland Pascal character constants: ^I = Chr (9) */
+  if (caret_flag)
+    {
+      /* Don't look for built-in keywords after `^'. The only one-letter one is
+         `c' which makes no sense there, anyway, and will be removed soon. (And
+         I hope we'll never add a new one-letter one! It's bad style, and will
+         take extra work here.) */
+      caret_flag = 0;
+      value = LEX_CARET_LETTER;
+    }
+  else switch (c)
+  {
+    case EOF:
+      end_of_file = 1;
+      token_buffer[0] = 0;
+      value = ENDFILE;
+      break;
+
+    case '^':
+      {
+        char c1 = gpc_getc ();
+        if ((c1 >= 'A' && c1 <= 'Z') || (c1 >= 'a' && c1 <= 'z') || c1 == '_')
+          {
+            char c2 = gpc_getc ();
+            gpc_ungetc (c2);
+            caret_flag = !isalnum (c2) && c2 != '_';
+          }
+        else if (c1 == ' ' || c1 == '\t' || c1 == '\f' || c1 == '\v' || c1 == '\r' || c1 == '\b')
+          {
+            token_buffer[0] = c1 ^ 0x40;
+            p = token_buffer + 1;
+            value = LEX_CARET_WHITE;
+            break;
+          }
+        else if (!(   c1 == ',' || c1 == '.' || c1 == ':' || c1 == ';'
+                   || c1 == '(' || c1 == ')' || c1 == '[' || c1 == ']'
+                   || c1 == '+' || c1 == '-' || c1 == '*' || c1 == '/'
+                   || c1 == '<' || c1 == '=' || c1 == '>'
+                   || c1 == '@@' || c1 == '^' || c1 == '{' || c1 == '\n'))
+          {
+            token_buffer[0] = c1 ^ 0x40;
+            p = token_buffer + 1;
+            value = LEX_STRCONST;
+            break;
+          }
+        gpc_ungetc (c1);
+        value = '^';
+        break;
+      }
+
+    case '"':
+      if (!co->double_quoted_strings && is_pascal_source)
+        error ("double quoted strings are a GNU Pascal extension");
+      /* FALLTHROUGH */
+    case '\'':
+      {
+        char quote_char = c;
+        c = gpc_getc ();  /* first char */
+        p = token_buffer;
+
+        while (1)
+          {
+            int num;
+            while (c != quote_char && c != EOF)
+              {
+                if (quote_char == '"' && c == '\\')
+                  {
+                    int ignore = 0;
+                    c = readescape (&ignore);
+                    if (ignore)
+                      goto skipnewline;
+                  }
+                else if (c == '\r' || c == '\n')
+                  {
+                    chk_dialect ("line breaks in char and string constants are", GNU_PASCAL);
+                    lineno++;
+                  }
+                if (p == token_buffer + maxtoken)
+                  p = extend_token_buffer (p);
+                *p++ = c;
+              skipnewline:
+                c = gpc_getc ();
+              }
+            if (c == EOF)
+              {
+                error ("string not terminated before end of file");
+                break;
+              }
+            /* Do we have a closing quote? */
+            num = 0;
+            do
+            {
+              if (p == token_buffer + maxtoken)
+                p = extend_token_buffer (p);
+              if (num & 1)
+                *p++ = c;
+              num++;
+              c = gpc_getc ();
+            } while (c == quote_char && quote_char == '\'');
+            *p = 0;
+
+            if (num & 1)
+              { /* string/char constant has terminated */
+                if (c != EOF)
+                  gpc_ungetc (c);
+                break; /* while (1) */
+              }
+            /* String did not terminate, continue reading it */
+          }
+
+        /* string constant */
+        *p = 0;
+        value = LEX_STRCONST;
+        break;
+      }
+
+    case '#':  /* Handle Borland Pascal character constants: #32 == ' ' */
+      {
+        int token;
+        baseflag++;
+        token = yylex_internal ();
+        baseflag--;
+        chk_dialect ("char constants with `#' are", B_D_M_PASCAL);
+        if (token != LEX_INTCONST && token != LEX_INTCONST_BASE)
+          {
+            error ("non-numeric token following `#' -- ignoring the `#'");
+            value = token;
+            break;
+          }
+        if (int_cst_lt_always (yylval.ttype, TYPE_MIN_VALUE (char_type_node))
+            || int_cst_lt_always (TYPE_MAX_VALUE (char_type_node), yylval.ttype))
+          error ("numeric constant out of range for character constant");
+        token_buffer[0] = TREE_INT_CST_LOW (yylval.ttype);
+        token_buffer[1] = 0;
+        p = token_buffer + 1;
+        value = LEX_STRCONST;
+        break;
+      }
+
+    case 'A':  case 'B':  case 'C':  case 'D':  case 'E':  case 'F':  case 'G':
+    case 'H':  case 'I':  case 'J':  case 'K':  case 'L':  case 'M':  case 'N':
+    case 'O':  case 'P':  case 'Q':  case 'R':  case 'S':  case 'T':  case 'U':
+    case 'V':  case 'W':  case 'X':  case 'Y':  case 'Z':
+    case 'a':  case 'b':  case 'c':  case 'd':  case 'e':  case 'f':  case 'g':
+    case 'h':  case 'i':  case 'j':  case 'k':  case 'l':  case 'm':  case 'n':
+    case 'o':  case 'p':  case 'q':  case 'r':  case 's':  case 't':  case 'u':
+    case 'v':  case 'w':  case 'x':  case 'y':  case 'z':  case '_':
+      p = token_buffer;
+      while (isalnum (c) || c == '_')
+        {
+          if (p >= token_buffer + maxtoken)
+            p = extend_token_buffer (p);
+          *p++ = c;
+          c = gpc_getc ();
+        }
+      *p = 0;
+      gpc_ungetc (c);
+      value = LEX_ID;
+      break;
+
+    case '(':
+      value = '(';
+      c = gpc_getc ();
+      if (c != '.')
+        gpc_ungetc (c);
+      else
+        {
+          int c2 = gpc_getc ();
+          int c3 = gpc_getc ();
+          gpc_ungetc (c3);
+          gpc_ungetc (c2);
+          if (c2 == '.' && c3 == '.')  /* might be `(...)' */
+            gpc_ungetc (c);
+          else /* might be `(..)' */
+            {
+              token_buffer[1] = '.';
+              token_buffer[2] = 0;
+              value = '[';
+            }
+        }
+      break;
+
+    case '.':
+      c = gpc_getc ();
+      switch (c)
+      {
+        case '.':
+          token_buffer[1] = '.';
+          c = gpc_getc ();
+          if (c == '.')
+            {
+              token_buffer[2] = '.';
+              token_buffer[3] = 0;
+              value = LEX_ELLIPSIS;
+            }
+          else
+            {
+              gpc_ungetc (c);
+              token_buffer[2] = 0;
+              value = LEX_RANGE;
+            }
+          break;
+        case ')':
+          value = ']';
+          token_buffer[1] = c;
+          token_buffer[2] = 0;
+          break;
+        default:
+          gpc_ungetc (c);
+          value = '.';
+          break;
+      }
+      break;
+
+    case '$':
+    case '0':  case '1':  case '2':  case '3':  case '4':
+    case '5':  case '6':  case '7':  case '8':  case '9':
+      {
+        int base = 10, base_set = 0, baseflag_save = baseflag, floatflag = 0;
+        int count, largest_digit = 0, numdigits = 0, hexflag = 0;
+        char nextchar = 0;
+        /* for multi-precision arithmetic, we store only 8 live bits in
+           each short, giving us 64 bits of reliable precision */
+        short shorts[8];
+        for (count = 0; count < 8; count++)
+          shorts[count] = 0;
+
+        if (c == '$')
+          {
+            baseflag++;
+            base = 16;
+            hexflag = base_set = 1;
+            c = gpc_getc ();
+            chk_dialect ("hexadecimal numbers with `$' are", B_D_M_PASCAL);
+          }
+
+        p = token_buffer;
+        *p++ = c;
+
+        /* Read all the digits. */
+        while (isalnum (c) || (c == '.' && !floatflag) || (c == '#' && baseflag++ == 0))
+          {
+            if (isdigit (c))
+              c = c - '0';
+            else if (c == '.')
+              {
+                /* `INTEGER..' and `INTEGER.)' are not Real, but `INTEGER..)' is `Real]' */
+                char c1 = gpc_getc ();
+                char c2 = gpc_getc ();
+                gpc_ungetc (c2);
+                if ((c1 == '.' && c2 != ')') || c1 == ')')
+                  {
+                    gpc_ungetc (c1);
+                    break;
+                  }
+                if (base_set)
+                  error ("real constants cannot have a base set");
+                if (!isdigit (c1))
+                  {
+                    gpc_ungetc (c1);
+                    if (!(co->pascal_dialect & B_D_PASCAL))
+                      warning ("ISO Pascal requires a digit after decimal point");
+                    c1 = '0';  /* assume zero was present */
+                  }
+                base = 10;
+                *p++ = c = c1;
+                c -= '0';
+                floatflag = 1;
+              }
+            else if (c == '#')
+              {
+                chk_dialect_name ("radix#value", E_O_PASCAL);
+                /* Using Extended Pascal's way to input values in different
+                   bases:
+                     base#value
+                   Base may be in range 2 .. 36 */
+                base = shorts[0];
+                if (base < 2 || base > 36 || shorts[7] || shorts[6] || shorts[5]
+                    || shorts[4] || shorts[3] || shorts[2] || shorts[1])
+                  {
+                    error ("base value out of range");
+                    base = 10;
+                  }
+                base_set = 1;
+                for (count = 0; count < 8; count++)
+                  shorts[count] = 0;
+                largest_digit = 0;
+                numdigits = 0;
+                *p++ = (c = gpc_getc ());
+                continue;
+              }
+            else if (!base_set && (c == 'E' || c == 'e'))
+              {
+                floatflag = 1;
+                break;  /* start of exponent */
+              }
+            else if (base <= 10
+                     || (hexflag && ((c > 'F' && c <= 'Z') || (c > 'f' && c <= 'z'))))
+              {
+                /* error/warning given below for reals */
+                if (!floatflag && (PEDANTIC (B_D_M_PASCAL) || !co->pascal_dialect))
+                  error_or_warning (PEDANTIC (B_D_M_PASCAL), "missing white space after decimal integer constant");
+                break;
+              }
+            else if (c >= 'a')
+              c = c - 'a' + 10;
+            else
+              c = c - 'A' + 10;
+            if (c >= largest_digit)
+              largest_digit = c;
+            numdigits++;
+
+            if (!floatflag)
+              {
+                for (count = 0; count < 8; count++)
+                  {
+                    shorts[count] *= base;
+                    if (count)
+                      {
+                        shorts[count] += (shorts[count - 1] >> 8);
+                        shorts[count - 1] &= (1 << 8) - 1;
+                      }
+                    else
+                      shorts[0] += c;
+                  }
+                if (shorts[7] > 0xff)
+                  {
+                    error ("value does not fit in longest integer type");
+                    /* Avoid further error messages. */
+                    for (count = 0; count < 8; count++)
+                      shorts[count] = 0;
+                  }
+              }
+
+            if (p >= token_buffer + maxtoken - 3)
+              p = extend_token_buffer (p);
+            *p++ = (c = gpc_getc ());
+          }
+
+        if (numdigits == 0)
+          error ("numeric constant with no digits");
+
+        if (largest_digit >= base)
+          error ("numeric constant contains digits beyond the radix");
+
+        /* Remove terminating char from the token buffer and delimit the string */
+        *--p = 0;
+
+        if (floatflag)
+          {
+            REAL_VALUE_TYPE rval;
+            tree type = long_double_type_node;
+            int esign = 1;
+            int expon = 0;
+            char *temp = p;
+
+            /* Compress out the leading zeros by adjusting the exponent */
+            int adjust_exp = compress_float (token_buffer, &temp);
+
+            p = temp;
+
+            /* Read explicit exponent if any, and put it in tokenbuf. */
+
+            if (c == 'e' || c == 'E')
+              {
+                if (p >= token_buffer + maxtoken - 3)
+                  p = extend_token_buffer (p);
+                *p++ = c;
+                c = gpc_getc ();
+                if ((c == '+') || (c == '-'))
+                  {
+                    if (c == '-')
+                      esign = -1;
+                    c = gpc_getc ();
+                  }
+                if (!isdigit (c))
+                  error_or_warning (PEDANTIC (B_D_PASCAL), "real constant exponent has no digits");
+                while (isdigit (c))
+                  {
+                    expon = 10 * expon + c - '0';
+                    c = gpc_getc ();
+                  }
+                expon = esign * expon + adjust_exp;
+                if (expon < 0)
+                  {
+                    *p++ = '-';
+                    expon = - expon;
+                  }
+                store_exp (&p, expon);
+              }
+            else if (adjust_exp)
+              {
+                *p++ = 'E';
+                if (adjust_exp < 0)
+                  {
+                    *p++ = '-';
+                    adjust_exp = -adjust_exp;
+                  }
+                store_exp (&p, adjust_exp);
+              }
+
+            *p = 0;
+            rval = REAL_VALUE_ATOF (token_buffer, TYPE_MODE (type));
+            if (REAL_VALUE_ISINF (rval))
+              error ("real constant out of range");
+            yylval.ttype = build_real (type, rval);
+            if (isalnum (c) && (PEDANTIC (B_D_M_PASCAL) || !co->pascal_dialect))
+              error_or_warning (PEDANTIC (B_D_M_PASCAL), "missing white space after decimal real constant");
+
+            gpc_ungetc (c);
+            if (nextchar)
+              gpc_ungetc (nextchar);
+            *p = 0;
+
+            TREE_TYPE (yylval.ttype) = type;
+            PASCAL_TREE_FRESH_CST (yylval.ttype) = 1;
+            value = LEX_REALCONST;
+          }
+        else
+          {
+            tree type;
+            gpc_ungetc (c);
+            *p = 0;
+
+            /* This is simplified by the fact that our constant is always positive. */
+#if HOST_BITS_PER_WIDE_INT <= 32
+            yylval.ttype
+              = build_int_2 ((shorts[3]<<24) + (shorts[2]<<16) + (shorts[1]<<8) + shorts[0],
+                             (shorts[7]<<24) + (shorts[6]<<16) + (shorts[5]<<8) + shorts[4]);
+#else
+            yylval.ttype
+              = build_int_2 (((HOST_WIDE_INT) shorts[7] << 56)
+                             + ((HOST_WIDE_INT) shorts[6] << 48)
+                             + ((HOST_WIDE_INT) shorts[5] << 40)
+                             + ((HOST_WIDE_INT) shorts[4] << 32)
+                             + ((HOST_WIDE_INT) shorts[3] << 24)
+                             + ((HOST_WIDE_INT) shorts[2] << 16)
+                             + ((HOST_WIDE_INT) shorts[1] << 8)
+                             + shorts[0], 0);
+#endif
+
+            PASCAL_TREE_FRESH_CST (yylval.ttype) = 1;
+
+            /* This integer will be marked as being input by the user
+               program, so its type does not really matter. However,
+               assign it something reasonable. */
+            if (!INT_CST_LT_UNSIGNED (TYPE_MAX_VALUE (integer_type_node), yylval.ttype))
+              type = integer_type_node;
+            else if (!INT_CST_LT_UNSIGNED (TYPE_MAX_VALUE (unsigned_type_node), yylval.ttype))
+              type = unsigned_type_node;
+            else if (!INT_CST_LT_UNSIGNED (TYPE_MAX_VALUE (long_integer_type_node), yylval.ttype))
+              type = long_long_integer_type_node;
+            else
+              type = long_long_unsigned_type_node;
+            TREE_TYPE (yylval.ttype) = type;
+            TREE_UNSIGNED (yylval.ttype) = TREE_UNSIGNED (type);
+            value = base_set ? LEX_INTCONST_BASE : LEX_INTCONST;
+          }
+        baseflag = baseflag_save;
+        break;
+      }
+
+    case '+':
+    case '-':
+    case '<':
+    case '>':
+    case '*':
+    case '/':
+    case '=':
+    case ':':
+      {
+        int c1 = token_buffer[1] = gpc_getc ();
+        token_buffer[2] = 0;
+        if (c == ':' && c1 == '=')
+          value = LEX_ASSIGN;
+        else if (c == '<' && c1 == '=')
+          value = LEX_LE;
+        else if (c == '>' && c1 == '=')
+          value = LEX_GE;
+        else if (c == '<' && c1 == '>')
+          value = LEX_NE;
+        else if (c == '>' && c1 == '<')
+          value = LEX_SYMDIFF;
+        else if (c == '=' && c1 == '>')
+          value = LEX_RENAME;
+        else if (c == '*' && c1 == '*')
+          value = LEX_POWER;
+        else if (c == '+' && c1 == '>')
+          value = LEX_CEIL_PLUS;
+        else if (c == '-' && c1 == '>')
+          value = LEX_CEIL_MINUS;
+        else if (c == '*' && c1 == '>')
+          value = LEX_CEIL_MULT;
+        else if (c == '/' && c1 == '>')
+          value = LEX_CEIL_DIV;
+        else if (c == '+' && c1 == '<')
+          value = LEX_FLOOR_PLUS;
+        else if (c == '-' && c1 == '<')
+          value = LEX_FLOOR_MINUS;
+        else if (c == '*' && c1 == '<')
+          value = LEX_FLOOR_MULT;
+        else if (c == '/' && c1 == '<')
+          value = LEX_FLOOR_DIV;
+        else
+          {
+            value = c;
+            token_buffer[1] = 0;
+            gpc_ungetc (c1);
+          }
+        break;
+      }
+    default:
+      value = c;
+  }
+
+  length = p - token_buffer;
+
+  if (value == LEX_ID)
+    {
+      tree id, v;
+      struct predef *pd;
+      yylval.ttype = id = make_identifier (token_buffer, length);
+
+      pd = IDENTIFIER_BUILT_IN_VALUE (id);
+
+      /* With `-pedantic', warn about any dialect specific keyword
+         encountered. At this point we don't know yet if it will be used as a
+         keyword or an identifier, but it doesn't matter. Both usages are not
+         completely portable. (That's `-pedantic' at its best! ;-) */
+      if (pd && pedantic && (pd->kind == bk_none || pd->kind == bk_keyword) && pd->dialect != ANY_PASCAL)
+        warn_about_keyword_redeclaration (id, 0);
+
+      if (PD_ACTIVE (pd) && pd->kind == bk_keyword && !(pd->attributes & KW_WEAK))
+        value = pd->symbol;
+      else if (!((v = lookup_name (id)) || PASCAL_PENDING_DECLARATION (id)))
+        {
+          /* lookup_name resolves built-in constants and types (because it's
+             called from many places). Built-in interfaces are handled in
+             module.c (only relevant there because interface names are in a
+             diffrent scope than all other identifiers). Other built-ins
+             (including built-in variables because some of them need special
+             handling in get_builtin_variable after they are parsed as
+             variables) are resolved here (only once during lexing, and never
+             passed around). */
+          if (PD_ACTIVE (pd))
+            switch (pd->kind)
+            {
+              case bk_none:
+              case bk_interface:
+                break;
+
+              case bk_keyword:
+              case bk_special_syntax:
+                value = pd->symbol;
+                break;
+
+              case bk_var:
+                value = LEX_BUILTIN_VARIABLE;
+                break;
+
+              case bk_routine:
+                if (pd->signature[0] == '-')
+                  value = LEX_BUILTIN_PROCEDURE;
+                else if (pd->signature[0] == '>')
+                  value = LEX_BUILTIN_PROCEDURE_WRITE;
+                else if (pd->signature[1] == '#')
+                  value = LEX_BUILTIN_FUNCTION_VT;
+                else
+                  value = LEX_BUILTIN_FUNCTION;
+                break;
+
+              default:
+                assert (0);
+            }
+          if (value != LEX_ID && !pd->user_disabled < 0)
+            chk_dialect_name (IDENTIFIER_NAME (id), pd->dialect);
+        }
+    }
+
+  if (value == LEX_STRCONST || value == LEX_CARET_WHITE)
+    yylval.ttype = build_string_constant (token_buffer, length, 1);
+
+#ifndef EGCS97
+  resume_momentary (old_momentary);
+#endif
+
+  return value;
+}
+
+int
+yylex ()
+{
+  static int last_token = 0;
+  int value;
+
+  input_filename = lexer_filename;
+  lineno = lexer_lineno;
+  activate_options (lexer_options, 1);
+
+  value = yylex_internal ();
+
+  /* Set the location here before doing possible read-ahead below. */
+  yylloc.last_file = input_filename;
+  yylloc.last_line = lineno;
+  yylloc.option_id = lexer_options->counter;
+
+  /* `+' and `-' have different precedence in BP than in Pascal.
+     To handle this we have to use different tokens. */
+  if (co->pascal_dialect & B_D_PASCAL)
+    switch (value)
+    {
+      case '+': value = LEX_BPPLUS;  break;
+      case '-': value = LEX_BPMINUS; break;
+    }
+
+  if (value == ';' && co->warn_semicolon)
+    switch (last_token)
+    {
+      case p_then: warning ("`;' after `then'"); break;
+      case p_else: warning ("`;' after `else'"); break;
+      case p_do:   warning ("`;' after `do'");   break;
+    }
+  last_token = value;
+
+  if (value == '=' && lex_const_equal == 0)
+    {
+      lex_const_equal = -1;
+      value = LEX_CONST_EQUAL;
+    }
+  if (value == LEX_ASSIGN)
+    lex_const_equal = -1;
+  if (lex_const_equal >= 0)
+    switch (value)
+    {
+      case '(': case '[': lex_const_equal++; break;
+      case ')': case ']': lex_const_equal--; break;
+    }
+
+  /* About the following cases, see internals.texi. */
+
+  /* `attribute' can only be a keyword if followed by `(' -- but
+     not `(.' which means `['. `(...)' is not an issue here. */
+  if (value == p_attribute)
+    {
+      char c1 = skip_white_space (gpc_getc ()), c2 = gpc_getc ();
+      gpc_ungetc (c2);
+      gpc_ungetc (c1);
+      if (c1 != '(' || c2 == '.')
+        value = LEX_ID;
+    }
+
+  /* These can never be keywords if followed by `,', `:', `=' or `('
+     (or `:=', `=>' or `(.', so we don't have to distinguish these here;
+     skip_white_space skips comments, so `(*' is also no issue here).
+     This is sufficient since in constant, type or variable declarations
+     and export lists (where the conflicts are) only `,' and `:' and `='
+     can follow. Exception: `operator ='. This is a problem (see
+     internals.texi). (And `asmname (' which is resolved in the parser
+     using new_identifier_limited_par.) */
+  if (value == p_asmname
+      || value == p_constructor
+      || value == p_destructor
+      || value == p_external
+      || value == p_implementation
+      || value == p_import
+      || value == p_initialization
+      || value == p_operator
+      || value == p_uses)
+    {
+      char c = skip_white_space (gpc_getc ());
+      gpc_ungetc (c);
+      if (c == ',' || c == ':' || (c == '(' && value != p_asmname)
+          || (c == '=' && value != p_operator))
+        value = LEX_ID;
+    }
+
+  /* To resolve the conflict between `(a)' (enum) and `(a) .. b' (subrange),
+     give `)' before `..' a special token. `...' and `. .)' are no concern. */
+  if (value == ')')
+    {
+      char c1 = skip_white_space (gpc_getc ()), c2 = gpc_getc ();
+      gpc_ungetc (c2);
+      gpc_ungetc (c1);
+      if (c1 == '.' && c2 == '.')
+        value = LEX_RPAR;
+    }
+
+  lexer_filename = input_filename;
+  lexer_lineno = lineno;
+  input_filename = compiler_filename;
+  lineno = compiler_lineno;
+  activate_options (compiler_options, 1);
+
+  return value;
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

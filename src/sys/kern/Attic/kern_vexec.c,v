@@ -1,0 +1,502 @@
+head	1.1;
+access;
+symbols
+	MIRBSD_7_DEV:1.1.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2004.01.02.01.38.48;	author wbx;	state dead;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.02.01.38.48;	author wbx;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@file kern_vexec.c was initially added on branch MIRBSD_7_DEV.
+@
+text
+@@
+
+
+1.1.2.1
+log
+@missing file for vexec
+@
+text
+@a0 462
+/* $MirBSD: kern_vexec.c,v 1.1.2.1 2003/11/30 22:50:28 wbx Exp $ */
+
+/*
+ * Vexec port for MirBSD extracted from Stephanie for OpenBSD 3.4
+ * Waldemar Brodkorb <miros@@thinknow.de>
+*/
+
+/* $Id: kern_vexec.c,v 1.1.2.1 2003/11/30 22:50:28 wbx Exp $ */
+
+/*
+ * Stephanie for OpenBSD 3.4
+ */
+
+/* $NetBSD: kern_verifiedexec.c,v 1.2 2002/11/12 12:54:36 blymn Exp $	*/
+
+/*-
+ * Copyright (c) 2001, 2002 The NetBSD Foundation, Inc.
+ * All rights reserved.
+ *
+ * This code is derived from software contributed to The NetBSD Foundation
+ * by Brett Lymn and Jason R Fink
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *        This product includes software developed by the NetBSD
+ *        Foundation, Inc. and its contributors.
+ * 4. Neither the name of The NetBSD Foundation nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/mount.h> 
+#include <sys/malloc.h>
+#include <sys/vnode.h>
+#include <sys/namei.h>
+#include <sys/exec.h>
+#include <sys/proc.h>
+#include <sys/sysctl.h>
+#include <sys/vexec.h>
+
+/* Globals. */
+int security_vexec = 0;
+int security_vexec_verbose = 0;
+int security_vexec_strict = 0;
+
+/* vexecs table of hash types and their associated information. */
+struct vexec_hash vexec_hash_list[] = {
+    { VEXEC_HASHINIT(MD5) },
+    { VEXEC_HASHINIT(SHA1) },
+    { VEXEC_HASHINIT(RMD160) }
+};
+
+/* Read buffer for fingerprint calculation. */
+#define	VEXEC_BUFSIZE	PAGE_SIZE
+
+/*
+ * Calculate the fingerprint of a given file.
+ *
+ * The fingerprint is calculated according to the hash type.
+ */
+int vexec_fp_calc(struct proc *p, struct vnode *vp,
+    struct vexec_inode_list *ip, u_quad_t size, u_char *fp) {
+	void *ctx = NULL;
+	u_char *buf = NULL;
+	u_quad_t offset, len;
+	size_t ctxsize, resid;
+	int error;
+
+	/* This should not happen. */
+	if (!FPTYPE_OK(ip->vxi_fptype)) {
+		printf("vexec_fp_calc: Invalid fingerprint type: "
+		    "This is serious. (imagine you saw a panic)\n");
+
+		return (EINVAL);
+	}
+
+	bzero(fp, FPLEN_MAX);
+
+	/* Get the context size. */
+	ctxsize = (vexec_hash_list[ip->vxi_fptype]).vxh_ctxsize;
+
+	/* Allocate memory for hash context and read buffer. */
+	ctx = (void *) malloc(ctxsize, M_TEMP, M_WAITOK);
+	buf = (u_char *) malloc(VEXEC_BUFSIZE, M_TEMP, M_WAITOK);
+	
+	((vexec_hash_list[ip->vxi_fptype]).vxh_init)(ctx);
+
+	/*
+	 * It is assumed that the vnode is locked. execve() does that for
+	 * us and we have our own locking in vn_open().
+	 */
+	for (offset = 0; offset < size; offset += VEXEC_BUFSIZE) {
+		len = (offset + VEXEC_BUFSIZE > size) ? (size - offset)
+						      : VEXEC_BUFSIZE;
+
+		error = vn_rdwr(UIO_READ, vp, buf, len, offset, 
+				UIO_SYSSPACE, 0, p->p_ucred, &resid, p);
+
+		if (error)
+			goto bad;
+
+		((vexec_hash_list[ip->vxi_fptype]).vxh_update)(ctx, buf,
+		    (unsigned int) len);
+	}
+
+	((vexec_hash_list[ip->vxi_fptype]).vxh_final)(fp, ctx);
+
+bad:
+	free(ctx, M_TEMP);
+	free(buf, M_TEMP);
+
+	return (error);
+}
+	
+/*
+ * Compare two fingerprints (which are assumed, and this is very important,
+ * to be of the same hash type!).
+ */
+int vexec_fp_cmp(struct vexec_inode_list *ip, u_char *digest) {
+	return (memcmp(ip->vxi_fp, digest,
+	    (vexec_hash_list[ip->vxi_type]).vxh_len));
+}
+
+/*
+ * Search an entry for the given device/inode combination.
+ *
+ * We return a pointer to the inode entry in the device's inode list if
+ * it exists; Otherwise NULL.
+ *
+ * "found_dev" indicates whether we have an entry for the device itslelf.
+ */
+struct vexec_inode_list *
+vexec_inodeget(struct vexec_devhead *head, dev_t dev, ino_t inode,
+    u_char *found_dev) {
+	struct vexec_dev_list *lp;
+        struct vexec_inode_list *ip;
+
+	lp = NULL;
+	ip = NULL;
+	*found_dev = 0;
+	
+	vexec_dprintf(("vexec_inodeget: Searching for inode %u on "
+	    "device %d.\n", inode, dev));
+
+	/* First, see if we have the device in our device list. */
+	for (lp = LIST_FIRST(head); lp != NULL;
+	    lp = LIST_NEXT(lp, vxd_entries)) {
+		if (lp->vxd_dev == dev) {
+			/*
+			 * Include the inode in the debugging message for
+			 * easy tracking.
+			 */
+			vexec_dprintf(("vexec_inodeget: Found matching "
+			    "device-id (dev=%d, inode=%u)\n", dev, inode));
+
+			/* Indicate we've got the device in our list. */
+			*found_dev = 1;
+
+			break;
+		}
+	}
+
+	/* If we got it, search an entry for the inode in it. */
+	if (lp) {
+		for (ip = LIST_FIRST(&(lp->vxd_inode_head)); ip != NULL;
+		     ip = LIST_NEXT(ip, vxi_entries)) {
+			if (ip->vxi_inode == inode) {
+				vexec_dprintf(("vexec_inodeget: Found "
+				    "matching inode (dev=%d, inode=%u)\n",
+				    dev, inode));
+
+				break;
+			}
+		}
+	}
+
+	return (ip);
+}
+
+/*
+ * Verify the fingerprint of the given file.
+ *
+ * 'flag' indicates the execution type we need to enforce, if vexec or TPE
+ * is enabled.
+ */
+int vexec_verify(struct proc *p, struct vnode *vp, struct vattr *va,
+    u_char *name, int flag) {
+        struct vexec_inode_list *ip;
+        char digest[FPLEN_MAX], found_dev;
+        int error = 0;
+
+	/* Lie and say it's verified if vexec is disabled. */
+	if (!security_vexec)
+		return (0);
+
+	/*
+	 * If the status is marked "invalid", evaluate the fingerprint
+	 * and set it accordingly.
+	 */
+	if (vp->v_fpstatus == FP_INVALID) {
+		found_dev = 0;
+
+		ip = vexec_inodeget(&vexec_exec_dev_head, va->va_fsid,
+		    va->va_fileid, &found_dev);
+
+		/*
+		 * If we don't have an entry for the device, set the
+		 * fingerprint status accordingly so we treat it right
+		 * when the inode is accessed.
+		 */
+		if (!found_dev) {
+			vp->v_fpstatus = FP_NODEV;
+			goto out;
+		}
+ 
+		/* If we have an entry, deal with it. */
+		if (ip != NULL) {
+			vexec_dprintf(("vexec_verify: Got entry for %s "
+			    "(dev=%d, inode=%u)\n", name, va->va_fsid,
+			    va->va_fileid));
+
+			/* Calculate fingerprint for the inode. */
+			error = vexec_fp_calc(p, vp, ip, va->va_size,
+			    digest);
+			if (error) {
+				vexec_dprintf(("vexec_verify: calculation"
+				    " error\n"));
+				return (error);
+			}
+
+			/*
+			 * We don't need to check the fingerprint type
+			 * here because vexec_fp_calc() does that too, and
+			 * if it failed there we would already be error'd
+			 * out.
+			 */
+			if (vexec_fp_cmp(ip, digest) == 0) {
+				if (ip->vxi_type == VEXEC_DIRECT) {
+					vp->v_fpstatus = FP_VALID;
+				} else {
+					vp->v_fpstatus = FP_INDIRECT;
+				}
+			} else {
+				vp->v_fpstatus = FP_NOMATCH;
+			}
+		} else {
+			vp->v_fpstatus = FP_NOENTRY;
+		}
+	}
+
+out:
+        switch (vp->v_fpstatus) {
+	case FP_INVALID:
+		/* Should not happen. */
+		panic("vexec_verify: Inconsistency detected.\n");
+
+	case FP_VALID:
+		/* Valid fingerprint. */
+		if (security_vexec_verbose)
+			printf("vexec_verify: Fingerprint matches. "
+			    "(file=%s, inode=%u, dev=%d)\n", name,
+			    va->va_fileid, va->va_fsid);
+		break;
+
+	case FP_INDIRECT:
+		/* Fingerprint is okay; Make sure it's indirect execution. */
+		if (flag == VEXEC_DIRECT) {
+			/*
+			 * Notify about direct execution attempts of
+			 * programs marked "indirect only".
+			 */
+			printf("vexec_verify: Attempt to execute %s "
+			    "(dev=%d, inode=%u) directly by uid=%u "
+			    "(pid=%u, ppid=%u, gppid=%u)\n", name,
+			    va->va_fsid, va->va_fileid,
+			    p->p_ucred->cr_uid, p->p_pid, 
+			    p->p_pptr->p_pid, p->p_pptr->p_pptr->p_pid);
+
+			error = EPERM;
+		}
+
+		break;
+
+	case FP_NOMATCH:
+		/* Fingerprint mismatch. Deny execution. */
+		printf("vexec_verify: Fingerprint mismatch for %s "
+		    "(dev=%d, inode=%u). Execution attempt by uid=%u, "
+		    "pid=%u.\n", name, va->va_fsid,
+		    va->va_fileid, p->p_ucred->cr_uid, p->p_pid);
+
+		error = EPERM;
+
+		break;
+
+	case FP_NOENTRY:
+		/* No entry in the list. */
+		if (security_vexec_verbose)
+			printf("vexec_verify: No fingerprint for %s "
+			    "(dev=%d, inode=%u)\n", name, va->va_fsid,
+			    va->va_fileid);
+
+		if ((securelevel >= VEXEC_SECURELEVEL) &&
+		    (security_vexec_strict))
+			error = EPERM;
+
+		break;
+
+	case FP_NODEV:
+		/* No entry for the device. */
+		if (security_vexec_verbose)
+			printf("vexec_verify: No list for device-id %d"
+			    " (file=%s, inode=%u)\n", va->va_fsid, name,
+			    va->va_fileid);
+
+		if ((securelevel >= VEXEC_SECURELEVEL) &&
+		    (security_vexec_strict))
+			error = EPERM;
+
+		break;
+
+	default:
+		/*
+		 * Should never happen.
+		 * XXX: Print vnode/process?
+		 */
+		panic("vexec_verify: Invalid status. (vnode=%p, pid=%u)\n",
+		    vp, p->p_pid);
+        }
+
+	return (error);
+}
+
+/*
+ * Operations needed to be done before read()/write() requests to
+ * (fingerprinted) vnodes.
+ */
+int vexec_openchk(struct proc *p, struct vnode *vp) {
+	struct vexec_inode_list *vexec_node;
+	struct vattr va;
+	u_char fp[FPLEN_MAX], got_dev;
+	int error;
+
+	switch (vp->v_fpstatus) {
+	case FP_VALID:
+	case FP_INDIRECT:
+		return (0);
+
+	case FP_NOMATCH:
+		return (EPERM);
+	}
+
+	/*
+	 * We need this for device-id, inode, and size.
+	 */
+	error = VOP_GETATTR(vp, &va, p->p_ucred, p);
+	if (error)
+		return (error);
+
+	if ((vp->v_fpstatus == FP_NOENTRY) || (vp->v_fpstatus == FP_NODEV)) {
+		if ((securelevel >= VEXEC_SECURELEVEL) &&
+		    (security_vexec_strict)) {
+			printf("vexec_openchk: Denying access: System in"
+			    " highly-secure mode. (inode=%u, dev=%d, "
+			    "code=%d)\n", va.va_fileid, va.va_fsid,
+			    vp->v_fpstatus);
+
+			return (EPERM);
+		}
+
+		vexec_dprintf(("vexec_openchk: Allowing access to unknown"
+		    " file. (inode=%u, dev=%d, code=%d)\n",
+		    va.va_fileid, va.va_fsid, vp->v_fpstatus));
+
+		return (0);
+	}
+
+	/*
+	 * Vexec has two lists, but most chances are that this
+	 * vnode belongs to a normal file because we've been called
+	 * from vn_open() (probably for read or write), so check the
+	 * "normal" file list first.
+	 */
+	vexec_node = vexec_inodeget(&vexec_file_dev_head, va.va_fsid,
+	    va.va_fileid, &got_dev);
+	if (!vexec_node)
+		/* Failing that, check the exec list.. */
+		vexec_node = vexec_inodeget(&vexec_exec_dev_head,
+		    va.va_fsid, va.va_fileid, &got_dev);
+
+	/*
+	 * If we got an entry for the device, but not for the file
+	 * itself, set the fingerprint status to "no entry", tell the
+	 * user, and if securelevel/strict mode says so -- deny access.
+	 */
+	if (!vexec_node && got_dev) {
+		vp->v_fpstatus = FP_NOENTRY;
+
+		vexec_dprintf(("vexec_openchk: Got device, but no entry "
+			    "(dev=%d, inode=%u)\n", va.va_fsid, va.va_fileid));
+
+		if ((securelevel >= VEXEC_SECURELEVEL) &&
+		    (security_vexec_strict))
+			return (EPERM);
+	}
+
+	/*
+	 * Here we have an entry, but the fingerprint needs to be
+	 * evaluated against the one we have loaded. Calculate and
+	 * compare.
+	 */
+	if (vexec_node) {
+		error = vexec_fp_calc(p, vp, vexec_node, va.va_size, fp);
+		if (error)
+			return (error);
+
+		/*
+		 * Compare fingerprints.
+		 */
+		if ((vexec_fp_cmp(vexec_node, fp) == 0)) {
+			/* Fingerprint ok. */
+			vp->v_fpstatus = FP_VALID;
+
+			if (security_vexec_verbose)
+				printf("vexec_openchk: Fingerprint matches "
+				    "(dev=%d, inode=%u)\n", va.va_fsid,
+				    va.va_fileid);
+		} else {
+			/* Fingerprint mismatch. */
+			vp->v_fpstatus = FP_NOMATCH;
+
+			printf("vexec_openchk: Fingerprint mismatch "
+			    "(dev=%d, inode=%u)\n", va.va_fsid,
+			    va.va_fileid);
+
+			return (EPERM);
+		}
+	}
+
+	return (error);
+}
+
+@
+

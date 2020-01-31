@@ -1,0 +1,250 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.45;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.54.08;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@BEGIN {
+    if ($ENV{'PERL_CORE'}){
+        chdir 't';
+        unshift @@INC, '../lib';
+    }
+    require Config; import Config;
+    if ($Config{'extensions'} !~ /\bEncode\b/) {
+      print "1..0 # Skip: Encode was not built\n";
+      exit 0;
+    }
+    if (ord("A") == 193) {
+	print "1..0 # Skip: EBCDIC\n";
+	exit 0;
+    }
+    $| = 1;
+}
+
+use strict;
+use File::Basename;
+use File::Spec;
+use Encode qw(decode encode find_encoding _utf8_off);
+
+#use Test::More qw(no_plan);
+use Test::More tests => 17;
+use_ok("Encode::Guess");
+{
+    no warnings;
+    $Encode::Guess::DEBUG = shift || 0;
+}
+
+my $ascii  = join('' => map {chr($_)}(0x21..0x7e));
+my $latin1 = join('' => map {chr($_)}(0xa1..0xfe));
+my $utf8on  = join('' => map {chr($_)}(0x3000..0x30fe));
+my $utf8off = $utf8on; _utf8_off($utf8off);
+my $utf16 = encode('UTF-16', $utf8on);
+my $utf32 = encode('UTF-32', $utf8on);
+
+is(guess_encoding($ascii)->name, 'ascii', 'ascii');
+like(guess_encoding($latin1), qr/No appropriate encoding/io, 'no ascii');
+is(guess_encoding($latin1, 'latin1')->name, 'iso-8859-1', 'iso-8859-1');
+is(guess_encoding($utf8on)->name, 'utf8', 'utf8 w/ flag');
+is(guess_encoding($utf8off)->name, 'utf8', 'utf8 w/o flag');
+is(guess_encoding($utf16)->name, 'UTF-16', 'UTF-16');
+is(guess_encoding($utf32)->name, 'UTF-32', 'UTF-32');
+
+my $jisx0201 = File::Spec->catfile(dirname(__FILE__), 'jisx0201.utf');
+my $jisx0208 = File::Spec->catfile(dirname(__FILE__), 'jisx0208.utf');
+my $jisx0212 = File::Spec->catfile(dirname(__FILE__), 'jisx0212.utf');
+
+open my $fh, $jisx0208 or die "$jisx0208: $!";
+binmode($fh);
+$utf8off = join('' => <$fh>);
+close $fh;
+$utf8on = decode('utf8', $utf8off);
+
+my @@jp = qw(7bit-jis shiftjis euc-jp);
+
+Encode::Guess->set_suspects(@@jp);
+
+for my $jp (@@jp){
+    my $test = encode($jp, $utf8on);
+    is(guess_encoding($test)->name, $jp, "JP:$jp");
+}
+
+is (decode('Guess', encode('euc-jp', $utf8on)), $utf8on, "decode('Guess')");
+eval{ encode('Guess', $utf8on) };
+like($@@, qr/not defined/io, "no encode()");
+
+my %CJKT = 
+    (
+     'euc-cn'    => File::Spec->catfile(dirname(__FILE__), 'gb2312.utf'),
+     'euc-jp'    => File::Spec->catfile(dirname(__FILE__), 'jisx0208.utf'),
+     'euc-kr'    => File::Spec->catfile(dirname(__FILE__), 'ksc5601.utf'),
+     'big5-eten' => File::Spec->catfile(dirname(__FILE__), 'big5-eten.utf'),
+);
+
+Encode::Guess->set_suspects(keys %CJKT);
+
+for my $name (keys %CJKT){
+    open my $fh, $CJKT{$name} or die "$CJKT{$name}: $!";
+    binmode($fh);
+    $utf8off = join('' => <$fh>);
+    close $fh;
+
+    my $test = encode($name, decode('utf8', $utf8off));
+    is(guess_encoding($test)->name, $name, "CJKT:$name");
+}
+
+__END__;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d24 1
+a24 1
+use Test::More tests => 29;
+a86 28
+}
+
+my $ambiguous =  "\x{5c0f}\x{98fc}\x{5f3e}";
+my $english   = "The quick brown fox jumps over the black lazy dog.";
+for my $utf (qw/UTF-16 UTF-32/){
+    for my $bl (qw/BE LE/){
+	my $test = encode("$utf$bl" => $english);
+	is(guess_encoding($test)->name, "$utf$bl", "$utf$bl");
+    }
+}
+for my $bl (qw/BE LE/){
+    my $test = encode("UTF-16$bl" => $ambiguous);
+    my $result = guess_encoding($test);
+    ok(! ref($result), "UTF-16$bl:$result");
+}
+
+
+
+Encode::Guess->set_suspects();
+for my $jp (@@jp){
+    # intentionally set $1 a priori -- see Changes
+    my $test = "English";
+    '$1' =~ m/^(.*)/o;
+    is(guess_encoding($test, ($jp))->name, 'ascii', 
+       "ascii vs $jp (\$1 messed)");
+    $test = encode($jp, $test . "\n\x{65e5}\x{672c}\x{8a9e}");
+    is(guess_encoding($test, ($jp))->name, 
+       $jp, "$jp vs ascii (\$1 messed)");
+@
+

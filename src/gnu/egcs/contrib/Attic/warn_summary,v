@@ -1,0 +1,303 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.04.06.16.22.05;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.35.49;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.35.49;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove a bunch of other unneeded files *g*
+g++ g77 gobjc and their testsuites
+gcc texinfo documentation
+
+gcc.1 -> pgcc.1
+
+=> {man,info} gcc should yield gcc 3.2 documentation now
+@
+text
+@#!/bin/sh
+#
+# This script parses the output of a gcc bootstrap when using warning
+# flags and determines various statistics.
+# 
+# usage: warn_summary [-llf] [-s stage] [-nosub|-ch|-cp|-f|-java]
+# 	[-pass|-wpass] [file(s)]
+#
+# -llf
+# Filter out long lines from the bootstap output before any other
+# action.  This is useful for systems with broken awks/greps which choke
+# on long lines.  It is not done by default as it sometimes slows things
+# down.
+#
+# -s number
+# Take warnings from stage "Number".  Stage 0 means show warnings from
+# before and after the gcc bootstrap directory.  E.g. libraries, etc.
+# This presupposes using "gcc -W*" for the stage1 compiler.
+#
+# -nosub
+# Only show warnings from the gcc top level directory.
+# -ch|-cp|-f|-java
+# Only show warnings from the specified language subdirectory.
+# These flags assume the output contains "Entering/Leaving" messages from
+# gnu make.  They override each other so only the last one takes effect.
+#
+# -pass
+# Pass through the bootstrap output after filtering stage and subdir
+# (useful for manual inspection.)  This is all lines, not just warnings.
+# -wpass
+# Pass through only warnings from the bootstrap output after filtering
+# stage and subdir.
+#
+# By Kaveh Ghazi  (ghazi@@caip.rutgers.edu)  12/13/97.
+
+
+# Some awks choke on long lines, sed seems to do a better job.
+# Truncate lines > 255 characters.  RE '.\{255,\}' doesn't seem to work. :-(
+# Only do this if -llf was specified, because it can really slow things down.
+longLineFilter()
+{
+  if test -z "$llf" ; then
+    cat $1
+  else
+    sed 's/^\(...............................................................................................................................................................................................................................................................\).*/\1/' $1
+  fi
+}
+
+# This function does one of three things.  It either passes through
+# all warning data, or passes through gcc toplevel warnings, or passes
+# through a particular subdirectory set of warnings.
+subdirectoryFilter()
+{
+  longLineFilter $1 | (
+  if test -z "$filter" ; then
+    # Pass through all lines.
+    cat
+  else
+    if test "$filter" = nosub ; then
+      # Omit all subdirectories.
+      $AWK 'BEGIN{t=1} ; /Entering directory.*\/gcc\/[a-z]/{t--} ; /Leaving directory.*\/gcc\/[a-z]/{t++} ; {if(t==1)print}'
+    else
+      # Pass through only subdir $filter.
+      $AWK "BEGIN {t=-1} ; /^cd $filter; make/{t=0} ; /Entering directory .*\/gcc\/$filter/{t++} ; /Leaving directory .*\/gcc\/$filter/{t--} ; {if(t==1)print}"
+    fi
+  fi )
+}
+
+# This function displays all lines from stageN of the bootstrap.  If
+# stage==0, then show lines prior to stage1 and lines from after the last
+# stage.  I.e. utilities, libraries, etc.
+stageNfilter()
+{
+  if test "$stageN" -lt 1 ; then
+    # stage "0" means check everything *but* gcc.
+    $AWK "BEGIN{t=1} ; /^Bootstrapping the compiler/{t=0} ; /^Building runtime libraries/{t=1} ; {if(t==1)print}"
+  else
+    if test "$stageN" -eq 1 ; then
+      $AWK "/^Bootstrapping the compiler|^Building the C and C\+\+ compiler/{t=1} ; /stage$stageN/{t=0} ; {if(t==1)print}"
+    else
+      stageNminus1=`expr $stageN - 1`
+      $AWK "/stage$stageNminus1/{t=1} ; /stage$stageN/{t=0} ; {if(t==1)print}"
+    fi
+  fi
+}
+
+# This function displays lines containing warnings.
+warningFilter()
+{
+  grep ' warning: ' $1
+}
+
+# This function replaces `xxx' with `???', where xxx is usually some
+# variable or function name.  This allows similar warnings to be
+# counted together when summarizing.  However it avoids replacing
+# certain C keywords which are known appear in various messages.
+
+keywordFilter() {
+  sed 's/.*warning: //; 
+	s/`\(int\)'"'"'/"\1"/g;
+	s/`\(long\)'"'"'/"\1"/g;
+	s/`\(char\)'"'"'/"\1"/g;
+	s/`\(inline\)'"'"'/"\1"/g;
+	s/`\(else\)'"'"'/"\1"/g;
+	s/`\(return\)'"'"'/"\1"/g;
+	s/`\(static\)'"'"'/"\1"/g;
+	s/`\(extern\)'"'"'/"\1"/g;
+	s/`\(const\)'"'"'/"\1"/g;
+	s/`\(noreturn\)'"'"'/"\1"/g;
+	s/`\(longjmp\)'"'"' or `\(vfork\)'"'"'/"\1" or "\2"/g;
+	s/`'"[^']*'/"'`???'"'/g;"'
+	s/.*format, .* arg (arg [0-9][0-9]*)/??? format, ??? arg (arg ???)/;
+	s/\([( ]\)arg [0-9][0-9]*\([) ]\)/\1arg ???\2/;
+	s/"\([^"]*\)"/`\1'"'"'/g'
+}
+
+
+# Start the main section.
+
+usage="usage: `basename $0` [-llf] [-s stage] [-nosub|-ch|-cp|-f|-java] [-pass|-wpass] [file(s)]"
+stageN=3
+tmpfile=/tmp/tmp-warn.$$
+
+# Remove $tmpfile on exit and various signals.
+trap "rm -f $tmpfile" 0
+trap "rm -f $tmpfile ; exit 1" 1 2 3 5 9 13 15
+
+# Find a good awk.
+if test -z "$AWK" ; then
+  for AWK in gawk nawk awk ; do
+    if type $AWK 2>&1 | grep 'not found' > /dev/null 2>&1 ; then
+      :
+    else
+      break
+    fi
+  done
+fi
+
+# Parse command line arguments.
+while test -n "$1" ; do
+ case "$1" in
+   -llf) llf=1 ; shift ;;
+   -s)  if test -z "$2"; then echo $usage; exit 1; fi; stageN="$2"; shift 2 ;;
+   -s*) stageN="`expr $1 : '-s\(.*\)'`" ; shift ;;
+   -nosub|-ch|-cp|-f|-java) filter="`expr $1 : '-\(.*\)'`" ; shift ;;
+   -pass) pass=1 ; shift ;;
+   -wpass) pass=w ; shift ;;
+   -*)  echo $usage ; exit 1 ;;
+   *)   break ;;
+ esac
+done
+
+# Check for a valid value of $stageN.
+case "$stageN" in
+  [0-9]) ;;
+  *) echo "Stage <$stageN> must be in the range [0..9]." ; exit 1 ;;
+esac
+
+for file in "$@@" ; do
+
+  subdirectoryFilter $file | stageNfilter > $tmpfile
+
+  # (Just) show me the warnings.
+  if test "$pass" != '' ; then
+    if test "$pass" = w ; then
+      warningFilter $tmpfile
+    else
+      cat $tmpfile
+    fi
+    continue
+  fi
+
+  if test -z "$filter" ; then
+    echo "Counting all warnings,"
+  else
+    if test "$filter" = nosub ; then
+      echo "Counting non-subdirectory warnings,"
+    else
+      echo "Counting warnings in the gcc/$filter subdirectory,"
+    fi
+  fi
+  count=`warningFilter $tmpfile | wc -l`
+  echo there are $count warnings in stage$stageN of this bootstrap.
+
+  echo
+  echo Number of warnings per file:
+  warningFilter $tmpfile | $AWK -F: '{print$1}' | sort | uniq -c | sort -nr
+
+  echo
+  echo Number of warning types:
+  warningFilter $tmpfile | keywordFilter | sort | uniq -c | sort -nr
+
+done
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

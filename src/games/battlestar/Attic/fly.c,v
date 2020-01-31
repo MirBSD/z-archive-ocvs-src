@@ -1,0 +1,447 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.12.09.18.59.20;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.35.25;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.35.25;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.16.59.26;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@* games went off to ports/games/bsdgames
+* don't install isakmpd or ctm samples
+@
+text
+@/*	$OpenBSD: fly.c,v 1.10 2002/05/31 05:11:32 pjanzen Exp $	*/
+/*	$NetBSD: fly.c,v 1.3 1995/03/21 15:07:28 cgd Exp $	*/
+
+/*
+ * Copyright (c) 1983, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#ifndef lint
+#if 0
+static char sccsid[] = "@@(#)fly.c	8.2 (Berkeley) 4/28/95";
+#else
+static char rcsid[] = "$OpenBSD: fly.c,v 1.10 2002/05/31 05:11:32 pjanzen Exp $";
+#endif
+#endif /* not lint */
+
+#include "extern.h"
+#undef UP
+#include <curses.h>
+
+#define MIDR  (LINES/2 - 1)
+#define MIDC  (COLS/2 - 1)
+
+int     ourclock = 120;	/* time for all the flights in the game */
+
+static int     row, column;
+static int     dr = 0, dc = 0;
+static char    destroyed;
+static char    cross = 0;
+static sig_t   oldsig;
+
+static void blast(void);
+static void endfly(void);
+static void moveenemy(int);
+static void notarget(void);
+static void screen(void);
+static void succumb(int);
+static void target(void);
+
+static void
+succumb(sigraised)
+	int     sigraised;
+{
+	if (oldsig == SIG_DFL) {
+		endfly();
+		exit(1);
+	}
+	if (oldsig != SIG_IGN) {
+		endfly();
+		(*oldsig)(SIGINT);
+	}
+}
+
+int
+visual()
+{
+	destroyed = 0;
+	if (initscr() == NULL) {
+		puts("Whoops!  No more memory...");
+		return (0);
+	}
+	oldsig = signal(SIGINT, succumb);
+	cbreak();
+	noecho();
+	screen();
+	row = rnd(LINES - 3) + 1;
+	column = rnd(COLS - 2) + 1;
+	moveenemy(0);
+	for (;;) {
+		switch (getchar()) {
+
+		case 'h':
+		case 'r':
+			dc = -1;
+			fuel--;
+			break;
+
+		case 'H':
+		case 'R':
+			dc = -5;
+			fuel -= 10;
+			break;
+
+		case 'l':
+			dc = 1;
+			fuel--;
+			break;
+
+		case 'L':
+			dc = 5;
+			fuel -= 10;
+			break;
+
+		case 'j':
+		case 'u':
+			dr = 1;
+			fuel--;
+			break;
+
+		case 'J':
+		case 'U':
+			dr = 5;
+			fuel -= 10;
+			break;
+
+		case 'k':
+		case 'd':
+			dr = -1;
+			fuel--;
+			break;
+
+		case 'K':
+		case 'D':
+			dr = -5;
+			fuel -= 10;
+			break;
+
+		case '+':
+			if (cross) {
+				cross = 0;
+				notarget();
+			} else
+				cross = 1;
+			break;
+
+		case ' ':
+		case 'f':
+			if (torps) {
+				torps -= 2;
+				blast();
+				if (row == MIDR && column - MIDC < 2 && MIDC - column < 2) {
+					destroyed = 1;
+					alarm(0);
+				}
+			} else
+				mvaddstr(0, 0, "*** Out of torpedoes. ***");
+			break;
+
+		case 'q':
+			endfly();
+			return (0);
+
+		default:
+			mvaddstr(0, 26, "Commands = r,R,l,L,u,U,d,D,f,+,q");
+			continue;
+
+		case EOF:
+			break;
+		}
+		if (destroyed) {
+			endfly();
+			return (1);
+		}
+		if (ourclock <= 0) {
+			endfly();
+			die(0);
+		}
+	}
+}
+
+static void
+screen()
+{
+	int     r, c, n;
+	int     i;
+
+	clear();
+	i = rnd(100);
+	for (n = 0; n < i; n++) {
+		r = rnd(LINES - 3) + 1;
+		c = rnd(COLS);
+		mvaddch(r, c, '.');
+	}
+	mvaddstr(LINES - 1 - 1, 21, "TORPEDOES           FUEL           TIME");
+	refresh();
+}
+
+static void
+target()
+{
+	int     n;
+
+	move(MIDR, MIDC - 10);
+	addstr("-------   +   -------");
+	for (n = MIDR - 4; n < MIDR - 1; n++) {
+		mvaddch(n, MIDC, '|');
+		mvaddch(n + 6, MIDC, '|');
+	}
+}
+
+static void
+notarget()
+{
+	int     n;
+
+	move(MIDR, MIDC - 10);
+	addstr("                     ");
+	for (n = MIDR - 4; n < MIDR - 1; n++) {
+		mvaddch(n, MIDC, ' ');
+		mvaddch(n + 6, MIDC, ' ');
+	}
+}
+
+static void
+blast()
+{
+	int     n;
+
+	alarm(0);
+	move(LINES - 1, 24);
+	printw("%3d", torps);
+	for(n = LINES - 1 - 2; n >= MIDR + 1; n--) {
+		mvaddch(n, MIDC + MIDR - n, '/');
+		mvaddch(n, MIDC - MIDR + n, '\\');
+		refresh();
+	}
+	mvaddch(MIDR, MIDC, '*');
+	for (n = LINES - 1 - 2; n >= MIDR + 1; n--) {
+		mvaddch(n, MIDC + MIDR - n, ' ');
+		mvaddch(n, MIDC - MIDR + n, ' ');
+		refresh();
+	}
+	alarm(1);
+}
+
+static void
+moveenemy(sigraised)
+	int     sigraised;
+{
+	double  d;
+	int     oldr, oldc;
+
+	oldr = row;
+	oldc = column;
+	if (fuel > 0) {
+		if (row + dr <= LINES - 3 && row + dr > 0)
+			row += dr;
+		if (column + dc < COLS - 1 && column + dc > 0)
+			column += dc;
+	} else
+		if (fuel < 0) {
+			fuel = 0;
+			mvaddstr(0, 60, "*** Out of fuel ***");
+		}
+	d = (double) ((row - MIDR) * (row - MIDR) + (column - MIDC) * (column - MIDC));
+	if (d < 16) {
+		row += (rnd(9) - 4) % (4 - abs(row - MIDR));
+		column += (rnd(9) - 4) % (4 - abs(column - MIDC));
+	}
+	ourclock--;
+	mvaddstr(oldr, oldc - 1, "   ");
+	if (cross)
+		target();
+	mvaddstr(row, column - 1, "/-\\");
+	move(LINES - 1, 24);
+	printw("%3d", torps);
+	move(LINES - 1, 42);
+	printw("%3d", fuel);
+	move(LINES - 1, 57);
+	printw("%3d", ourclock);
+	refresh();
+	signal(SIGALRM, moveenemy);
+	alarm(1);
+}
+
+static void
+endfly()
+{
+	alarm(0);
+	signal(SIGALRM, SIG_DFL);
+	mvcur(0, COLS - 1, LINES - 1, 0);
+	endwin();
+	setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
+	signal(SIGTSTP, SIG_DFL);
+	signal(SIGINT, oldsig);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: fly.c,v 1.11 2003/06/03 03:01:38 millert Exp $	*/
+d16 5
+a20 1
+ * 3. Neither the name of the University nor the names of its contributors
+d41 1
+a41 1
+static char rcsid[] = "$OpenBSD: fly.c,v 1.11 2003/06/03 03:01:38 millert Exp $";
+@
+

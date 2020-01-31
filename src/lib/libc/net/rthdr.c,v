@@ -1,0 +1,895 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2
+	tg-mergefixes-1-branch:1.2.0.8
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.6
+	MIROS_X_BASE:1.2
+	tg-mergetmp-3:1.2
+	MIRBSD_XP_MIRPPC:1.2.0.4
+	cvs-200410261930:1.1.1.3
+	cvs-200410222040:1.1.1.3
+	tg-mergetmp-1:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.2
+	cvs-200406230735:1.1.1.3
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.3
+	cvs-200402042200:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309261655:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.11.27.21.26.57;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.46.22;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.22;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.08.22.44.34;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.19.12.37.48;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@strcpy, strcat, bzero, bcmp, bcopy whack in lib/
+@
+text
+@/* $MirBSD$ */
+/*	$OpenBSD: rthdr.c,v 1.6 2003/06/11 02:54:02 itojun Exp $	*/
+
+/*
+ * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the project nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE PROJECT OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+
+#include <netinet/in.h>
+#include <netinet/ip6.h>
+
+#include <string.h>
+#include <stdio.h>
+
+size_t
+inet6_rthdr_space(type, seg)
+	int type, seg;
+{
+	switch (type) {
+	case IPV6_RTHDR_TYPE_0:
+		if (seg < 1 || seg > 23)
+			return (0);
+		return (CMSG_SPACE(sizeof(struct in6_addr) * seg +
+		    sizeof(struct ip6_rthdr0)));
+	default:
+		return (0);
+	}
+}
+
+struct cmsghdr *
+inet6_rthdr_init(bp, type)
+	void *bp;
+	int type;
+{
+	struct cmsghdr *ch = (struct cmsghdr *)bp;
+	struct ip6_rthdr *rthdr;
+
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(ch);
+
+	ch->cmsg_level = IPPROTO_IPV6;
+	ch->cmsg_type = IPV6_RTHDR;
+
+	switch (type) {
+	case IPV6_RTHDR_TYPE_0:
+		ch->cmsg_len = CMSG_LEN(sizeof(struct ip6_rthdr0));
+		memset(rthdr, 0, sizeof(struct ip6_rthdr0));
+		rthdr->ip6r_type = IPV6_RTHDR_TYPE_0;
+		return (ch);
+	default:
+		return (NULL);
+	}
+}
+
+int
+inet6_rthdr_add(cmsg, addr, flags)
+	struct cmsghdr *cmsg;
+	const struct in6_addr *addr;
+	u_int flags;
+{
+	struct ip6_rthdr *rthdr;
+
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+
+	switch (rthdr->ip6r_type) {
+	case IPV6_RTHDR_TYPE_0:
+	{
+		struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+		if (flags != IPV6_RTHDR_LOOSE)
+			return (-1);
+		if (rt0->ip6r0_segleft == 23)
+			return (-1);
+		rt0->ip6r0_segleft++;
+		memmove((caddr_t)rt0 + ((rt0->ip6r0_len + 1) << 3), addr,
+		    sizeof(struct in6_addr));
+		rt0->ip6r0_len += sizeof(struct in6_addr) >> 3;
+		cmsg->cmsg_len = CMSG_LEN((rt0->ip6r0_len + 1) << 3);
+		break;
+	}
+	default:
+		return (-1);
+	}
+
+	return (0);
+}
+
+int
+inet6_rthdr_lasthop(cmsg, flags)
+	struct cmsghdr *cmsg;
+	unsigned int flags;
+{
+	struct ip6_rthdr *rthdr;
+
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+
+	switch (rthdr->ip6r_type) {
+	case IPV6_RTHDR_TYPE_0:
+	{
+		struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+		if (flags != IPV6_RTHDR_LOOSE)
+			return (-1);
+		if (rt0->ip6r0_segleft > 23)
+			return (-1);
+		break;
+	}
+	default:
+		return (-1);
+	}
+
+	return (0);
+}
+
+#if 0
+int
+inet6_rthdr_reverse(in, out)
+	const struct cmsghdr *in;
+	struct cmsghdr *out;
+{
+
+	return (-1);
+}
+#endif
+
+int
+inet6_rthdr_segments(cmsg)
+	const struct cmsghdr *cmsg;
+{
+	struct ip6_rthdr *rthdr;
+
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+
+	switch (rthdr->ip6r_type) {
+	case IPV6_RTHDR_TYPE_0:
+	{
+		struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+
+		if (rt0->ip6r0_len % 2 || 46 < rt0->ip6r0_len)
+			return (-1);
+
+		return (rt0->ip6r0_len * 8) / sizeof(struct in6_addr);
+	}
+
+	default:
+		return (-1);
+	}
+}
+
+struct in6_addr *
+inet6_rthdr_getaddr(cmsg, index)
+	struct cmsghdr *cmsg;
+	int index;
+{
+	struct ip6_rthdr *rthdr;
+
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+
+	switch (rthdr->ip6r_type) {
+	case IPV6_RTHDR_TYPE_0:
+	{
+		struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+		int naddr;
+
+		if (rt0->ip6r0_len % 2 || 46 < rt0->ip6r0_len)
+			return NULL;
+		naddr = (rt0->ip6r0_len * 8) / sizeof(struct in6_addr);
+		if (index <= 0 || naddr < index)
+			return NULL;
+		return ((struct in6_addr *)(rt0 + 1)) + index;
+	}
+
+	default:
+		return NULL;
+	}
+}
+
+int
+inet6_rthdr_getflags(cmsg, index)
+	const struct cmsghdr *cmsg;
+	int index;
+{
+	struct ip6_rthdr *rthdr;
+
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+
+	switch (rthdr->ip6r_type) {
+	case IPV6_RTHDR_TYPE_0:
+	{
+		struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+		int naddr;
+
+		if (rt0->ip6r0_len % 2 || 46 < rt0->ip6r0_len)
+			return (-1);
+		naddr = (rt0->ip6r0_len * 8) / sizeof(struct in6_addr);
+		if (index < 0 || naddr < index)
+			return (-1);
+		return IPV6_RTHDR_LOOSE;
+	}
+
+	default:
+		return (-1);
+	}
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 1
+/*	$OpenBSD: rthdr.c,v 1.3 2002/06/27 10:14:02 itojun Exp $	*/
+d7 1
+a7 1
+ * 
+d19 1
+a19 1
+ * 
+d45 1
+a45 1
+    int type, seg;
+d47 9
+a55 12
+    switch(type) {
+     case IPV6_RTHDR_TYPE_0:
+	 if (seg < 1 || seg > 23)
+	     return(0);
+	 return(CMSG_SPACE(sizeof(struct in6_addr) * (seg - 1)
+			   + sizeof(struct ip6_rthdr0)));
+     default:
+#ifdef DEBUG
+	 fprintf(stderr, "inet6_rthdr_space: unknown type(%d)\n", type);
+#endif 
+	 return(0);
+    }
+d60 2
+a61 2
+    void *bp;
+    int type;
+d63 2
+a64 2
+    register struct cmsghdr *ch = (struct cmsghdr *)bp;
+    register struct ip6_rthdr *rthdr;
+d66 1
+a66 1
+    rthdr = (struct ip6_rthdr *)CMSG_DATA(ch);
+d68 12
+a79 15
+    ch->cmsg_level = IPPROTO_IPV6;
+    ch->cmsg_type = IPV6_RTHDR;
+
+    switch(type) {
+     case IPV6_RTHDR_TYPE_0:
+	 ch->cmsg_len = CMSG_LEN(sizeof(struct ip6_rthdr0) - sizeof(struct in6_addr));
+	 bzero(rthdr, sizeof(struct ip6_rthdr0));
+	 rthdr->ip6r_type = IPV6_RTHDR_TYPE_0;
+	 return(ch);
+     default:
+#ifdef DEBUG
+	 fprintf(stderr, "inet6_rthdr_init: unknown type(%d)\n", type);
+#endif 
+	 return(NULL);
+    }
+d84 26
+a109 5
+    struct cmsghdr *cmsg;
+    const struct in6_addr *addr;
+    u_int flags;
+{
+    register struct ip6_rthdr *rthdr;
+d111 1
+a111 40
+    rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+
+    switch(rthdr->ip6r_type) {
+     case IPV6_RTHDR_TYPE_0:
+     {
+	 struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+	 if (flags != IPV6_RTHDR_LOOSE && flags != IPV6_RTHDR_STRICT) {
+#ifdef DEBUG
+	     fprintf(stderr, "inet6_rthdr_add: unsupported flag(%u)\n", flags);
+#endif 
+	     return(-1);
+	 }
+	 if (rt0->ip6r0_segleft == 23) {
+#ifdef DEBUG
+	     fprintf(stderr, "inet6_rthdr_add: segment overflow\n");
+#endif 
+	     return(-1);
+	 }
+	 if (flags == IPV6_RTHDR_STRICT) {
+	     int c, b;
+	     c = rt0->ip6r0_segleft / 8;
+	     b = rt0->ip6r0_segleft % 8;
+	     rt0->ip6r0_slmap[c] |= (1 << (7 - b));
+	 }
+	 rt0->ip6r0_segleft++;
+	 bcopy(addr, (caddr_t)rt0 + ((rt0->ip6r0_len + 1) << 3),
+	       sizeof(struct in6_addr));
+	 rt0->ip6r0_len += sizeof(struct in6_addr) >> 3;
+	 cmsg->cmsg_len = CMSG_LEN((rt0->ip6r0_len + 1) << 3);
+	 break;
+     }
+     default:
+#ifdef DEBUG
+	 fprintf(stderr, "inet6_rthdr_add: unknown type(%u)\n",
+		 rthdr->ip6r_type);
+#endif 
+	 return(-1);
+    }
+
+    return(0);
+d116 2
+a117 2
+    struct cmsghdr *cmsg;
+    unsigned int flags;
+d119 1
+a119 1
+    register struct ip6_rthdr *rthdr;
+d121 1
+a121 1
+    rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+d123 13
+a135 31
+    switch(rthdr->ip6r_type) {
+     case IPV6_RTHDR_TYPE_0:
+     {
+	 struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+	 if (flags != IPV6_RTHDR_LOOSE && flags != IPV6_RTHDR_STRICT) {
+#ifdef DEBUG
+	     fprintf(stderr, "inet6_rthdr_lasthop: unsupported flag(%u)\n", flags);
+#endif 
+	     return(-1);
+	 }
+	 if (rt0->ip6r0_segleft > 23) {
+#ifdef DEBUG
+	     fprintf(stderr, "inet6_rthdr_add: segment overflow\n");
+#endif 
+	     return(-1);
+	 }
+	 if (flags == IPV6_RTHDR_STRICT) {
+	     int c, b;
+	     c = rt0->ip6r0_segleft / 8;
+	     b = rt0->ip6r0_segleft % 8;
+	     rt0->ip6r0_slmap[c] |= (1 << (7 - b));
+	 }
+	 break;
+     }
+     default:
+#ifdef DEBUG
+	 fprintf(stderr, "inet6_rthdr_lasthop: unknown type(%u)\n",
+		 rthdr->ip6r_type);
+#endif 
+	 return(-1);
+    }
+d137 1
+a137 1
+    return(0);
+d143 2
+a144 2
+    const struct cmsghdr *in;
+    struct cmsghdr *out;
+d146 2
+a147 4
+#ifdef DEBUG
+    fprintf(stderr, "inet6_rthdr_reverse: not implemented yet\n");
+#endif 
+    return -1;
+d153 1
+a153 1
+    const struct cmsghdr *cmsg;
+d155 1
+a155 1
+    register struct ip6_rthdr *rthdr;
+d157 1
+a157 1
+    rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+d159 14
+a172 23
+    switch(rthdr->ip6r_type) {
+    case IPV6_RTHDR_TYPE_0:
+      {
+	struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+
+	if (rt0->ip6r0_len % 2 || 46 < rt0->ip6r0_len) {
+#ifdef DEBUG
+	    fprintf(stderr, "inet6_rthdr_segments: invalid size(%u)\n",
+		rt0->ip6r0_len);
+#endif 
+	    return -1;
+	}
+
+	return (rt0->ip6r0_len * 8) / sizeof(struct in6_addr);
+      }
+
+    default:
+#ifdef DEBUG
+	fprintf(stderr, "inet6_rthdr_segments: unknown type(%u)\n",
+	    rthdr->ip6r_type);
+#endif 
+	return -1;
+    }
+d177 2
+a178 2
+    struct cmsghdr *cmsg;
+    int index;
+d180 1
+a180 1
+    register struct ip6_rthdr *rthdr;
+d182 1
+a182 1
+    rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+d184 17
+a200 30
+    switch(rthdr->ip6r_type) {
+    case IPV6_RTHDR_TYPE_0:
+      {
+	struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+	int naddr;
+
+	if (rt0->ip6r0_len % 2 || 46 < rt0->ip6r0_len) {
+#ifdef DEBUG
+	    fprintf(stderr, "inet6_rthdr_getaddr: invalid size(%u)\n",
+		rt0->ip6r0_len);
+#endif 
+	    return NULL;
+	}
+	naddr = (rt0->ip6r0_len * 8) / sizeof(struct in6_addr);
+	if (index <= 0 || naddr < index) {
+#ifdef DEBUG
+	    fprintf(stderr, "inet6_rthdr_getaddr: invalid index(%d)\n", index);
+#endif 
+	    return NULL;
+	}
+	return &rt0->ip6r0_addr[index - 1];
+      }
+
+    default:
+#ifdef DEBUG
+	fprintf(stderr, "inet6_rthdr_getaddr: unknown type(%u)\n",
+	    rthdr->ip6r_type);
+#endif 
+	return NULL;
+    }
+d205 2
+a206 2
+    const struct cmsghdr *cmsg;
+    int index;
+d208 1
+a208 1
+    register struct ip6_rthdr *rthdr;
+d210 1
+a210 1
+    rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+d212 17
+a228 33
+    switch(rthdr->ip6r_type) {
+    case IPV6_RTHDR_TYPE_0:
+      {
+	struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+	int naddr;
+
+	if (rt0->ip6r0_len % 2 || 46 < rt0->ip6r0_len) {
+#ifdef DEBUG
+	    fprintf(stderr, "inet6_rthdr_getflags: invalid size(%u)\n",
+		rt0->ip6r0_len);
+#endif 
+	    return -1;
+	}
+	naddr = (rt0->ip6r0_len * 8) / sizeof(struct in6_addr);
+	if (index < 0 || naddr < index) {
+#ifdef DEBUG
+	    fprintf(stderr, "inet6_rthdr_getflags: invalid index(%d)\n", index);
+#endif 
+	    return -1;
+	}
+	if (rt0->ip6r0_slmap[index / 8] & (0x80 >> (index % 8)))
+	    return IPV6_RTHDR_STRICT;
+	else
+	    return IPV6_RTHDR_LOOSE;
+      }
+
+    default:
+#ifdef DEBUG
+	fprintf(stderr, "inet6_rthdr_getflags: unknown type(%u)\n",
+	    rthdr->ip6r_type);
+#endif 
+	return -1;
+    }
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD CVS of roughly 2000-2200 UTC. Last import before release.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: rthdr.c,v 1.5 2003/06/06 07:27:52 itojun Exp $	*/
+d44 1
+a44 1
+	int type, seg;
+d46 12
+a57 9
+	switch (type) {
+	case IPV6_RTHDR_TYPE_0:
+		if (seg < 1 || seg > 23)
+			return (0);
+		return (CMSG_SPACE(sizeof(struct in6_addr) * (seg - 1) +
+		    sizeof(struct ip6_rthdr0)));
+	default:
+		return (0);
+	}
+d62 2
+a63 2
+	void *bp;
+	int type;
+d65 4
+a68 2
+	struct cmsghdr *ch = (struct cmsghdr *)bp;
+	struct ip6_rthdr *rthdr;
+d70 2
+a71 1
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(ch);
+d73 12
+a84 13
+	ch->cmsg_level = IPPROTO_IPV6;
+	ch->cmsg_type = IPV6_RTHDR;
+
+	switch (type) {
+	case IPV6_RTHDR_TYPE_0:
+		ch->cmsg_len = CMSG_LEN(sizeof(struct ip6_rthdr0) -
+		    sizeof(struct in6_addr));
+		bzero(rthdr, sizeof(struct ip6_rthdr0));
+		rthdr->ip6r_type = IPV6_RTHDR_TYPE_0;
+		return (ch);
+	default:
+		return (NULL);
+	}
+d89 44
+a132 32
+	struct cmsghdr *cmsg;
+	const struct in6_addr *addr;
+	u_int flags;
+{
+	struct ip6_rthdr *rthdr;
+
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+
+	switch (rthdr->ip6r_type) {
+	case IPV6_RTHDR_TYPE_0:
+	{
+		struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+		if (flags != IPV6_RTHDR_LOOSE && flags != IPV6_RTHDR_STRICT)
+			return (-1);
+		if (rt0->ip6r0_segleft == 23)
+			return (-1);
+		if (flags == IPV6_RTHDR_STRICT) {
+			int c, b;
+			c = rt0->ip6r0_segleft / 8;
+			b = rt0->ip6r0_segleft % 8;
+			rt0->ip6r0_slmap[c] |= (1 << (7 - b));
+		}
+		rt0->ip6r0_segleft++;
+		bcopy(addr, (caddr_t)rt0 + ((rt0->ip6r0_len + 1) << 3),
+		    sizeof(struct in6_addr));
+		rt0->ip6r0_len += sizeof(struct in6_addr) >> 3;
+		cmsg->cmsg_len = CMSG_LEN((rt0->ip6r0_len + 1) << 3);
+		break;
+	}
+	default:
+		return (-1);
+	}
+d134 1
+a134 1
+	return (0);
+d139 2
+a140 2
+	struct cmsghdr *cmsg;
+	unsigned int flags;
+d142 1
+a142 1
+	struct ip6_rthdr *rthdr;
+d144 1
+a144 1
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+d146 31
+a176 19
+	switch (rthdr->ip6r_type) {
+	case IPV6_RTHDR_TYPE_0:
+	{
+		struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+		if (flags != IPV6_RTHDR_LOOSE && flags != IPV6_RTHDR_STRICT)
+			return (-1);
+		if (rt0->ip6r0_segleft > 23)
+			return (-1);
+		if (flags == IPV6_RTHDR_STRICT) {
+			int c, b;
+			c = rt0->ip6r0_segleft / 8;
+			b = rt0->ip6r0_segleft % 8;
+			rt0->ip6r0_slmap[c] |= (1 << (7 - b));
+		}
+		break;
+	}
+	default:
+		return (-1);
+	}
+d178 1
+a178 1
+	return (0);
+d184 2
+a185 2
+	const struct cmsghdr *in;
+	struct cmsghdr *out;
+d187 4
+a190 2
+
+	return (-1);
+d196 1
+a196 1
+	const struct cmsghdr *cmsg;
+d198 1
+a198 1
+	struct ip6_rthdr *rthdr;
+d200 1
+a200 1
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+d202 23
+a224 14
+	switch (rthdr->ip6r_type) {
+	case IPV6_RTHDR_TYPE_0:
+	{
+		struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+
+		if (rt0->ip6r0_len % 2 || 46 < rt0->ip6r0_len)
+			return (-1);
+
+		return (rt0->ip6r0_len * 8) / sizeof(struct in6_addr);
+	}
+
+	default:
+		return (-1);
+	}
+d229 2
+a230 2
+	struct cmsghdr *cmsg;
+	int index;
+d232 1
+a232 1
+	struct ip6_rthdr *rthdr;
+d234 1
+a234 1
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+d236 30
+a265 17
+	switch (rthdr->ip6r_type) {
+	case IPV6_RTHDR_TYPE_0:
+	{
+		struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+		int naddr;
+
+		if (rt0->ip6r0_len % 2 || 46 < rt0->ip6r0_len)
+			return NULL;
+		naddr = (rt0->ip6r0_len * 8) / sizeof(struct in6_addr);
+		if (index <= 0 || naddr < index)
+			return NULL;
+		return &rt0->ip6r0_addr[index - 1];
+	}
+
+	default:
+		return NULL;
+	}
+d270 2
+a271 2
+	const struct cmsghdr *cmsg;
+	int index;
+d273 1
+a273 1
+	struct ip6_rthdr *rthdr;
+d275 1
+a275 1
+	rthdr = (struct ip6_rthdr *)CMSG_DATA(cmsg);
+d277 33
+a309 20
+	switch (rthdr->ip6r_type) {
+	case IPV6_RTHDR_TYPE_0:
+	{
+		struct ip6_rthdr0 *rt0 = (struct ip6_rthdr0 *)rthdr;
+		int naddr;
+
+		if (rt0->ip6r0_len % 2 || 46 < rt0->ip6r0_len)
+			return (-1);
+		naddr = (rt0->ip6r0_len * 8) / sizeof(struct in6_addr);
+		if (index < 0 || naddr < index)
+			return (-1);
+		if (rt0->ip6r0_slmap[index / 8] & (0x80 >> (index % 8)))
+			return IPV6_RTHDR_STRICT;
+		else
+			return IPV6_RTHDR_LOOSE;
+	}
+
+	default:
+		return (-1);
+	}
+@
+
+
+1.1.1.3
+log
+@sync with OpenBSD, this gives us a fair amount of fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: rthdr.c,v 1.6 2003/06/11 02:54:02 itojun Exp $	*/
+d50 1
+a50 1
+		return (CMSG_SPACE(sizeof(struct in6_addr) * seg +
+d72 2
+a73 1
+		ch->cmsg_len = CMSG_LEN(sizeof(struct ip6_rthdr0));
+d96 1
+a96 1
+		if (flags != IPV6_RTHDR_LOOSE)
+d100 6
+d133 1
+a133 1
+		if (flags != IPV6_RTHDR_LOOSE)
+d137 6
+d207 1
+a207 1
+		return ((struct in6_addr *)(rt0 + 1)) + index;
+d235 4
+a238 1
+		return IPV6_RTHDR_LOOSE;
+@
+
+

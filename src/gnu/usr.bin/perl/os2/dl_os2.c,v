@@ -1,0 +1,352 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.43.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.45;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.56.46;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#include "dlfcn.h"
+#include "string.h"
+#include "stdio.h"
+
+#define INCL_BASE
+#include <os2.h>
+
+static ULONG retcode;
+static char fail[300];
+
+char *os2error(int rc);
+
+void *
+dlopen(const char *path, int mode)
+{
+	HMODULE handle;
+	char tmp[260], *beg, *dot;
+	ULONG rc;
+
+	fail[0] = 0;
+	if ((rc = DosLoadModule(fail, sizeof fail, (char*)path, &handle)) == 0)
+		return (void *)handle;
+
+	retcode = rc;
+
+	if (strlen(path) >= sizeof(tmp))
+	    return NULL;
+
+	/* Not found. Check for non-FAT name and try truncated name. */
+	/* Don't know if this helps though... */
+	for (beg = dot = path + strlen(path);
+	     beg > path && !strchr(":/\\", *(beg-1));
+	     beg--)
+		if (*beg == '.')
+			dot = beg;
+	if (dot - beg > 8) {
+		int n = beg+8-path;
+
+		memmove(tmp, path, n);
+		memmove(tmp+n, dot, strlen(dot)+1);
+		if (DosLoadModule(fail, sizeof fail, tmp, &handle) == 0)
+			return (void *)handle;
+	}
+
+	return NULL;
+}
+
+void *
+dlsym(void *handle, const char *symbol)
+{
+	ULONG rc, type;
+	PFN addr;
+
+	fail[0] = 0;
+	rc = DosQueryProcAddr((HMODULE)handle, 0, symbol, &addr);
+	if (rc == 0) {
+		rc = DosQueryProcType((HMODULE)handle, 0, symbol, &type);
+		if (rc == 0 && type == PT_32BIT)
+			return (void *)addr;
+		rc = ERROR_CALL_NOT_IMPLEMENTED;
+	}
+	retcode = rc;
+	return NULL;
+}
+
+char *
+dlerror(void)
+{
+	static char buf[700];
+	ULONG len;
+	char *err;
+
+	if (retcode == 0)
+		return NULL;
+	err = os2error(retcode);
+	len = strlen(err);
+	if (len > sizeof(buf) - 1)
+	    len = sizeof(buf) - 1;
+	strncpy(buf, err, len+1);
+	if (fail[0] && len < 300)
+	    sprintf(buf + len, ", possible problematic module: '%s'", fail);
+	retcode = 0;
+	return buf;
+}
+
+int
+dlclose(void *handle)
+{
+	ULONG rc;
+
+	if ((rc = DosFreeModule((HMODULE)handle)) == 0) return 0;
+
+	retcode = rc;
+	return 2;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@a6 2
+#include <float.h>
+#include <stdlib.h>
+a10 10
+static ULONG dllHandle;
+static int handle_found;
+static int handle_loaded;
+#ifdef PERL_CORE
+
+#include "EXTERN.h"
+#include "perl.h"
+
+#else
+
+a12 53
+#endif
+
+#ifdef DLOPEN_INITTERM
+unsigned long _DLL_InitTerm(unsigned long modHandle, unsigned long flag)
+{
+    switch (flag) {
+    case 0:     /* INIT */
+        /* Save handle */
+        dllHandle = modHandle;
+	handle_found = 1;
+        return TRUE;
+
+    case 1:     /* TERM */
+	handle_found = 0;
+        dllHandle = (unsigned long)NULLHANDLE;
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+#endif
+
+HMODULE
+find_myself(void)
+{
+
+  static APIRET APIENTRY (*pDosQueryModFromEIP) (HMODULE * hmod, ULONG * obj, ULONG BufLen, PCHAR Buf,
+		    ULONG * Offset, ULONG Address);
+  HMODULE doscalls_h, mod;
+  static int failed;
+  ULONG obj, offset, rc;
+  char buf[260];
+
+  if (failed)
+	return 0;
+  failed = 1;
+  doscalls_h = (HMODULE)dlopen("DOSCALLS",0);
+  if (!doscalls_h)
+	return 0;
+/*  {&doscalls_handle, NULL, 360}, */	/* DosQueryModFromEIP */
+  rc = DosQueryProcAddr(doscalls_h, 360, 0, (PFN*)&pDosQueryModFromEIP);
+  if (rc)
+	return 0;
+  rc = pDosQueryModFromEIP(&mod, &obj, sizeof(buf), buf, &offset, (ULONG)dlopen);
+  if (rc)
+	return 0;
+  failed = 0;
+  handle_found = 1;
+  dllHandle = mod;
+  return mod;
+}
+
+d17 1
+a17 2
+	char tmp[260];
+	const char *beg, *dot;
+a18 1
+	unsigned fpflag = _control87(0,0);
+a20 25
+	if (!path) {			/* Our own handle. */
+	    if (handle_found || find_myself()) {
+		char dllname[260];
+
+		if (handle_loaded)
+		    return (void*)dllHandle;
+		rc = DosQueryModuleName(dllHandle, sizeof(dllname), dllname);
+		if (rc) {
+	            strcpy(fail, "can't find my DLL name by the handle");
+		    retcode = rc;
+		    return 0;
+		}
+		rc = DosLoadModule(fail, sizeof fail, dllname, &handle);
+		if (rc) {
+	            strcpy(fail, "can't load my own DLL");
+		    retcode = rc;
+		    return 0;
+		}
+		handle_loaded = 1;
+		goto ret;
+	    }
+	    retcode = ERROR_MOD_NOT_FOUND;
+            strcpy(fail, "can't load from myself: compiled without -DDLOPEN_INITTERM");
+	    return 0;
+	}
+d22 1
+a22 1
+		goto ret;
+d42 1
+a42 1
+		    goto ret;
+a43 1
+	handle = 0;
+d45 1
+a45 3
+      ret:
+	_control87(fpflag, MCW_EM); /* Some modules reset FP flags on load */
+	return (void *)handle;
+a47 2
+#define ERROR_WRONG_PROCTYPE 0xffffffff
+
+d60 1
+a60 1
+		rc = ERROR_WRONG_PROCTYPE;
+d75 1
+a75 4
+	if (retcode == ERROR_WRONG_PROCTYPE)
+	    err = "Wrong procedure type";
+	else
+	    err = os2error(retcode);
+d80 1
+a80 1
+	if (fail[0] && len + strlen(fail) < sizeof(buf) - 100)
+@
+

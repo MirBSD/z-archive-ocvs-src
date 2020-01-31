@@ -1,0 +1,1008 @@
+head	1.2;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.01.11.18.16.00;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.01.21;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.01.21;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke some unused, redundant or generated files
+@
+text
+@This is ../p/doc/info/gpc-es.info, produced by makeinfo version 4.1
+from gpc.texi.
+
+INFO-DIR-SECTION GNU programming tools
+START-INFO-DIR-ENTRY
+* GPC: (gpc).                   The GNU Pascal Compiler.
+END-INFO-DIR-ENTRY
+INFO-DIR-SECTION Individual utilities
+START-INFO-DIR-ENTRY
+* GPC: (gpc)Invoking GPC.       The GNU Pascal Compiler.
+END-INFO-DIR-ENTRY
+
+   This file documents the GNU Pascal Compiler.
+
+   Permission is granted to make and distribute verbatim copies of this
+manual provided the copyright notice and this permission notice are
+preserved on all copies.
+
+   Copyright (C) 1988-2003 Free Software Foundation, Inc.
+
+   Permission is granted to copy and distribute modified versions of
+this manual under the conditions for verbatim copying, provided also
+that the sections entitled "GNU General Public License", "The GNU
+Project", "The GNU Manifesto" and "Funding for free Software" are
+included exactly as in the original, and provided that the entire
+resulting derived work is distributed under the terms of a permission
+notice identical to this one.
+
+   Permission is granted to copy and distribute translations of this
+manual into another language, under the above conditions for modified
+versions, except that the sections entitled "GNU General Public
+License", "The GNU Project", "The GNU Manifesto" and "Funding for Free
+Software" and this permission notice, may be included in translations
+approved by the Free Software Foundation instead of in the original
+English.
+
+
+File: gpc-es.info,  Node: implementation constructor destructor operator uses import initialization,  Prev: forward near far,  Up: Parsing keywords
+
+`implementation', `constructor', `destructor', `operator', `uses', `import' and `initialization' as weak keywords
+.................................................................................................................
+
+   In ISO 7185 Pascal, each section of the source code is uniquely
+introduced by a keyword (`program', `const', `type', `var', `label',
+`procedure', `function', `begin'). However, the ending of some of these
+sections (in particular `const', `type' and `var') is not intrinsically
+defined, but only by the context (the next of these "critical"
+keywords). E.g., `var Foo: Integer;' can be a complete variable
+declaration part (if one of those keywords follows), or only a part of
+one, as in `var Foo: Integer; Bar: Integer;'. (For the other keywords,
+the ending is intrinsically defined - the `program' heading and `label'
+declarations end with the next `;'. For `procedure' and `function' it's
+a little more complicated, due to `forward' declarations, but still
+well-defined, and `begin' ends with the matching `end'). The same
+applies to sections within one routine, except that `program' cannot
+occur there.
+
+   Extended Pascal adds `to' (in `to begin do' and `to end do') and
+`end' (in interface modules and implementation modules without
+initializer and finalizer) to those "critical" keywords.
+
+   But it also adds two keywords which are not defined in classic
+Pascal, namely `export' and `import'. But they can only occur at the
+beginning of the source or of a module implementation so they have
+fewer chances to conflict with those other keywords.  The same applies
+to UCSD/Borland Pascal's `uses' for units.  (`uses' terminates at the
+first `;', `export' and `import' do not necessarily, like `var' etc.)
+
+   The problem gets bigger with UCSD/Borland Pascal's `implementation'
+in units. It can occur after the interface part, so it might follow,
+e.g., a variable declaration part. And it is not an ISO 7185 Pascal
+keyword.
+
+   If we want to treat `implementation' as a weak keyword, it must not
+conflict with _new_ identifiers anywhere in the grammar.
+
+   However, variable declaration parts are not self-contained in the
+sense described above, so after a variable declaration part it is not
+immediately clear if the part is finished or will continue. So this is
+a place where a new identifier is acceptable. E.g.:
+
+     interface
+     
+     var
+       Bar: Integer;
+       Implementation: Integer;
+
+   vs.
+
+     interface
+     
+     var
+       Bar: Integer;
+     
+     implementation
+
+   The same applies to `implementation' after `const', `type', `export'
+and `import' parts.
+
+   The same problem also occurs with the Borland Pascal and Object
+Pascal keywords `constructor' and `destructor', the Borland Delphi
+keyword `initialization', and the PXSC keyword `operator' since the
+respective declarations can follow variable declaration blocks etc. It
+also happens with `import' (but it is only possible after an `export'
+part) and with `uses' if we allow it after other declarations (GPC
+extension).
+
+   Again, we play some lexer tricks. We observe that the new identifier
+in `export', `var', `const' and `type' is always followed by either
+`,', `:' or `=' while none of the keywords `implementation',
+`constructor', `destructor', `operator', `import' and `uses' is ever
+followed by one of these symbols ... with two exceptions: `operator ='
+is valid, overloading the `=' operator.  Consider:
+
+     type
+       Foo = record end;
+       Operator = (a, b);  { enum type }
+
+   vs.
+
+     type
+       Foo = record end;
+     
+     operator = (a, b: Foo) c: Foo;
+
+   To decide whether `operator' is a keyword, we would have to look
+ahead _six tokens_! Anyway, that seems to be a new record (where
+"record" in this sentence can be read either as a Pascal keyword or in
+at least one of the usual English meanings ;-).
+
+   The other exception is that `initialization' can, in principle, be
+followed by `(', as in:
+
+     implementation
+     
+     type
+       Foo = Integer;
+       Initialization (Obj: Integer)
+
+   vs.
+
+     implementation
+     
+     type
+       Foo = Integer;
+     
+     Initialization
+       (Obj as SubObj).Method;
+
+   This would require 3 tokens look-ahead. However, a `(' at the
+beginning of a statement is quite uncommon, so we just disallow that,
+so the use of `Initialization' as an identifier is not restricted.
+
+   Doing so much look-ahead would be a huge effort and cause some
+complications as noted above. This seems inappropriate for such an
+academic example. So, until someone comes up with a clever trick to
+cope with this case, we give up here and let `operator' before `=' be a
+keyword, so overloading `=' is possible. This means that `operator'
+cannot be used as an `export' interface, a type or an (untyped)
+constant, unless the keyword is disabled explicitly or by dialect
+options. (Enabling and disabling the keyword by the parser would also
+have been no option here, since the parser would need the 6-token
+look-ahead just as well, which it cannot do.)
+
+   You may have noticed that we "forgot" `import' (in the list of
+possibly unfinished sections; not in the list of critical following
+keywords where it was alright; it actually plays both roles in this
+discussion).
+
+   This is because the identifier at the beginning of an import
+specification can be followed by `qualified', `only', `in', `(' or `;'
+- the former two of which are non-standard keywords as well and would
+therefore conflict with a new identifier after, e.g., `uses' and
+`operator'.
+
+   This means that there's no simple general solution. So let's
+consider the problematic keywords after an `import' part in detail:
+
+   * `import'. Can't happen since EP only allows only `import' part
+     (possibly containing multiple import specifications). So this one
+     doesn't cause a S/R conflict, unlike the following ones.
+
+   * `uses'. Combining module-style `import' with unit-style `uses' is
+     a direct mix of different standards.  According to the discussion
+     above, it would lead to the following ambiguity:
+
+          import Foo; Uses only (a);  { import only `a' from `Uses' }
+
+     vs.
+
+          import Foo;
+          
+          uses Only (a);  { import `a' from `Only' }
+
+     Though `uses' with an import-list is another "cross-standard"
+     extension, disallowing it would only reduce the issue from an
+     ambiguity to a two-token look-ahead conflict and not really help
+     much - whereas it would devalue the usefulness of `uses' which
+     otherwise can always serve as a substitute for `import', e.g.  to
+     avoid all the conflicts discussed here (because `uses' is
+     terminated by the first `;').
+
+   * `operator'.
+
+          import Foo; Operator only (a, b);
+
+     (i.e., import only `a' and `b' from an interface called
+     `Operator'), vs.
+
+          import Foo;
+          
+          operator Only (a, b: Integer) c: Integer;
+
+     As in the case of `operator =', we would need 6 tokens of
+     look-ahead. We have to give up.
+
+   * `implementation'. This does not happen for module implementations
+     since their syntax is different (`module Foo implementation;'),
+     but for unit implementations. Combining these with module-style
+     `import' is therefore "cross-standard" already. In addition, it
+     would imply an empty interface part (apart from the imports) which
+     is rather pointless in units (whereas it might be useful in
+     modules, containing only re-exports, but as noted, module
+     implementations are unproblematic here).
+
+   * `constructor' and `destructor'. In an interface, these actually do
+     not make sense immediately after `import' since their purpose is
+     to implement constructors and destructors of object types that
+     must have been declared before (not imported). But it could happen
+     in an implementation.
+
+
+   We forbid all of these keywords immediately after an `import' part.
+This is achieved using parser precedence rules.
+
+
+File: gpc-es.info,  Node: Parsing subranges,  Prev: Parsing keywords,  Up: Language definition
+
+Expressions as lower bounds of subranges
+----------------------------------------
+
+   Extended Pascal allows arbitrary expressions as the lower bounds of
+subrange types. This leads to some following parsing difficulties:
+
+     type
+       a = (expr1) .. expr2;
+
+   (if `expr1' starts with an identifier) vs.
+
+     type
+       a = (enum1, enum2);
+
+   If the enum type contains at least two items, we get no real
+conflicts, but what the bison manual calls "mystery conflicts", i.e.
+our grammer is LR(1), but not LALR(1) which bison requires, *Note
+Mystery Conflicts: (bison)Mystery Conflicts.
+
+   Our solution is the one suggested in the bison manual, to add a
+bogus rule. For that we add a new terminal `BOGUS' which is never used
+and a new nonterminal `conflict_id' which contains the identifiers that
+are responsible for the six conflicts.
+
+   It gets more difficult if the enum type has only one item, i.e.:
+
+     type
+       a = (enum1);
+
+   If further `expr1' consists of a single identifier, the conflict
+cannot be resolved without reading the token following the right
+parenthesis. (This is inherent in the EP language.)
+
+   But already after reading the identifier (`expr1' or `enum1'), our
+parser has to decide whether to reduce it to an expression or to keep
+it as an identifier. (The alternative would be to define an expression
+which is anything but a single identifier, and parse `(IDENTIFIER)' as
+a distinct thing, but this would get quite hairy.)
+
+   We resolve it with a lexer hack. The lexer turns a right parenthesis
+which is followed by `..' into the new token `LEX_RPAR'.  Most places
+in the parser treat `LEX_RPAR' and `)' as equivalent (nonterminal
+`rpar'). However, enum types allow only `)' (they can never be followed
+by `..'), and the lower bound of a subrange allows only `LEX_RPAR' (it
+is always followed by `..'). This resolves the conflict.
+
+   But there are more conflicts if the lower bound is not enclosed in
+parentheses:
+
+     type
+       a = Foo (42) .. expr2;
+
+   (where `Foo' can be one of certain built-in functions such as `Sqr',
+or a type name for a type-cast) vs.
+
+     type
+       a = Bar (42);
+
+   (where `Bar' is an undiscriminated schema type).
+
+   To resolve this, we let the lexer return a special token
+`LEX_SCHEMA' for identifiers which correspond to undiscriminated schema
+types. The parser accepts this token in `new_identifier' (so schema
+identifiers can be redefined) and `typename' (e.g. for parameters), but
+not in `id' (which appears in expressions) where undiscriminated schema
+types are invalid.
+
+   The last conflict:
+
+     type
+       a = @@Foo = (EXPR) .. expr2;
+
+   (where `@@' is the BP address operator - the `= (EXPR)' is there to
+create an ordinal (namely, Boolean) expression that starts with the
+address operator) vs.
+
+     type
+       a = @@Bar = (EXPR);
+
+   (where `@@' is a lexical alternative for `^', according to the
+standards).
+
+   The conflict arises already with the `@@' token. The `=' (as a
+comparison operator in the first case, and for a type initializer - EP
+extension, combined with a BP extension of using `=' instead of
+`value') just adds to the problem. Since EXPR can be arbitrary long,
+the conflict is in fact not solvable with any fixed number of lookup
+tokens.
+
+   This conflict is decided using parser precedence rules, in favour of
+the latter interpretation. (BP itself can't parse the supposedly BP
+compatible former syntax.)
+
+
+File: gpc-es.info,  Node: Tree nodes,  Next: Parameter passing,  Prev: Language definition,  Up: Internals
+
+Tree Nodes
+==========
+
+   If you want really to understand how the GNU Pascal language
+front-end works internally and perhaps want to improve the compiler, it
+is important that you understand GPC's internal data structures.
+
+   The data structure used by the language front-end to hold all
+information about your Pascal program are the so-called "tree nodes".
+(Well, it needn't be Pascal source - tree nodes are language
+independent.) The tree nodes are kind of objects, connected to each
+other via pointers. Since the GNU compiler is written in C and was
+created at a time where nobody really thought about object-oriented
+programming languages yet, a lot of effort has been taken to create
+these "objects" in C.
+
+   Here is an extract from the "object hierarchy". Omissions are marked
+with "..."; nodes in parentheses are "abstract": They are never
+instantiated and aren't really defined. They only appear here to
+clarify the structure of the tree node hierarchy. The complete list is
+in `../tree.def'; additional information can be found in `../tree.h'.
+
+     (tree_node)
+     |
+     |--- ERROR_MARK  { enables GPC to continue after an error }
+     |
+     |--- (identifier)
+     |    |
+     |    |--- IDENTIFIER_NODE
+     |    |
+     |    \--- OP_IDENTIFIER
+     |
+     |--- TREE_LIST  { a list of nodes, also used as a
+     |                  general-purpose "container object" }
+     |
+     |--- TREE_VEC
+     |
+     |--- BLOCK
+     |
+     |--- (type)  { information about types }
+     |    |
+     |    |--- VOID_TYPE
+     |    |
+     |    |--- INTEGER_TYPE
+     |   ...
+     |    |
+     |    |--- RECORD_TYPE
+     |    |
+     |    |--- FUNCTION_TYPE
+     |    |
+     |    \--- LANG_TYPE  { for language-specific extensions }
+     |
+     |--- INTEGER_CST  { an integer constant }
+     |
+     |--- REAL_CST
+     |
+     |--- STRING_CST
+     |
+     |--- COMPLEX_CST
+     |
+     |--- (declaration)
+     |    |
+     |    |--- FUNCTION_DECL
+     |   ...
+     |    |
+     |    |--- TYPE_DECL
+     |    |
+     |    \--- VAR_DECL
+     |
+     |--- (reference)
+     |    |
+     |    |--- COMPONENT_REF
+     |   ...
+     |    |
+     |    \--- ARRAY_REF
+     |
+     |--- CONSTRUCTOR
+     |
+     \--- (expression)
+          |
+          |--- MODIFY_EXPR  { assignment }
+          |
+          |--- PLUS_EXPR  { addition }
+         ...
+          |
+          |--- CALL_EXPR  { procedure/function call }
+          |
+          |--- GOTO_EXPR
+          |
+          \--- LOOP_EXPR  { for all loops }
+
+   Most of these tree nodes - struct variables in fact - contain
+pointers to other tree nodes. A `TREE_LIST' for instance has a
+`TREE_VALUE' and a `TREE_PURPOSE' slot which can contain arbitrary
+data; a third pointer `TREE_CHAIN' points to the next `TREE_LIST' node
+and thus allows us to create linked lists of tree nodes.
+
+   One example: When GPC reads the list of identifiers in a variable
+declaration
+
+     var
+       Foo, Bar, Baz: Integer;
+
+   the parser creates a chain of `TREE_LIST's whose `TREE_VALUE's hold
+`IDENTIFIER_NODE's for the identifiers `Foo', `Bar', and `Baz'. The
+function `declare_variables()' (declared in `declarations.c') gets this
+tree list as a parameter, does some magic, and finally passes a chain
+of `VAR_DECL' nodes to the back-end.
+
+   The `VAR_DECL' nodes in turn have a pointer `TREE_TYPE' which holds
+a `_TYPE' node - an `INTEGER_TYPE' node in the example above. Having
+this, GPC can do type-checking when a variable is referenced.
+
+   For another example, let's look at the following statement:
+
+     Baz := Foo + Bar;
+
+   Here the parser creates a `MODIFY_EXPR' tree node. This node has two
+pointers, `TREE_OPERAND[0]' which holds a representation of `Baz', a
+`VAR_DECL' node, and `TREE_OPERAND[1]' which holds a representation of
+the sum `Foo + Bar'. The sum in turn is represented as a `PLUS_EXPR'
+tree node whose `TREE_OPERAND[0]' is the `VAR_DECL' node `Foo', and
+whose `TREE_OPERAND[1]' is the `VAR_DECL' node `Bar'. Passing this (the
+`MODIFY_EXPR' node) to the back-end results in assembler code for the
+assignment.
+
+   If you want to have a closer look at these tree nodes, write a line
+`{$debug-tree FooBar}' into your program with `FooBar' being some
+identifier in your program. This tells GPC to output the contents of
+the `IDENTIFIER_NODE' to the standard error file handle in
+human-readable form.
+
+   While hacking and debugging GPC, you will also wish to have a look
+at these tree nodes in other cases. Use the `debug_tree()' function to
+do so. (In fact `{$debug-tree FooBar}' does nothing else than to
+`debug_tree()' the `IDENTIFIER_NODE' of the `Foobar' identifier node -
+note the capitalization of the first character in the internal
+representation.)
+
+
+File: gpc-es.info,  Node: Parameter passing,  Next: GPI files,  Prev: Tree nodes,  Up: Internals
+
+Parameter Passing
+=================
+
+   GPC supports a lot of funny things in parameter lists: value and
+reference, `protected' and `const' parameters, strings and other
+schemata with specified or unspecified discriminants, conformant and
+open arrays, objects, procedural parameters, untyped reference
+parameters, etc. All this requires sophisticated type-checking; the
+responsible function is `convert_arguments()' in the source file
+`typecheck.c'.  Every detail can be looked up from there.
+
+   Some short notes about the most interesting cases follow.
+
+*Conformant arrays:*
+     First, the array bounds are passed (an even number of parameters of
+     an ordinal type), then the address(es) of the array(s) themselves.
+
+*Procedural parameters:*
+     These need special care because a function passed as a parameter
+     can be confused with a call to the function whose result is then
+     passed as a parameter. See also the functions
+     `maybe_call_function()' and `probably_call_function()' in
+     `expressions.c'.
+
+*Chars:*
+     According to ISO 10206 Extended Pascal, formal char parameters
+     accept string values. GPC does the necessary conversion implicitly.
+     The empty string produces a space.
+
+*Strings and schemata:*
+     Value parameter strings and schemata of known size are really
+     passed by value. Value parameter strings and schemata of unknown
+     size are passed by reference, and GPC creates temporary variable
+     to hold a copy of the string.
+
+*`CString' parameters:*
+     GPC implicitly converts any string value such that the address of
+     the actual string data is passed and appends a `Chr (0)'
+     terminator when necessary.
+
+*`const' parameters:*
+     If a constant value is passed to a `const' parameter, GPC assigns
+     the value to a temporary variable whose address is passed.
+     Exception: Small types (whose size is known and not bigger than
+     that of a pointer) as well as all integer, real and complex types
+     are passed by value.
+
+*Untyped parameters:*
+     These are denoted by `var foo' or `var foo: Void' and are
+     compatible to C's `void *' parameters; the size of such entities
+     is _not_ passed. Maybe we will change this in the future and pass
+     the size for `var foo' parameters whereas `var foo: Void' will
+     remain compatible to C. (Same with `const' instead of `var'.)
+
+
+File: gpc-es.info,  Node: GPI files,  Next: Automake,  Prev: Parameter passing,  Up: Internals
+
+GPI files - GNU Pascal Interfaces
+=================================
+
+   This section documents the mechanism how GPC transfers information
+from the exporting modules and units to the program, module or unit
+which imports (uses) the information.
+
+   A GPI file contains a precompiled GNU Pascal interface.
+"Precompiled" means in this context that the interface already has been
+parsed (i.e. the front-end has done its work), but that no assembler
+output has been produced yet.
+
+   The GPI file format is an implementation-dependent (but not _too_
+implementation-dependent ;-) file format for storing GNU Pascal
+interfaces to be exported - Extended Pascal and PXSC module interfaces
+as well as interface parts of UCSD/Borland Pascal units compiled with
+GNU Pascal.
+
+   To see what information is stored in or loaded from a GPI file, run
+GPC with an additional command-line option `--debug-gpi'. Then, GPC
+will write a human-readable version of what is being stored/loaded to
+the standard error file handle. (See also: *Note Tree nodes::.) *Note:*
+This will usually produce _huge_ amounts of output!
+
+   While parsing an interface, GPC stores the names of exported objects
+in tree lists - look for `handle_autoexport' in the GPC source files.
+At the end of the interface, everything is stored in one or more GPI
+files. This is done in `module.c'. There you can find the source of
+`create_gpi_files()' which documents the file format:
+
+   First, a header of 33 bytes containing the string `GNU Pascal
+unit/module interface' plus a newline.
+
+   This is followed by an integer containing the "magic" value 12345678
+(hexadecimal) to carry information about the endianness.  Note that,
+though a single GPI file is always specific to a particular target
+architecture, the host architecture (i.e., the system on which GPC
+runs) can be different (cross-compilers).  Currently, GPC is not able
+to convert endianness in GPI files "on the fly", but at least it will
+detect and reject GPI files with the "wrong" endianness. When writing
+GPI files, always the host's endianness is used (this seems to be a
+good idea even when converting on the fly will be supported in the
+future, since most often, GPI files created by a cross-compiler will be
+read again by the same cross-compiler). "Integer" here and in the
+following paragraphs means a `gpi_int' (which is currently defined as
+`HOST_WIDE_INT').
+
+   The rest of the GPI file consists of chunks. Each chunk starts with
+a one-byte code that describes the type of the chunk. It is followed by
+an integer that describes the size of the chunk (excluding this chunk
+header). The further contents depend on the type, as listed below.
+
+   For the numeric values of the chunk type codes, please refer to
+`GPI_CHUNKS' in `module.c'. Chunk types denoted with `(*)' must occur
+exactly once in a GPI file. Other types may occur any number of times
+(including zero times). The order of chunks is arbitrary. "String" here
+simply means a character sequence whose length is the chunk's length
+(so no terminator is needed).
+
+`GPI_CHUNK_VERSION' (String) (*)
+     The version of the GPI file which is the same as the GPC version.
+     If `USE_GPI_DEBUG_KEY' is used (which will insert a "magic" value
+     at the beginning of each node in the node table, see below, so
+     errors in GPI files will be detected more reliably), ` D' is
+     appended to this version string. (Currently, `USE_GPI_DEBUG_KEY'
+     is used by default.) Furthermore, the GCC backend version is
+     appended, since it also influences GPI files.
+
+`GPI_CHUNK_TARGET' (String) (*)
+     The target system the GPI file was compiled for.
+
+`GPI_CHUNK_MODULE_NAME' (String) (*)
+     The name of the unit/module.
+
+`GPI_CHUNK_SRCFILE' (String) (*)
+     The name of the primary source file of the unit/module.
+
+`GPI_CHUNK_IMPORT'
+     The name of an interface imported by the current interface. This
+     chunk consists of a string followed by the checksum of the imported
+     interface's nodes, so the chunk length is the length of the string
+     plus the size of an integer. Again, no terminator of the string is
+     needed.
+
+     The checksum is currently a simple weighted sum over the contents
+     of the `GPI_CHUNK_NODES' chunk's contents (see below). This might
+     be replaced in the future by a MD5 hash or something else more
+     elaborate.
+
+`GPI_CHUNK_LINK' (String)
+     The name of a file to link.
+
+`GPI_CHUNK_LIB' (String)
+     The name of a library to link (prefixed with `-l').
+
+`GPI_CHUNK_INITIALIZER' (String)
+     The name of a module initializer. For technical reasons, any such
+     chunk must come _after_ the `GPI_CHUNK_MODULE_NAME' chunk.
+
+`GPI_CHUNK_GPC_MAIN_NAME' (String)
+     A `gpc-main' option given in this interface. (More than one
+     occurrence is pointless.)
+
+`GPI_CHUNK_NODES' (*)
+     The exported names and the objects (i.e., constants, data types,
+     variables and routines) they refer to are internally represented as
+     so-called _tree nodes_ as defined in the files `../tree.h' and
+     `../tree.def' from the GNU compiler back-end. (See also: *Note
+     Tree nodes::.)
+
+     The main problem when storing tree nodes is that they form a
+     complicated structure in memory with a lot of circular references
+     (actually, not a tree, but a directed graph in the usual
+     terminology, so the name "tree nodes" is actually a misnomer), so
+     the storing mechanism must make sure that nothing is stored
+     multiple times.
+
+     The functions `load_node()' and `store_node_fields()' do the main
+     work of loading/storing the contents of a tree node with
+     references to all its contained pointers in a GPI file. Each tree
+     node has a `TREE_CODE' indicating what kind of information it
+     contains. Each kind of tree nodes must be stored in a different way
+     which is not described here. See the source of these functions for
+     details.
+
+     As most tree nodes contain pointers to other tree nodes,
+     `load_node()' is an (indirectly) recursive function. Since this
+     recursion can be circular (think of a record containing a pointer
+     to a record of the same type), we must resolve references to tree
+     nodes which already have been loaded. For this reason, all tree
+     nodes being loaded are kept in a table (`rb.nodes'). They are
+     entered there _before_ all their fields have been loaded (because
+     loading them is what causes the recursion). So the table contains
+     some incomplete nodes during loading, but at the end of loading a
+     GPI file, they have all been completed.
+
+     On the other hand, for `store_node_fields()' the (seeming)
+     recursion must be resolved to an iterative process so that the
+     single tree nodes are stored one after another in the file, and not
+     mixed together. This is the job of `store_tree()'. It uses a hash
+     table (see `get_node_id()') for efficiency.
+
+     When re-exporting (directly or indirectly) a node that was imported
+     from another interface, and a later compiler run imports both
+     interfaces, it must merge the corresponding nodes loaded from both
+     interfaces. Otherwise it would get only similar, but not identical
+     items. However, we cannot simply omit the re-exported nodes from
+     the new interface in case a later compiler run imports only one of
+     them.  The same problem occurs when a module exports several
+     interfaces. In this case, a program that imports more than one of
+     them must recognize their contents as identical where they overlap.
+
+     Therefore, each node in a GPI file is prefixed (immediately before
+     its tree code) with information about the interface it was
+     originally imported from or stored in first. This information is
+     represented as a reference to an `INTERFACE_NAME_NODE' followed by
+     the id (as an integer) of the node in that interface. If the node
+     is imported again and re-re-exported, this information is copied
+     unchanged, so it will always refer to the interface the node was
+     originally contained it. For nodes that appear in an interface for
+     the first time (the normal case), a single 0 integer is stored
+     instead of interface `INTERFACE_NAME_NODE' and id (for shortness,
+     since this information is implicit).
+
+     This mechanism is not applied to `INTERFACE_NAME_NODE's since
+     there would be a problem when the identifier they represent is the
+     name of the interface they come from; neither to
+     `IDENTIFIER_NODE's because they are handled somewhat specially by
+     the backend (e.g., they contain fields like `IDENTIFIER_VALUE'
+     which depend on the currently active declarations, so storing and
+     loading them in GPI files would be wrong) because there is only
+     one `IDENTIFIER_NODE' ever made for any particular name. But for
+     the same reason, it is no problem that the mechanism can't be
+     applied to them.
+
+     `INTERFACE_NAME_NODE's are a special kind of tree nodes, only used
+     for this purpose. They contain the name of the interface, the name
+     of the module (to detect the unlikely case that different modules
+     have interfaces of the same name which otherwise might confuse
+     GPC), and the checksum of that interface. The latter may seem
+     redundant with the checksum stored in the `GPI_CHUNK_IMPORT'
+     chunk, but in fact it is not. On the one hand, `GPI_CHUNK_IMPORT'
+     chunks occur only for interfaces imported directly, while the
+     `INTERFACE_NAME_NODE' mechanism might also refer to interfaces
+     imported indirectly. On the other hand, storing the checksum in
+     the `GPI_CHUNK_IMPORT' chunks allows the automake mechanism to
+     detect discrepancies and force recompilation of the imported
+     module, whereas during the handling of the `GPI_CHUNK_NODES'
+     chunk, the imported modules must already have been loaded. (It
+     would be possible to scan the `GPI_CHUNK_NODES' chunk while
+     deciding whether to recompile, but that would be a lot of extra
+     effort, compared to storing the checksum in the `GPI_CHUNK_IMPORT'
+     chunks.)
+
+     Finally, at the end of the `GPI_CHUNK_NODES' chunk, a checksum of
+     its own contents (excluding the checksum itself, of course) is
+     appended. This is to detect corrupted GPI files and is independent
+     of the other uses of checksums.
+
+`GPI_CHUNK_OFFSETS' (*)
+     An offset table for the tree nodes. Each node in a GPI file is
+     assigned a unique id (which is stored as an integer wherever nodes
+     refer to other nodes). There are some special tree nodes (e.g.,
+     `integer_type_node' or `NULL_TREE') which are used very often and
+     have fixed meanings. They have been assigned predefined ids, so
+     they don't have to be stored in the GPI file at all. Their number
+     and values are fixed (but may change between different GPC
+     versions), see `SPECIAL_NODES' in `module.c'.
+
+     For the remaining nodes, the `GPI_CHUNK_OFFSETS' table contains
+     the file offsets as integers where they are stored within the
+     (only) `GPI_CHUNK_NODES' chunk. The offsets are relative to the
+     start of that chunk, i.e. after the chunk header. After the table
+     (but still in this chunk) the id of the main node which contains
+     the list of all exported names is stored as an integer.
+     (Currently, this is always the last node, but for the file format
+     definition, this is not guaranteed.)
+
+`GPI_CHUNK_IMPLEMENTATION'
+     This chunk contains no data (i.e., its size must be 0). Its only
+     purpose is to signal that the module implementation or the
+     implementation part of the unit has been compiled. (Stored, but not
+     used currently.)
+
+   That's it. Now you should be able to "read" GPI files using GPC's
+`--debug-gpi' option. There is also a utility `gpidump.pas' in the
+`utils' directory to decode and show the contents of GPI files. It does
+also some amount of integrity checking (a little more than GPC does
+while loading GPI files), so if you suspect a problem with GPI files,
+you might want to run `gpidump' on them, discarding its standard output
+(it writes all error reports to standard error, of course).
+
+   If you encounter a case where the loaded information differs too
+much from the stored information, you have found a bug -
+congratulations! What "too much" means, depends on the object being
+stored in or loaded from the GPI file. Remember that the order things
+are loaded from a GPI file is the _reversed_ order things are stored
+when considering _different_ recursion levels, but the _same_ order
+when considering the _same_ recursion level. (This is important when
+using `--debug-gpi'; with `gpidump' you can read the file in any order
+you like.)
+
+
+File: gpc-es.info,  Node: Automake,  Next: File Layout,  Prev: GPI files,  Up: Internals
+
+GPC's Automake Mechanism - How it Works
+=======================================
+
+   When a program/module/unit imports (uses) an interface, GPC searches
+for the GPI file (see *Note GPI files::) derived from the name of the
+interface.
+
+   Case 1: A GPI file was found.
+
+   Each GPI file contains the name of the primary source file (normally
+a `.pas' or `.p' file) of the module/unit, and the names of all
+interfaces imported. GPC reads this information and invokes itself with
+a command like
+
+     gpc foo.pas -M -o foo.d
+
+   This means: preprocess the file, and write down the name of the
+object file and those of all its source files in `foo.d'. GPC reads
+`foo.d' and looks if the object file exists and if the source was
+modified since the creation of the object file and the gpi file. If so,
+GPC calls itself again to compile the primary source file. When
+everything is done, the `.d' file is removed.  If there was no need to
+recompile, all interfaces imported by the module/unit are processed in
+the same way as this one.
+
+   Case 2: No GPI file was found.
+
+   In this case, GPC derives the name of the source file from that of
+the interface by trying first `interface.p', then `interface.pas'. This
+will almost always work with UCSD/Borland Pascal units, but not always
+with Extended Pascal modules. The programmer can override this
+assumption using `uses ... in' or `import ... in'.
+
+   All this is done by the function `gpi_open()' which uses some
+auxiliary functions such as `module_must_be_recompiled()' and
+`compile_module()'.
+
+   Each time an object file is compiled or recognized as being
+up-to-date, its name is stored in a temporary file with the same base
+name as all the other temporary files used by GPC but the extension
+`.gpc'. When the top-level `gpc' is invoked (which calls `gpc1' later
+on), it passes the name of this temporary file as an additional command
+line parameter to `gpc1'. After compilation has been completed, the
+top-level `gpc' reads the temporary file and adds the new object files
+to the arguments passed to the linker.
+
+   The additional command `--amtmpfile' (not to be specified by the
+user!) is passed to child GPC processes, so all compiles use the same
+temporary file.
+
+   The source for this is merely in `module.c', but there are also some
+hacks in `gpc.c', additional command line options in `lang-options.h'
+and `options.c', and `gpc.h' contains declarations for the functions
+and global variables.
+
+
+File: gpc-es.info,  Node: File Layout,  Next: Planned,  Prev: Automake,  Up: Internals
+
+Files that make up GPC
+======================
+
+   The GNU back end (gbe) is used to convert RTL into assembler code.
+It is supposed to be language independent. Files are in the `..'
+directory (i.e., the directory called `gcc'). It also uses files in the
+`../config' subdirectories etc.
+
+   Unfortunately, some of them are not completely language independent
+and need patching for GPC. These patches (against all supported GCC
+versions) are in the `diffs' subdirectory.
+
+   The Pascal language implementation files are in the directory called
+`p'. Some of them were written from scratch. Others are hacked from GCC
+sources. Their roots, if any, are mentioned in the comment at their top.
+
+
+File: gpc-es.info,  Node: Planned,  Prev: File Layout,  Up: Internals
+
+Planned features
+================
+
+AnyStrings
+----------
+
+     GetCapacity (s):
+       LongString            : s.Capacity
+       UndiscriminatedString : MaxInt
+       ShortString           : High (s)
+       FixedString           : High (s) - Low (s) + 1
+       CString (Array)       : High (s) - Low (s)
+       CString (Zeiger)      : strlen (s)
+       ObjectString          : s.GetCapacity
+     
+     GetLength (s):
+       LongString            : s.Length
+       UndiscriminatedString : s.Length
+       ShortString           : Ord (s[0])
+       FixedString           : c := High (s);
+                               while (c >= Low (s)) and (s[c] = ' ') do Dec (c);
+                               c - Low (s) + 1
+       CString               : strlen (s)
+       ObjectString          : s.GetLength
+     
+     SetLength (s,n):
+       if n > GetCapacity (s) then
+         if TruncateFlag then
+           n := GetCapacity (s)
+         else
+           Error;
+       LongString            : s.Length := n
+       UndiscriminatedString : if n > s.Capacity then
+                                 begin
+                                   tmp := @@s;
+                                   { possibly round n up to m * 2^k
+                                     to avoid frequent reallocations }
+                                   New (@@s, n);
+                                   Move (tmp^[1], s[1], Length (tmp^);
+                                   Dispose (tmp)
+                                 end;
+                               s.Length := n
+       ShortString           : s[0] := Chr (n)
+       FixedString           : FillChar (s[Low (s) + n],
+                                 GetCapacity (s) - n, ' ')
+       CString               : s[n] := #0
+       ObjectString          : s.SetLength (n)
+     
+     GetFirstChar (s):
+       LongString            : @@s[1]
+       UndiscriminatedString : @@s[1]
+       ShortString           : @@s[1]
+       FixedString           : @@s[Low (s)]
+       CString               : s
+       ObjectString          : s.GetFirstChar
+
+   Anything else can be reduced to these, e.g. string assignment:
+
+     SetLength (Dest, GetLength (Src));
+     Move (GetFirstChar (Src) ^, GetFirstChar (Dest) ^, GetLength (Dest));
+                                                                   ^^^^
+                                                    (because of truncate!)
+
+   Note pointer CStrings because assignments to them (from long,
+undiscriminated (with appending #0) or CStrings, not from short, fixed
+or object strings) should set the pointer, not overwrite the memory
+pointed to.
+
+Fully automatic C header translator
+-----------------------------------
+
+   * C operators like `+=' (increment a variable and return the new
+     value), or `/' (integer or real division, depending on the
+     arguments). They could be emulated by special built-in functions
+     in GPC which do the same ...
+
+   * Types! C doesn't distinguish between pointers and arrays - and
+     various other "jokes". E.g., a `CString' and a pointer to an array
+     of bytes can both be `char *' in C. Solutions could be to
+     introduce "special types" in GPC which behave like the C types
+     (not so nice ...)-:, or to let the translator choose one possible
+     matching GPC type (by some heuristics perhaps), and leave it up to
+     the user to type-cast when necessary (also not nice)-: ...
+
+   * Name clashes. How to map `foo', `FOO', `struct foo', `union foo'
+     etc. (which can potentially be totally different things in C) to
+     Pascal identifiers in a reasonable way.  Also, how to introduce
+     identifiers for types when needed (e.g., typed used in parameter
+     lists). Of course, that's solvable ...
+
+   * Macros. Since GPC has a preprocessor, we can translate most of
+     them, but some particularly strange ones are virtually impossible
+     to translate. But there's hope that such strange macros are not
+     being used in the libraries' headers ...
+
+   * ...
+
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

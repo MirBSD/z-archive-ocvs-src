@@ -1,0 +1,331 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.44.01;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.01;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.57.58;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+#
+# Tests for Perl run-time environment variable settings
+#
+# $PERL5OPT, $PERL5LIB, etc.
+
+BEGIN {
+    chdir 't' if -d 't';
+    @@INC = '../lib';
+    require Config; import Config;
+    unless ($Config{'d_fork'}) {
+        print "1..0 # Skip: no fork\n";
+	    exit 0;
+    }
+}
+
+use Test;
+
+plan tests => 11;
+
+my $STDOUT = './results-0';
+my $STDERR = './results-1';
+my $PERL = './perl';
+my $FAILURE_CODE = 119;
+
+# Run perl with specified environment and arguments returns a list.
+# First element is true if Perl's stdout and stderr match the
+# supplied $stdout and $stderr argument strings exactly.
+# second element is an explanation of the failure
+sub runperl {
+  local *F;
+  my ($env, $args, $stdout, $stderr) = @@_;
+
+  unshift @@$args, '-I../lib';
+
+  $stdout = '' unless defined $stdout;
+  $stderr = '' unless defined $stderr;
+  my $pid = fork;
+  return (0, "Couldn't fork: $!") unless defined $pid;   # failure
+  if ($pid) {                   # parent
+    my ($actual_stdout, $actual_stderr);
+    wait;
+    return (0, "Failure in child.\n") if ($?>>8) == $FAILURE_CODE;
+
+    open F, "< $STDOUT" or return (0, "Couldn't read $STDOUT file");
+    { local $/; $actual_stdout = <F> }
+    open F, "< $STDERR" or return (0, "Couldn't read $STDERR file");
+    { local $/; $actual_stderr = <F> }
+
+    if ($actual_stdout ne $stdout) {
+      return (0, "Stdout mismatch: expected [$stdout], saw [$actual_stdout]");
+    } elsif ($actual_stderr ne $stderr) {
+      return (0, "Stderr mismatch: expected [$stderr], saw [$actual_stderr]");
+    } else {
+      return 1;                 # success
+    }
+  } else {                      # child
+    for my $k (keys %$env) {
+      $ENV{$k} = $env->{$k};
+    }
+    open STDOUT, "> $STDOUT" or exit $FAILURE_CODE;
+    open STDERR, "> $STDERR" or it_didnt_work();
+    { exec $PERL, @@$args }
+    it_didnt_work();
+  }
+}
+
+
+sub it_didnt_work {
+    print STDOUT "IWHCWJIHCI\cNHJWCJQWKJQJWCQW\n";
+    exit $FAILURE_CODE;
+}
+
+sub try {
+  my ($success, $reason) = runperl(@@_);
+  $reason =~ s/\n/\\n/g if defined $reason;
+  ok( !!$success, 1, $reason );
+}
+
+#  PERL5OPT    Command-line options (switches).  Switches in
+#                    this variable are taken as if they were on
+#                    every Perl command line.  Only the -[DIMUdmtw]
+#                    switches are allowed.  When running taint
+#                    checks (because the program was running setuid
+#                    or setgid, or the -T switch was used), this
+#                    variable is ignored.  If PERL5OPT begins with
+#                    -T, tainting will be enabled, and any
+#                    subsequent options ignored.
+
+try({PERL5OPT => '-w'}, ['-e', 'print $::x'],
+    "", 
+    qq{Name "main::x" used only once: possible typo at -e line 1.\nUse of uninitialized value in print at -e line 1.\n});
+
+try({PERL5OPT => '-Mstrict'}, ['-e', 'print $::x'],
+    "", "");
+
+try({PERL5OPT => '-Mstrict'}, ['-e', 'print $x'],
+    "", 
+    qq{Global symbol "\$x" requires explicit package name at -e line 1.\nExecution of -e aborted due to compilation errors.\n});
+
+# Fails in 5.6.0
+try({PERL5OPT => '-Mstrict -w'}, ['-e', 'print $x'],
+    "", 
+    qq{Global symbol "\$x" requires explicit package name at -e line 1.\nExecution of -e aborted due to compilation errors.\n});
+
+# Fails in 5.6.0
+try({PERL5OPT => '-w -Mstrict'}, ['-e', 'print $::x'],
+    "", 
+    <<ERROR
+Name "main::x" used only once: possible typo at -e line 1.
+Use of uninitialized value in print at -e line 1.
+ERROR
+    );
+
+# Fails in 5.6.0
+try({PERL5OPT => '-w -Mstrict'}, ['-e', 'print $::x'],
+    "", 
+    <<ERROR
+Name "main::x" used only once: possible typo at -e line 1.
+Use of uninitialized value in print at -e line 1.
+ERROR
+    );
+
+try({PERL5OPT => '-MExporter'}, ['-e0'],
+    "", 
+    "");
+
+# Fails in 5.6.0
+try({PERL5OPT => '-MExporter -MExporter'}, ['-e0'],
+    "", 
+    "");
+
+try({PERL5OPT => '-Mstrict -Mwarnings'}, 
+    ['-e', 'print "ok" if $INC{"strict.pm"} and $INC{"warnings.pm"}'],
+    "ok",
+    "");
+
+try({PERL5OPT => '-w -w'},
+    ['-e', 'print $ENV{PERL5OPT}'],
+    '-w -w',
+    '');
+
+try({PERL5OPT => '-t'},
+    ['-e', 'print ${^TAINT}'],
+    '1',
+    '');
+
+END {
+    1 while unlink $STDOUT;
+    1 while unlink $STDERR;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d19 1
+a19 1
+plan tests => 17;
+a25 4
+delete $ENV{PERLLIB};
+delete $ENV{PERL5LIB};
+delete $ENV{PERL5OPT};
+
+a37 4
+  local %ENV = %ENV;
+  delete $ENV{PERLLIB};
+  delete $ENV{PERL5LIB};
+  delete $ENV{PERL5OPT};
+d145 1
+a145 16
+    '-1',
+    '');
+
+try({PERLLIB => "foobar$Config{path_sep}42"},
+    ['-e', 'print grep { $_ eq "foobar" } @@INC'],
+    'foobar',
+    '');
+
+try({PERLLIB => "foobar$Config{path_sep}42"},
+    ['-e', 'print grep { $_ eq "42" } @@INC'],
+    '42',
+    '');
+
+try({PERL5LIB => "foobar$Config{path_sep}42"},
+    ['-e', 'print grep { $_ eq "foobar" } @@INC'],
+    'foobar',
+a146 19
+
+try({PERL5LIB => "foobar$Config{path_sep}42"},
+    ['-e', 'print grep { $_ eq "42" } @@INC'],
+    '42',
+    '');
+
+try({PERL5LIB => "foo",
+     PERLLIB => "bar"},
+    ['-e', 'print grep { $_ eq "foo" } @@INC'],
+    'foo',
+    '');
+
+try({PERL5LIB => "foo",
+     PERLLIB => "bar"},
+    ['-e', 'print grep { $_ eq "bar" } @@INC'],
+    '',
+    '');
+
+# PERL5LIB tests with included arch directories still missing
+@
+

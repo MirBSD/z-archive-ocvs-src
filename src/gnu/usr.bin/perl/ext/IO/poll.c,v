@@ -1,0 +1,279 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.42.58;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.58;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.01;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+ * poll.c
+ *
+ * Copyright (c) 1997-8 Graham Barr <gbarr@@pobox.com>. All rights reserved.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the same terms as Perl itself.
+ *
+ * For systems that do not have the poll() system call (for example Linux
+ * kernels < v2.1.23) try to emulate it as closely as possible using select()
+ *
+ */
+
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+
+#include "poll.h"
+#ifdef I_SYS_TIME
+# include <sys/time.h>
+#endif
+#ifdef I_TIME
+# include <time.h>
+#endif
+#include <sys/types.h>
+#if defined(HAS_SOCKET) && !defined(VMS) /* VMS handles sockets via vmsish.h */
+#  include <sys/socket.h>
+#endif
+#include <sys/stat.h>
+#include <errno.h>
+
+#ifdef HAS_SELECT
+#ifdef I_SYS_SELECT
+#include <sys/select.h>
+#endif
+#endif
+
+#ifdef EMULATE_POLL_WITH_SELECT
+
+# define POLL_CAN_READ	(POLLIN | POLLRDNORM )
+# define POLL_CAN_WRITE	(POLLOUT | POLLWRNORM | POLLWRBAND )
+# define POLL_HAS_EXCP	(POLLRDBAND | POLLPRI )
+
+# define POLL_EVENTS_MASK (POLL_CAN_READ | POLL_CAN_WRITE | POLL_HAS_EXCP)
+
+int
+poll(struct pollfd *fds, unsigned long nfds, int timeout)
+{
+    int i,err;
+    fd_set rfd,wfd,efd,ifd;
+    struct timeval timebuf;
+    struct timeval *tbuf = (struct timeval *)0;
+    int n = 0;
+    int count;
+
+    FD_ZERO(&ifd);
+
+again:
+
+    FD_ZERO(&rfd);
+    FD_ZERO(&wfd);
+    FD_ZERO(&efd);
+
+    for(i = 0 ; i < (int)nfds ; i++) {
+	int events = fds[i].events;
+	int fd = fds[i].fd;
+
+	fds[i].revents = 0;
+
+	if(fd < 0 || FD_ISSET(fd, &ifd))
+	    continue;
+
+	if(fd > n)
+	    n = fd;
+
+	if(events & POLL_CAN_READ)
+	    FD_SET(fd, &rfd);
+
+	if(events & POLL_CAN_WRITE)
+	    FD_SET(fd, &wfd);
+
+	if(events & POLL_HAS_EXCP)
+	    FD_SET(fd, &efd);
+    }
+
+    if(timeout >= 0) {
+	timebuf.tv_sec = timeout / 1000;
+	timebuf.tv_usec = (timeout % 1000) * 1000;
+	tbuf = &timebuf;
+    }
+
+    err = select(n+1,&rfd,&wfd,&efd,tbuf);
+
+    if(err < 0) {
+#ifdef HAS_FSTAT
+	if(errno == EBADF) {
+	    for(i = 0 ; i < nfds ; i++) {
+		struct stat buf;
+		if((fstat(fds[i].fd,&buf) < 0) && (errno == EBADF)) {
+		    FD_SET(fds[i].fd, &ifd);
+		    goto again;
+		}
+	    }
+	}
+#endif /* HAS_FSTAT */
+	return err;
+    }
+
+    count = 0;
+
+    for(i = 0 ; i < (int)nfds ; i++) {
+	int revents = (fds[i].events & POLL_EVENTS_MASK);
+	int fd = fds[i].fd;
+
+	if(fd < 0)
+	    continue;
+
+	if(FD_ISSET(fd, &ifd))
+	    revents = POLLNVAL;
+	else {
+	    if(!FD_ISSET(fd, &rfd))
+	        revents &= ~POLL_CAN_READ;
+
+	    if(!FD_ISSET(fd, &wfd))
+	        revents &= ~POLL_CAN_WRITE;
+
+	    if(!FD_ISSET(fd, &efd))
+	        revents &= ~POLL_HAS_EXCP;
+	}
+
+	if((fds[i].revents = revents) != 0)
+	    count++;
+    }
+
+    return count; 
+}
+
+#endif /* EMULATE_POLL_WITH_SELECT */
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d25 1
+a25 1
+#if defined(HAS_SOCKET) && !defined(VMS) && !defined(ultrix) /* VMS handles sockets via vmsish.h, ULTRIX dies of socket struct redefinitions */
+a137 9
+
+/* gcc for SunOS 4 produces code from an empty (code/symbolwise)
+ * source code file that makes the SunOS 4.x /usr/bin/ld fail with
+ * ld: poll.o: premature EOF
+ * To avoid this, have at least something in here.  */
+#if defined(__sun) && !defined(__SVR4) && defined(__GNUC__)
+static int dummy;
+#endif
+
+@
+

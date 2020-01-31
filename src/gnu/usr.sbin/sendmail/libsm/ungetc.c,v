@@ -1,0 +1,290 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410222320:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200309171845:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	cvs-20030329-2200:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.44.41;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.41;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+ * Copyright (c) 2000-2001 Sendmail, Inc. and its suppliers.
+ *      All rights reserved.
+ * Copyright (c) 1990, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Chris Torek.
+ *
+ * By using this file, you agree to the terms and conditions set
+ * forth in the LICENSE file which can be found at the top level of
+ * the sendmail distribution.
+ */
+
+#include <sm/gen.h>
+SM_IDSTR(id, "@@(#)$Sendmail: ungetc.c,v 1.28 2001/09/11 04:04:49 gshapiro Exp $")
+
+#include <stdlib.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/time.h>
+#include <errno.h>
+#include <sm/io.h>
+#include <sm/heap.h>
+#include <sm/assert.h>
+#include <sm/conf.h>
+#include "local.h"
+
+/*
+**  SM_SUBMORE_X -- expand ungetc buffer
+**
+**  Expand the ungetc buffer `in place'.  That is, adjust fp->f_p when
+**  the buffer moves, so that it points the same distance from the end,
+**  and move the bytes in the buffer around as necessary so that they
+**  are all at the end (stack-style).
+**
+**	Parameters:
+**		fp -- the file pointer
+**
+**	Results:
+**		none.
+**
+**	Exceptions:
+**		F:sm_heap -- out of memory
+*/
+
+static void
+sm_submore_x(fp)
+	register SM_FILE_T *fp;
+{
+	register int i;
+	register unsigned char *p;
+
+	if (fp->f_ub.smb_base == fp->f_ubuf)
+	{
+		/* Get a buffer; f_ubuf is fixed size. */
+		p = sm_malloc_x((size_t) SM_IO_BUFSIZ);
+		fp->f_ub.smb_base = p;
+		fp->f_ub.smb_size = SM_IO_BUFSIZ;
+		p += SM_IO_BUFSIZ - sizeof(fp->f_ubuf);
+		for (i = sizeof(fp->f_ubuf); --i >= 0;)
+			p[i] = fp->f_ubuf[i];
+		fp->f_p = p;
+		return;
+	}
+	i = fp->f_ub.smb_size;
+	p = sm_realloc_x(fp->f_ub.smb_base, i << 1);
+
+	/* no overlap (hence can use memcpy) because we doubled the size */
+	(void) memcpy((void *) (p + i), (void *) p, (size_t) i);
+	fp->f_p = p + i;
+	fp->f_ub.smb_base = p;
+	fp->f_ub.smb_size = i << 1;
+}
+
+/*
+**  SM_IO_UNGETC -- place a character back into the buffer just read
+**
+**	Parameters:
+**		fp -- the file pointer affected
+**		timeout -- time to complete ungetc
+**		c -- the character to place back
+**
+**	Results:
+**		On success, returns value of character placed back, 0-255.
+**		Returns SM_IO_EOF if c == SM_IO_EOF or if last operation
+**		was a write and flush failed.
+**
+**	Exceptions:
+**		F:sm_heap -- out of memory
+*/
+
+int
+sm_io_ungetc(fp, timeout, c)
+	register SM_FILE_T *fp;
+	int timeout;
+	int c;
+{
+	SM_REQUIRE_ISA(fp, SmFileMagic);
+	if (c == SM_IO_EOF)
+		return SM_IO_EOF;
+	if (timeout == SM_TIME_IMMEDIATE)
+	{
+		/*
+		**  Ungetting the buffer will take time and we are wanted to
+		**  return immediately. So...
+		*/
+
+		errno = EAGAIN;
+		return SM_IO_EOF;
+	}
+
+	if (!Sm_IO_DidInit)
+		sm_init();
+	if ((fp->f_flags & SMRD) == 0)
+	{
+		/*
+		**  Not already reading: no good unless reading-and-writing.
+		**  Otherwise, flush any current write stuff.
+		*/
+
+		if ((fp->f_flags & SMRW) == 0)
+			return SM_IO_EOF;
+		if (fp->f_flags & SMWR)
+		{
+			if (sm_flush(fp, &timeout))
+				return SM_IO_EOF;
+			fp->f_flags &= ~SMWR;
+			fp->f_w = 0;
+			fp->f_lbfsize = 0;
+		}
+		fp->f_flags |= SMRD;
+	}
+	c = (unsigned char) c;
+
+	/*
+	**  If we are in the middle of ungetc'ing, just continue.
+	**  This may require expanding the current ungetc buffer.
+	*/
+
+	if (HASUB(fp))
+	{
+		if (fp->f_r >= fp->f_ub.smb_size)
+			sm_submore_x(fp);
+		*--fp->f_p = c;
+		fp->f_r++;
+		return c;
+	}
+	fp->f_flags &= ~SMFEOF;
+
+	/*
+	**  If we can handle this by simply backing up, do so,
+	**  but never replace the original character.
+	**  (This makes sscanf() work when scanning `const' data.)
+	*/
+
+	if (fp->f_bf.smb_base != NULL && fp->f_p > fp->f_bf.smb_base &&
+	    fp->f_p[-1] == c)
+	{
+		fp->f_p--;
+		fp->f_r++;
+		return c;
+	}
+
+	/*
+	**  Create an ungetc buffer.
+	**  Initially, we will use the `reserve' buffer.
+	*/
+
+	fp->f_ur = fp->f_r;
+	fp->f_up = fp->f_p;
+	fp->f_ub.smb_base = fp->f_ubuf;
+	fp->f_ub.smb_size = sizeof(fp->f_ubuf);
+	fp->f_ubuf[sizeof(fp->f_ubuf) - 1] = c;
+	fp->f_p = &fp->f_ubuf[sizeof(fp->f_ubuf) - 1];
+	fp->f_r = 1;
+
+	return c;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

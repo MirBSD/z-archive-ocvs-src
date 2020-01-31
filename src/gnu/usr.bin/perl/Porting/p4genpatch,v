@@ -1,0 +1,320 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.40;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.40;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.53.48;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/usr/bin/perl -w
+
+
+# p4genpatch - Generate a perl patch from the repository
+
+# Usage: $0 -h
+
+# andreas.koenig@@anima.de
+
+use strict;
+use File::Temp qw(tempdir);
+use File::Compare;
+use File::Spec;
+use File::Spec::Unix;
+use Time::Local;
+use Getopt::Long;
+use Cwd qw(cwd);
+
+sub correctmtime ($$$);
+sub Usage ();
+
+$0 =~ s|^.*[\\/]||;
+my $VERSION = '0.05';
+my $TOPDIR = cwd();
+my @@P4opt;
+our %OPT = ( "d" => "u", b => "//depot/perl", "D" => "diff" );
+Getopt::Long::Configure("no_ignore_case");
+GetOptions(\%OPT, "b=s", "p=s", "d=s", "D=s", "h", "v", "V") or die Usage;
+print Usage and exit if $OPT{h};
+print "$VERSION\n" and exit if $OPT{V};
+die Usage unless @@ARGV == 1 && $ARGV[0] =~ /^\d+$/;
+my $CHANGE = shift;
+
+for my $p4opt (qw(p)) {
+  push @@P4opt, "-$p4opt $OPT{$p4opt}" if $OPT{$p4opt};
+}
+
+my $system = "p4 @@P4opt describe -s $CHANGE |";
+open my $p4, $system or die "Could not run $system";
+my @@action;
+while (<$p4>) {
+  print;
+  next unless m|($OPT{b})|;
+  my($prefix) = $1;
+  $prefix =~ s|/[^/]+$||; # up to the last "/" in the match is to be stripped
+  if (my($file,$action) = m|^\.\.\. (//depot.*)\s(\w+)$|) {
+    next if $action eq "delete";
+    push @@action, [$action, $file, $prefix];
+  }
+}
+close $p4;
+
+my $tempdir;
+my @@unlink;
+print "Differences ...\n";
+for my $a (@@action) {
+  $tempdir ||= tempdir( "tmp-XXXX", CLEANUP => 1, TMPDIR => 1 );
+  @@unlink = ();
+  my($action,$file,$prefix) = @@$a;
+  my($path,$basename,$number) = $file =~ m|\Q$prefix\E/(.+/)?([^/]+)#(\d+)|;
+
+  my @@splitdir = File::Spec::Unix->splitdir($path);
+  $path = File::Spec->catdir(@@splitdir);
+
+  my($depotfile) = $file =~ m|^(.+)#\d+\z|;
+  die "Panic: Could not parse file[$file]" unless $number;
+  $path = "" unless defined $path;
+  my($d1,$d2,$prev,$prevchange,$prevfile,$doadd,$t1,$t2);
+  $prev = $number-1;
+  $prevchange = $CHANGE-1;
+  # can't assume previous rev == $number-1 due to obliterated revisions
+  $prevfile = "$depotfile\@@$prevchange";
+  if ($number == 1 or $action =~ /^(add|branch)$/) {
+    $d1 = $^O eq 'MacOS' ? File::Spec->devnull : "/dev/null";
+    $t1 = $d1;
+    ++$doadd;
+  } elsif ($action =~ /^(edit|integrate)$/) {
+    $d1 = File::Spec->catfile($path, "$basename-$prevchange");
+    $t1 = File::Spec->catfile($tempdir, $d1);
+    warn "==> $d1 <==\n" if $OPT{v};
+    my $system = qq[p4 @@P4opt print -o "$t1" "$prevfile"];
+    my $status = `$system`;
+    if ($?) {
+      warn "$0: system[$system] failed, status[$?]\n";
+      next;
+    }
+    chmod 0644, $t1;
+    if ($status =~ /\#(\d+) \s - \s \w+ \s change \s (\d+) \s /x) {
+      ($prev,$prevchange) = ($1,$2);
+      $prevfile = "$depotfile#$prev";
+      my $oldd1 = $d1;
+      $d1 =~ s/-\d+$/#$prev~$prevchange~/;
+      my $oldt1 = $t1;
+      $t1 = File::Spec->catfile($tempdir, $d1);
+      rename $oldt1, $t1;
+    }
+    push @@unlink, $t1;
+  } else {
+    die "Unknown action[$action]";
+  }
+  $d2 = File::Spec->catfile($path, $basename);
+  $t2 = File::Spec->catfile($tempdir, $d2);
+  push @@unlink, $t2;
+  warn "==> $d2#$number <==\n" if $OPT{v};
+  my $system = qq[p4 @@P4opt print -o "$t2" "$file"];
+  # warn "system[$system]";
+  my $type = `$system`;
+  if ($?) {
+    warn "$0: `$system` failed, status[$?]\n";
+    next;
+  }
+  chmod 0644, $t2;
+  $type =~ m|^//.*\((.+)\)$| or next;
+  $type = $1;
+  if ($doadd or File::Compare::compare($t1, $t2)) {
+    print "\n==== $file ($type) ====\n";
+    unless ($type =~ /text/) {
+      next;
+    }
+    unless ($^O eq 'MacOS') {
+      $d1 =~ s,\\,/,g;
+      $d2 =~ s,\\,/,g;
+    }
+    print "Index: $d2\n";
+    correctmtime($prevfile,$prev,$t1) unless $doadd;
+    correctmtime($file,$number,$t2);
+    chdir $tempdir or warn "Could not chdir '$tempdir': $!";
+    $system = qq[$OPT{D} -$OPT{d} "$d1" "$d2"];
+    system($system); # no return check because diff doesn't always return 0
+    chdir $TOPDIR or warn "Could not chdir '$TOPDIR': $!";
+  }
+}
+continue {
+  for (@@unlink) {
+    unlink or warn "Could not unlink $_: $!" if -f;
+  }
+}
+print "End of Patch.\n";
+
+my($tz_offset);
+sub correctmtime ($$$) {
+  my($depotfile,$nr,$localfile) = @@_;
+  my %fstat = map { /^\.\.\. (\w+) (.*)$/ } `p4 @@P4opt fstat -s "$depotfile"`;
+  return unless exists($fstat{headRev}) and $fstat{headRev} == $nr;
+
+  if ($^O eq 'MacOS') {  # fix epoch ... still off by three hours (EDT->PDT)
+    require Time::Local;
+    $tz_offset ||= sprintf "%+0.4d\n", (
+      Time::Local::timelocal(localtime) - Time::Local::timelocal(gmtime)
+    );
+    $fstat{headTime} += 2082844801 + $tz_offset;
+  }
+
+  utime $fstat{headTime}, $fstat{headTime}, $localfile;
+}
+
+sub Usage () {
+    qq{Usage: $0 [OPTIONS] patchnumber
+
+      -p host:port    p4 port (e.g. myhost:1666)
+      -d diffopt      option to pass to diff(1)
+      -D diff         diff(1) to use
+      -b branch(es)   which branches to include (regex); everything up
+                      to the last slash of matched portion of path is
+                      stripped on local copy (default: //depot/perl)
+      -v              verbose
+      -h              print this help and exit
+      -V              print version number and exit
+
+Fetches all required files from the repository, puts them into a
+temporary directory with sensible names and sensible modification
+times and composes a patch to STDOUT using external diff command.
+Requires repository access.
+
+Examples:
+          perl $0 12345 | gzip -c > 12345.gz
+          perl $0 -dc 12345 > change-12345.patch
+          perl $0 -b //depot/maint-5.6/perl -v 8571 > 8571
+};
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d26 1
+a26 1
+our %OPT = ( "d" => "u", b => "//depot/perl/", "D" => "diff" );
+a44 1
+  $prefix =~ s|/$||;
+d163 3
+a165 4
+      -b branch(es)   which branches to include (regex); the last
+                      directory within the matched part will be
+                      preserved on the local copy, so that patch -p1
+                      will work (default: "//depot/perl/")
+@
+

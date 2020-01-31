@@ -1,0 +1,569 @@
+head	1.4;
+access;
+symbols
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.2
+	MIRBSD_7:1.2.0.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308221505:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2004.10.10.21.12.05;	author tg;	state dead;
+branches;
+next	1.3;
+
+1.3
+date	2004.07.21.10.24.40;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.28.15.09.32;	author tg;	state Exp;
+branches
+	1.2.2.1;
+next	1.1;
+
+1.1
+date	2003.03.22.17.55.49;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.55.49;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.48.55;	author tg;	state Exp;
+branches;
+next	;
+
+1.2.2.1
+date	2004.12.25.16.43.52;	author tg;	state dead;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@package tools in base is dead
+
+agreed bsiegert@@
+@
+text
+@/* $OpenBSD: gzip.c,v 1.4 2003/06/04 04:29:03 deraadt Exp $ */
+/*-
+ * Copyright (c) 1999 Marc Espie.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OPENBSD PROJECT AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE OPENBSD
+ * PROJECT OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <string.h>
+#include "stand.h"
+#include "gzip.h"
+#include "pgp.h"
+#include "lib.h"
+
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/sign/gzip.c,v 1.3 2004/07/21 10:24:40 tg Stab $");
+
+/* Signatures follow a simple format
+   (endianess was chosen to conform to gzip header format)
+ */
+
+SIGNTAG known_tags[KNOWN_TAGS] = {
+	{'S', 'I', 'G', 'P', 'G', 'P', 0, 0 },
+	{'C', 'K', 'S', 'H', 'A', '1', 0, 0 },
+	{'S', 'i', 'g', 'P', 'G', 'P', 0, 0 }	/* old format */
+};
+
+void
+sign_fill_tag(sign)
+	struct signature *sign;
+{
+	sign->tag[6] = sign->length % 256;
+	sign->tag[7] = sign->length / 256;
+}
+
+void
+sign_fill_length(sign)
+	struct signature *sign;
+{
+	sign->length = sign->tag[6] + 256 * sign->tag[7];
+}
+
+static size_t
+stack_sign(match, t, f, sign)
+	SIGNTAG match;
+	int t;
+	FILE *f;
+	struct signature **sign;
+{
+	struct signature *new_sign;
+	size_t length;
+
+	new_sign = malloc(sizeof *new_sign);
+	if (new_sign == NULL)
+		return 0;
+	new_sign->type = t;
+	new_sign->next = NULL;
+	memcpy(new_sign->tag, match, sizeof(SIGNTAG));
+	sign_fill_length(new_sign);
+	new_sign->data = malloc(new_sign->length);
+	if (new_sign->data == NULL ||
+		fread(new_sign->data, 1, new_sign->length, f) != new_sign->length) {
+		free_signature(new_sign);
+		return 0;
+	}
+	length = new_sign->length;
+	if (sign != NULL) {
+		if (!*sign)
+			*sign = new_sign;
+		else {
+			while ((*sign)->next != NULL)
+				sign = &((*sign)->next);
+			(*sign)->next = new_sign;
+		}
+	} else
+		free_signature(new_sign);
+	return length;
+}
+
+
+static int
+add_sign(f, sign)
+	FILE *f;
+	struct signature **sign;
+{
+	SIGNTAG match;
+	int i;
+
+	if (fread(match, 1, sizeof(SIGNTAG), f) != sizeof(SIGNTAG))
+		return -1;
+	for (i = 0; i < KNOWN_TAGS; i++) {
+		if (memcmp(match, known_tags[i], TAGCHECK) == 0) {
+			unsigned int sign_length = stack_sign(match, i, f, sign);
+			if (sign_length > 0)
+				return sign_length + sizeof(SIGNTAG);
+			else
+				return -1;
+		}
+	}
+	return 0;
+}
+
+static int
+gzip_magic(f)
+	FILE *f;
+{
+	int c, d;
+
+	c = fgetc(f);
+	d = fgetc(f);
+	if ((unsigned char)c != (unsigned char)GZIP_MAGIC0
+		 || (unsigned char)d != (unsigned char)GZIP_MAGIC1)
+		return 0;
+	else
+		return 1;
+}
+
+static int
+fill_gzip_fields(f, h)
+	FILE *f;
+	struct mygzip_header *h;
+{
+	int method, flags;
+
+	method = fgetc(f);
+	flags = fgetc(f);
+
+	if (method == EOF || flags == EOF || fread(h->stamp, 1, 6, f) != 6)
+		return 0;
+	h->method = (char)method;
+	h->flags = (char)flags;
+	if ((h->flags & CONTINUATION) != 0)
+		if (fread(h->part, 1, 2, f) != 2)
+			return 0;
+	return 1;
+}
+
+/* retrieve a gzip header, including signatures */
+int
+gzip_read_header(f, h, sign)
+	FILE *f;
+	struct mygzip_header *h;
+	struct signature **sign;
+{
+	if (sign != NULL)
+		*sign = NULL;
+	if (!gzip_magic(f) || !fill_gzip_fields(f, h))
+		return GZIP_NOT_GZIP;
+
+	if ((h->flags & EXTRA_FIELD) == 0) {
+		h->remaining = 0;
+		return GZIP_UNSIGNED;
+	}
+	else {
+		int c;
+
+		c = fgetc(f);
+		if (c == EOF)
+			return GZIP_NOT_GZIP;
+		h->remaining = (unsigned)c;
+		c = fgetc(f);
+		if (c == EOF)
+			return GZIP_NOT_PGPSIGNED;
+		h->remaining += ((unsigned) c) << 8;
+		while (h->remaining >= sizeof(SIGNTAG)) {
+			int sign_length = add_sign(f, sign);
+			if (sign_length > 0)
+				h->remaining -= sign_length;
+			if (sign_length < 0)
+				return GZIP_NOT_GZIP;
+			if (sign_length == 0)
+				return GZIP_SIGNED;
+		}
+	return GZIP_SIGNED;
+	}
+}
+
+static unsigned
+sign_length(sign)
+	struct signature *sign;
+{
+	unsigned total = 0;
+
+	while (sign != NULL)	{
+		total += sizeof(SIGNTAG) + sign->length;
+		sign = sign->next;
+	}
+	return total;
+}
+
+struct mydata {
+	FILE *file;
+	int ok;
+};
+
+static void myadd(arg, buffer, size)
+	void *arg;
+	const char *buffer;
+	size_t size;
+{
+	struct mydata *d = arg;
+
+	if (fwrite(buffer, 1, size, d->file) == size)
+		d->ok = 1;
+	else
+		d->ok = 0;
+}
+
+/* write a gzip header, including signatures */
+int
+gzip_write_header(f, h, sign)
+	FILE *f;
+	const struct mygzip_header *h;
+	struct signature *sign;
+{
+	struct mydata d;
+	d.file = f;
+	if (gzip_copy_header(h, sign, myadd, &d) == 0)
+		return 0;
+	return d.ok;
+}
+
+int
+gzip_copy_header(h, sign, add, data)
+	const struct mygzip_header *h;
+	struct signature *sign;
+	void (*add)(void *, const char *, size_t);
+	void *data;
+{
+	char flags;
+	size_t length;
+	size_t buflength;
+	size_t i;
+	char *buffer;
+
+	length = h->remaining + sign_length(sign);
+	if (length) {
+		buflength = length + 2;
+		flags = h->flags | EXTRA_FIELD;
+	} else {
+		flags = h->flags & ~EXTRA_FIELD;
+		buflength = 0;
+	}
+	buflength += 10;
+	if ((h->flags & CONTINUATION) != 0)
+		buflength += 2;
+
+	buffer = malloc(buflength);
+	if (buffer == NULL)
+		return 0;
+
+	i = 0;
+	buffer[i++] = GZIP_MAGIC0;
+	buffer[i++] = GZIP_MAGIC1;
+	buffer[i++] = h->method;
+	buffer[i++] = flags;
+	memcpy(buffer+i, h->stamp, 6);
+	i += 6;
+	if ((flags & CONTINUATION) != 0) {
+		memcpy(buffer+i, h->part, 2);
+		i += 2;
+	}
+	if (length) {
+		buffer[i++] = (char)(length % 256);
+		buffer[i++] = (char)(length / 256);
+		while (sign != NULL) {
+			memcpy(buffer+i, sign->tag, sizeof(SIGNTAG));
+			i += sizeof(SIGNTAG);
+			memcpy(buffer+i, sign->data, sign->length);
+			i += sign->length;
+			sign = sign->next;
+		}
+	}
+	(*add)(data, buffer, buflength);
+	free(buffer);
+	return 1;
+}
+
+void
+free_signature(sign)
+	struct signature *sign;
+{
+	struct signature *next;
+
+	while (sign != NULL) {
+		next = sign->next;
+		free(sign->data);
+		free(sign);
+		sign = next;
+	}
+}
+@
+
+
+1.3
+log
+@sync with mpsup module
+@
+text
+@d37 1
+a37 1
+__RCSID("$MirBSD: mpsup/pkgtools/sign/gzip.c,v 1.2 2004/06/25 11:48:41 tg Exp $");
+@
+
+
+1.2
+log
+@MirOSify:
+* fix and unify Makefiles
+* move preprocessor options from CFLAGS to CPPFLAGS
+* make pkg_sign build, at least
+* nuke whitespace at end of line and end of file
+* use new-style MirOS RCS IDs
+* nuke some junk
+@
+text
+@d35 3
+@
+
+
+1.2.2.1
+log
+@remove old MirPorts tools from #7quinquies-to-be
+agreed bsiegert@@
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: gzip.c,v 1.3 1999/10/04 21:46:28 espie Exp $ */
+a12 4
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Marc Espie for the OpenBSD
+ * Project.
+d14 3
+a16 3
+ * THIS SOFTWARE IS PROVIDED BY THE OPENBSD PROJECT AND CONTRIBUTORS 
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+d18 6
+a23 6
+ * PROJECT OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+d40 1
+a40 1
+SIGNTAG known_tags[KNOWN_TAGS] = { 
+d53 1
+a53 1
+	
+d70 1
+a70 1
+	
+d76 1
+a76 1
+	memcpy(new_sign->tag, match, sizeof(SIGNTAG));	
+d79 1
+a79 1
+	if (new_sign->data == NULL || 
+d93 1
+a93 1
+	} else 
+d99 1
+a99 1
+static int 
+d107 1
+a107 1
+	if (fread(match, 1, sizeof(SIGNTAG), f) != sizeof(SIGNTAG)) 
+d129 2
+a130 2
+	if ((unsigned char)c != (unsigned char)GZIP_MAGIC0 
+		 || (unsigned char)d != (unsigned char)GZIP_MAGIC1)	
+d142 1
+a142 1
+		
+d157 1
+a157 1
+int 
+d196 1
+a196 1
+static unsigned 
+d228 1
+a228 1
+int 
+d240 2
+a241 2
+		
+int 
+d296 2
+a297 2
+	
+void 
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: gzip.c,v 1.4 2003/06/04 04:29:03 deraadt Exp $ */
+d13 4
+@
+

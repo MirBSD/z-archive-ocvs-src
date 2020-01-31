@@ -1,0 +1,471 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.09;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.09;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.27;	author tg;	state Stab;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.10.23.18.40.21;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package Shell;
+use 5.006_001;
+use strict;
+use warnings;
+our($capture_stderr, $VERSION, $AUTOLOAD);
+
+$VERSION = '0.4';
+
+sub new { bless \$VERSION, shift } # Nothing better to bless
+sub DESTROY { }
+
+sub import {
+    my $self = shift;
+    my ($callpack, $callfile, $callline) = caller;
+    my @@EXPORT;
+    if (@@_) {
+	@@EXPORT = @@_;
+    } else {
+	@@EXPORT = 'AUTOLOAD';
+    }
+    foreach my $sym (@@EXPORT) {
+        no strict 'refs';
+        *{"${callpack}::$sym"} = \&{"Shell::$sym"};
+    }
+}
+
+sub AUTOLOAD {
+    shift if ref $_[0] && $_[0]->isa( 'Shell' );
+    my $cmd = $AUTOLOAD;
+    $cmd =~ s/^.*:://;
+    eval <<"*END*";
+	sub $AUTOLOAD {
+	    if (\@@_ < 1) {
+		\$Shell::capture_stderr ? `$cmd 2>&1` : `$cmd`;
+	    } elsif ('$^O' eq 'os2') {
+		local(\*SAVEOUT, \*READ, \*WRITE);
+
+		open SAVEOUT, '>&STDOUT' or die;
+		pipe READ, WRITE or die;
+		open STDOUT, '>&WRITE' or die;
+		close WRITE;
+
+		my \$pid = system(1, '$cmd', \@@_);
+		die "Can't execute $cmd: \$!\\n" if \$pid < 0;
+
+		open STDOUT, '>&SAVEOUT' or die;
+		close SAVEOUT;
+
+		if (wantarray) {
+		    my \@@ret = <READ>;
+		    close READ;
+		    waitpid \$pid, 0;
+		    \@@ret;
+		} else {
+		    local(\$/) = undef;
+		    my \$ret = <READ>;
+		    close READ;
+		    waitpid \$pid, 0;
+		    \$ret;
+		}
+	    } else {
+		my \$a;
+		my \@@arr = \@@_;
+		if ('$^O' eq 'MSWin32') {
+		    # XXX this special-casing should not be needed
+		    # if we do quoting right on Windows. :-(
+		    #
+		    # First, escape all quotes.  Cover the case where we
+		    # want to pass along a quote preceded by a backslash
+		    # (i.e., C<"param \\""" end">).
+		    # Ugly, yup?  You know, windoze.
+		    # Enclose in quotes only the parameters that need it:
+		    #   try this: c:\> dir "/w"
+		    #   and this: c:\> dir /w
+		    for (\@@arr) {
+			s/"/\\\\"/g;
+			s/\\\\\\\\"/\\\\\\\\"""/g;
+			\$_ = qq["\$_"] if /\\s/;
+		    }
+		} else {
+		    for (\@@arr) {
+			s/(['\\\\])/\\\\\$1/g;
+			\$_ = \$_;
+		    }
+		}
+		push \@@arr, '2>&1' if \$Shell::capture_stderr;
+		open(SUBPROC, join(' ', '$cmd', \@@arr, '|'))
+		    or die "Can't exec $cmd: \$!\\n";
+		if (wantarray) {
+		    my \@@ret = <SUBPROC>;
+		    close SUBPROC;	# XXX Oughta use a destructor.
+		    \@@ret;
+		} else {
+		    local(\$/) = undef;
+		    my \$ret = <SUBPROC>;
+		    close SUBPROC;
+		    \$ret;
+		}
+	    }
+	}
+*END*
+
+    die "$@@\n" if $@@;
+    goto &$AUTOLOAD;
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+Shell - run shell commands transparently within perl
+
+=head1 SYNOPSIS
+
+See below.
+
+=head1 DESCRIPTION
+
+  Date: Thu, 22 Sep 94 16:18:16 -0700
+  Message-Id: <9409222318.AA17072@@scalpel.netlabs.com>
+  To: perl5-porters@@isu.edu
+  From: Larry Wall <lwall@@scalpel.netlabs.com>
+  Subject: a new module I just wrote
+
+Here's one that'll whack your mind a little out.
+
+    #!/usr/bin/perl
+
+    use Shell;
+
+    $foo = echo("howdy", "<funny>", "world");
+    print $foo;
+
+    $passwd = cat("</etc/passwd");
+    print $passwd;
+
+    sub ps;
+    print ps -ww;
+
+    cp("/etc/passwd", "/tmp/passwd");
+
+That's maybe too gonzo.  It actually exports an AUTOLOAD to the current
+package (and uncovered a bug in Beta 3, by the way).  Maybe the usual
+usage should be
+
+    use Shell qw(echo cat ps cp);
+
+Larry
+
+
+If you set $Shell::capture_stderr to 1, the module will attempt to
+capture the STDERR of the process as well.
+
+The module now should work on Win32.
+
+ Jenda
+
+There seemed to be a problem where all arguments to a shell command were
+quoted before being executed.  As in the following example:
+
+ cat('</etc/passwd');
+ ls('*.pl');
+
+really turned into:
+
+ cat '</etc/passwd'
+ ls '*.pl'
+
+instead of:
+
+  cat </etc/passwd
+  ls *.pl
+
+and of course, this is wrong.
+
+I have fixed this bug, it was brought up by Wolfgang Laun [ID 20000326.008]
+
+Casey
+
+=head2 OBJECT ORIENTED SYNTAX
+
+Shell now has an OO interface.  Good for namespace conservation 
+and shell representation.
+
+ use Shell;
+ my $sh = Shell->new;
+ print $sh->ls;
+
+Casey
+
+=head1 AUTHOR
+
+Larry Wall
+
+Changes by Jenda@@Krynicky.cz and Dave Cottle <d.cottle@@csc.canterbury.ac.nz>
+
+Changes and bug fixes by Casey West <casey@@geeknest.com>
+
+=cut
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d7 1
+a7 1
+$VERSION = '0.5';
+d9 1
+a9 1
+sub new { bless \my $foo, shift }
+a32 1
+	    shift if ref \$_[0] && \$_[0]->isa( 'Shell' );
+@
+
+
+1.1.1.3
+log
+@5.8.5
+@
+text
+@d5 1
+a5 1
+use File::Spec::Functions;
+d7 1
+a7 3
+our($capture_stderr, $raw, $VERSION, $AUTOLOAD);
+
+$VERSION = '0.6';
+a30 2
+    my $null = File::Spec::Functions::devnull();
+    $Shell::capture_stderr ||= 0;
+d35 1
+a35 3
+		\$Shell::capture_stderr ==  1 ? `$cmd 2>&1` : 
+		\$Shell::capture_stderr == -1 ? `$cmd 2>$null` : 
+		`$cmd`;
+d65 1
+a65 2
+		unless( \$Shell::raw ){
+		  if ('$^O' eq 'MSWin32') {
+d81 1
+a81 1
+		  } else {
+d85 1
+a85 2
+ 		    }
+                  }
+d87 1
+a87 2
+		push \@@arr, '2>&1'        if \$Shell::capture_stderr ==  1;
+		push \@@arr, '2>$null' if \$Shell::capture_stderr == -1;
+d118 1
+a118 8
+   use Shell qw(cat ps cp);
+   $passwd = cat('</etc/passwd');
+   @@pslines = ps('-ww'),
+   cp("/etc/passwd", "/tmp/passwd");
+
+   # object oriented 
+   my $sh = Shell->new;
+   print $sh->ls('-l');
+a121 65
+=head2 Caveats
+
+This package is included as a show case, illustrating a few Perl features.
+It shouldn't be used for production programs. Although it does provide a 
+simple interface for obtaining the standard output of arbitrary commands,
+there may be better ways of achieving what you need.
+
+Running shell commands while obtaining standard output can be done with the
+C<qx/STRING/> operator, or by calling C<open> with a filename expression that
+ends with C<|>, giving you the option to process one line at a time.
+If you don't need to process standard output at all, you might use C<system>
+(in preference of doing a print with the collected standard output).
+
+Since Shell.pm and all of the aforementioned techniques use your system's
+shell to call some local command, none of them is portable across different 
+systems. Note, however, that there are several built in functions and 
+library packages providing portable implementations of functions operating
+on files, such as: C<glob>, C<link> and C<unlink>, C<mkdir> and C<rmdir>, 
+C<rename>, C<File::Compare>, C<File::Copy>, C<File::Find> etc.
+
+Using Shell.pm while importing C<foo> creates a subroutine C<foo> in the
+namespace of the importing package. Calling C<foo> with arguments C<arg1>,
+C<arg2>,... results in a shell command C<foo arg1 arg2...>, where the 
+function name and the arguments are joined with a blank. (See the subsection 
+on Escaping magic characters.) Since the result is essentially a command
+line to be passed to the shell, your notion of arguments to the Perl
+function is not necessarily identical to what the shell treats as a
+command line token, to be passed as an individual argument to the program.
+Furthermore, note that this implies that C<foo> is callable by file name
+only, which frequently depends on the setting of the program's environment.
+
+Creating a Shell object gives you the opportunity to call any command
+in the usual OO notation without requiring you to announce it in the
+C<use Shell> statement. Don't assume any additional semantics being
+associated with a Shell object: in no way is it similar to a shell
+process with its environment or current working directory or any
+other setting.
+
+=head2 Escaping Magic Characters
+
+It is, in general, impossible to take care of quoting the shell's
+magic characters. For some obscure reason, however, Shell.pm quotes
+apostrophes (C<'>) and backslashes (C<\>) on UNIX, and spaces and
+quotes (C<">) on Windows.
+
+=head2 Configuration
+
+If you set $Shell::capture_stderr to true, the module will attempt to
+capture the standard error output of the process as well. This is
+done by adding C<2E<gt>&1> to the command line, so don't try this on
+a system not supporting this redirection.
+
+If you set $Shell::raw to true no quoting whatsoever is done.
+
+=head1 BUGS
+
+Quoting should be off by default.
+
+It isn't possible to call shell built in commands, but it can be
+done by using a workaround, e.g. shell( '-c', 'set' ).
+
+Capturing standard error does not work on some systems (e.g. VMS).
+
+=head1 AUTHOR
+
+d143 1
+a143 1
+    cp("/etc/passwd", "/etc/passwd.orig");
+d151 45
+d198 1
+a198 3
+Changes by Jenda@@Krynicky.cz and Dave Cottle <d.cottle@@csc.canterbury.ac.nz>.
+
+Changes for OO syntax and bug fixes by Casey West <casey@@geeknest.com>.
+d200 1
+a200 1
+C<$Shell::raw> and pod rewrite by Wolfgang Laun.
+@
+
+

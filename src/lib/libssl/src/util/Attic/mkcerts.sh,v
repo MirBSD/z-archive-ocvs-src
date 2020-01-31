@@ -1,0 +1,387 @@
+head	1.2;
+access;
+symbols
+	cvs-200408220000:1.1.1.2
+	MIRBSD_7quater:1.1.1.2
+	openssl-0_9_7d:1.1.3.1
+	cvs-200405160640:1.1.1.2
+	cvs-200403222025:1.1.1.2
+	cvs-200403181737:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	openssl-0_9_7c:1.1.3.1
+	openssl-0_9_7b:1.1.3.1
+	tg:1.1.3
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.10.29.18.40.29;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.47.55;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.55;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.21.19.01.15;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2003.10.29.16.12.30;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke a small bunch of files considered unused
+also, note that RC5 (TM?) is only patented in U.S.of.A.
+@
+text
+@#!bin/sh
+
+# This script will re-make all the required certs.
+# cd apps
+# sh ../util/mkcerts.sh
+# mv ca-cert.pem pca-cert.pem ../certs
+# cd ..
+# cat certs/*.pem >>apps/server.pem
+# cat certs/*.pem >>apps/server2.pem
+# SSLEAY=`pwd`/apps/ssleay; export SSLEAY
+# sh tools/c_rehash certs
+#
+ 
+CAbits=1024
+SSLEAY="../apps/ssleay"
+CONF="-config ../apps/ssleay.cnf"
+
+# create pca request.
+echo creating $CAbits bit PCA cert request
+$SSLEAY req $CONF \
+	-new -md5 -newkey $CAbits \
+	-keyout pca-key.pem \
+	-out pca-req.pem -nodes >/dev/null <<EOF
+AU
+Queensland
+.
+CryptSoft Pty Ltd
+.
+Test PCA (1024 bit)
+
+
+
+EOF
+
+if [ $? != 0 ]; then
+	echo problems generating PCA request
+	exit 1
+fi
+
+#sign it.
+echo
+echo self signing PCA
+$SSLEAY x509 -md5 -days 1461 \
+	-req -signkey pca-key.pem \
+	-CAcreateserial -CAserial pca-cert.srl \
+	-in pca-req.pem -out pca-cert.pem
+
+if [ $? != 0 ]; then
+	echo problems self signing PCA cert
+	exit 1
+fi
+echo
+
+# create ca request.
+echo creating $CAbits bit CA cert request
+$SSLEAY req $CONF \
+	-new -md5 -newkey $CAbits \
+	-keyout ca-key.pem \
+	-out ca-req.pem -nodes >/dev/null <<EOF
+AU
+Queensland
+.
+CryptSoft Pty Ltd
+.
+Test CA (1024 bit)
+
+
+
+EOF
+
+if [ $? != 0 ]; then
+	echo problems generating CA request
+	exit 1
+fi
+
+#sign it.
+echo
+echo signing CA
+$SSLEAY x509 -md5 -days 1461 \
+	-req \
+	-CAcreateserial -CAserial pca-cert.srl \
+	-CA pca-cert.pem -CAkey pca-key.pem \
+	-in ca-req.pem -out ca-cert.pem
+
+if [ $? != 0 ]; then
+	echo problems signing CA cert
+	exit 1
+fi
+echo
+
+# create server request.
+echo creating 512 bit server cert request
+$SSLEAY req $CONF \
+	-new -md5 -newkey 512 \
+	-keyout s512-key.pem \
+	-out s512-req.pem -nodes >/dev/null <<EOF
+AU
+Queensland
+.
+CryptSoft Pty Ltd
+.
+Server test cert (512 bit)
+
+
+
+EOF
+
+if [ $? != 0 ]; then
+	echo problems generating 512 bit server cert request
+	exit 1
+fi
+
+#sign it.
+echo
+echo signing 512 bit server cert
+$SSLEAY x509 -md5 -days 365 \
+	-req \
+	-CAcreateserial -CAserial ca-cert.srl \
+	-CA ca-cert.pem -CAkey ca-key.pem \
+	-in s512-req.pem -out server.pem
+
+if [ $? != 0 ]; then
+	echo problems signing 512 bit server cert
+	exit 1
+fi
+echo
+
+# create 1024 bit server request.
+echo creating 1024 bit server cert request
+$SSLEAY req $CONF \
+	-new -md5 -newkey 1024 \
+	-keyout s1024key.pem \
+	-out s1024req.pem -nodes >/dev/null <<EOF
+AU
+Queensland
+.
+CryptSoft Pty Ltd
+.
+Server test cert (1024 bit)
+
+
+
+EOF
+
+if [ $? != 0 ]; then
+	echo problems generating 1024 bit server cert request
+	exit 1
+fi
+
+#sign it.
+echo
+echo signing 1024 bit server cert
+$SSLEAY x509 -md5 -days 365 \
+	-req \
+	-CAcreateserial -CAserial ca-cert.srl \
+	-CA ca-cert.pem -CAkey ca-key.pem \
+	-in s1024req.pem -out server2.pem
+
+if [ $? != 0 ]; then
+	echo problems signing 1024 bit server cert
+	exit 1
+fi
+echo
+
+# create 512 bit client request.
+echo creating 512 bit client cert request
+$SSLEAY req $CONF \
+	-new -md5 -newkey 512 \
+	-keyout c512-key.pem \
+	-out c512-req.pem -nodes >/dev/null <<EOF
+AU
+Queensland
+.
+CryptSoft Pty Ltd
+.
+Client test cert (512 bit)
+
+
+
+EOF
+
+if [ $? != 0 ]; then
+	echo problems generating 512 bit client cert request
+	exit 1
+fi
+
+#sign it.
+echo
+echo signing 512 bit client cert
+$SSLEAY x509 -md5 -days 365 \
+	-req \
+	-CAcreateserial -CAserial ca-cert.srl \
+	-CA ca-cert.pem -CAkey ca-key.pem \
+	-in c512-req.pem -out client.pem
+
+if [ $? != 0 ]; then
+	echo problems signing 512 bit client cert
+	exit 1
+fi
+
+echo cleanup
+
+cat pca-key.pem  >> pca-cert.pem
+cat ca-key.pem   >> ca-cert.pem
+cat s512-key.pem >> server.pem
+cat s1024key.pem >> server2.pem
+cat c512-key.pem >> client.pem
+
+for i in pca-cert.pem ca-cert.pem server.pem server2.pem client.pem
+do
+$SSLEAY x509 -issuer -subject -in $i -noout >$$
+cat $$
+/bin/cat $i >>$$
+/bin/mv $$ $i
+done
+
+#/bin/rm -f *key.pem *req.pem *.srl
+
+echo Finished
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.3.1
+log
+@for the damned sixth time: try to import (stock) OpenSSL 0.9.7b (on which
+the OpenBSD-openssl and our libcrypto and libssl are based) into a vendor
+branch in order to schedule an update to OpenSSL.
+
+CVS hates me today.
+@
+text
+@d1 1
+a1 1
+#!/bin/sh
+d15 2
+a16 2
+SSLEAY="../apps/openssl"
+CONF="-config ../apps/openssl.cnf"
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync MirBSD main source tree against OpenBSD-current,
+which should be fairly stable after the Hackathon now.
+@
+text
+@d1 1
+a1 1
+#!/bin/sh
+d15 2
+a16 2
+SSLEAY="../apps/openssl"
+CONF="-config ../apps/openssl.cnf"
+@
+

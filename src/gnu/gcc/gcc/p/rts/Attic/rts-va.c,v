@@ -1,0 +1,444 @@
+head	1.2;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.13.04.53.48;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.01.25;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.01.25;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@no C++, Java(TM), Pascal, Objective C or Fortran 77 for a while
+as discussed on the mailing list
+@
+text
+@/*All RTS routines that take varargs.
+
+  Copyright (C) 1993-2003 Free Software Foundation, Inc.
+
+  Authors: Juki <jtv@@hut.fi>
+           Frank Heckenbach <frank@@pascal.gnu.de>
+
+  This file is part of GNU Pascal.
+
+  GNU Pascal is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published
+  by the Free Software Foundation; either version 2, or (at your
+  option) any later version.
+
+  GNU Pascal is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with GNU Pascal; see the file COPYING. If not, write to the
+  Free Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+  02111-1307, USA.
+
+  As a special exception, if you link this file with files compiled
+  with a GNU compiler to produce an executable, this does not cause
+  the resulting executable to be covered by the GNU General Public
+  License. This exception does not however invalidate any other
+  reasons why the executable file might be covered by the GNU
+  General Public License. */
+
+#include "rts.h"
+#include <stdarg.h>
+
+/* @@@@ DJGPP needs this for va_list, strange ...!? */
+#ifdef HAVE_STDIO_H
+#include <stdio.h>
+#endif
+
+/* error.pas */
+extern int _p_InOutRes;
+/* file.c */
+LongestInt _p_ReadI (FDR);
+LongestInt _p_ReadICheckSigned (FDR f, LongestInt min, LongestInt max);
+LongestCard _p_ReadICheckUnsigned (FDR f, LongestCard min, LongestCard max);
+long double _p_Read_LongReal (FDR);
+float _p_Read_ShortReal (FDR);
+double _p_Read_Real (FDR);
+char _p_Read_Char (FDR);
+Boolean _p_Read_Boolean (FDR);
+int _p_Read_Enum (FDR, char **, int);
+int _p_Read_String (FDR, char *, int);
+void _p_ReadLn (FDR);
+void _p_Read_Init (FDR, int);
+void _p_ReadStr_Init (FDR, char *, int, int);
+void _p_Write_Flush (FDR);
+void _p_Write_Integer (FDR, signed int, int);
+void _p_Write_LongInt (FDR, long long int, int);
+void _p_Write_Cardinal (FDR, unsigned int, int);
+void _p_Write_LongCard (FDR, unsigned long long int, int);
+void _p_Write_Real (FDR, long double, int, int);
+void _p_Write_Char (FDR, char, int);
+void _p_Write_Boolean (FDR, int, int);
+void _p_Write_Enum (FDR, char **, int, int, int);
+void _p_Write_String (FDR, char *, int, int);
+void _p_WriteLn (FDR);
+void _p_Write_Init (FDR, int);
+void _p_WriteStr_Init (FDR, char *, int, int);
+int _p_WriteStr_GetLength (FDR, unsigned char **);
+/* string2.pas*/
+void *_p_InternalFormatString (void *, int, unsigned char **, int *);
+
+/* Read the various integer types */
+#define READ_INT(sign, type, type2) \
+  *(va_arg (p, sign type *)) = (sign long long) _p_ReadI (f); break;
+
+/* Input range checking is not yet supported in _p_Internal_Read and
+   _p_ReadStr and the compiler, but it is supported in
+   _p_ReadICheck{Signed,Unsigned}. */
+#define READ_INT_CHECK_SIGNED(type, type2) \
+  { \
+    signed type *i = va_arg (p, signed type *); \
+    signed long long min = va_arg (p, signed type2); \
+    signed long long max = va_arg (p, signed type2); \
+    *i = _p_ReadICheckSigned (f, min, max); \
+    break; \
+  }
+#define READ_INT_CHECK_UNSIGNED(type, type2) \
+  { \
+    unsigned type *i = va_arg (p, unsigned type *); \
+    unsigned long long min = va_arg (p, unsigned type2); \
+    unsigned long long max = va_arg (p, unsigned type2); \
+    *i = _p_ReadICheckUnsigned (f, min, max); \
+    break; \
+  }
+
+/* Read various things from Text files and strings.
+   Do not return immediately when _p_InOutRes is set, but loop
+   through all the arguments and set them to "zero" values. */
+
+#define READ_VARIOUS_TYPES \
+{ \
+  va_list p; \
+  va_start (p, count); \
+  while (count--) \
+    { \
+      /* Type we are reading. The type code is only needed for this \
+         wrapper and can be removed when it is eliminated. */ \
+      switch (va_arg (p, int)) \
+      { \
+        case P_S_BYTE:     READ_INT (signed, char, int) \
+        case P_S_SHORT:    READ_INT (signed, short, int) \
+        case P_S_INT:      READ_INT (signed, int, int) \
+        case P_S_LONG:     READ_INT (signed, long, long long) \
+        case P_S_LONGLONG: READ_INT (signed, long long, long long) \
+        case P_U_BYTE:     READ_INT (unsigned, char, int) \
+        case P_U_SHORT:    READ_INT (unsigned, short, int) \
+        case P_U_INT:      READ_INT (unsigned, int, int) \
+        case P_U_LONG:     READ_INT (unsigned, long, long long) \
+        case P_U_LONGLONG: READ_INT (unsigned, long long, long long) \
+        case P_SHORT_REAL: \
+          *(va_arg (p, float *)) = _p_Read_ShortReal (f); \
+          break; \
+        case P_REAL: \
+          *(va_arg (p, double *)) = _p_Read_Real (f); \
+          break; \
+        case P_LONG_REAL: \
+          *(va_arg (p, long double *)) = _p_Read_LongReal (f); \
+          break; \
+        case P_CHAR: \
+          *(va_arg (p, char *)) = _p_Read_Char (f); \
+          break; \
+        case P_BOOL: \
+          *(va_arg (p, Boolean *)) = _p_Read_Boolean (f); \
+          break; \
+        case P_ENUM: \
+          { \
+            char **IDs = va_arg (p, char **); \
+            int IDCount = va_arg (p, int); \
+            *(va_arg (p, int *)) = _p_Read_Enum (f, IDs, IDCount); \
+            break; \
+          } \
+        case P_STRING: \
+          { \
+            char *str = va_arg (p, char *); \
+            int *PLength = va_arg (p, int *); \
+            int Capacity = va_arg (p, int); \
+            if (!PLength) _p_InternalError (908);  /* Incorrect reading of string */ \
+            *PLength = _p_Read_String (f, str, Capacity); \
+            break; \
+          } \
+        case P_SHORT_STRING: \
+          { \
+            char *str = va_arg (p, char *); \
+            char *PLength = va_arg (p, char *); \
+            int Capacity = va_arg (p, int); \
+            if (!PLength) _p_InternalError (908);  /* Incorrect reading of string */ \
+            *PLength = _p_Read_String (f, str, Capacity); \
+            break; \
+          } \
+        case P_FIXED_STRING: \
+          { \
+            char *str = va_arg (p, char *); \
+            int Capacity = va_arg (p, int); \
+            int length = _p_Read_String (f, str, Capacity); \
+            while (length < Capacity) str[length++] = ' ';  /* fill with spaces */ \
+            break; \
+          } \
+        case P_CSTRING: \
+          { \
+            char *str = va_arg (p, char *); \
+            int Capacity = va_arg (p, int); \
+            int curlen = _p_Read_String (f, str, Capacity - 1);  /* reserve space for terminator */ \
+            str[curlen] = 0;  /* Add #0 terminator for CStrings */ \
+            break; \
+          } \
+        case P_LINE: \
+          if (count != 0) \
+            _p_InternalError (901);  /* Compiler calls `ReadLn' incorrectly */ \
+          _p_ReadLn (f); \
+          break; \
+        default: \
+          _p_InternalError (903);  /* unknown code in `Read' or `ReadStr' */ \
+      } \
+    } \
+  va_end (p); \
+}
+
+GLOBAL (void _p_Internal_Read (FDR f, int global_flags, int count, ...))
+{
+  _p_Read_Init (f, global_flags);
+  READ_VARIOUS_TYPES
+}
+
+GLOBAL (void _p_ReadStr (char *string, int maxchars, int global_flags, int count, ...))
+{
+  /* `f' is needed by READ_VARIOUS_TYPES. It is no real file, be careful
+     what you do with it. Don't call _p_InitFDR(). We use a char array
+     to avoid a dependency on the definition of the file descriptor record.
+     When this is built into the compiler, this will become a normal local
+     file declaration (however without _p_InitFDR()). */
+  char tmp[FDR_Size];
+  FDR f = (FDR) tmp;
+  /* For a CString input determine the length here */
+  _p_ReadStr_Init (f, string, (maxchars < 0) ? (int) _p_CStringLength (string) : maxchars, global_flags);
+  READ_VARIOUS_TYPES
+}
+
+/* common to _p_Internal_Write(), _p_WriteStr() and _p_FormatString() */
+#define WRITE_VARIOUS_TYPES1 \
+    { \
+      int Flags = va_arg (p, int), \
+          FixedWidth = Flags & FIX_WIDTH_MASK, \
+          PrecisionFlag = Flags & FIX2_REAL_MASK; \
+      /* The type code and FIX_WIDTH_MASK and FIX2_REAL_MASK are only \
+         needed for this wrapper and can be removed when it is eliminated. */ \
+      switch (Flags & ~(FIX_WIDTH_MASK | FIX2_REAL_MASK)) \
+      { \
+        case P_S_INT: \
+          { \
+            signed int num = va_arg (p, signed int); \
+            _p_Write_Integer (f, num, (FixedWidth ? va_arg (p, int) : _p_LowInteger)); \
+            break; \
+          } \
+        case P_S_LONGLONG: \
+          { \
+            long long int num = va_arg (p, long long int); \
+            _p_Write_LongInt (f, num, (FixedWidth ? va_arg (p, int) : _p_LowInteger)); \
+            break; \
+          } \
+        case P_U_INT: \
+          { \
+            unsigned int num = va_arg (p, unsigned int); \
+            _p_Write_Cardinal (f, num, (FixedWidth ? va_arg (p, int) : _p_LowInteger)); \
+            break; \
+          } \
+        case P_U_LONGLONG: \
+          { \
+            unsigned long long int num = va_arg (p, unsigned long long int); \
+            _p_Write_LongCard (f, num, (FixedWidth ? va_arg (p, int) : _p_LowInteger)); \
+            break; \
+          } \
+        case P_LONG_REAL: \
+          { \
+            long double num = va_arg (p, long double); \
+            int width = FixedWidth ? va_arg (p, int) : _p_LowInteger; \
+            int prec = PrecisionFlag ? va_arg (p, int) : _p_LowInteger; \
+            _p_Write_Real (f, num, width, prec); \
+            break; \
+          } \
+        case P_CHAR: \
+          { \
+            char ch = (char) va_arg (p, int); \
+            _p_Write_Char (f, ch, (FixedWidth ? va_arg (p, int) : _p_LowInteger)); \
+            break; \
+          } \
+        case P_BOOL: \
+          { \
+            int b = va_arg (p, int); \
+            _p_Write_Boolean (f, b, (FixedWidth ? va_arg (p, int) : _p_LowInteger)); \
+            break; \
+          } \
+        case P_ENUM: \
+          { \
+            char **IDs = va_arg (p, char **); \
+            int IDCount = va_arg (p, int); \
+            int v = va_arg (p, int); \
+            _p_Write_Enum (f, IDs, IDCount, v, (FixedWidth ? va_arg (p, int) : _p_LowInteger)); \
+            break; \
+          } \
+        case P_ANY_STRING: \
+          { \
+            char *str = va_arg (p, char *); \
+            int length = va_arg (p, int); \
+            _p_Write_String (f, str, length, (FixedWidth ? va_arg (p, int) : _p_LowInteger)); \
+            break; \
+          } \
+        case P_LINE: \
+          if (count != 0) \
+            _p_InternalError (902);  /* Compiler calls `WriteLn' incorrectly */ \
+          _p_WriteLn (f); \
+          break; \
+        default: \
+          _p_InternalError (904);  /* unknown code in `Write' or `WriteStr' */ \
+      } \
+    }
+
+#define WRITE_VARIOUS_TYPES \
+{ \
+  int count = va_arg (p, int); \
+  while (count--) \
+    WRITE_VARIOUS_TYPES1 \
+  va_end (p); \
+}
+
+GLOBAL (void _p_Internal_Write (FDR f, int global_flags, ...))
+{
+  va_list p;
+  va_start (p, global_flags);
+  _p_Write_Init (f, global_flags);
+  if (_p_InOutRes) return;
+  WRITE_VARIOUS_TYPES
+  _p_Write_Flush (f);
+}
+
+/* string_type must be one of P_STRING, P_SHORT_STRING, P_FIXED_STRING, P_CSTRING */
+GLOBAL (void _p_WriteStr (int string_type, char *s1, ...))
+{
+  int Capacity, Length, *long_curlen = 0;
+  unsigned char *short_curlen = 0;
+  char tmp[FDR_Size];  /* cf. the comment in _p_ReadStr() */
+  FDR f = (FDR) tmp;
+
+  /* Don't check _p_InOutRes here because this routine is called
+     (indirectly) when writing error messages! */
+
+  va_list p;
+  va_start (p, s1);
+
+  /* Length pointer. Needed at the end of the routine. */
+  switch (string_type)
+  {
+    case P_STRING:
+      long_curlen = va_arg (p, int *);
+      break;
+    case P_SHORT_STRING:
+      short_curlen = va_arg (p, char *);
+      break;
+    case P_FIXED_STRING:
+    case P_CSTRING:
+      break;
+    default:
+      _p_InternalError (906);  /* unknown string code in `WriteStr' */
+  }
+
+  Capacity = va_arg (p, int);
+  /* If it's a CString, reserve space for the #0 terminator.
+     @@@@ Shouldn't the compiler do this? */
+  if (string_type == P_CSTRING && --Capacity < 0)
+    _p_InternalError (907);  /* string capacity cannot be negative */
+
+  _p_WriteStr_Init (f, s1, Capacity, va_arg (p, int));
+  WRITE_VARIOUS_TYPES
+
+  /* Set the current string length */
+  /* The following is roughly the code for an "AnyString SetLength" */
+  Length = _p_WriteStr_GetLength (f, NULL);
+  switch (string_type)
+  {
+    case P_STRING:
+      *long_curlen = Length;
+      break;
+    case P_SHORT_STRING:
+      *short_curlen = Length;
+      break;
+    case P_FIXED_STRING:
+      while (Length < Capacity)
+        s1[Length++] = ' ';
+      break;
+    case P_CSTRING:
+      s1[Length] = 0;
+      break;
+  }
+}
+
+/* string_type must be one of P_STRING, P_SHORT_STRING, P_FIXED_STRING, P_CSTRING */
+GLOBAL (void *_p_FormatString (void *Format, ...))
+{
+  va_list p;
+  va_start (p, Format);
+  {
+    char tmp[FDR_Size];  /* cf. the comment in _p_ReadStr() */
+    FDR f = (FDR) tmp;
+    int Flags = va_arg (p, int) | FORMAT_STRING_MASK;
+    int count = va_arg (p, int), i;
+    unsigned char *strings[count];
+    int lengths[count];
+    for (i = 0; i < count; i++)
+      {
+        #define STARTSIZE 64
+        _p_WriteStr_Init (f, _p_New (STARTSIZE), STARTSIZE, Flags);
+        WRITE_VARIOUS_TYPES1
+        lengths[i] = _p_WriteStr_GetLength (f, &(strings[i]));
+      }
+    va_end (p);
+    return _p_InternalFormatString (Format, count, strings, lengths);
+  }
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

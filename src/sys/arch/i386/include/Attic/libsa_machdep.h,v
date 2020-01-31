@@ -1,0 +1,156 @@
+head	1.3;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2003.12.11.21.50.25;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.11.28.22.27.05;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.11.25.17.53.57;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@nuke that bad idea of mine to have a machine-dependent libsa header,
+to be used eg. for inlining memmove()
+
+why was this a bad idea? inlining increases size of code, which is bad,
+because code doesn't work after that any more
+@
+text
+@/* $MirBSD: libsa_machdep.h,v 1.2 2003/11/28 22:27:05 tg Exp $
+ *-
+ * Copyright (c) 2003 Thorsten Glaser <x86@@ePost.de> for the MirOS Project
+ *
+ * Subject to these terms, everybody who obtained a copy of this work
+ * is hereby permitted to deal in the work without restriction inclu-
+ * ding without limitation the rights to use, distribute, sell, modi-
+ * fy, publically perform, give away, merge or sublicense it provided
+ * this notice is kept and the authors and contributors are given due
+ * credit in derivates or accompanying documents.
+ * This work is provided "as is" with no explicit or implicit warran-
+ * ties whatsoever to the maximum extend permitted by applicable law;
+ * in no event may an author or contributor be held liable for damage
+ * that is, directly or indirectly, caused by the work, even if advi-
+ * sed of the possibility of such damage.
+ *-
+ * machine-dependent functions to be used for libsa
+ * every function is guarded with __HAS_MD_fnname
+ */
+
+#ifndef	_SYS_LIBSA_ARCH_MACHDEP_H
+#define	_SYS_LIBSA_ARCH_MACHDEP_H
+
+#ifndef	__GNUC__
+#define	__inline__	inline
+#define	__asm__		asm
+#endif
+
+/* interface */
+
+#if 0	/* not yet, it breaks cdboot */
+#define	__HAS_MD_memmove
+static __inline__ void *memmove(void *, const void *, size_t)
+#if __GNUC__ > 2
+    __attribute__((always_inline))
+#endif
+    ;
+#else	/* !if 0 */
+#undef	__HAS_MD_memmove	/* inlining breaks size constraintss :(	*/
+#endif
+
+
+/* implementation */
+
+#ifdef	__HAS_MD_memmove
+static __inline__ void *
+memmove(void *dst, const void *src, size_t len)
+{
+	asm(   "movl	%0,%%edx	"
+	"\n	cmpl	%1,%2		"
+	"\n	jnb	1f		"
+	"\n	cld			"
+	"\n	shrl	$2,%0		"
+	"\n	rep			"
+	"\n	movsl			"
+	"\n	movl	%%edx,%0	"
+	"\n	andl	$3,%0		"
+	"\n	rep			"
+	"\n	movsb			"
+	"\n	jmp	2f		"
+	"\n1:	addl	%0,%2		"
+	"\n	addl	%0,%1		"
+	"\n	std			"
+	"\n	andl	$3,%0		"
+	"\n	decl	%2		"
+	"\n	decl	%1		"
+	"\n	rep			"
+	"\n	movsb			"
+	"\n	movl	%%edx,%0	"
+	"\n	shrl	$2,%0		"
+	"\n	subl	$3,%1		"
+	"\n	subl	$3,%2		"
+	"\n	rep			"
+	"\n	movsl			"
+	"\n2:	cld			"
+		: /* nothing */
+		: "c" (len), "S" (src), "D" (dst)
+		: "dx");
+
+	return dst;
+}
+#endif	/* __HAS_MD_memmove */
+
+#endif
+@
+
+
+1.2
+log
+@build the system through, fix remaining issues
+sync distrib set lists
+take back inlining memmove() because the boot loader must be <57000 bytes
+(the exact number is unknown) for cdboot to function
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: libsa_machdep.h,v 1.1 2003/11/25 17:53:57 tg Exp $
+@
+
+
+1.1
+log
+@woohoo, mirabile learns gcc inline assembly :-)
+well, sort of. it sucks, but there isn't a way around it.
+as bonus, /usr/mdec/boot grows a Kibibyte or so larger, but
+should be faster (as if that mattered...)
+
+bump version, clean up code (including indenting), sync fdisk
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.6 2003/10/22 08:19:40 tg Exp $
+d31 1
+d38 3
+d45 1
+d82 1
+@
+

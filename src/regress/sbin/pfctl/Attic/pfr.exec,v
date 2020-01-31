@@ -1,0 +1,262 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.09.22.22.01.09;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.48.13;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.48.13;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.08.22.55.20;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@there is no point in having a pfctl regression test when the
+syntax changed and I don't bother to update them to Kibi-bits.
+@
+text
+@#!/bin/ksh
+D=`dirname $1`
+for TABLE in `pfctl -sT | grep regress`; do 
+	pfctl -t $TABLE -qTk 2>&1 || exit 1
+done
+pfctl -Fr -a regress:regress 2>/dev/null
+pfctl -Fn -a regress:regress 2>/dev/null
+KT_A=0`vmstat -m | awk '/pfrktable/{print $3}'`
+KT_R=0`vmstat -m | awk '/pfrktable/{print $5}'`
+KE_A=0`vmstat -m | awk '/pfrkentry/{print $3}'`
+KE_R=0`vmstat -m | awk '/pfrkentry/{print $5}'`
+echo "# create"
+echo "table <regress> persist" | pfctl -Tl -f - 2>&1 || exit 1
+for LINE in `sed -e "s/ /_/g" $1`; do 
+	RESULT=`echo $LINE | awk '{split($1,a,"_");print a[1]}'`
+	case $RESULT in
+		pass|fail) ;;
+		*) continue ;;
+	esac
+	CMD=`echo $LINE | awk '{split($1,a,"_");print a[2]}'` 
+	ARGSX=`echo $LINE | awk '{split($1,a,"_");for(i=3;a[i];i++)print a[i]}'`
+	ARGS=""
+	for ARG in $ARGSX; do
+		if [ "X$ARGS" = "X" ]; then
+			ARGS="$ARG"
+		else
+			ARGS="$ARGS $ARG"
+		fi
+	done
+	if [ "$RESULT" = "pass" ]; then case $CMD in
+	add|delete|replace)
+		echo "# pass $CMD -n $ARGS"
+		pfctl -t regress -nT $CMD $ARGS 2>&1 | sort || exit 1
+		echo "# pass $CMD -nf-"
+		echo "# test\n" $ARGSX | pfctl -t regress -nT $CMD -f- \
+			2>&1 | sort || exit 1
+		echo "# pass $CMD -nqv $ARGS"
+		pfctl -t regress -nqvT $CMD $ARGS 2>&1 | sort || exit 1
+		echo "# pass $CMD -nqvv $ARGS"
+		pfctl -t regress -nqvvT $CMD $ARGS 2>&1 | sort || exit 1
+		;;
+	esac fi
+	echo "# $RESULT $CMD $ARGS"
+	if [ "$RESULT" = "pass" ]; then
+		case $CMD in
+		list)
+			(pfctl -sT | grep regress) 2>&1
+			echo "# pass $CMD -v"
+			(pfctl -gvsT | grep regress) 2>&1
+			;;
+		load)
+			echo $ARGS | sed "s,DIR,$D,g" | pfctl -Tl -f- || exit 1
+			;;
+		rule)
+			echo $ARGS | pfctl -a regress:regress -f- 2>&1 || exit 1
+			;;
+		*)
+			pfctl -t regress -T $CMD $ARGS 2>&1 | sort || exit 1
+			;;
+		esac
+	else
+		case $CMD in
+		load)
+			echo ARGS | sed "s,DIR,$D,g" | pfctl -Tl -f- && exit 1
+			;;
+		rule)
+			echo $ARGS | pfctl -a regress:regress -f- 2>&1 && exit 1			;;
+		*)
+			pfctl -t regress -T $CMD $ARGS 2>&1 && exit 1
+			;;
+		esac
+	fi
+done
+echo "# kill"
+for TABLE in `pfctl -sT | grep regress`; do
+        pfctl -t $TABLE -Tk 2>&1 || exit 1
+done
+pfctl -Fr -a regress:regress 2>/dev/null
+pfctl -Fn -a regress:regress 2>/dev/null
+let KT_A=`vmstat -m | awk '/pfrktable/{print $3}'`-$KT_A
+let KT_R=`vmstat -m | awk '/pfrktable/{print $5}'`-$KT_R
+let KT_L=$KT_A-$KT_R
+let KE_A=`vmstat -m | awk '/pfrkentry/{print $3}'`-$KE_A
+let KE_R=`vmstat -m | awk '/pfrkentry/{print $5}'`-$KE_R
+let KE_L=$KE_A-$KE_R
+echo "ktable: $KT_A allocated, $KT_R released, $KT_L leaked."
+echo "kentry: $KE_A allocated, $KE_R released, $KE_L leaked."
+[ "$KT_L" = "0" -a "$KE_L" = "0" ] || exit 1
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD CVS of roughly 2000-2200 UTC. Last import before release.
+@
+text
+@d3 5
+a7 4
+A='regress:regress'
+pfctl -a $A -FT 2>/dev/null
+pfctl -a $A -Fr 2>/dev/null
+pfctl -a $A -Fn 2>/dev/null
+d13 1
+a13 1
+echo "table <regress> persist" | pfctl -a $A -Tl -f - 2>&1 || exit 1
+d33 1
+a33 1
+		pfctl -a $A -t regress -nT $CMD $ARGS 2>&1 | sort || exit 1
+d35 1
+a35 1
+		echo "# test\n" $ARGSX | pfctl -a $A -t regress -nT $CMD -f- \
+d38 1
+a38 1
+		pfctl -a $A -t regress -nqvT $CMD $ARGS 2>&1 | sort || exit 1
+d40 1
+a40 1
+		pfctl -a $A -t regress -nqvvT $CMD $ARGS 2>&1 | sort || exit 1
+d47 1
+a47 1
+			pfctl -a $A -sT 2>&1
+d49 1
+a49 1
+			pfctl -a $A -gvsT 2>&1
+d52 1
+a52 2
+			echo $ARGS | sed "s,DIR,$D,g" | pfctl -a $A -Tl -f- \
+			    || exit 1
+d55 1
+a55 1
+			echo $ARGS | pfctl -a $A -f- 2>&1 || exit 1
+d58 1
+a58 2
+			pfctl -a $A -t regress -T $CMD $ARGS 2>&1 | sort \
+			    || exit 1
+d64 1
+a64 2
+			echo ARGS | sed "s,DIR,$D,g" | pfctl -a $A -Tl -f- \
+			    && exit 1
+d67 1
+a67 2
+			echo $ARGS | pfctl -a $A -f- 2>&1 && exit 1
+			;;
+d69 1
+a69 1
+			pfctl -a $A -t regress -T $CMD $ARGS 2>&1 && exit 1
+d75 5
+a79 3
+pfctl -a $A -FT 2>&1
+pfctl -a $A -Fr 2>&1
+pfctl -a $A -Fn 2>&1
+@
+

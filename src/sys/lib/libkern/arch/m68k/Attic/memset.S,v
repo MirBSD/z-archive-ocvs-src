@@ -1,0 +1,249 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.04.12.19.13.55;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.51.55;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.51.55;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.40.41;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove another non-x86-32 tree
+@
+text
+@/*	$OpenBSD: memset.S,v 1.1 2000/06/16 19:56:55 millert Exp $	*/
+
+/*-
+ * Copyright (c) 1990 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * the Systems Programming Group of the University of Utah Computer
+ * Science Department.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include "DEFS.h"
+
+#if defined(LIBC_SCCS)
+	.text
+	.asciz "$OpenBSD: memset.S,v 1.1 2000/06/16 19:56:55 millert Exp $"
+#endif /* LIBC_SCCS */
+
+/*
+ * This is probably not the best we can do, but it is still much
+ * faster than the C version in the portable gen directory.
+ *
+ * Things that might help:
+ *	- unroll the longword loop (might not be good for a 68020)
+ *	- longword, as opposed to word, align when possible (only on the 68020)
+ *	- use nested DBcc instructions or use one and limit size to 64K
+ */
+ENTRY(memset)
+	movl	d2,sp@@-
+	movl	sp@@(8),a0		| destination
+	movl	sp@@(16),d0		| count
+	beq	bzdone			| nothing to do
+	movb	sp@@(15),d2		| character
+	movl	a0,d1
+	btst	#0,d1			| address odd?
+	beq	bzeven			| no, skip alignment
+	movb	d2,a0@@+			| set one byte
+	subql	#1,d0			| adjust count
+	beq	bzdone			| if zero, all done
+bzeven:
+	cmpl	#15,d0
+	ble	bzbloop			| too small to be worthwhile
+	clrl	d1			| replicate byte to fill longword
+	movb	d2,d1
+	movl	d1,d2
+	lsll	#8,d1
+	orl	d1,d2
+	lsll	#8,d1
+	orl	d1,d2
+	lsll	#8,d1
+	orl	d1,d2
+	movl	d0,d1			| convert to longword count
+	lsrl	#2,d1
+#ifdef DEBUG
+	moveml	#0xffff,sp@@-
+	movl	d2,sp@@-
+	movl	d1,sp@@-
+	movl	d0,sp@@-
+	movl	a0,sp@@-
+	movl	#foo,sp@@-
+	jsr	_printf
+	addl	#20,sp
+	moveml	sp@@+,#0xffff
+#endif
+bzlloop:
+	movl	d2,a0@@+			| set one longword
+	subql	#1,d1			| adjust count
+	bne	bzlloop			| still more, keep going
+	andl	#3,d0			| what remains
+	beq	bzdone			| nothing, all done
+bzbloop:
+	movb	d2,a0@@+			| set one byte
+	subql	#1,d0			| adjust count
+	bne	bzbloop			| still more, keep going
+bzdone:
+	movl	sp@@(8),d0		| return destination
+	movl	sp@@+,d2
+	rts
+
+#ifdef DEBUG
+	.globl	_printf
+foo:
+	.asciz	"a0=%08x d0=%08x d1=%08x d2=%08x\n"
+#endif
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: memset.S,v 1.2 2003/06/02 23:28:08 millert Exp $	*/
+d19 5
+a23 1
+ * 3. Neither the name of the University nor the names of its contributors
+d44 1
+a44 1
+	.asciz "$OpenBSD: memset.S,v 1.2 2003/06/02 23:28:08 millert Exp $"
+@
+

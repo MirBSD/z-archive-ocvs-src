@@ -1,0 +1,369 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.5
+	tg-mergefixes-1-branch:1.1.1.5.0.8
+	tg-mergefixes-1-base:1.1.1.5
+	MIROS_X:1.1.1.5.0.6
+	MIROS_X_BASE:1.1.1.5
+	tg-mergetmp-3:1.1.1.5
+	MIRBSD_XP_MIRPPC:1.1.1.5.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.5
+	MIRBSD_XP_SPARC:1.1.1.5.0.2
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.5
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309261655:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	cvs-200307072125:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200307021520:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.3
+	cvs-200306082100:1.1.1.3
+	ctm-3316:1.1.1.3
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.51.51;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.51.51;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.07.17.51.08;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.05.17.40.26;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.01.26.18.52.41;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2004.05.16.09.06.15;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: kern_kthread.c,v 1.18 2002/06/11 06:35:18 art Exp $	*/
+/*	$NetBSD: kern_kthread.c,v 1.3 1998/12/22 21:21:36 kleink Exp $	*/
+
+/*-
+ * Copyright (c) 1998 The NetBSD Foundation, Inc.
+ * All rights reserved.
+ *
+ * This code is derived from software contributed to The NetBSD Foundation
+ * by Jason R. Thorpe of the Numerical Aerospace Simulation Facility,
+ * NASA Ames Research Center.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the NetBSD
+ *	Foundation, Inc. and its contributors.
+ * 4. Neither the name of The NetBSD Foundation nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/kthread.h>
+#include <sys/proc.h>
+#include <sys/wait.h>
+#include <sys/malloc.h>
+#include <sys/queue.h>
+
+#include <machine/cpu.h>
+
+/*
+ * note that stdarg.h and the ansi style va_start macro is used for both
+ * ansi and traditional c complers.
+ * XXX: this requires that stdarg.h define: va_alist and va_dcl
+ */
+#include <machine/stdarg.h>
+
+/*
+ * Fork a kernel thread.  Any process can request this to be done.
+ * The VM space and limits, etc. will be shared with proc0.
+ */
+int
+kthread_create(void (*func)(void *), void *arg,
+    struct proc **newpp, const char *fmt, ...)
+{
+	struct proc *p2;
+	register_t rv[2];
+	int error;
+	va_list ap;
+
+	/*
+	 * First, create the new process.  Share the memory, file
+	 * descriptors and don't leave the exit status around for the
+	 * parent to wait for.
+	 */
+	error = fork1(&proc0, 0,
+	    FORK_SHAREVM|FORK_NOZOMBIE|FORK_SIGHAND, NULL, 0, func, arg, rv);
+	if (error)
+		return (error);
+
+	p2 = pfind(rv[0]);
+
+	/*
+	 * Mark it as a system process and not a candidate for
+	 * swapping.
+	 */
+	p2->p_flag |= P_INMEM | P_SYSTEM;	/* XXX */
+
+	/* Name it as specified. */
+	va_start(ap, fmt);
+	vsprintf(p2->p_comm, fmt, ap);
+	va_end(ap);
+
+	/* All done! */
+	if (newpp != NULL)
+		*newpp = p2;
+	return (0);
+}
+
+/*
+ * Cause a kernel thread to exit.  Assumes the exiting thread is the
+ * current context.
+ */
+void
+kthread_exit(int ecode)
+{
+
+	/*
+	 * XXX What do we do with the exit code?  Should we even bother
+	 * XXX with it?  The parent (proc0) isn't going to do much with
+	 * XXX it.
+	 */
+	if (ecode != 0)
+		printf("WARNING: thread `%s' (%d) exits with status %d\n",
+		    curproc->p_comm, curproc->p_pid, ecode);
+
+	exit1(curproc, W_EXITCODE(ecode, 0));
+
+	/*
+	 * XXX Fool the compiler.  Making exit1() __dead is a can
+	 * XXX of worms right now.
+	 */
+	for (;;);
+}
+
+struct kthread_q {
+	SIMPLEQ_ENTRY(kthread_q) kq_q;
+	void (*kq_func)(void *);
+	void *kq_arg;
+};
+
+SIMPLEQ_HEAD(, kthread_q) kthread_q = SIMPLEQ_HEAD_INITIALIZER(kthread_q);
+
+/*
+ * Defer the creation of a kernel thread.  Once the standard kernel threads
+ * and processes have been created, this queue will be run to callback to
+ * the caller to create threads for e.g. file systems and device drivers.
+ */
+void
+kthread_create_deferred(void (*func)(void *), void *arg)
+{
+	struct kthread_q *kq;
+
+	kq = malloc(sizeof *kq, M_TEMP, M_NOWAIT);
+	if (kq == NULL)
+		panic("unable to allocate kthread_q");
+	bzero(kq, sizeof *kq);
+
+	kq->kq_func = func;
+	kq->kq_arg = arg;
+
+	SIMPLEQ_INSERT_TAIL(&kthread_q, kq, kq_q);
+}
+
+void
+kthread_run_deferred_queue(void)
+{
+	struct kthread_q *kq;
+
+	while ((kq = SIMPLEQ_FIRST(&kthread_q)) != NULL) {
+		SIMPLEQ_REMOVE_HEAD(&kthread_q, kq, kq_q);
+		(*kq->kq_func)(kq->kq_arg);
+		free(kq, M_TEMP);
+	}
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD source tree of short before 17:00 UTC today
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: kern_kthread.c,v 1.19 2003/05/06 07:28:38 deraadt Exp $	*/
+d92 1
+a92 1
+	vsnprintf(p2->p_comm, sizeof p2->p_comm, fmt, ap);
+@
+
+
+1.1.1.3
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: kern_kthread.c,v 1.20 2003/05/27 21:03:49 henning Exp $	*/
+d54 1
+a54 1
+ * ansi and traditional c compilers.
+@
+
+
+1.1.1.4
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: kern_kthread.c,v 1.21 2004/01/03 14:08:53 espie Exp $	*/
+d57 1
+a57 1
+#include <sys/stdarg.h>
+@
+
+
+1.1.1.5
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: kern_kthread.c,v 1.22 2004/05/04 16:59:32 grange Exp $	*/
+d162 1
+a162 1
+		SIMPLEQ_REMOVE_HEAD(&kthread_q, kq_q);
+@
+
+

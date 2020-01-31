@@ -1,0 +1,292 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.25;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.25;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/usr/bin/perl
+#
+# Check behavior of 'autodefer' feature
+# Mostly this isn't implemented yet
+# This file is primarily here to make sure that the promised ->autodefer
+# method doesn't croak.
+#
+
+use POSIX 'SEEK_SET';
+
+my $file = "tf$$.txt";
+$: = Tie::File::_default_recsep();
+my $data = "rec0$:rec1$:rec2$:";
+my ($o, $n, @@a);
+
+print "1..65\n";
+
+my $N = 1;
+use Tie::File;
+print "ok $N\n"; $N++;
+
+open F, "> $file" or die $!;
+binmode F;
+print F $data;
+close F;
+$o = tie @@a, 'Tie::File', $file;
+print $o ? "ok $N\n" : "not ok $N\n";
+$N++;
+
+# I am an undocumented feature
+$o->{autodefer_filelen_threshhold} = 0;
+# Normally autodeferring only works on large files.  This disables that.
+
+# (3-22) Deferred storage
+$a[3] = "rec3";
+check_autodeferring('OFF');
+$a[4] = "rec4";
+check_autodeferring('OFF');
+$a[5] = "rec5";
+check_autodeferring('ON');
+check_contents($data . "rec3$:rec4$:"); # only the first two were written
+$a[6] = "rec6";
+check_autodeferring('ON');
+check_contents($data . "rec3$:rec4$:"); # still nothing written
+$a[7] = "rec7";
+check_autodeferring('ON');
+check_contents($data . "rec3$:rec4$:"); # still nothing written
+$a[0] = "recX";
+check_autodeferring('OFF');
+check_contents("recX$:rec1$:rec2$:rec3$:rec4$:rec5$:rec6$:rec7$:");
+$a[1] = "recY";
+check_autodeferring('OFF');
+check_contents("recX$:recY$:rec2$:rec3$:rec4$:rec5$:rec6$:rec7$:");
+$a[2] = "recZ";                 # it kicks in here
+check_autodeferring('ON');
+check_contents("recX$:recY$:rec2$:rec3$:rec4$:rec5$:rec6$:rec7$:");
+
+# (23-26) Explicitly enabling deferred writing deactivates autodeferring
+$o->defer;
+check_autodeferring('OFF');
+check_contents("recX$:recY$:recZ$:rec3$:rec4$:rec5$:rec6$:rec7$:");
+$o->discard;
+check_autodeferring('OFF');
+
+# (27-32) Now let's try the CLEAR special case
+@@a = ("r0" .. "r4");
+check_autodeferring('ON');
+# The file was extended to the right length, but nothing was actually written.
+check_contents("$:$:$:$:$:");
+$a[2] = "fish";
+check_autodeferring('OFF');
+check_contents("r0$:r1$:fish$:r3$:r4$:");
+
+# (33-47) Now let's try the originally intended application:  a 'for' loop.
+my $it = 0;
+for (@@a) {
+  $_ = "##$_";
+  if ($it == 0) {
+    check_autodeferring('OFF');
+    check_contents("##r0$:r1$:fish$:r3$:r4$:");
+  } elsif ($it == 1) {
+    check_autodeferring('OFF');
+    check_contents("##r0$:##r1$:fish$:r3$:r4$:");
+  } else {
+    check_autodeferring('ON');
+    check_contents("##r0$:##r1$:fish$:r3$:r4$:");
+  }
+  $it++;
+}
+
+# (48-56) Autodeferring should not become active during explicit defer mode
+$o->defer();  # This should flush the pending autodeferred records
+              # and deactivate autodeferring
+check_autodeferring('OFF');
+check_contents("##r0$:##r1$:##fish$:##r3$:##r4$:");
+@@a = ("s0" .. "s4");
+check_autodeferring('OFF');
+check_contents("");
+$o->flush;
+check_autodeferring('OFF');
+check_contents("s0$:s1$:s2$:s3$:s4$:");
+
+undef $o; untie @@a;
+
+# Limit cache+buffer size to 47 bytes 
+my $MAX = 47;
+#  -- that's enough space for 5 records, but not 6, on both \n and \r\n systems
+my $BUF = 20;
+#  -- that's enough space for 2 records, but not 3, on both \n and \r\n systems
+# Re-tie the object for more tests
+$o = tie @@a, 'Tie::File', $file, autodefer => 0;
+die $! unless $o;
+# I am an undocumented feature
+$o->{autodefer_filelen_threshhold} = 0;
+# Normally autodeferring only works on large files.  This disables that.
+
+# (57-59) Did the autodefer => 0 option work?
+# (If it doesn't, a whole bunch of the other test files will fail.)
+@@a = (0..3);
+check_autodeferring('OFF');
+check_contents(join("$:", qw(0 1 2 3), ""));
+
+# (60-62) Does the ->autodefer method work?
+$o->autodefer(1);
+@@a = (10..13);
+check_autodeferring('ON');
+check_contents("$:$:$:$:");  # This might be unfortunate.
+
+# (63-65) Does the ->autodefer method work?
+$o->autodefer(0);
+check_autodeferring('OFF');
+check_contents(join("$:", qw(10 11 12 13), ""));
+
+
+sub check_autodeferring {
+  my ($x) = shift;
+  my $a = $o->{autodeferring} ? 'ON' : 'OFF';
+  if ($x eq $a) {
+    print "ok $N\n";
+  } else {
+    print "not ok $N \# Autodeferring was $a, expected it to be $x\n";
+  }
+  $N++;
+}
+
+
+sub check_contents {
+  my $x = shift;
+#  for (values %{$o->{cache}}) {
+#    print "# cache=$_";    
+#  }
+  
+  my $integrity = $o->_check_integrity($file, $ENV{INTEGRITY});
+  local *FH = $o->{fh};
+  seek FH, 0, SEEK_SET;
+  print $integrity ? "ok $N\n" : "not ok $N\n";
+  $N++;
+  my $a;
+  { local $/; $a = <FH> }
+  $a = "" unless defined $a;
+  if ($a eq $x) {
+    print "ok $N\n";
+  } else {
+    ctrlfix(my $msg = "# expected <$x>, got <$a>");
+    print "not ok $N\n$msg\n";
+  }
+  $N++;
+}
+
+sub ctrlfix {
+  for (@@_) {
+    s/\n/\\n/g;
+    s/\r/\\r/g;
+  }
+}
+
+END {
+  undef $o;
+  untie @@a;
+  1 while unlink $file;
+}
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

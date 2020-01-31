@@ -1,0 +1,196 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410222040:1.1.1.1
+	tg-mergetmp-1:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406230735:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200402042200:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.46.33;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.33;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+** This file is in the public domain, so clarified as of
+** June 5, 1996 by Arthur David Olson (arthur_david_olson@@nih.gov).
+*/
+
+#if defined(LIBC_SCCS) && !defined(lint) && !defined(NOID)
+static char elsieid[] = "@@(#)difftime.c	7.9";
+static char rcsid[] = "$OpenBSD: difftime.c,v 1.6 2002/04/04 19:12:09 millert Exp $";
+#endif /* LIBC_SCCS and not lint */
+
+/*LINTLIBRARY*/
+
+#include "private.h"
+
+/*
+** Algorithm courtesy Paul Eggert (eggert@@twinsun.com).
+*/
+
+#ifdef HAVE_LONG_DOUBLE
+#define long_double	long double
+#endif /* defined HAVE_LONG_DOUBLE */
+#ifndef HAVE_LONG_DOUBLE
+#define long_double	double
+#endif /* !defined HAVE_LONG_DOUBLE */
+
+double
+difftime(time1, time0)
+const time_t	time1;
+const time_t	time0;
+{
+	time_t	delta;
+	time_t	hibit;
+
+	{
+		time_t		tt;
+		double		d;
+		long_double	ld;
+
+		if (sizeof tt < sizeof d)
+			return (double) time1 - (double) time0;
+		if (sizeof tt < sizeof ld)
+			return (long_double) time1 - (long_double) time0;
+	}
+	if (time1 < time0)
+		return -difftime(time0, time1);
+	/*
+	** As much as possible, avoid loss of precision
+	** by computing the difference before converting to double.
+	*/
+	delta = time1 - time0;
+	if (delta >= 0)
+		return delta;
+	/*
+	** Repair delta overflow.
+	*/
+	hibit = (~ (time_t) 0) << (TYPE_BIT(time_t) - 1);
+	/*
+	** The following expression rounds twice, which means
+	** the result may not be the closest to the true answer.
+	** For example, suppose time_t is 64-bit signed int,
+	** long_double is IEEE 754 double with default rounding,
+	** time1 = 9223372036854775807 and time0 = -1536.
+	** Then the true difference is 9223372036854777343,
+	** which rounds to 9223372036854777856
+	** with a total error of 513.
+	** But delta overflows to -9223372036854774273,
+	** which rounds to -9223372036854774784, and correcting
+	** this by subtracting 2 * (long_double) hibit
+	** (i.e. by adding 2**64 = 18446744073709551616)
+	** yields 9223372036854776832, which
+	** rounds to 9223372036854775808
+	** with a total error of 1535 instead.
+	** This problem occurs only with very large differences.
+	** It's too painful to fix this portably.
+	** We are not alone in this problem;
+	** some C compilers round twice when converting
+	** large unsigned types to small floating types,
+	** so if time_t is unsigned the "return delta" above
+	** has the same double-rounding problem with those compilers.
+	*/
+	return delta - 2 * (long_double) hibit;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

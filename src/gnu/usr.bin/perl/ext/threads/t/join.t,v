@@ -1,0 +1,297 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.05;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.05;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.15;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@
+BEGIN {
+    chdir 't' if -d 't';
+    @@INC = '../lib';
+    require Config; import Config;
+    unless ($Config{'useithreads'}) {
+        print "1..0 # Skip: no useithreads\n";
+        exit 0;
+    }
+}
+
+use ExtUtils::testlib;
+use strict;
+BEGIN { print "1..10\n" };
+use threads;
+use threads::shared;
+
+my $test_id = 1;
+share($test_id);
+use Devel::Peek qw(Dump);
+
+sub ok {
+    my ($ok, $name) = @@_;
+
+    # You have to do it this way or VMS will get confused.
+    print $ok ? "ok $test_id - $name\n" : "not ok $test_id - $name\n";
+
+    printf "# Failed test at line %d\n", (caller)[2] unless $ok;
+    $test_id++;
+    return $ok;
+}
+
+ok(1,"");
+
+
+{
+    my $retval = threads->create(sub { return ("hi") })->join();
+    ok($retval eq 'hi', "Check basic returnvalue");
+}
+{
+    my ($thread) = threads->create(sub { return (1,2,3) });
+    my @@retval = $thread->join();
+    ok($retval[0] == 1 && $retval[1] == 2 && $retval[2] == 3);
+}
+{
+    my $retval = threads->create(sub { return [1] })->join();
+    ok($retval->[0] == 1,"Check that a array ref works");
+}
+{
+    my $retval = threads->create(sub { return { foo => "bar" }})->join();
+    ok($retval->{foo} eq 'bar',"Check that hash refs work");
+}
+{
+    my $retval = threads->create( sub {
+	open(my $fh, "+>threadtest") || die $!;
+	print $fh "test\n";
+	return $fh;
+    })->join();
+    ok(ref($retval) eq 'GLOB', "Check that we can return FH $retval");
+    print $retval "test2\n";
+#    seek($retval,0,0);
+#    ok(<$retval> eq "test\n");
+    close($retval);
+    unlink("threadtest");
+}
+{
+    my $test = "hi";
+    my $retval = threads->create(sub { return $_[0]}, \$test)->join();
+    ok($$retval eq 'hi');
+}
+{
+    my $test = "hi";
+    share($test);
+    my $retval = threads->create(sub { return $_[0]}, \$test)->join();
+    ok($$retval eq 'hi');
+    $test = "foo";
+    ok($$retval eq 'foo');
+}
+{
+    my %foo;
+    share(%foo);
+    threads->create(sub { 
+	my $foo;
+	share($foo);
+	$foo = "thread1";
+	return $foo{bar} = \$foo;
+    })->join();
+    ok(1,"");
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d1 1
+d4 1
+a4 1
+    push @@INC, '../lib';
+d14 1
+a14 1
+BEGIN { print "1..12\n" };
+a32 4
+sub skip {
+    ok(1, "# Skipped: @@_");
+}
+
+d43 1
+a43 1
+    ok($retval[0] == 1 && $retval[1] == 2 && $retval[2] == 3,'');
+d47 1
+a47 1
+    ok($retval->[0] == 1,"Check that a array ref works",);
+d69 1
+a69 1
+    ok($$retval eq 'hi','');
+d75 1
+a75 1
+    ok($$retval eq 'hi','');
+d77 1
+a77 1
+    ok($$retval eq 'foo','');
+a89 51
+
+# We parse ps output so this is OS-dependent.
+if ($^O eq 'linux') {
+  # First modify $0 in a subthread.
+  print "# mainthread: \$0 = $0\n";
+  threads->new( sub {
+		  print "# subthread: \$0 = $0\n";
+		  $0 = "foobar";
+		  print "# subthread: \$0 = $0\n" } )->join;
+  print "# mainthread: \$0 = $0\n";
+  print "# pid = $$\n";
+  if (open PS, "ps -f |") { # Note: must work in (all) systems.
+    my ($sawpid, $sawexe);
+    while (<PS>) {
+      chomp;
+      print "# [$_]\n";
+      if (/^\S+\s+$$\s/) {
+	$sawpid++;
+	if (/\sfoobar\s*$/) { # Linux 2.2 leaves extra trailing spaces.
+	  $sawexe++;
+        }
+	last;
+      }
+    }
+    close PS or die;
+    if ($sawpid) {
+      ok($sawpid && $sawexe, 'altering $0 is effective');
+    } else {
+      skip("\$0 check: did not see pid $$ in 'ps -f |'");
+    }
+  } else {
+    skip("\$0 check: opening 'ps -f |' failed: $!");
+  }
+} else {
+  skip("\$0 check: only on Linux");
+}
+
+{
+    my $t = threads->new(sub {});
+    $t->join;
+    my $x = threads->new(sub {});
+    $x->join;
+    eval {
+      $t->join;
+    };
+    my $ok = 0;
+    $ok++ if($@@ =~/Thread already joined/);
+    ok($ok, "Double join works");
+}
+
+
+@
+

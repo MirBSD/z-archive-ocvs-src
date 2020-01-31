@@ -1,0 +1,298 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.05;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.05;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.15;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@
+BEGIN {
+    chdir 't' if -d 't';
+    @@INC = qw(../lib .);
+    require Config; import Config;
+    unless ($Config{'useithreads'}) {
+        print "1..0 # Skip: no useithreads\n";
+        exit 0;
+    }
+    require "test.pl";
+}
+
+use ExtUtils::testlib;
+use strict;
+BEGIN { $| = 1; print "1..24\n" };
+use threads;
+use threads::shared;
+
+print "ok 1\n";
+
+sub content {
+    print shift;
+    return shift;
+}
+{
+    my $t = threads->new(\&content, "ok 2\n", "ok 3\n", 1..1000);
+    print $t->join();
+}
+{
+    my $lock : shared;
+    my $t;
+    {
+	lock($lock);
+	$t = threads->new(sub { lock($lock); print "ok 5\n"});
+	print "ok 4\n";
+    }
+    $t->join();
+}
+
+sub dorecurse {
+    my $val = shift;
+    my $ret;
+    print $val;
+    if(@@_) {
+	$ret = threads->new(\&dorecurse, @@_);
+	$ret->join;
+    }
+}
+{
+    my $t = threads->new(\&dorecurse, map { "ok $_\n" } 6..10);
+    $t->join();
+}
+
+{
+    # test that sleep lets other thread run
+    my $t = threads->new(\&dorecurse, "ok 11\n");
+    threads->yield; # help out non-preemptive thread implementations
+    sleep 1;
+    print "ok 12\n";
+    $t->join();
+}
+{
+    my $lock : shared;
+    sub islocked {
+	lock($lock);
+	my $val = shift;
+	my $ret;
+	print $val;
+	if (@@_) {
+	    $ret = threads->new(\&islocked, shift);
+	}
+	return $ret;
+    }
+my $t = threads->new(\&islocked, "ok 13\n", "ok 14\n");
+$t->join->join;
+}
+
+
+
+sub testsprintf {
+    my $testno = shift;
+    my $same = sprintf( "%0.f", $testno);
+    return $testno eq $same;
+}
+
+sub threaded {
+    my ($string, $string_end) = @@_;
+
+  # Do the match, saving the output in appropriate variables
+    $string =~ /(.*)(is)(.*)/;
+  # Yield control, allowing the other thread to fill in the match variables
+    threads->yield();
+  # Examine the match variable contents; on broken perls this fails
+    return $3 eq $string_end;
+}
+
+
+{ 
+    curr_test(15);
+
+    my $thr1 = threads->new(\&testsprintf, 15);
+    my $thr2 = threads->new(\&testsprintf, 16);
+    
+    my $short = "This is a long string that goes on and on.";
+    my $shorte = " a long string that goes on and on.";
+    my $long  = "This is short.";
+    my $longe  = " short.";
+    my $foo = "This is bar bar bar.";
+    my $fooe = " bar bar bar.";
+    my $thr3 = new threads \&threaded, $short, $shorte;
+    my $thr4 = new threads \&threaded, $long, $longe;
+    my $thr5 = new threads \&testsprintf, 19;
+    my $thr6 = new threads \&testsprintf, 20;
+    my $thr7 = new threads \&threaded, $foo, $fooe;
+
+    ok($thr1->join());
+    ok($thr2->join());
+    ok($thr3->join());
+    ok($thr4->join());
+    ok($thr5->join());
+    ok($thr6->join());
+    ok($thr7->join());
+}
+
+# test that 'yield' is importable
+
+package Test1;
+
+use threads 'yield';
+yield;
+main::ok(1);
+
+package main;
+
+
+# test async
+
+{
+    my $th = async {return 1 };
+    ok($th);
+    ok($th->join());
+}
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d4 1
+a4 1
+    push @@INC, '../lib','.';
+d15 1
+a15 1
+BEGIN { $| = 1; print "1..26\n" };
+a142 19
+{
+    # there is a little chance this test case will falsly fail
+    # since it tests rand	
+    my %rand : shared;
+    rand(10);
+    threads->new( sub { $rand{int(rand(10000000000))}++ } ) foreach 1..25;
+    $_->join foreach threads->list;
+#    use Data::Dumper qw(Dumper);
+#    print Dumper(\%rand);
+    #$val = rand();
+    ok((keys %rand == 25), "Check that rand works after a new thread");
+}
+
+# bugid #24165
+
+run_perl(prog =>
+    'use threads; sub a{threads->new(shift)} $t = a sub{}; $t->tid; $t->join; $t->tid');
+is($?, 0, 'coredump in global destruction');
+
+@
+

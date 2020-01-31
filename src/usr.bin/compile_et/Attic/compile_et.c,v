@@ -1,0 +1,372 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	cvs-200312222040:1.1.1.3
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.07.18.19.21.15;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.52.36;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.36;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.29.17.35.33;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.07.18.13.51.43;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@die, die, die!
+@
+text
+@/*	$OpenBSD: compile_et.c,v 1.9 2000/12/24 11:53:11 aaron Exp $	*/
+/*
+ * Copyright (c) 1998, 1999 Kungliga Tekniska Högskolan
+ * (Royal Institute of Technology, Stockholm, Sweden). 
+ * All rights reserved. 
+ *
+ * Redistribution and use in source and binary forms, with or without 
+ * modification, are permitted provided that the following conditions 
+ * are met: 
+ *
+ * 1. Redistributions of source code must retain the above copyright 
+ *    notice, this list of conditions and the following disclaimer. 
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright 
+ *    notice, this list of conditions and the following disclaimer in the 
+ *    documentation and/or other materials provided with the distribution. 
+ *
+ * 3. All advertising materials mentioning features or use of this software 
+ *    must display the following acknowledgement: 
+ *      This product includes software developed by Kungliga Tekniska 
+ *      Högskolan and its contributors. 
+ *
+ * 4. Neither the name of the Institute nor the names of its contributors 
+ *    may be used to endorse or promote products derived from this software 
+ *    without specific prior written permission. 
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE INSTITUTE AND CONTRIBUTORS ``AS IS'' AND 
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE INSTITUTE OR CONTRIBUTORS BE LIABLE 
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS 
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) 
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY 
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+ * SUCH DAMAGE. 
+ */
+
+#undef ROKEN_RENAME
+#include "compile_et.h"
+
+/* RCSID("$KTH: compile_et.c,v 1.12 1999/04/01 09:13:52 joda Exp $"); */
+
+#include <err.h>
+#include "error_table.h"
+
+int numerror;
+extern FILE *yyin;
+
+extern void yyparse(void);
+
+long base;
+int number;
+char *prefix;
+char *id_str;
+
+char name[128];
+char Basename[128];
+
+#ifdef YYDEBUG
+extern int yydebug = 1;
+#endif
+
+char *filename;
+char hfn[128];
+char cfn[128];
+
+struct error_code *codes = NULL;
+
+static int
+generate_c(void)
+{
+	int n;
+	struct error_code *ec;
+	FILE *c_file = fopen(cfn, "w");
+
+	if (c_file == NULL)
+		return 1;
+
+	fprintf(c_file, "/* Generated from %s */\n", filename);
+	if (id_str) 
+		fprintf(c_file, "/* %s */\n", id_str);
+
+	fprintf(c_file, "\n");
+	fprintf(c_file, "#include <stddef.h>\n");
+	fprintf(c_file, "#include <com_err.h>\n");
+	fprintf(c_file, "#include \"%s\"\n", hfn);
+	fprintf(c_file, "\n");
+
+	fprintf(c_file, "static const char *text[] = {\n");
+
+	for (ec = codes, n = 0; ec; ec = ec->next, n++) {
+		while (n < ec->number) {
+			fprintf(c_file,
+			    "\t/* %03d */ \"Reserved %s error (%d)\",\n",
+			    n, name, n);
+			n++;
+		}
+		fprintf(c_file,
+		    "\t/* %03d */ \"%s\",\n", ec->number, ec->string);
+	}
+
+	fprintf(c_file, "\tNULL\n");
+	fprintf(c_file, "};\n");
+	fprintf(c_file, "\n");
+	fprintf(c_file, 
+	    "void initialize_%s_error_table_r(struct et_list **list)\n", name);
+	fprintf(c_file, "{\n");
+	fprintf(c_file, 
+	    "    initialize_error_table_r(list, text, "
+	    "%s_num_errors, ERROR_TABLE_BASE_%s);\n", name, name);
+	fprintf(c_file, "}\n");
+	fprintf(c_file, "\n");
+	fprintf(c_file, "void initialize_%s_error_table(void)\n", name);
+	fprintf(c_file, "{\n");
+	fprintf(c_file,
+	    "    init_error_table(text, ERROR_TABLE_BASE_%s, "
+	    "%s_num_errors);\n", name, name);
+	fprintf(c_file, "}\n");
+
+	fclose(c_file);
+	return 0;
+}
+
+static int
+generate_h(void)
+{
+	struct error_code *ec;
+	char fn[128], *p;
+	FILE *h_file = fopen(hfn, "w");
+
+	if (h_file == NULL)
+		return 1;
+
+	snprintf(fn, sizeof(fn), "__%s__", hfn);
+	for (p = fn; *p; p++) {
+		if(!isalnum((unsigned char)*p))
+			*p = '_';
+	}
+
+	fprintf(h_file, "/* Generated from %s */\n", filename);
+	if (id_str) 
+		fprintf(h_file, "/* %s */\n", id_str);
+
+	fprintf(h_file, "\n");
+	fprintf(h_file, "#ifndef %s\n", fn);
+	fprintf(h_file, "#define %s\n", fn);
+	fprintf(h_file, "\n");
+	fprintf(h_file, "#include <com_err.h>\n");
+	fprintf(h_file, "\n");
+	fprintf(h_file, 
+	    "void initialize_%s_error_table_r(struct et_list **);\n",
+	    name);
+	fprintf(h_file, "\n");
+	fprintf(h_file, "void initialize_%s_error_table(void);\n", name);
+	fprintf(h_file, "#define init_%s_err_tbl initialize_%s_error_table\n", 
+	    name, name);
+	fprintf(h_file, "\n");
+	fprintf(h_file, "typedef enum %s_error_number{\n", name);
+	fprintf(h_file, "\tERROR_TABLE_BASE_%s = %ld,\n", name, base);
+	fprintf(h_file, "\t%s_err_base = %ld,\n", name, base);
+
+	for (ec = codes; ec; ec = ec->next)
+		fprintf(h_file, "\t%s = %ld,\n", ec->name, base + ec->number);
+
+	fprintf(h_file, "\t%s_num_errors = %d\n", name, number);
+	fprintf(h_file, "} %s_error_number;\n", name);
+	fprintf(h_file, "\n");
+	fprintf(h_file, "#endif /* %s */\n", fn);
+
+	fclose(h_file);
+	return 0;
+}
+
+static int
+generate(void)
+{
+	return generate_c() || generate_h();
+}
+
+static void
+usage()
+{
+	extern char *__progname;
+
+	fprintf(stderr, "usage: %s file\n", __progname);
+	exit(1);
+}
+
+int
+main(int argc, char **argv)
+{
+	char *p;
+
+	if (argc != 2)
+		usage();
+
+	filename = argv[1];
+	yyin = fopen(filename, "r");
+	if (yyin == NULL)
+		err(1, "%s", filename);
+	
+	p = strrchr(filename, '/');
+	if (p)
+		p++;
+	else
+		p = filename;
+
+	strncpy(Basename, p, sizeof(Basename));
+	Basename[sizeof(Basename) - 1] = '\0';
+	Basename[strcspn(Basename, ".")] = '\0';
+
+	snprintf(hfn, sizeof(hfn), "%s.h", Basename);
+	snprintf(cfn, sizeof(cfn), "%s.c", Basename);
+
+	yyparse();
+	if (numerror)
+		return 1;
+
+	return generate();
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@the previous cvs import did not finish due to 'memory fault'
+sync with OpenBSD-cvs
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: compile_et.c,v 1.10 2003/06/25 21:19:34 deraadt Exp $	*/
+d183 1
+a183 1
+usage(void)
+@
+
+
+1.1.1.3
+log
+@Synchronize source tree with OpenBSD
+note: due to recent changes in the codebase of OpenBSD,
+out libcom_err will be incompatible with theirs...
+but this is no issue because we don't provide a dynamically
+linked one, and theirs won't be provided longer any more anyways.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: compile_et.c,v 1.11 2003/07/14 16:14:43 mho Exp $	*/
+d150 1
+a150 1
+	fprintf(h_file, "#include <kerberosV/com_err.h>\n");
+@
+
+

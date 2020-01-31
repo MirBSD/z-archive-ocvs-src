@@ -1,0 +1,399 @@
+head	1.2;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.2
+	tg-mergefixes-1-branch:1.2.0.8
+	tg-mergefixes-1-base:1.2
+	MIROS_X:1.2.0.6
+	MIROS_X_BASE:1.2
+	tg-mergetmp-3:1.2
+	MIRBSD_XP_MIRPPC:1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.2
+	MIRBSD_XP_SPARC:1.2.0.2
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.06.25.12.48.57;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.48.40;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.48.40;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.31.39;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.07.06.15.40.20;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.05.16.08.27.16;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@fix the worst errors, and sync the distribution set lists
+@
+text
+@/*	$OpenBSD: scan_ffs.c,v 1.11 2004/02/16 19:13:03 deraadt Exp $	*/
+
+/*
+ * Copyright (c) 1998 Niklas Hallqvist, Tobias Weingartner
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/fcntl.h>
+#include <ufs/ffs/fs.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+#include <err.h>
+#include <util.h>
+
+#define SBCOUNT 64		/* XXX - Should be configurable */
+
+/* Flags to control ourselves... */
+#define FLAG_VERBOSE		1
+#define FLAG_SMART		2
+#define FLAG_LABELS		4
+
+static void usage(void);
+
+static int
+ufsscan(int fd, daddr_t beg, daddr_t end, int flags)
+{
+	static char lastmount[MAXMNTLEN];
+	static u_int8_t buf[SBSIZE * SBCOUNT];
+	struct fs *sb;
+	daddr_t blk, lastblk;
+	int n;
+
+	lastblk = -1;
+	memset(lastmount, 0, MAXMNTLEN);
+
+	for (blk = beg; blk <= ((end<0)?blk:end); blk += (SBCOUNT*SBSIZE/512)){
+		memset(buf, 0, SBSIZE * SBCOUNT);
+		if (lseek(fd, (off_t)blk * 512, SEEK_SET) < 0)
+		    err(1, "lseek");
+		if (read(fd, buf, SBSIZE * SBCOUNT) < 0)
+			err(1, "read");
+
+		for (n = 0; n < (SBSIZE * SBCOUNT); n += 512){
+			sb = (struct fs*)(&buf[n]);
+			if (sb->fs_magic == FS_MAGIC) {
+				if (flags & FLAG_VERBOSE)
+					printf("block %d id %x,%x size %d\n",
+					    blk + (n/512), sb->fs_id[0],
+					    sb->fs_id[1], sb->fs_size);
+
+				if (((blk+(n/512)) - lastblk) == (SBSIZE/512)) {
+					if (flags & FLAG_LABELS ) {
+						printf("X: %d %d 4.2BSD %d %d %d # %s\n",
+						    (daddr_t)((off_t)sb->fs_size *
+						    sb->fs_fsize / 512),
+						    blk+(n/512)-(2*SBSIZE/512),
+						    sb->fs_fsize, sb->fs_bsize,
+						    sb->fs_cpg, lastmount);
+					} else {
+						time_t t = sb->fs_time;
+						printf("ffs at %d size %lld "
+						    "mount %s time %s",
+						    blk+(n/512)-(2*SBSIZE/512),
+						    (long long)(off_t)sb->fs_size *
+						    sb->fs_fsize,
+						    lastmount, ctime(&t));
+					}
+
+					if (flags & FLAG_SMART) {
+						off_t size = (off_t)sb->fs_size *
+						    sb->fs_fsize;
+
+						if ((n + size) < (SBSIZE * SBCOUNT))
+							n += size;
+						else {
+							blk += (size/512 -
+							    (SBCOUNT*SBCOUNT));
+							break;
+						}
+					}
+				}
+
+				/* Update last potential FS SBs seen */
+				lastblk = blk + (n/512);
+				memcpy(lastmount, sb->fs_fsmnt, MAXMNTLEN);
+			}
+		}
+	}
+	return(0);
+}
+
+
+static void
+usage(void)
+{
+	extern char *__progname;
+
+	fprintf(stderr, "usage: %s [-lsv] [-b begin] [-e end] device\n",
+	    __progname);
+	exit(1);
+}
+
+
+int
+main(int argc, char *argv[])
+{
+	int ch, fd, flags = 0;
+	daddr_t beg = 0, end = -1;
+
+	while ((ch = getopt(argc, argv, "lsvb:e:")) != -1)
+		switch(ch) {
+		case 'b':
+			beg = atoi(optarg);
+			break;
+		case 'e':
+			end = atoi(optarg);
+			break;
+		case 'v':
+			flags |= FLAG_VERBOSE;
+			break;
+		case 's':
+			flags |= FLAG_SMART;
+			break;
+		case 'l':
+			flags |= FLAG_LABELS;
+			break;
+		default:
+			usage();
+			/* NOTREACHED */
+	}
+	argc -= optind;
+	argv += optind;
+
+	if (argc != 1)
+		usage();
+
+	fd = opendev(argv[0], O_RDONLY, OPENDEV_PART, NULL);
+	if (fd < 0)
+		err(1, "%s", argv[1]);
+
+	return (ufsscan(fd, beg, end, flags));
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: scan_ffs.c,v 1.8 2002/07/03 22:32:33 deraadt Exp $	*/
+a14 5
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *    This product includes software developed by Tobias Weingartner.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+d47 3
+a49 1
+int
+d85 1
+d91 1
+a91 1
+						    lastmount, ctime(&sb->fs_time));
+d118 2
+a119 2
+void
+usage(int code)
+d125 1
+a125 1
+	exit(code);
+d153 1
+a153 1
+			usage(1);
+d160 1
+a160 1
+		usage(1);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: scan_ffs.c,v 1.9 2003/06/03 00:33:34 weingart Exp $	*/
+d15 5
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD base system minus kerberos from CTM,
+kernel source from CVS right now (no diffs though)
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: scan_ffs.c,v 1.10 2003/07/02 21:44:58 deraadt Exp $	*/
+d47 1
+a47 1
+static int
+d115 1
+a115 1
+static void
+@
+
+
+1.1.1.4
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: scan_ffs.c,v 1.11 2004/02/16 19:13:03 deraadt Exp $	*/
+a46 2
+static void usage(void);
+
+d116 1
+a116 1
+usage(void)
+d122 1
+a122 1
+	exit(1);
+d150 1
+a150 1
+			usage();
+d157 1
+a157 1
+		usage();
+@
+
+

@@ -1,0 +1,539 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.14
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.12
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.8
+	MIRBSD_7quater:1.1.1.3
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.03;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.03;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.19.12.53.05;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.07.06.15.50.39;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/* $OpenBSD: trace.c,v 1.6 2002/04/26 16:15:16 espie Exp $ */
+/*
+ * Copyright (c) 2001 Marc Espie.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OPENBSD PROJECT AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE OPENBSD
+ * PROJECT OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/types.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <err.h>
+#include <stdlib.h>
+#include "mdef.h"
+#include "stdd.h"
+#include "extern.h"
+
+FILE *traceout = stderr;
+
+int traced_macros = 0;
+
+#define TRACE_ARGS 	1
+#define TRACE_EXPANSION 2
+#define TRACE_QUOTE	4
+#define TRACE_FILENAME	8
+#define TRACE_LINENO	16
+#define TRACE_CONT	32
+#define TRACE_ID	64
+#define TRACE_NEWFILE	128	/* not implemented yet */
+#define TRACE_INPUT	256	/* not implemented yet */
+#define TRACE_ALL	512
+
+static struct t {
+	struct t *next;
+	char 	 *name;
+	int	  on;
+} *l;
+
+static unsigned int letter_to_flag(int);
+static void print_header(struct input_file *);
+static struct t *find_trace_entry(const char *);
+static int frame_level(void);
+
+static unsigned int flags = TRACE_QUOTE | TRACE_EXPANSION;
+
+static struct t *
+find_trace_entry(const char *name)
+{
+	struct t *n;
+
+	for (n = l; n != NULL; n = n->next)
+		if (STREQ(n->name, name))
+			return n;
+	return NULL;
+}
+
+
+void
+mark_traced(const char *name, int on)
+{
+	struct t *n, *n2;
+
+	traced_macros = 1;
+
+	if (name == NULL) {
+		if (on)
+			flags |= TRACE_ALL;
+		else {
+			flags &= ~TRACE_ALL;
+			traced_macros = 0;
+		}
+		for (n = l; n != NULL; n = n2) {
+			n2 = n->next;
+			free(n->name);
+			free(n);
+		}
+		l = NULL;
+	} else {
+	    n = find_trace_entry(name);
+	    if (n == NULL) {
+		    n = xalloc(sizeof(struct t));
+		    n->name = xstrdup(name);
+		    n->next = l;
+		    l = n;
+	    }
+	    n->on = on;
+	}
+}
+
+int 
+is_traced(const char *name)
+{
+	struct t *n;
+
+	for (n = l; n != NULL; n = n->next)
+		if (STREQ(n->name, name))
+			return n->on;
+	return (flags & TRACE_ALL) ? 1 : 0;
+}
+
+void
+trace_file(const char *name)
+{
+
+	if (traceout != stderr)
+		fclose(traceout);
+	traceout = fopen(name, "w");
+	if (!traceout)
+		err(1, "can't open %s", name);
+}
+
+static unsigned int
+letter_to_flag(int c)
+{
+	switch(c) {
+	case 'a':
+		return TRACE_ARGS;
+	case 'e':
+		return TRACE_EXPANSION;
+	case 'q':
+		return TRACE_QUOTE;
+	case 'c':
+		return TRACE_CONT;
+	case 'x':
+		return TRACE_ID;
+	case 'f':
+		return TRACE_FILENAME;
+	case 'l':
+		return TRACE_LINENO;
+	case 'p':
+		return TRACE_NEWFILE;
+	case 'i':
+		return TRACE_INPUT;
+	case 't':
+		return TRACE_ALL;
+	case 'V':
+		return ~0;
+	default:
+		return 0;
+	}
+}
+
+void
+set_trace_flags(const char *s)
+{
+	char mode = 0;
+	unsigned int f = 0;
+
+	traced_macros = 1;
+
+	if (*s == '+' || *s == '-')
+		mode = *s++;
+	while (*s)
+		f |= letter_to_flag(*s++);
+	switch(mode) {
+	case 0:
+		flags = f;
+		break;
+	case '+':
+		flags |= f;
+		break;
+	case '-':
+		flags &= ~f;
+		break;
+	}
+}
+
+static int
+frame_level()
+{
+	int level;
+	int framep;
+
+	for (framep = fp, level = 0; framep != 0; 
+		level++,framep = mstack[framep-2].sfra)
+		;
+	return level;
+}
+
+static void
+print_header(struct input_file *inp)
+{
+	fprintf(traceout, "m4trace:");
+	if (flags & TRACE_FILENAME)
+		fprintf(traceout, "%s:", inp->name);
+	if (flags & TRACE_LINENO)
+		fprintf(traceout, "%lu:", inp->lineno);
+	fprintf(traceout, " -%d- ", frame_level());
+	if (flags & TRACE_ID)
+		fprintf(traceout, "id %lu: ", expansion_id);
+}
+
+ssize_t 
+trace(const char *argv[], int argc, struct input_file *inp)
+{
+	print_header(inp);
+	if (flags & TRACE_CONT) {
+		fprintf(traceout, "%s ...\n", argv[1]);
+		print_header(inp);
+	}
+	fprintf(traceout, "%s", argv[1]);
+	if ((flags & TRACE_ARGS) && argc > 2) {
+		char delim[3];
+		int i;
+
+		delim[0] = LPAREN;
+		delim[1] = EOS;
+		for (i = 2; i < argc; i++) {
+			fprintf(traceout, "%s%s%s%s", delim, 
+			    (flags & TRACE_QUOTE) ? lquote : "", 
+			    argv[i], 
+			    (flags & TRACE_QUOTE) ? rquote : "");
+			delim[0] = COMMA;
+			delim[1] = ' ';
+			delim[2] = EOS;
+		}
+		fprintf(traceout, "%c", RPAREN);
+	}
+	if (flags & TRACE_CONT) {
+		fprintf(traceout, " -> ???\n");
+		print_header(inp);
+		fprintf(traceout, argc > 2 ? "%s(...)" : "%s", argv[1]);
+	}
+	if (flags & TRACE_EXPANSION)
+		return buffer_mark();
+	else {
+		fprintf(traceout, "\n");
+		return -1;
+	}
+}
+
+void 
+finish_trace(size_t mark)
+{
+	fprintf(traceout, " -> ");
+	if (flags & TRACE_QUOTE)
+		fprintf(traceout, "%s", lquote);
+	dump_buffer(traceout, mark);
+	if (flags & TRACE_QUOTE)
+		fprintf(traceout, "%s", rquote);
+	fprintf(traceout, "\n");
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@sync with OpenBSD, this gives us a fair amount of fixes
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: trace.c,v 1.7 2003/06/12 14:36:43 espie Exp $ */
+a31 1
+#include <ohash.h>
+d51 3
+a53 1
+struct t {
+d55 1
+a55 3
+	char 	 name[1];
+};
+
+a60 3
+static void *hash_alloc(size_t, void *);
+static void hash_free(void *, size_t, void *);
+static void *element_alloc(size_t, void *);
+d64 2
+a65 11
+static struct ohash_info trace_info = {
+	offsetof(struct t, name),
+	NULL, hash_alloc, hash_free, element_alloc };
+
+static struct ohash trace_hash;
+
+/* Support routines for hash tables.  */
+void *
+hash_alloc(s, u)
+	size_t s;
+	void *u 	UNUSED;
+d67 1
+a67 14
+	void *storage = xalloc(s);
+	if (storage)
+		memset(storage, 0, s);
+	return storage;
+}
+
+void
+hash_free(p, s, u)
+	void *p;
+	size_t s	UNUSED;
+	void *u 	UNUSED;
+{
+	free(p);
+}
+d69 4
+a72 6
+void *
+element_alloc(s, u)
+	size_t s;
+	void *u 	UNUSED;
+{
+	return xalloc(s);
+a76 6
+init_trace()
+{
+	ohash_init(&trace_hash, 5, &trace_info);
+}
+
+void
+d79 1
+a79 3
+	struct t *n;
+	unsigned int i;
+	const char *end = NULL;
+d90 3
+a92 2
+		for (n = ohash_first(&trace_hash, &i); n != NULL; 
+		    n = ohash_next(&trace_hash, &i))
+d94 2
+d97 1
+a97 2
+	    i = ohash_qlookupi(&trace_hash, name, &end);
+	    n = ohash_find(&trace_hash, i);
+d99 4
+a102 2
+		    n = ohash_create_entry(&trace_info, name, &end);
+		    ohash_insert(&trace_hash, i, n);
+d113 4
+a116 5
+	n = ohash_find(&trace_hash, ohash_qlookup(&trace_hash, name));
+	if (n)
+		return n->on;
+	else
+		return (flags & TRACE_ALL) ? 1 : 0;
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD base system minus kerberos from CTM,
+kernel source from CVS right now (no diffs though)
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: trace.c,v 1.10 2003/06/30 22:13:33 espie Exp $ */
+d32 1
+d39 2
+d50 7
+d62 41
+d104 5
+d110 41
+a150 1
+unsigned int trace_flags = TRACE_QUOTE | TRACE_EXPANSION;
+d200 2
+d208 1
+a208 1
+		trace_flags = f;
+d211 1
+a211 1
+		trace_flags |= f;
+d214 1
+a214 1
+		trace_flags &= ~f;
+d226 1
+a226 1
+		level++,framep = mstack[framep-3].sfra)
+d235 1
+a235 1
+	if (trace_flags & TRACE_FILENAME)
+d237 1
+a237 1
+	if (trace_flags & TRACE_LINENO)
+d240 1
+a240 1
+	if (trace_flags & TRACE_ID)
+d248 1
+a248 1
+	if (trace_flags & TRACE_CONT) {
+d253 1
+a253 1
+	if ((trace_flags & TRACE_ARGS) && argc > 2) {
+d261 1
+a261 1
+			    (trace_flags & TRACE_QUOTE) ? lquote : "", 
+d263 1
+a263 1
+			    (trace_flags & TRACE_QUOTE) ? rquote : "");
+d270 1
+a270 1
+	if (trace_flags & TRACE_CONT) {
+d275 1
+a275 1
+	if (trace_flags & TRACE_EXPANSION)
+d287 1
+a287 1
+	if (trace_flags & TRACE_QUOTE)
+d290 1
+a290 1
+	if (trace_flags & TRACE_QUOTE)
+@
+
+

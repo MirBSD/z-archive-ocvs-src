@@ -1,0 +1,423 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.07.57;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.09;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.09;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.28.17;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Remote debugging interface to dBUG ROM monitor for GDB, the GNU debugger.
+   Copyright 1996 Free Software Foundation, Inc.
+
+   Written by Stan Shebs of Cygnus Support.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+/* dBUG is a monitor supplied on various Motorola boards, including
+   m68k, ColdFire, and PowerPC-based designs.  The code here assumes
+   the ColdFire, and (as of 9/25/96) has only been tested with a
+   ColdFire IDP board.  */
+
+#include "defs.h"
+#include "gdbcore.h"
+#include "target.h"
+#include "monitor.h"
+#include "serial.h"
+
+static void dbug_open PARAMS ((char *args, int from_tty));
+
+static void
+dbug_supply_register (regname, regnamelen, val, vallen)
+     char *regname;
+     int regnamelen;
+     char *val;
+     int vallen;
+{
+  int regno;
+
+  if (regnamelen != 2)
+    return;
+
+  switch (regname[0])
+    {
+    case 'S':
+      if (regname[1] != 'R')
+	return;
+      regno = PS_REGNUM;
+      break;
+    case 'P':
+      if (regname[1] != 'C')
+	return;
+      regno = PC_REGNUM;
+      break;
+    case 'D':
+      if (regname[1] < '0' || regname[1] > '7')
+	return;
+      regno = regname[1] - '0' + D0_REGNUM;
+      break;
+    case 'A':
+      if (regname[1] < '0' || regname[1] > '7')
+	return;
+      regno = regname[1] - '0' + A0_REGNUM;
+      break;
+    default:
+      return;
+    }
+
+  monitor_supply_register (regno, val);
+}
+
+/* This array of registers needs to match the indexes used by GDB. The
+   whole reason this exists is because the various ROM monitors use
+   different names than GDB does, and don't support all the registers
+   either. So, typing "info reg sp" becomes an "A7". */
+
+static char *dbug_regnames[NUM_REGS] =
+{
+  "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7",
+  "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7",
+  "SR", "PC"
+  /* no float registers */
+};
+
+static struct target_ops dbug_ops;
+
+static char *dbug_inits[] = {"\r", NULL};
+
+static struct monitor_ops dbug_cmds =
+{
+  MO_CLR_BREAK_USES_ADDR | MO_GETMEM_NEEDS_RANGE | MO_FILL_USES_ADDR,
+  dbug_inits,			/* Init strings */
+  "go\r",			/* continue command */
+  "step\r",			/* single step */
+  NULL,				/* interrupt command */
+  "br %x\r",			/* set a breakpoint */
+  "br -c %x\r",			/* clear a breakpoint */
+  "br -c\r",			/* clear all breakpoints */
+  "bf.b %x %x %x",		/* fill (start end val) */
+  {
+    "mm.b %x %x\r",		/* setmem.cmdb (addr, value) */
+    "mm.w %x %x\r",		/* setmem.cmdw (addr, value) */
+    "mm.l %x %x\r",		/* setmem.cmdl (addr, value) */
+    NULL,			/* setmem.cmdll (addr, value) */
+    NULL,			/* setmem.resp_delim */
+    NULL,			/* setmem.term */
+    NULL			/* setmem.term_cmd */
+  },
+  {
+    "md.b %x %x\r",		/* getmem.cmdb (addr, addr2) */
+    "md.w %x %x\r",		/* getmem.cmdw (addr, addr2) */
+    "md.l %x %x\r",		/* getmem.cmdl (addr, addr2) */
+    NULL,			/* getmem.cmdll (addr, addr2) */
+    ":",			/* getmem.resp_delim */
+    NULL,			/* getmem.term */
+    NULL			/* getmem.term_cmd */
+  },
+  {
+    "rm %s %x\r",		/* setreg.cmd (name, value) */
+    NULL,			/* setreg.resp_delim */
+    NULL,			/* setreg.term */
+    NULL			/* setreg.term_cmd */
+  },
+  {
+    "rd %s\r",			/* getreg.cmd (name) */
+    ":",			/* getreg.resp_delim */
+    NULL,			/* getreg.term */
+    NULL			/* getreg.term_cmd */
+  },
+  "rd\r",			/* dump_registers */
+  "\\(\\w+\\) +:\\([0-9a-fA-F]+\\b\\)", /* register_pattern */
+  dbug_supply_register,		/* supply_register */
+  NULL,				/* load_routine (defaults to SRECs) */
+  "dl\r",			/* download command */
+  "\n",				/* load response */
+  "dBUG>",			/* monitor command prompt */
+  "\r",				/* end-of-line terminator */
+  NULL,				/* optional command terminator */
+  &dbug_ops,			/* target operations */
+  SERIAL_1_STOPBITS,		/* number of stop bits */
+  dbug_regnames,		/* registers names */
+  MONITOR_OPS_MAGIC		/* magic */
+  };
+
+static void
+dbug_open(args, from_tty)
+     char *args;
+     int from_tty;
+{
+  monitor_open (args, &dbug_cmds, from_tty);
+}
+
+void
+_initialize_dbug_rom ()
+{
+  init_monitor_ops (&dbug_ops);
+
+  dbug_ops.to_shortname = "dbug";
+  dbug_ops.to_longname = "dBUG monitor";
+  dbug_ops.to_doc = "Debug via the dBUG monitor.\n\
+Specify the serial device it is connected to (e.g. /dev/ttya).";
+  dbug_ops.to_open = dbug_open;
+
+  add_target (&dbug_ops);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1996, 1998, 1999, 2000, 2001 Free Software Foundation, Inc.
+d6 1
+a6 1
+   This file is part of GDB.
+d8 13
+a20 14
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a31 1
+#include "regcache.h"
+d33 1
+a33 3
+#include "m68k-tdep.h"
+
+static void dbug_open (char *args, int from_tty);
+d36 5
+a40 1
+dbug_supply_register (char *regname, int regnamelen, char *val, int vallen)
+d62 1
+a62 1
+      regno = regname[1] - '0' + M68K_D0_REGNUM;
+d67 1
+a67 1
+      regno = regname[1] - '0' + M68K_A0_REGNUM;
+d81 1
+a81 2
+static const char *
+dbug_regname (int index)
+d83 5
+a87 15
+  static char *regnames[] =
+  {
+    "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7",
+    "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7",
+    "SR", "PC"
+    /* no float registers */
+  };
+
+  if ((index >= (sizeof (regnames) / sizeof (regnames[0]))) 
+      || (index < 0) || (index >= NUM_REGS))
+    return NULL;
+  else
+    return regnames[index];
+
+}
+a89 4
+static struct monitor_ops dbug_cmds;
+
+static char *dbug_inits[] =
+{"\r", NULL};
+d91 1
+d93 1
+a93 2
+static void
+init_dbug_cmds (void)
+d95 53
+a147 46
+  dbug_cmds.flags = MO_CLR_BREAK_USES_ADDR | MO_GETMEM_NEEDS_RANGE | MO_FILL_USES_ADDR;
+  dbug_cmds.init = dbug_inits;	/* Init strings */
+  dbug_cmds.cont = "go\r";	/* continue command */
+  dbug_cmds.step = "trace\r";	/* single step */
+  dbug_cmds.stop = NULL;	/* interrupt command */
+  dbug_cmds.set_break = "br %x\r";	/* set a breakpoint */
+  dbug_cmds.clr_break = "br -r %x\r";	/* clear a breakpoint */
+  dbug_cmds.clr_all_break = "br -r\r";	/* clear all breakpoints */
+  dbug_cmds.fill = "bf.b %x %x %x\r";	/* fill (start end val) */
+  dbug_cmds.setmem.cmdb = "mm.b %x %x\r";	/* setmem.cmdb (addr, value) */
+  dbug_cmds.setmem.cmdw = "mm.w %x %x\r";	/* setmem.cmdw (addr, value) */
+  dbug_cmds.setmem.cmdl = "mm.l %x %x\r";	/* setmem.cmdl (addr, value) */
+  dbug_cmds.setmem.cmdll = NULL;	/* setmem.cmdll (addr, value) */
+  dbug_cmds.setmem.resp_delim = NULL;	/* setmem.resp_delim */
+  dbug_cmds.setmem.term = NULL;	/* setmem.term */
+  dbug_cmds.setmem.term_cmd = NULL;	/* setmem.term_cmd */
+  dbug_cmds.getmem.cmdb = "md.b %x %x\r";	/* getmem.cmdb (addr, addr2) */
+  dbug_cmds.getmem.cmdw = "md.w %x %x\r";	/* getmem.cmdw (addr, addr2) */
+  dbug_cmds.getmem.cmdl = "md.l %x %x\r";	/* getmem.cmdl (addr, addr2) */
+  dbug_cmds.getmem.cmdll = NULL;	/* getmem.cmdll (addr, addr2) */
+  dbug_cmds.getmem.resp_delim = ":";	/* getmem.resp_delim */
+  dbug_cmds.getmem.term = NULL;	/* getmem.term */
+  dbug_cmds.getmem.term_cmd = NULL;	/* getmem.term_cmd */
+  dbug_cmds.setreg.cmd = "rm %s %x\r";	/* setreg.cmd (name, value) */
+  dbug_cmds.setreg.resp_delim = NULL;	/* setreg.resp_delim */
+  dbug_cmds.setreg.term = NULL;	/* setreg.term */
+  dbug_cmds.setreg.term_cmd = NULL;	/* setreg.term_cmd */
+  dbug_cmds.getreg.cmd = "rd %s\r";	/* getreg.cmd (name) */
+  dbug_cmds.getreg.resp_delim = ":";	/* getreg.resp_delim */
+  dbug_cmds.getreg.term = NULL;	/* getreg.term */
+  dbug_cmds.getreg.term_cmd = NULL;	/* getreg.term_cmd */
+  dbug_cmds.dump_registers = "rd\r";	/* dump_registers */
+  dbug_cmds.register_pattern = "\\(\\w+\\) +:\\([0-9a-fA-F]+\\b\\)";	/* register_pattern */
+  dbug_cmds.supply_register = dbug_supply_register;	/* supply_register */
+  dbug_cmds.load_routine = NULL;	/* load_routine (defaults to SRECs) */
+  dbug_cmds.load = "dl\r";	/* download command */
+  dbug_cmds.loadresp = "\n";	/* load response */
+  dbug_cmds.prompt = "dBUG>";	/* monitor command prompt */
+  dbug_cmds.line_term = "\r";	/* end-of-line terminator */
+  dbug_cmds.cmd_end = NULL;	/* optional command terminator */
+  dbug_cmds.target = &dbug_ops;	/* target operations */
+  dbug_cmds.stopbits = SERIAL_1_STOPBITS;	/* number of stop bits */
+  dbug_cmds.regnames = NULL;	/* registers names */
+  dbug_cmds.regname = dbug_regname;
+  dbug_cmds.magic = MONITOR_OPS_MAGIC;	/* magic */
+}				/* init_debug_ops */
+d150 3
+a152 1
+dbug_open (char *args, int from_tty)
+a156 2
+extern initialize_file_ftype _initialize_dbug_rom; /* -Wmissing-prototypes */
+
+d158 1
+a158 1
+_initialize_dbug_rom (void)
+a159 1
+  init_dbug_cmds ();
+@
+

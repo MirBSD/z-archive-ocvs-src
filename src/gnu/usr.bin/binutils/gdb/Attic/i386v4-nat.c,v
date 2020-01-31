@@ -1,0 +1,452 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.09.32;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.13;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.13;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.28.28;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Native-dependent code for SVR4 Unix running on i386's, for GDB.
+   Copyright 1988, 1989, 1991, 1992, 1996 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "defs.h"
+
+#ifdef HAVE_SYS_PROCFS_H
+
+#include <sys/procfs.h>
+
+/*  The /proc interface divides the target machine's register set up into
+    two different sets, the general register set (gregset) and the floating
+    point register set (fpregset).  For each set, there is an ioctl to get
+    the current register set and another ioctl to set the current values.
+
+    The actual structure passed through the ioctl interface is, of course,
+    naturally machine dependent, and is different for each set of registers.
+    For the i386 for example, the general register set is typically defined
+    by:
+
+	typedef int gregset_t[19];		(in <sys/regset.h>)
+
+	#define GS	0			(in <sys/reg.h>)
+	#define FS	1
+	...
+	#define UESP	17
+	#define SS	18
+
+    and the floating point set by:
+
+	typedef struct fpregset
+	  {
+	    union
+	      {
+		struct fpchip_state	// fp extension state //
+		{
+		  int state[27];	// 287/387 saved state //
+		  int status;		// status word saved at exception //
+		} fpchip_state;
+		struct fp_emul_space	// for emulators //
+		{
+		  char fp_emul[246];
+		  char fp_epad[2];
+		} fp_emul_space;
+		int f_fpregs[62];	// union of the above //
+	      } fp_reg_set;
+	    long f_wregs[33];		// saved weitek state //
+	} fpregset_t;
+
+    These routines provide the packing and unpacking of gregset_t and
+    fpregset_t formatted data.
+
+ */
+
+#ifdef HAVE_GREGSET_T
+
+/* This is a duplicate of the table in i386-xdep.c. */
+
+static int regmap[] = 
+{
+  EAX, ECX, EDX, EBX,
+  UESP, EBP, ESI, EDI,
+  EIP, EFL, CS, SS,
+  DS, ES, FS, GS,
+};
+
+
+/*  FIXME:  These routine absolutely depends upon (NUM_REGS - NUM_FREGS)
+    being less than or equal to the number of registers that can be stored
+    in a gregset_t.  Note that with the current scheme there will typically
+    be more registers actually stored in a gregset_t that what we know
+    about.  This is bogus and should be fixed. */
+
+/*  Given a pointer to a general register set in /proc format (gregset_t *),
+    unpack the register contents and supply them as gdb's idea of the current
+    register values. */
+
+void
+supply_gregset (gregsetp)
+     gregset_t *gregsetp;
+{
+  register int regi;
+  register greg_t *regp = (greg_t *) gregsetp;
+  extern int regmap[];
+
+  for (regi = 0 ; regi < (NUM_REGS - NUM_FREGS) ; regi++)
+    {
+      supply_register (regi, (char *) (regp + regmap[regi]));
+    }
+}
+
+void
+fill_gregset (gregsetp, regno)
+     gregset_t *gregsetp;
+     int regno;
+{
+  int regi;
+  register greg_t *regp = (greg_t *) gregsetp;
+  extern char registers[];
+  extern int regmap[];
+
+  for (regi = 0 ; regi < (NUM_REGS - NUM_FREGS) ; regi++)
+    {
+      if ((regno == -1) || (regno == regi))
+	{
+	  *(regp + regmap[regi]) = *(int *) &registers[REGISTER_BYTE (regi)];
+	}
+    }
+}
+
+#endif	/* HAVE_GREGSET_T */
+
+#if defined (FP0_REGNUM) && defined (HAVE_FPREGSET_T)
+
+/*  Given a pointer to a floating point register set in /proc format
+    (fpregset_t *), unpack the register contents and supply them as gdb's
+    idea of the current floating point register values. */
+
+void 
+supply_fpregset (fpregsetp)
+     fpregset_t *fpregsetp;
+{
+  register int regi;
+  
+  /* FIXME: see m68k-tdep.c for an example, for the m68k. */
+}
+
+/*  Given a pointer to a floating point register set in /proc format
+    (fpregset_t *), update the register specified by REGNO from gdb's idea
+    of the current floating point register set.  If REGNO is -1, update
+    them all. */
+
+void
+fill_fpregset (fpregsetp, regno)
+     fpregset_t *fpregsetp;
+     int regno;
+{
+  int regi;
+  char *to;
+  char *from;
+  extern char registers[];
+
+  /* FIXME: see m68k-tdep.c for an example, for the m68k. */
+}
+
+#endif	/* defined (FP0_REGNUM) && defined (HAVE_FPREGSET_T) */
+
+#endif	/* HAVE_SYS_PROCFS_H */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d1 18
+a18 21
+/* Native-dependent code for SVR4 Unix running on i386's.
+   Copyright 1988, 1989, 1991, 1992, 1996, 1997, 1998, 1999, 2000,
+   2001, 2002
+   Free Software Foundation, Inc.
+
+   This file is part of GDB.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a20 10
+#include "value.h"
+#include "inferior.h"
+#include "regcache.h"
+
+#ifdef HAVE_SYS_REG_H
+#include <sys/reg.h>
+#endif
+
+#include "i386-tdep.h"
+#include "i387-tdep.h"
+d26 38
+a63 2
+/* Prototypes for supply_gregset etc. */
+#include "gregset.h"
+d65 2
+a66 43
+/* The `/proc' interface divides the target machine's register set up
+   into two different sets, the general purpose register set (gregset)
+   and the floating-point register set (fpregset).  For each set,
+   there is an ioctl to get the current register set and another ioctl
+   to set the current values.
+
+   The actual structure passed through the ioctl interface is, of
+   course, naturally machine dependent, and is different for each set
+   of registers.  For the i386 for example, the general-purpose
+   register set is typically defined by:
+
+   typedef int gregset_t[19];           (in <sys/regset.h>)
+
+   #define GS   0                       (in <sys/reg.h>)
+   #define FS   1
+   ...
+   #define UESP 17
+   #define SS   18
+
+   and the floating-point set by:
+
+   typedef struct fpregset   {
+           union {
+                   struct fpchip_state            // fp extension state //
+                   {
+                           int     state[27];     // 287/387 saved state //
+                           int     status;        // status word saved at //
+                                                  // exception //
+                   } fpchip_state;
+                   struct fp_emul_space           // for emulators //
+                   {
+                           char    fp_emul[246];
+                           char    fp_epad[2];
+                   } fp_emul_space;
+                   int     f_fpregs[62];          // union of the above //
+           } fp_reg_set;
+           long            f_wregs[33];           // saved weitek state //
+   } fpregset_t;
+
+   Incidentally fpchip_state contains the FPU state in the same format
+   as used by the "fsave" instruction, and that's the only thing we
+   support here.  I don't know how the emulator stores it state.  The
+   Weitek stuff definitely isn't supported.
+d68 1
+a68 2
+   The routines defined here, provide the packing and unpacking of
+   gregset_t and fpregset_t formatted data.  */
+d72 3
+a74 3
+/* Mapping between the general-purpose registers in `/proc'
+   format and GDB's register array layout.  */
+static int regmap[] =
+d82 10
+a91 2
+/* Fill GDB's register array with the general-purpose register values
+   in *GREGSETP.  */
+d94 2
+a95 1
+supply_gregset (gregset_t *gregsetp)
+d97 8
+a104 5
+  greg_t *regp = (greg_t *) gregsetp;
+  int i;
+
+  for (i = 0; i < I386_NUM_GREGS; i++)
+    supply_register (i, (char *) (regp + regmap[i]));
+a106 4
+/* Fill register REGNO (if it is a general-purpose register) in
+   *GREGSETPS with the value in GDB's register array.  If REGNO is -1,
+   do this for all registers.  */
+
+d108 3
+a110 1
+fill_gregset (gregset_t *gregsetp, int regno)
+d112 12
+a123 6
+  greg_t *regp = (greg_t *) gregsetp;
+  int i;
+
+  for (i = 0; i < I386_NUM_GREGS; i++)
+    if (regno == -1 || regno == i)
+      regcache_collect (i, regp + regmap[i]);
+d126 1
+a126 1
+#endif /* HAVE_GREGSET_T */
+d128 1
+a128 1
+#ifdef HAVE_FPREGSET_T
+d130 3
+a132 2
+/* Fill GDB's register array with the floating-point register values in
+   *FPREGSETP.  */
+d134 3
+a136 2
+void
+supply_fpregset (fpregset_t *fpregsetp)
+d138 3
+a140 4
+  if (FP0_REGNUM == 0)
+    return;
+
+  i387_supply_fsave (current_regcache, -1, fpregsetp);
+d143 4
+a146 3
+/* Fill register REGNO (if it is a floating-point register) in
+   *FPREGSETP with the value in GDB's register array.  If REGNO is -1,
+   do this for all registers.  */
+d149 3
+a151 1
+fill_fpregset (fpregset_t *fpregsetp, int regno)
+d153 4
+a156 2
+  if (FP0_REGNUM == 0)
+    return;
+d158 1
+a158 1
+  i387_fill_fsave ((char *) fpregsetp, regno);
+d161 1
+a161 1
+#endif /* HAVE_FPREGSET_T */
+d163 1
+a163 1
+#endif /* HAVE_SYS_PROCFS_H */
+@
+

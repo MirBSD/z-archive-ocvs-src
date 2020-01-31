@@ -1,0 +1,319 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	cvs-200411261545:1.1.1.2
+	cvs-200411231505:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2004.01.26.18.28.38;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2004.01.26.18.28.38;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.05.16.08.22.56;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/* hash.c
+
+   Routines for manipulating hash tables... */
+
+/*
+ * Copyright (c) 1995, 1996, 1997, 1998 The Internet Software Consortium.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of The Internet Software Consortium nor the names
+ *    of its contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE INTERNET SOFTWARE CONSORTIUM AND
+ * CONTRIBUTORS ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE INTERNET SOFTWARE CONSORTIUM OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ * This software has been written for the Internet Software Consortium
+ * by Ted Lemon <mellon@@fugue.com> in cooperation with Vixie
+ * Enterprises.  To learn more about the Internet Software Consortium,
+ * see ``http://www.vix.com/isc''.  To learn more about Vixie
+ * Enterprises, see ``http://www.vix.com''.
+ */
+
+#include "dhcpd.h"
+
+static int do_hash PROTO ((unsigned char *, int, int));
+
+struct hash_table *new_hash ()
+{
+	struct hash_table *rv = new_hash_table (DEFAULT_HASH_SIZE, "new_hash");
+	if (!rv)
+		return rv;
+	memset (&rv -> buckets [0], 0,
+		DEFAULT_HASH_SIZE * sizeof (struct hash_bucket *));
+	return rv;
+}
+
+static int do_hash (name, len, size)
+	unsigned char *name;
+	int len;
+	int size;
+{
+	register int accum = 0;
+	register unsigned char *s = name;
+	int i = len;
+	while (i--) {
+		/* Add the character in... */
+		accum += *s++;
+		/* Add carry back in... */
+		while (accum > 255) {
+			accum = (accum & 255) + (accum >> 8);
+		}
+	}
+	return accum % size;
+}
+
+void add_hash (table, name, len, pointer)
+	struct hash_table *table;
+	int len;
+	unsigned char *name;
+	unsigned char *pointer;
+{
+	int hashno;
+	struct hash_bucket *bp;
+
+	if (!table)
+		return;
+	if (!len)
+		len = strlen ((char *)name);
+
+	hashno = do_hash (name, len, table -> hash_count);
+	bp = new_hash_bucket ("add_hash");
+
+	if (!bp) {
+		warn ("Can't add %s to hash table.", name);
+		return;
+	}
+	bp -> name = name;
+	bp -> value = pointer;
+	bp -> next = table -> buckets [hashno];
+	bp -> len = len;
+	table -> buckets [hashno] = bp;
+}
+
+void delete_hash_entry (table, name, len)
+	struct hash_table *table;
+	int len;
+	unsigned char *name;
+{
+	int hashno;
+	struct hash_bucket *bp, *pbp = (struct hash_bucket *)0;
+
+	if (!table)
+		return;
+	if (!len)
+		len = strlen ((char *)name);
+
+	hashno = do_hash (name, len, table -> hash_count);
+
+	/* Go through the list looking for an entry that matches;
+	   if we find it, delete it. */
+	for (bp = table -> buckets [hashno]; bp; bp = bp -> next) {
+		if ((!bp -> len &&
+		     !strcmp ((char *)bp -> name, (char *)name)) ||
+		    (bp -> len == len &&
+		     !memcmp (bp -> name, name, len))) {
+			if (pbp) {
+				pbp -> next = bp -> next;
+			} else {
+				table -> buckets [hashno] = bp -> next;
+			}
+			free_hash_bucket (bp, "delete_hash_entry");
+			break;
+		}
+		pbp = bp;	/* jwg, 9/6/96 - nice catch! */
+	}
+}
+
+unsigned char *hash_lookup (table, name, len)
+	struct hash_table *table;
+	unsigned char *name;
+	int len;
+{
+	int hashno;
+	struct hash_bucket *bp;
+
+	if (!table)
+		return (unsigned char *)0;
+
+	if (!len)
+		len = strlen ((char *)name);
+
+	hashno = do_hash (name, len, table -> hash_count);
+
+	for (bp = table -> buckets [hashno]; bp; bp = bp -> next) {
+		if (len == bp -> len && !memcmp (bp -> name, name, len))
+			return bp -> value;
+	}
+	return (unsigned char *)0;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@@
+
+
+1.1.1.2
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: hash.c,v 1.9 2004/05/10 15:30:47 deraadt Exp $	*/
+d3 1
+a3 1
+/* Routines for manipulating hash tables... */
+d45 1
+a45 1
+static int do_hash(unsigned char *, int, int);
+d47 1
+a47 2
+struct hash_table *
+new_hash(void)
+d49 1
+a49 2
+	struct hash_table *rv = new_hash_table(DEFAULT_HASH_SIZE);
+
+d51 4
+a54 4
+		return (rv);
+	memset(&rv->buckets[0], 0,
+	    DEFAULT_HASH_SIZE * sizeof(struct hash_bucket *));
+	return (rv);
+d57 4
+a60 2
+static int
+do_hash(unsigned char *name, int len, int size)
+d62 3
+a64 3
+	unsigned char *s = name;
+	int accum = 0, i = len;
+
+d69 1
+a69 1
+		while (accum > 255)
+d71 1
+d73 1
+a73 1
+	return (accum % size);
+d76 5
+a80 2
+void add_hash(struct hash_table *table, unsigned char *name, int len,
+    unsigned char *pointer)
+d82 1
+a83 1
+	int hashno;
+d88 1
+a88 1
+		len = strlen((char *)name);
+d90 2
+a91 2
+	hashno = do_hash(name, len, table->hash_count);
+	bp = new_hash_bucket();
+d94 1
+a94 1
+		warning("Can't add %s to hash table.", name);
+d97 5
+a101 5
+	bp->name = name;
+	bp->value = pointer;
+	bp->next = table->buckets[hashno];
+	bp->len = len;
+	table->buckets[hashno] = bp;
+d104 4
+a107 2
+unsigned char *
+hash_lookup(struct hash_table *table, unsigned char *name, int len)
+d109 35
+a144 1
+	int hashno;
+d147 1
+a147 1
+		return (NULL);
+d150 1
+a150 1
+		len = strlen((char *)name);
+d152 1
+a152 1
+	hashno = do_hash(name, len, table->hash_count);
+d154 5
+a158 5
+	for (bp = table->buckets[hashno]; bp; bp = bp->next)
+		if (len == bp->len && !memcmp(bp->name, name, len))
+			return (bp->value);
+
+	return (NULL);
+@
+

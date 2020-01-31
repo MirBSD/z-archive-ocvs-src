@@ -1,0 +1,495 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.14;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.14;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.45;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package File::Spec::OS2;
+
+use strict;
+use vars qw(@@ISA $VERSION);
+require File::Spec::Unix;
+
+$VERSION = '1.1';
+
+@@ISA = qw(File::Spec::Unix);
+
+sub devnull {
+    return "/dev/nul";
+}
+
+sub case_tolerant {
+    return 1;
+}
+
+sub file_name_is_absolute {
+    my ($self,$file) = @@_;
+    return scalar($file =~ m{^([a-z]:)?[\\/]}is);
+}
+
+sub path {
+    my $path = $ENV{PATH};
+    $path =~ s:\\:/:g;
+    my @@path = split(';',$path);
+    foreach (@@path) { $_ = '.' if $_ eq '' }
+    return @@path;
+}
+
+my $tmpdir;
+sub tmpdir {
+    return $tmpdir if defined $tmpdir;
+    my $self = shift;
+    my @@dirlist = ( @@ENV{qw(TMPDIR TEMP TMP)}, qw(/tmp /) );
+    {
+	no strict 'refs';
+	if (${"\cTAINT"}) { # Check for taint mode on perl >= 5.8.0
+	    require Scalar::Util;
+	    @@dirlist = grep { ! Scalar::Util::tainted $_ } @@dirlist;
+	}
+    }
+    foreach (@@dirlist) {
+	next unless defined && -d;
+	$tmpdir = $_;
+	last;
+    }
+    $tmpdir = '' unless defined $tmpdir;
+    $tmpdir =~ s:\\:/:g;
+    $tmpdir = $self->canonpath($tmpdir);
+    return $tmpdir;
+}
+
+=item canonpath
+
+No physical check on the filesystem, but a logical cleanup of a
+path. On UNIX eliminated successive slashes and successive "/.".
+
+=cut
+
+sub canonpath {
+    my ($self,$path) = @@_;
+    $path =~ s/^([a-z]:)/\l$1/s;
+    $path =~ s|\\|/|g;
+    $path =~ s|([^/])/+|$1/|g;                  # xx////xx  -> xx/xx
+    $path =~ s|(/\.)+/|/|g;                     # xx/././xx -> xx/xx
+    $path =~ s|^(\./)+(?=[^/])||s;		# ./xx      -> xx
+    $path =~ s|/\Z(?!\n)||
+             unless $path =~ m#^([a-z]:)?/\Z(?!\n)#si;# xx/       -> xx
+    return $path;
+}
+
+=item splitpath
+
+    ($volume,$directories,$file) = File::Spec->splitpath( $path );
+    ($volume,$directories,$file) = File::Spec->splitpath( $path, $no_file );
+
+Splits a path in to volume, directory, and filename portions. Assumes that 
+the last file is a path unless the path ends in '/', '/.', '/..'
+or $no_file is true.  On Win32 this means that $no_file true makes this return 
+( $volume, $path, undef ).
+
+Separators accepted are \ and /.
+
+Volumes can be drive letters or UNC sharenames (\\server\share).
+
+The results can be passed to L</catpath> to get back a path equivalent to
+(usually identical to) the original path.
+
+=cut
+
+sub splitpath {
+    my ($self,$path, $nofile) = @@_;
+    my ($volume,$directory,$file) = ('','','');
+    if ( $nofile ) {
+        $path =~ 
+            m{^( (?:[a-zA-Z]:|(?:\\\\|//)[^\\/]+[\\/][^\\/]+)? ) 
+                 (.*)
+             }xs;
+        $volume    = $1;
+        $directory = $2;
+    }
+    else {
+        $path =~ 
+            m{^ ( (?: [a-zA-Z]: |
+                      (?:\\\\|//)[^\\/]+[\\/][^\\/]+
+                  )?
+                )
+                ( (?:.*[\\\\/](?:\.\.?\Z(?!\n))?)? )
+                (.*)
+             }xs;
+        $volume    = $1;
+        $directory = $2;
+        $file      = $3;
+    }
+
+    return ($volume,$directory,$file);
+}
+
+
+=item splitdir
+
+The opposite of L<catdir()|File::Spec/catdir()>.
+
+    @@dirs = File::Spec->splitdir( $directories );
+
+$directories must be only the directory portion of the path on systems 
+that have the concept of a volume or that have path syntax that differentiates
+files from directories.
+
+Unlike just splitting the directories on the separator, leading empty and 
+trailing directory entries can be returned, because these are significant
+on some OSs. So,
+
+    File::Spec->splitdir( "/a/b//c/" );
+
+Yields:
+
+    ( '', 'a', 'b', '', 'c', '' )
+
+=cut
+
+sub splitdir {
+    my ($self,$directories) = @@_ ;
+    split m|[\\/]|, $directories, -1;
+}
+
+
+=item catpath
+
+Takes volume, directory and file portions and returns an entire path. Under
+Unix, $volume is ignored, and this is just like catfile(). On other OSs,
+the $volume become significant.
+
+=cut
+
+sub catpath {
+    my ($self,$volume,$directory,$file) = @@_;
+
+    # If it's UNC, make sure the glue separator is there, reusing
+    # whatever separator is first in the $volume
+    $volume .= $1
+        if ( $volume =~ m@@^([\\/])[\\/][^\\/]+[\\/][^\\/]+\Z(?!\n)@@s &&
+             $directory =~ m@@^[^\\/]@@s
+           ) ;
+
+    $volume .= $directory ;
+
+    # If the volume is not just A:, make sure the glue separator is 
+    # there, reusing whatever separator is first in the $volume if possible.
+    if ( $volume !~ m@@^[a-zA-Z]:\Z(?!\n)@@s &&
+         $volume =~ m@@[^\\/]\Z(?!\n)@@      &&
+         $file   =~ m@@[^\\/]@@
+       ) {
+        $volume =~ m@@([\\/])@@ ;
+        my $sep = $1 ? $1 : '/' ;
+        $volume .= $sep ;
+    }
+
+    $volume .= $file ;
+
+    return $volume ;
+}
+
+
+sub abs2rel {
+    my($self,$path,$base) = @@_;
+
+    # Clean up $path
+    if ( ! $self->file_name_is_absolute( $path ) ) {
+        $path = $self->rel2abs( $path ) ;
+    } else {
+        $path = $self->canonpath( $path ) ;
+    }
+
+    # Figure out the effective $base and clean it up.
+    if ( !defined( $base ) || $base eq '' ) {
+        $base = Cwd::sys_cwd() ;
+    } elsif ( ! $self->file_name_is_absolute( $base ) ) {
+        $base = $self->rel2abs( $base ) ;
+    } else {
+        $base = $self->canonpath( $base ) ;
+    }
+
+    # Split up paths
+    my ( undef, $path_directories, $path_file ) =
+        $self->splitpath( $path, 1 ) ;
+
+    my $base_directories = ($self->splitpath( $base, 1 ))[1] ;
+
+    # Now, remove all leading components that are the same
+    my @@pathchunks = $self->splitdir( $path_directories );
+    my @@basechunks = $self->splitdir( $base_directories );
+
+    while ( @@pathchunks && 
+            @@basechunks && 
+            lc( $pathchunks[0] ) eq lc( $basechunks[0] ) 
+          ) {
+        shift @@pathchunks ;
+        shift @@basechunks ;
+    }
+
+    # No need to catdir, we know these are well formed.
+    $path_directories = CORE::join( '/', @@pathchunks );
+    $base_directories = CORE::join( '/', @@basechunks );
+
+    # $base_directories now contains the directories the resulting relative
+    # path must ascend out of before it can descend to $path_directory.  So, 
+    # replace all names with $parentDir
+
+    #FA Need to replace between backslashes...
+    $base_directories =~ s|[^\\/]+|..|g ;
+
+    # Glue the two together, using a separator if necessary, and preventing an
+    # empty result.
+
+    #FA Must check that new directories are not empty.
+    if ( $path_directories ne '' && $base_directories ne '' ) {
+        $path_directories = "$base_directories/$path_directories" ;
+    } else {
+        $path_directories = "$base_directories$path_directories" ;
+    }
+
+    return $self->canonpath( 
+        $self->catpath( "", $path_directories, $path_file ) 
+    ) ;
+}
+
+
+sub rel2abs {
+    my ($self,$path,$base ) = @@_;
+
+    if ( ! $self->file_name_is_absolute( $path ) ) {
+
+        if ( !defined( $base ) || $base eq '' ) {
+            $base = Cwd::sys_cwd() ;
+        }
+        elsif ( ! $self->file_name_is_absolute( $base ) ) {
+            $base = $self->rel2abs( $base ) ;
+        }
+        else {
+            $base = $self->canonpath( $base ) ;
+        }
+
+        my ( $path_directories, $path_file ) =
+            ($self->splitpath( $path, 1 ))[1,2] ;
+
+        my ( $base_volume, $base_directories ) =
+            $self->splitpath( $base, 1 ) ;
+
+        $path = $self->catpath( 
+            $base_volume, 
+            $self->catdir( $base_directories, $path_directories ), 
+            $path_file
+        ) ;
+    }
+
+    return $self->canonpath( $path ) ;
+}
+
+1;
+__END__
+
+=head1 NAME
+
+File::Spec::OS2 - methods for OS/2 file specs
+
+=head1 SYNOPSIS
+
+ require File::Spec::OS2; # Done internally by File::Spec if needed
+
+=head1 DESCRIPTION
+
+See File::Spec::Unix for a documentation of the methods provided
+there. This package overrides the implementation of these methods, not
+the semantics.
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d7 1
+a7 1
+$VERSION = '1.2';
+a31 5
+sub _cwd {
+    # In OS/2 the "require Cwd" is unnecessary bloat.
+    return Cwd::sys_cwd();
+}
+
+d36 17
+a52 3
+    $tmpdir = $self->_tmpdir( @@ENV{qw(TMPDIR TEMP TMP)},
+			      '/tmp',
+			      '/'  );
+d55 6
+a60 10
+sub catdir {
+    my $self = shift;
+    my @@args = @@_;
+    foreach (@@args) {
+	tr[\\][/];
+        # append a backslash to each argument unless it has one there
+        $_ .= "/" unless m{/$};
+    }
+    return $self->canonpath(join('', @@args));
+}
+a70 2
+    $path =~ s{^/\.\.$}{/};                     # /..    -> /
+    1 while $path =~ s{^/\.\.}{};               # /../xx -> /xx
+d74 18
+d122 22
+d150 8
+d199 1
+a199 1
+	$base = $self->_cwd();
+d207 4
+a210 3
+    my ( $path_volume, $path_directories, $path_file ) = $self->splitpath( $path, 1 ) ;
+    my ( $base_volume, $base_directories ) = $self->splitpath( $base, 1 ) ;
+    return $path unless $path_volume eq $base_volume;
+d257 1
+a257 1
+	    $base = $self->_cwd();
+d295 3
+a297 24
+See L<File::Spec> and L<File::Spec::Unix>.  This package overrides the
+implementation of these methods, not the semantics.
+
+Amongst the changes made for OS/2 are...
+
+=over 4
+
+=item tmpdir
+
+Modifies the list of places temp directory information is looked for.
+
+    $ENV{TMPDIR}
+    $ENV{TEMP}
+    $ENV{TMP}
+    /tmp
+    /
+
+=item splitpath
+
+Volumes can be drive letters or UNC sharenames (\\server\share).
+
+=back
+
+=cut
+@
+

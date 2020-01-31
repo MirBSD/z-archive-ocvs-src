@@ -1,0 +1,407 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.05.21.20.08.49;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.12.22.21.20.13;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.12.22.21.20.13;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.05.16.07.18.45;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@* merge OpenBSD 3.5-current
+* re-sort entries in Makefile
+  => not a bunch of adds any more; all alphabetic
+  => remove obsolete SUBDIRS_ONLY_BSD for now
+     (MirLinux won't come that soon due to a certain lawsuit,
+      licence issues with unwillingly GNU fanatics, and my
+      chronic unwillingness to do masochistic work)
+* spacing, RCS IDs, etc.
+* pkg gets folded into pkg_install, so we only have one dir
+  to worry about
+* pkg_add leaves the tree - nobody cared about this kind
+  of package tools anyways, and they're not part of MirBSD
+  (although still supported by MirPorts)
+* mopd leaves - we don't have VAX support anyways
+@
+text
+@# $OpenBSD: Ustar.pm,v 1.4 2003/12/19 00:29:20 espie Exp $
+#
+# Copyright (c) 2002 Marc Espie.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE OPENBSD PROJECT AND CONTRIBUTORS
+# ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE OPENBSD
+# PROJECT OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# Handle utar archives
+
+# Prototype of new pkg* implementation, tar module.
+# Interface is likely to change A LOT in the near future...
+
+use strict;
+use warnings;
+package OpenBSD::Ustar;
+# helps autoloader
+sub DESTROY
+{
+}
+
+use constant FILE => "\0";
+use constant FILE1 => '0';
+use constant HARDLINK => '1';
+use constant SOFTLINK => '2';
+use constant CHARDEVICE => '3';
+use constant BLOCKDEVICE => '4';
+use constant DIR => '5';
+use constant FIFO => '6';
+use constant CONTFILE => '7';
+use File::Path ();
+use File::Basename ();
+
+my $uidcache = {};
+my $gidcache = {};
+my $buffsize = 2 * 1024 * 1024;
+
+sub new
+{
+    my ($class, $fh) = @@_;
+
+    return bless { fh => $fh, swallow => 0} , $class;
+}
+
+
+sub name2uid
+{
+	my $name = shift;
+	return $uidcache->{$name} if defined $uidcache->{$name};
+	my @@entry = getpwnam($name);
+	if (@@entry == 0) {
+		return $uidcache->{$name} = shift;
+	} else {
+		return $uidcache->{$name} = $entry[2];
+	}
+}
+
+sub name2gid
+{
+	my $name = shift;
+	return $gidcache->{$name} if defined $gidcache->{$name};
+	my @@entry = getgrnam($name);
+	if (@@entry == 0) {
+		return $gidcache->{$name} = shift;
+	} else {
+		return $gidcache->{$name} = $entry[2];
+	}
+}
+
+sub skip
+{
+    my $self = shift;
+    return if $self->{swallow} == 0;
+
+    my $temp;
+    while ($self->{swallow} > $buffsize) {
+    	read($self->{fh}, $temp, $buffsize);
+	$self->{swallow} -= $buffsize;
+    }
+    read($self->{fh},  $temp, $self->{swallow});
+    $self->{swallow} = 0;
+}
+
+sub next
+{
+    my $self = shift;
+    # get rid of the current object
+    $self->skip();
+    my $header;
+    my $n = read $self->{fh}, $header, 512;
+    return undef if $n == 0;
+    die "Error while reading header"
+	unless defined $n and $n == 512;
+    if ($header eq "\0"x512) {
+	return $self->next();
+    }
+    # decode header
+    my ($name, $mode, $uid, $gid, $size, $mtime, $chksum, $type,
+    $linkname, $magic, $version, $uname, $gname, $major, $minor,
+    $prefix) = unpack('a100a8a8a8a12a12a8aa100a6a2a32a32a8a8a155', $header);
+    if ($magic ne "ustar\0" || $version ne '00') {
+	die "Not an ustar archive header";
+    }
+    # verify checksum
+    my $value = $header;
+    substr($value, 148, 8) = " "x8;
+    my $ck2 = unpack("%C*", $value);
+    if ($ck2 != oct($chksum)) {
+	die "Bad archive checksum";
+    }
+    $name =~ s/\0*$//;
+    $mode = oct($mode) & 0xfff;
+    $uname =~ s/\0*$//;
+    $gname =~ s/\0*$//;
+    $uid = oct($uid);
+    $gid = oct($gid);
+    $uid = name2uid($uname, $uid);
+    $gid = name2gid($gname, $gid);
+    $mtime = oct($mtime);
+    unless ($prefix =~ m/^\0/) {
+	$prefix =~ s/\0*$//;
+	$name = "$prefix/$name";
+    }
+    
+    $size = oct($size);
+    my $result= {
+	name => $name,
+	mode => $mode,
+	mtime=> $mtime,
+	linkname=> $linkname,
+	uname => $uname,
+	uid => $uid,
+	gname => $gname,
+	gid => $gid,
+	size => $size,
+	archive => $self
+	};
+    # adjust swallow
+    $self->{swallow} = $size;
+    if ($size % 512) {
+	$self->{swallow} += 512 - $size % 512;
+    }
+    if ($type eq DIR) {
+    	bless $result, 'OpenBSD::Ustar::Dir';
+    } elsif ($type eq HARDLINK) {
+	bless $result, 'OpenBSD::Ustar::HardLink';
+    } elsif ($type eq SOFTLINK) {
+    	bless $result, 'OpenBSD::Ustar::SoftLink';
+    } elsif ($type eq FILE || $type eq FILE1) {
+    	bless $result, 'OpenBSD::Ustar::File';
+    } else {
+    	die "Unsupported type";
+    }
+    return $result;
+}
+
+package OpenBSD::Ustar::Object;
+sub set_modes
+{
+	my $self = shift;
+	chown $self->{uid}, $self->{gid}, $self->{name};
+	chmod $self->{mode}, $self->{name};
+	utime $self->{mtime}, $self->{mtime}, $self->{name};
+}
+
+sub make_basedir
+{
+	my $self = shift;
+	my $dir = File::Basename::dirname($self->{name});
+	File::Path::mkpath($dir) unless -d $dir;
+}
+
+sub isDir() { 0 }
+sub isFile() { 0 }
+sub isLink() { 0 }
+sub isSymLink() { 0 }
+sub isHardLink() { 0 }
+	
+package OpenBSD::Ustar::Dir;
+our @@ISA=qw(OpenBSD::Ustar::Object);
+
+sub create
+{
+	my $self = shift;
+	File::Path::mkpath($self->{name});
+	$self->SUPER::set_modes();
+}
+
+sub isDir() { 1 }
+
+package OpenBSD::Ustar::HardLink;
+our @@ISA=qw(OpenBSD::Ustar::Object);
+
+sub create
+{
+	my $self = shift;
+	$self->make_basedir($self->{name});
+	if (defined $self->{cwd}) {
+		link $self->{cwd}."/".$self->{linkname}, $self->{name};
+	} else {
+		link $self->{linkname}, $self->{name};
+	}
+}
+
+sub isLink() { 1 }
+sub isHardLink() { 1 }
+
+package OpenBSD::Ustar::SoftLink;
+our @@ISA=qw(OpenBSD::Ustar::Object);
+
+sub create
+{
+	my $self = shift;
+	$self->make_basedir($self->{name});
+	symlink $self->{linkname}, $self->{name};
+}
+
+sub isLink() { 1 }
+sub isHardLink() { 1 }
+
+package OpenBSD::Ustar::File;
+our @@ISA=qw(OpenBSD::Ustar::Object);
+
+use IO::File;
+
+sub create
+{
+	my $self = shift;
+	$self->make_basedir($self->{name});
+	my $out = new IO::File $self->{name}, "w";
+	if (!defined $out) {
+		print "Can't write to ", $self->{name}, "\n";
+		return;
+	}
+	my $buffer;
+	my $toread = $self->{size};
+	while ($toread > 0) {
+		my $maxread = $buffsize;
+		$maxread = $toread if $maxread > $toread;
+		read($self->{archive}->{fh}, $buffer, $maxread);
+		$self->{archive}->{swallow} -= $maxread;
+		print $out $buffer;
+		$toread -= $maxread;
+	}
+	$out->close();
+	$self->SUPER::set_modes();
+}
+
+sub isFile() { 1 }
+
+1;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@@
+
+
+1.1.1.2
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+# $OpenBSD: Ustar.pm,v 1.7 2004/02/15 15:33:59 espie Exp $
+d153 1
+a153 2
+	archive => $self,
+	destdir => ''
+d178 3
+a180 3
+	chown $self->{uid}, $self->{gid}, $self->{destdir}.$self->{name};
+	chmod $self->{mode}, $self->{destdir}.$self->{name};
+	utime $self->{mtime}, $self->{mtime}, $self->{destdir}.$self->{name};
+d186 1
+a186 1
+	my $dir = $self->{destdir}.File::Basename::dirname($self->{name});
+d202 1
+a202 1
+	File::Path::mkpath($self->{destdir}.$self->{name});
+a214 1
+	my $linkname = $self->{linkname};
+d216 3
+a218 1
+		$linkname=$self->{cwd}.'/'.$linkname;
+a219 2
+	link $self->{destdir}.$linkname, $self->{destdir}.$self->{name} or
+	    die "Can't link $self->{destdir}$linkname to $self->{destdir}$self->{name}: $!";
+d232 1
+a232 2
+	symlink $self->{linkname}, $self->{destdir}.$self->{name} or 
+	    die "Can't symlink $self->{linkname} to $self->{destdir}$self->{name}: $!";
+d241 2
+d247 1
+a247 1
+	open (my $out, '>', $self->{destdir}.$self->{name});
+d249 2
+a250 1
+		die "Can't write to $self->{destdir}$self->{name}: $!";
+d257 1
+a257 3
+		if (!defined read($self->{archive}->{fh}, $buffer, $maxread)) {
+			die "Error reading from archive: $!";
+		}
+d259 1
+a259 4
+		unless (print $out $buffer) {
+			die "Error writing to $self->{destdir}$self->{name}: $!";
+		}
+			
+d262 1
+a262 1
+	$out->close() or die "Error closing $self->{destdir}$self->{name}: $!";
+@
+

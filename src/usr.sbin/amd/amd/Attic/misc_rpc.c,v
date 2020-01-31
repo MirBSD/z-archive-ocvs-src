@@ -1,0 +1,286 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.06.29.19.53.15;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.54.12;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.54.12;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.46.42;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@merge the import
+amd (automount dæmon) bites the dust
+rewrite fake-NLS emulation, copyright to me
+foobar! fnord!
+@
+text
+@/*
+ * Copyright (c) 1990 Jan-Simon Pendry
+ * Copyright (c) 1990 Imperial College of Science, Technology & Medicine
+ * Copyright (c) 1990, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Jan-Simon Pendry at Imperial College, London.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	from: @@(#)misc_rpc.c	8.1 (Berkeley) 6/6/93
+ *	$Id: misc_rpc.c,v 1.1 2003/03/22 17:54:12 tg Exp $
+ */
+
+/*
+ * Additions to Sun RPC.
+ */
+
+#include "am.h"
+
+void	rpc_msg_init(struct rpc_msg *, u_long, u_long, u_long);
+int	pickup_rpc_reply(void *, int, void *, xdrproc_t);
+int	make_rpc_packet(char *, int, unsigned long, struct rpc_msg *,
+    void *, xdrproc_t, AUTH *);
+
+void
+rpc_msg_init(struct rpc_msg *mp, unsigned long prog,
+    unsigned long vers, unsigned long proc)
+{
+	/*
+	 * Initialise the message
+	 */
+	bzero((void *)mp, sizeof(*mp));
+	mp->rm_xid = 0;
+	mp->rm_direction = CALL;
+	mp->rm_call.cb_rpcvers = RPC_MSG_VERSION;
+	mp->rm_call.cb_prog = prog;
+	mp->rm_call.cb_vers = vers;
+	mp->rm_call.cb_proc = proc;
+}
+
+/*
+ * Field reply to call to mountd
+ */
+int
+pickup_rpc_reply(void *pkt, int len, void *where, xdrproc_t where_xdr)
+{
+	XDR reply_xdr;
+	int ok;
+	struct rpc_err err;
+	struct rpc_msg reply_msg;
+	int error = 0;
+
+	/*bzero((void *)&err, sizeof(err));*/
+	bzero((void *)&reply_msg, sizeof(reply_msg));
+
+	reply_msg.acpted_rply.ar_results.where = (caddr_t) where;
+	reply_msg.acpted_rply.ar_results.proc = where_xdr;
+
+	xdrmem_create(&reply_xdr, pkt, len, XDR_DECODE);
+
+	ok = xdr_replymsg(&reply_xdr, &reply_msg);
+	if (!ok) {
+		error = EIO;
+		goto drop;
+	}
+	_seterr_reply(&reply_msg, &err);
+	if (err.re_status != RPC_SUCCESS) {
+		error = EIO;
+		goto drop;
+	}
+
+drop:
+	if (reply_msg.rm_reply.rp_stat == MSG_ACCEPTED &&
+			reply_msg.acpted_rply.ar_verf.oa_base) {
+		reply_xdr.x_op = XDR_FREE;
+		(void)xdr_opaque_auth(&reply_xdr,
+			&reply_msg.acpted_rply.ar_verf);
+	}
+	xdr_destroy(&reply_xdr);
+
+	return error;
+}
+
+int
+make_rpc_packet(char *buf, int buflen, unsigned long proc,
+    struct rpc_msg *mp, void *arg, xdrproc_t arg_xdr, AUTH *auth)
+{
+	XDR msg_xdr;
+	int len;
+
+	xdrmem_create(&msg_xdr, buf, buflen, XDR_ENCODE);
+	/*
+	 * Basic protocol header
+	 */
+	if (!xdr_callhdr(&msg_xdr, mp))
+		return -EIO;
+	/*
+	 * Called procedure number
+	 */
+	if (!xdr_u_long(&msg_xdr, &proc))
+		return -EIO;
+	/*
+	 * Authorization
+	 */
+	if (!AUTH_MARSHALL(auth, &msg_xdr))
+		return -EIO;
+	/*
+	 * Arguments
+	 */
+	if (!(*arg_xdr)(&msg_xdr, arg))
+		return -EIO;
+	/*
+	 * Determine length
+	 */
+	len = xdr_getpos(&msg_xdr);
+	/*
+	 * Throw away xdr
+	 */
+	xdr_destroy(&msg_xdr);
+	return len;
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d39 1
+a39 1
+ *	$Id: misc_rpc.c,v 1.6 2002/08/05 07:24:26 pvalchev Exp $
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d18 5
+a22 1
+ * 3. Neither the name of the University nor the names of its contributors
+d39 1
+a39 1
+ *	$Id: misc_rpc.c,v 1.7 2003/06/02 23:36:51 millert Exp $
+@
+

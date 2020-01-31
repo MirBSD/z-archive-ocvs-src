@@ -1,0 +1,940 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.4
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	cvs-200312222040:1.1.1.3
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309261655:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	cvs-200307072125:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200307021520:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	cvs-200306082100:1.1.1.3
+	ctm-3316:1.1.1.3
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.2
+	ctm-3229:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.29.41;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.10;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.10;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.14.48.16;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.05.17.35.53;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.05.16.08.47.55;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: autoconf.c,v 1.5 2002/06/08 15:50:00 miod Exp $	*/
+/*
+ * Copyright (c) 1996, 1997 Per Fogelstrom
+ * Copyright (c) 1995 Theo de Raadt
+ * Copyright (c) 1988 University of Utah.
+ * Copyright (c) 1992, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * the Systems Programming Group of the University of Utah Computer
+ * Science Department and Ralph Campbell.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ * from: Utah Hdr: autoconf.c 1.31 91/01/21
+ *
+ *	from: @@(#)autoconf.c	8.1 (Berkeley) 6/10/93
+ *      $Id: autoconf.c,v 1.1 2003/03/22 17:50:10 tg Exp $
+ */
+
+/*
+ * Setup the system to run on the current machine.
+ *
+ * Configure() is called at boot time.  Available
+ * devices are determined (from possibilities mentioned in ioconf.c),
+ * and the drivers are initialized.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/buf.h>
+#include <sys/disklabel.h>
+#include <sys/conf.h>
+#include <sys/reboot.h>
+#include <sys/device.h>
+
+#include <machine/autoconf.h>
+#include <machine/bugio.h>
+
+struct  device *parsedisk(char *, int, int, dev_t *);
+void    setroot(void);
+void	swapconf(void);
+extern void	dumpconf(void);
+int findblkmajor(struct device *);
+char *findblkname(int);
+static struct device * getdisk(char *, int, int, dev_t *);
+struct device * getdevunit(char *, int);
+static struct devmap * findtype(char **);
+void makebootdev(char *cp);
+int getpno(char **);
+void diskconf(void);
+void calc_delayconst(void);	/* clock.c */
+
+/*
+ * The following several variables are related to
+ * the configuration process, and are used in initializing
+ * the machine.
+ */
+int	cold = 1;	/* if 1, still working on cold-start */
+char	bootdev[16];	/* to hold boot dev name */
+struct device *bootdv = NULL;
+
+/*
+ *  Configure all devices found that we know about.
+ *  This is done at boot time.
+ */
+void
+cpu_configure()
+{
+	(void)splhigh();	/* To be really sure.. */
+	calc_delayconst();
+
+	/*
+	if(system_type == OFWMACH) {
+		ofrootfound();
+	}
+	*/
+	if(config_rootfound("mainbus", "mainbus") == 0)
+		panic("no mainbus found");
+	(void)spl0();
+
+	/*
+	 * We can not know which is our root disk, defer
+	 * until we can checksum blocks to figure it out.
+	 */
+	md_diskconf = diskconf;
+	cold = 0;
+}
+/*
+ * Now that we are fully operational, we can checksum the
+ * disks, and using some heuristics, hopefully are able to
+ * always determine the correct root disk.
+ */
+void
+diskconf()
+{
+	/*
+	 * Configure root, swap, and dump area.  This is
+	 * currently done by running the same checksum
+	 * algorithm over all known disks, as was done in
+	 * /boot.  Then we basically fixup the *dev vars
+	 * from the info we gleaned from this.
+	dkcsumattach();
+	 * - XXX
+	 */
+
+#if 0
+	rootconf();
+#endif
+	setroot();
+	swapconf();
+#if 0
+	dumpconf();
+#endif
+}
+
+/*
+ * Configure swap space and related parameters.
+ */
+void
+swapconf()
+{
+	register struct swdevt *swp;
+	register int nblks;
+
+	for (swp = swdevt; swp->sw_dev != NODEV; swp++) {
+		if (bdevsw[major(swp->sw_dev)].d_psize) {
+			nblks =
+			  (*bdevsw[major(swp->sw_dev)].d_psize)(swp->sw_dev);
+			if (nblks != -1 &&
+			    (swp->sw_nblks == 0 || swp->sw_nblks > nblks))
+				swp->sw_nblks = nblks;
+			swp->sw_nblks = ctod(dtoc(swp->sw_nblks));
+		}
+	}
+#if 0
+	dumpconf();
+#endif
+}
+
+/*
+ * Crash dump handling.
+ */
+u_long dumpmag = 0x8fca0101;		/* magic number */
+int dumpsize = 0;			/* size of dump in pages */
+long dumplo = -1;			/* blocks */
+
+/*
+ * This is called by configure to set dumplo and dumpsize.
+ * Dumps always skip the first CLBYTES of disk space
+ * in case there might be a disk label stored there.
+ * If there is extra space, put dump at the end to
+ * reduce the chance that swapping trashes it.
+ */
+#if 0
+void
+dumpconf()
+{
+	int nblks;	/* size of dump area */
+	int maj;
+
+	if (dumpdev == NODEV)
+		return;
+	maj = major(dumpdev);
+	if (maj < 0 || maj >= nblkdev)
+		panic("dumpconf: bad dumpdev=0x%x", dumpdev);
+	if (bdevsw[maj].d_psize == NULL)
+		return;
+	nblks = (*bdevsw[maj].d_psize)(dumpdev);
+	if (nblks <= ctod(1))
+		return;
+
+	dumpsize = btoc(IOM_END + ctob(dumpmem_high));
+
+	/* Always skip the first CLBYTES, in case there is a label there. */
+	if (dumplo < ctod(1))
+		dumplo = ctod(1);
+
+	/* Put dump at end of partition, and make it fit. */
+	if (dumpsize > dtoc(nblks - dumplo))
+		dumpsize = dtoc(nblks - dumplo);
+	if (dumplo < nblks - ctod(dumpsize))
+		dumplo = nblks - ctod(dumpsize);
+}
+#endif
+
+static	struct nam2blk {
+	char *name;
+	int  maj;
+} nam2blk[] = {
+	{ "wd",		0 },	/* 0 = wd */
+	{ "sd",		2 },	/* 2 = sd */
+	{ "ofdisk",	4 },	/* 4 = ofdisk */
+	{ "raid",	19 },	/* 19 = raid */
+};
+
+int
+findblkmajor(dv)
+	struct device *dv;
+{
+	char *name = dv->dv_xname;
+	int i;
+
+	for (i = 0; i < sizeof(nam2blk)/sizeof(nam2blk[0]); ++i)
+		if (strncmp(name, nam2blk[i].name, strlen(nam2blk[i].name)) == 0)
+			return (nam2blk[i].maj);
+	return (-1);
+}
+
+char *
+findblkname(maj)
+	int maj;
+{
+	int i;
+
+	for (i = 0; i < sizeof(nam2blk)/sizeof(nam2blk[0]); ++i)
+		if (nam2blk[i].maj == maj)
+			return (nam2blk[i].name);
+	return (NULL);
+}
+
+static struct device *
+getdisk(str, len, defpart, devp)
+	char *str;
+	int len, defpart;
+	dev_t *devp;
+{
+	register struct device *dv;
+
+	if ((dv = parsedisk(str, len, defpart, devp)) == NULL) {
+		printf("use one of:");
+		for (dv = alldevs.tqh_first; dv != NULL;
+		    dv = dv->dv_list.tqe_next) {
+			if (dv->dv_class == DV_DISK)
+				printf(" %s[a-p]", dv->dv_xname);
+#ifdef NFSCLIENT
+			if (dv->dv_class == DV_IFNET)
+				printf(" %s", dv->dv_xname); 
+#endif
+		}
+		printf("\n");
+	}
+	return (dv);
+}
+
+struct device *
+parsedisk(str, len, defpart, devp)
+	char *str;
+	int len, defpart;
+	dev_t *devp;
+{
+	register struct device *dv;
+	register char *cp, c;
+	int majdev, part;
+
+	if (len == 0)
+		return (NULL);
+	cp = str + len - 1;
+	c = *cp;
+	if (c >= 'a' && (c - 'a') < MAXPARTITIONS) {
+		part = c - 'a';
+		*cp = '\0';
+	} else
+		part = defpart;
+
+	for (dv = alldevs.tqh_first; dv != NULL; dv = dv->dv_list.tqe_next) {
+		if (dv->dv_class == DV_DISK &&
+		    strcmp(str, dv->dv_xname) == 0) {
+			majdev = findblkmajor(dv);
+			if (majdev < 0)
+				panic("parsedisk");
+			*devp = MAKEDISKDEV(majdev, dv->dv_unit, part);
+			break;
+		}
+#ifdef NFSCLIENT
+		if (dv->dv_class == DV_IFNET &&
+		    strcmp(str, dv->dv_xname) == 0) {
+			*devp = NODEV;
+			break;
+		}
+#endif
+	}
+
+	*cp = c;
+	return (dv);
+}
+
+/*
+ * Attempt to find the device from which we were booted.
+ * If we can do so, and not instructed not to do so,
+ * change rootdev to correspond to the load device.
+ */
+void
+setroot()
+{
+	int  majdev, mindev, unit, part, len;
+	dev_t temp;
+	struct swdevt *swp;
+	struct device *dv;
+	dev_t nrootdev, nswapdev = NODEV;
+	char buf[128];
+
+#if defined(NFSCLIENT)
+	extern char *nfsbootdevname;
+#endif
+
+	printf("bootpath: '%s'\n", bootpath);
+	makebootdev(bootpath);
+	if(boothowto & RB_DFLTROOT)
+		return;		/* Boot compiled in */
+
+	/*
+	 * (raid) device auto-configuration could have returned
+	 * the root device's id in rootdev.  Check this case.
+	 */
+	if (rootdev != NODEV) {
+		majdev = major(rootdev);
+		unit = DISKUNIT(rootdev);
+		part = DISKPART(rootdev);
+
+		len = sprintf(buf, "%s%d", findblkname(majdev), unit);
+		if (len >= sizeof(buf))
+			panic("setroot: device name too long");
+
+		bootdv = getdisk(buf, len, part, &rootdev);
+	}
+
+	/* Lookup boot device from boot if not set by configuration */
+	if(bootdv == NULL) {
+		bootdv = parsedisk(bootdev, strlen(bootdev), 0, &temp);
+	}
+	if(bootdv == NULL) {
+		printf("boot device: lookup '%s' failed.\n", bootdev);
+		boothowto |= RB_ASKNAME; /* Don't Panic :-) */
+		/* boothowto |= RB_SINGLE; */
+	}
+	else {
+		printf("boot device: %s.\n", bootdv->dv_xname);
+	}
+
+	if (boothowto & RB_ASKNAME) {
+		for (;;) {
+			printf("root device ");
+			if (bootdv != NULL)
+				 printf("(default %s%c)",
+					bootdv->dv_xname,
+					bootdv->dv_class == DV_DISK
+						? 'a' : ' ');
+			printf(": ");
+			len = getsn(buf, sizeof(buf));
+			if (len == 0 && bootdv != NULL) {
+				strcpy(buf, bootdv->dv_xname);
+				len = strlen(buf);
+			}
+			if (len > 0 && buf[len - 1] == '*') {
+				buf[--len] = '\0';
+				dv = getdisk(buf, len, 1, &nrootdev);
+				if (dv != NULL) {
+					bootdv = dv;
+					nswapdev = nrootdev;
+					goto gotswap;
+				}
+			}
+			dv = getdisk(buf, len, 0, &nrootdev);
+			if (dv != NULL) {
+				bootdv = dv;
+				break;
+			}
+		}
+		/*
+		 * because swap must be on same device as root, for
+		 * network devices this is easy.
+		 */
+		if (bootdv->dv_class == DV_IFNET) {
+			goto gotswap;
+		}
+		for (;;) {
+			printf("swap device ");
+			if (bootdv != NULL)
+				printf("(default %s%c)",
+					bootdv->dv_xname,
+					bootdv->dv_class == DV_DISK?'b':' ');
+			printf(": ");
+			len = getsn(buf, sizeof(buf));
+			if (len == 0 && bootdv != NULL) {
+				switch (bootdv->dv_class) {
+				case DV_IFNET:
+					nswapdev = NODEV;
+					break;
+				case DV_DISK:
+					nswapdev = MAKEDISKDEV(major(nrootdev),
+					    DISKUNIT(nrootdev), 1);
+					break;
+				case DV_TAPE:
+				case DV_TTY:
+				case DV_DULL:
+				case DV_CPU:
+					break;
+				}
+				break;
+			}
+			dv = getdisk(buf, len, 1, &nswapdev);
+			if (dv) {
+				if (dv->dv_class == DV_IFNET)
+					nswapdev = NODEV;
+				break;
+			}
+		}
+
+gotswap:
+		rootdev = nrootdev;
+		dumpdev = nswapdev;
+		swdevt[0].sw_dev = nswapdev;
+		swdevt[1].sw_dev = NODEV;
+	}
+	else if(mountroot == NULL) {
+		/*
+		 * `swap generic': Use the device the ROM told us to use.
+		 */
+		if (bootdv == NULL)
+			panic("boot device not known");
+
+		majdev = findblkmajor(bootdv);
+
+		if (majdev >= 0) {
+			/*
+			 * Root and Swap are on disk.
+			 * Boot is always from partition 0.
+			 */
+			rootdev = MAKEDISKDEV(majdev, bootdv->dv_unit, 0);
+			nswapdev = MAKEDISKDEV(majdev, bootdv->dv_unit, 1);
+			dumpdev = nswapdev;
+		}
+		else {
+			/*
+			 *  Root and Swap are on net.
+			 */	
+			nswapdev = dumpdev = NODEV;
+		}
+		swdevt[0].sw_dev = nswapdev;
+		swdevt[1].sw_dev = NODEV;
+
+	} else {
+
+		/*
+		 * `root DEV swap DEV': honour rootdev/swdevt.
+		 * rootdev/swdevt/mountroot already properly set.
+		 */
+		return;
+	}
+
+	switch (bootdv->dv_class) {
+#if defined(NFSCLIENT)
+	case DV_IFNET:
+		mountroot = nfs_mountroot;
+		nfsbootdevname = bootdv->dv_xname;
+		return;
+#endif
+	case DV_DISK:
+		mountroot = dk_mountroot;
+		majdev = major(rootdev);
+		mindev = minor(rootdev);
+		unit = DISKUNIT(rootdev);
+		part = DISKPART(rootdev);
+		printf("root on %s%c\n", bootdv->dv_xname, part + 'a');
+		break;
+	default:
+		printf("can't figure root, hope your kernel is right\n");
+		return;
+	}
+
+	/*
+	 * XXX: What is this doing?
+	 */
+	temp = NODEV;
+	for (swp = swdevt; swp->sw_dev != NODEV; swp++) {
+		if (majdev == major(swp->sw_dev) &&
+		    unit == DISKUNIT(swp->sw_dev)) {
+			temp = swdevt[0].sw_dev;
+			swdevt[0].sw_dev = swp->sw_dev;
+			swp->sw_dev = temp;
+			break;
+		}
+	}
+	if (swp->sw_dev == NODEV)
+		return;
+
+	/*
+	 * If dumpdev was the same as the old primary swap device, move
+	 * it to the new primary swap device.
+	 */
+	if (temp == dumpdev)
+		dumpdev = swdevt[0].sw_dev;
+}
+
+/*
+ * find a device matching "name" and unit number
+ */
+struct device *
+getdevunit(name, unit)
+	char *name;
+	int unit;
+{
+	struct device *dev = alldevs.tqh_first;
+	char num[10], fullname[16];
+	int lunit;
+
+	/* compute length of name and decimal expansion of unit number */
+	sprintf(num, "%d", unit);
+	lunit = strlen(num);
+	if (strlen(name) + lunit >= sizeof(fullname) - 1)
+		panic("config_attach: device name too long");
+
+	strcpy(fullname, name);
+	strcat(fullname, num);
+
+	while (strcmp(dev->dv_xname, fullname) != 0) {
+		if ((dev = dev->dv_list.tqe_next) == NULL)
+			return NULL;
+	}
+	return dev;
+}
+
+struct devmap {
+	char *att;
+	char *dev;
+	int   type;
+};
+#define	T_IFACE	0x10
+
+#define	T_BUS	0x00
+#define	T_SCSI	0x11
+#define	T_IDE	0x12
+#define	T_DISK	0x21
+
+static struct devmap *
+findtype(s)
+	char **s;
+{
+	static struct devmap devmap[] = {
+		{ "/pci@@",	NULL, T_BUS },
+		{ "/pci",	NULL, T_BUS },
+		{ "/mac-io@@",	NULL, T_BUS },
+		{ "/mac-io",	NULL, T_BUS },
+		{ "/@@",		NULL, T_BUS },
+		{ "/scsi@@",	"sd", T_SCSI },
+		{ "/ide",	"wd", T_IDE },
+		{ "/ata",	"wd", T_IDE },
+		{ "/disk@@",	"sd", T_DISK },
+		{ "/disk",	"wd", T_DISK },
+		{ NULL, NULL }
+	};
+	struct devmap *dp = &devmap[0];
+
+	while (dp->att) {
+		if (strncmp (*s, dp->att, strlen(dp->att)) == 0) {
+			*s += strlen(dp->att);
+			break;
+		}
+		dp++;
+	}
+	if (dp->att == NULL) {
+		printf("string [%s]not found\n", *s);
+	}
+	return(dp);
+}
+
+/*
+ * Look at the string 'bp' and decode the boot device.
+ * Boot names look like: '/pci/scsi@@c/disk@@0,0/bsd'
+ *                       '/pci/mac-io/ide@@20000/disk@@0,0/bsd
+ *                       '/pci/mac-io/ide/disk/bsd
+ */
+void
+makebootdev(bp)
+	char *bp;
+{
+	int	unit;
+	char   *dev, *cp;
+	struct devmap *dp;
+
+	cp = bp;
+	do {
+		while(*cp && *cp != '/') {
+			cp++;
+		}
+		dp = findtype(&cp);
+		if (!dp->att) {
+			printf("Warning: boot device unrecognized: %s\n", bp);
+			return;
+		}
+	} while((dp->type & T_IFACE) == 0);
+
+	dev = dp->dev;
+	while(*cp && *cp != '/')
+		cp++;
+	dp = findtype(&cp);
+	if (!dp->att || dp->type != T_DISK) {
+		printf("Warning: boot device unrecognized: %s\n", bp);
+		return;
+	}
+	unit = getpno(&cp);
+	sprintf(bootdev, "%s%d%c", dev, unit, 'a');
+}
+
+int
+getpno(cp)
+	char **cp;
+{
+	int val = 0;
+	char *cx = *cp;
+
+	while(*cx && *cx >= '0' && *cx <= '9') {
+		val = val * 10 + *cx - '0';
+		cx++;
+	}
+	*cp = cx;
+	return val;
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d44 1
+a44 1
+ *      $Id: autoconf.c,v 1.5 2002/06/08 15:50:00 miod Exp $
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: autoconf.c,v 1.6 2003/04/06 18:54:19 ho Exp $	*/
+d44 1
+a44 1
+ *      $Id: autoconf.c,v 1.6 2003/04/06 18:54:19 ho Exp $
+d347 1
+a347 2
+		len = snprintf(buf, sizeof buf, "%s%d", findblkname(majdev),
+			unit);
+d378 1
+a378 1
+				strlcpy(buf, bootdv->dv_xname, sizeof buf);
+d535 1
+a535 1
+	snprintf(num, sizeof num, "%d", unit);
+d540 2
+a541 2
+	strlcpy(fullname, name, sizeof fullname);
+	strlcat(fullname, num, sizeof fullname);
+d629 1
+a629 1
+	snprintf(bootdev, sizeof bootdev, "%s%d%c", dev, unit, 'a');
+@
+
+
+1.1.1.3
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: autoconf.c,v 1.7 2003/06/02 23:27:53 millert Exp $	*/
+d21 5
+a25 1
+ * 3. Neither the name of the University nor the names of its contributors
+d44 1
+a44 1
+ *      $Id: autoconf.c,v 1.7 2003/06/02 23:27:53 millert Exp $
+@
+
+
+1.1.1.4
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: autoconf.c,v 1.9 2004/01/29 21:30:02 miod Exp $	*/
+d40 1
+a40 1
+ *      $Id: autoconf.c,v 1.9 2004/01/29 21:30:02 miod Exp $
+d68 1
+a68 1
+struct device * getdisk(char *, int, int, dev_t *);
+d70 3
+d82 1
+a82 1
+int	bootdev;	/* boot device as provided by locore */
+d95 6
+a100 1
+	if (config_rootfound("mainbus", "mainbus") == 0)
+d145 2
+a146 2
+	struct swdevt *swp;
+	int nblks;
+d209 1
+a209 1
+const struct nam2blk {
+d244 1
+a244 1
+struct device *
+d250 1
+a250 1
+	struct device *dv;
+d263 1
+a263 1
+		printf(" halt\n");
+d274 2
+a275 2
+	struct device *dv;
+	char *cp, c;
+a279 4
+
+	if (len == 4 && strcmp(str, "halt") == 0)
+		boot(RB_HALT);
+
+d318 1
+a318 1
+	int  majdev, unit, part, len;
+d324 1
+d329 5
+d351 12
+a362 9
+	printf("boot device: %s\n",
+	    (bootdv != NULL) ? bootdv->dv_xname : "<unknown>");
+
+	/*
+	 * If 'swap generic' and we couldn't determine the boot device,
+	 * ask the user.
+	 */
+	if (mountroot == NULL && bootdv == NULL)
+		boothowto |= RB_ASKNAME;
+d368 4
+a371 3
+				printf("(default %s%c)",
+				    bootdv->dv_xname,
+				    bootdv->dv_class == DV_DISK ? 'a' : ' ');
+a392 1
+
+d404 2
+a405 2
+				    bootdv->dv_xname,
+				    bootdv->dv_class == DV_DISK ? 'b' : ' ');
+d438 2
+a439 1
+	} else if (mountroot == NULL) {
+d447 1
+d456 2
+a457 1
+		} else {
+d465 1
+d467 1
+a481 1
+#if defined(FFS)
+d485 1
+d487 2
+a488 2
+		printf("root on %s%c\n", bootdv->dv_xname,
+		    DISKPART(rootdev) + 'a');
+a489 1
+#endif
+d496 1
+a496 1
+	 * Make the swap partition on the root drive the primary swap.
+d545 97
+@
+
+

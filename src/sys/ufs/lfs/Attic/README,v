@@ -1,0 +1,258 @@
+head	1.2;
+access;
+symbols
+	cvs-200410261930:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.03.14.18.10.30;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.52.26;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.26;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke 4.4BSD LFS files - that would be nice to have, but noone ports it from netbsd, and it can't handle more than 80% full filesystems anyways
+@
+text
+@#	$OpenBSD: README,v 1.2 1997/02/24 14:27:14 niklas Exp $
+#	$NetBSD: README,v 1.2 1994/06/29 06:46:43 cgd Exp $
+
+#	@@(#)README	8.1 (Berkeley) 6/11/93
+
+The file system is reasonably stable, but incomplete.  There are
+places where cleaning performance can be improved dramatically (see
+comments in lfs_syscalls.c).  For details on the implementation,
+performance and why garbage collection always wins, see Dr. Margo
+Seltzer's thesis available for anonymous ftp from toe.cs.berkeley.edu,
+in the directory pub/personal/margo/thesis.ps.Z, or the January 1993
+USENIX paper.
+
+Missing Functionality:
+	Multiple block sizes and/or fragments are not yet implemented.
+
+----------
+The disk is laid out in segments.  The first segment starts 8K into the
+disk (the first 8K is used for boot information).  Each segment is composed
+of the following:
+
+	An optional super block
+	One or more groups of:
+		segment summary
+		0 or more data blocks
+		0 or more inode blocks
+
+The segment summary and inode/data blocks start after the super block (if
+present), and grow toward the end of the segment.
+
+	_______________________________________________
+	|         |            |         |            |
+	| summary | data/inode | summary | data/inode |
+	|  block  |   blocks   |  block  |   blocks   | ...
+	|_________|____________|_________|____________|
+
+The data/inode blocks following a summary block are described by the
+summary block.  In order to permit the segment to be written in any order
+and in a forward direction only, a checksum is calculated across the
+blocks described by the summary.  Additionally, the summary is checksummed
+and timestamped.  Both of these are intended for recovery; the former is
+to make it easy to determine that it *is* a summary block and the latter
+is to make it easy to determine when recovery is finished for partially
+written segments.  These checksums are also used by the cleaner.
+
+	Summary block (detail)
+	________________
+	| sum cksum    |
+	| data cksum   |
+	| next segment |
+	| timestamp    |
+	| FINFO count  |
+	| inode count  |
+	| flags        |
+	|______________|
+	|   FINFO-1    | 0 or more file info structures, identifying the
+	|     .        | blocks in the segment.
+	|     .        |
+	|     .        |
+	|   FINFO-N    |
+	|   inode-N    |
+	|     .        |
+	|     .        |
+	|     .        | 0 or more inode daddr_t's, identifying the inode
+	|   inode-1    | blocks in the segment.
+	|______________|
+
+Inode blocks are blocks of on-disk inodes in the same format as those in
+the FFS.  However, spare[0] contains the inode number of the inode so we
+can find a particular inode on a page.  They are packed page_size /
+sizeof(inode) to a block.  Data blocks are exactly as in the FFS.  Both
+inodes and data blocks move around the file system at will.
+
+The file system is described by a super-block which is replicated and
+occurs as the first block of the first and other segments.  (The maximum
+number of super-blocks is MAXNUMSB).  Each super-block maintains a list
+of the disk addresses of all the super-blocks.  The super-block maintains
+a small amount of checkpoint information, essentially just enough to find
+the inode for the IFILE (fs->lfs_idaddr).
+
+The IFILE is visible in the file system, as inode number IFILE_INUM.  It
+contains information shared between the kernel and various user processes.
+
+	Ifile (detail)
+	________________
+	| cleaner info | Cleaner information per file system.  (Page
+	|              | granularity.)
+	|______________|
+	| segment      | Space available and last modified times per
+	| usage table  | segment.  (Page granularity.)
+	|______________|
+	|   IFILE-1    | Per inode status information: current version #,
+	|     .        | if currently allocated, last access time and
+	|     .        | current disk address of containing inode block.
+	|     .        | If current disk address is LFS_UNUSED_DADDR, the
+	|   IFILE-N    | inode is not in use, and it's on the free list.
+	|______________|
+
+
+First Segment at Creation Time:
+_____________________________________________________________
+|        |       |         |       |       |       |       |
+| 8K pad | Super | summary | inode | ifile | root  | l + f |
+|        | block |         | block |       | dir   | dir   |
+|________|_______|_________|_______|_______|_______|_______|
+	  ^
+           Segment starts here.
+
+Some differences from the Sprite LFS implementation.
+
+1. The LFS implementation placed the ifile metadata and the super block
+   at fixed locations.  This implementation replicates the super block
+   and puts each at a fixed location.  The checkpoint data is divided into
+   two parts -- just enough information to find the IFILE is stored in
+   two of the super blocks, although it is not toggled between them as in
+   the Sprite implementation.  (This was deliberate, to avoid a single
+   point of failure.)  The remaining checkpoint information is treated as
+   a regular file, which means that the cleaner info, the segment usage
+   table and the ifile meta-data are stored in normal log segments.
+   (Tastes great, less filling...)
+
+2. The segment layout is radically different in Sprite; this implementation
+   uses something a lot like network framing, where data/inode blocks are
+   written asynchronously, and a checksum is used to validate any set of
+   summary and data/inode blocks.  Sprite writes summary blocks synchronously
+   after the data/inode blocks have been written and the existence of the
+   summary block validates the data/inode blocks.  This permits us to write
+   everything contiguously, even partial segments and their summaries, whereas
+   Sprite is forced to seek (from the end of the data inode to the summary
+   which lives at the end of the segment).  Additionally, writing the summary
+   synchronously should cost about 1/2 a rotation per summary.
+
+3. Sprite LFS distinguishes between different types of blocks in the segment.
+   Other than inode blocks and data blocks, we don't.
+
+4. Sprite LFS traverses the IFILE looking for free blocks.  We maintain a
+   free list threaded through the IFILE entries.
+
+5. The cleaner runs in user space, as opposed to kernel space.  It shares
+   information with the kernel by reading/writing the IFILE and through
+   cleaner specific system calls.
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

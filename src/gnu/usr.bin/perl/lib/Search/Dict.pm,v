@@ -1,0 +1,218 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.25;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.25;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package Search::Dict;
+require 5.000;
+require Exporter;
+
+use strict;
+
+our $VERSION = '1.02';
+our @@ISA = qw(Exporter);
+our @@EXPORT = qw(look);
+
+=head1 NAME
+
+Search::Dict, look - search for key in dictionary file
+
+=head1 SYNOPSIS
+
+    use Search::Dict;
+    look *FILEHANDLE, $key, $dict, $fold;
+
+    use Search::Dict;
+    look *FILEHANDLE, $params;
+
+=head1 DESCRIPTION
+
+Sets file position in FILEHANDLE to be first line greater than or equal
+(stringwise) to I<$key>.  Returns the new file position, or -1 if an error
+occurs.
+
+The flags specify dictionary order and case folding:
+
+If I<$dict> is true, search by dictionary order (ignore anything but word
+characters and whitespace).  The default is honour all characters.
+
+If I<$fold> is true, ignore case.  The default is to honour case.
+
+If there are only three arguments and the third argument is a hash
+reference, the keys of that hash can have values C<dict>, C<fold>, and
+C<comp> or C<xfrm> (see below), and their correponding values will be
+used as the parameters.
+
+If a comparison subroutine (comp) is defined, it must return less than zero,
+zero, or greater than zero, if the first comparand is less than,
+equal, or greater than the second comparand.
+
+If a transformation subroutine (xfrm) is defined, its value is used to
+transform the lines read from the filehandle before their comparison.
+
+=cut
+
+sub look {
+    my($fh,$key,$dict,$fold) = @@_;
+    my ($comp, $xfrm);
+    if (@@_ == 3 && ref $dict eq 'HASH') {
+	my $params = $dict;
+	$dict = 0;
+	$dict = $params->{dict} if exists $params->{dict};
+	$fold = $params->{fold} if exists $params->{fold};
+	$comp = $params->{comp} if exists $params->{comp};
+	$xfrm = $params->{xfrm} if exists $params->{xfrm};
+    }
+    $comp = sub { $_[0] cmp $_[1] } unless defined $comp;
+    local($_);
+    my(@@stat) = stat($fh)
+	or return -1;
+    my($size, $blksize) = @@stat[7,11];
+    $blksize ||= 8192;
+    $key =~ s/[^\w\s]//g if $dict;
+    $key = lc $key       if $fold;
+    # find the right block
+    my($min, $max) = (0, int($size / $blksize));
+    my $mid;
+    while ($max - $min > 1) {
+	$mid = int(($max + $min) / 2);
+	seek($fh, $mid * $blksize, 0)
+	    or return -1;
+	<$fh> if $mid;			# probably a partial line
+	$_ = <$fh>;
+	$_ = $xfrm->($_) if defined $xfrm;
+	chomp;
+	s/[^\w\s]//g if $dict;
+	$_ = lc $_   if $fold;
+	if (defined($_) && $comp->($_, $key) < 0) {
+	    $min = $mid;
+	}
+	else {
+	    $max = $mid;
+	}
+    }
+    # find the right line
+    $min *= $blksize;
+    seek($fh,$min,0)
+	or return -1;
+    <$fh> if $min;
+    for (;;) {
+	$min = tell($fh);
+	defined($_ = <$fh>)
+	    or last;
+	$_ = $xfrm->($_) if defined $xfrm;
+	chomp;
+	s/[^\w\s]//g if $dict;
+	$_ = lc $_   if $fold;
+	last if $comp->($_, $key) >= 0;
+    }
+    seek($fh,$min,0);
+    $min;
+}
+
+1;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

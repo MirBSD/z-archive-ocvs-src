@@ -1,0 +1,238 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.12.03.21.55.20;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.42.58;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.58;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@merge cvs import, etc.
+@
+text
+@#!./perl
+
+BEGIN {
+    unless(grep /blib/, @@INC) {
+        chdir 't' if -d 't';
+        @@INC = '../lib';
+    }
+}
+
+select(STDERR); $| = 1;
+select(STDOUT); $| = 1;
+
+print "1..23\n";
+
+use IO::Select 1.09;
+
+my $sel = new IO::Select(\*STDIN);
+$sel->add(4, 5) == 2 or print "not ";
+print "ok 1\n";
+
+$sel->add([\*STDOUT, 'foo']) == 1 or print "not ";
+print "ok 2\n";
+
+@@handles = $sel->handles;
+print "not " unless $sel->count == 4 && @@handles == 4;
+print "ok 3\n";
+#print $sel->as_string, "\n";
+
+$sel->remove(\*STDIN) == 1 or print "not ";
+print "ok 4\n",
+;
+$sel->remove(\*STDIN, 5, 6) == 1  # two of there are not present
+  or print "not ";
+print "ok 5\n";
+
+print "not " unless $sel->count == 2;
+print "ok 6\n";
+#print $sel->as_string, "\n";
+
+$sel->remove(1, 4);
+print "not " unless $sel->count == 0 && !defined($sel->bits);
+print "ok 7\n";
+
+$sel = new IO::Select;
+print "not " unless $sel->count == 0 && !defined($sel->bits);
+print "ok 8\n";
+
+$sel->remove([\*STDOUT, 5]);
+print "not " unless $sel->count == 0 && !defined($sel->bits);
+print "ok 9\n";
+
+if ( grep $^O eq $_, qw(MSWin32 NetWare dos VMS riscos beos) ) {
+    for (10 .. 15) { 
+        print "ok $_ # skip: 4-arg select is only valid on sockets\n"
+    }
+    $sel->add(\*STDOUT);  # update
+    goto POST_SOCKET;
+}
+
+@@a = $sel->can_read();  # should return imediately
+print "not " unless @@a == 0;
+print "ok 10\n";
+
+# we assume that we can write to STDOUT :-)
+$sel->add([\*STDOUT, "ok 12\n"]);
+
+@@a = $sel->can_write;
+print "not " unless @@a == 1;
+print "ok 11\n";
+
+my($fd, $msg) = @@{shift @@a};
+print $fd $msg;
+
+$sel->add(\*STDOUT);  # update
+
+@@a = IO::Select::select(undef, $sel, undef, 1);
+print "not " unless @@a == 3;
+print "ok 13\n";
+
+($r, $w, $e) = @@a;
+
+print "not " unless @@$r == 0 && @@$w == 1 && @@$e == 0;
+print "ok 14\n";
+
+$fd = $w->[0];
+print $fd "ok 15\n";
+
+POST_SOCKET:
+# Test new exists() method
+$sel->exists(\*STDIN) and print "not ";
+print "ok 16\n";
+
+($sel->exists(0) || $sel->exists([\*STDERR])) and print "not ";
+print "ok 17\n";
+
+$fd = $sel->exists(\*STDOUT);
+if ($fd) {
+    print $fd "ok 18\n";
+} else {
+    print "not ok 18\n";
+}
+
+$fd = $sel->exists([1, 'foo']);
+if ($fd) {
+    print $fd "ok 19\n";
+} else {
+    print "not ok 19\n";
+}
+
+# Try self clearing
+$sel->add(5,6,7,8,9,10);
+print "not " unless $sel->count == 7;
+print "ok 20\n";
+
+$sel->remove($sel->handles);
+print "not " unless $sel->count == 0 && !defined($sel->bits);
+print "ok 21\n";
+
+# check warnings
+$SIG{__WARN__} = sub { 
+    ++ $w 
+      if $_[0] =~ /^Call to deprecated method 'has_error', use 'has_exception'/ 
+    } ;
+$w = 0 ;
+IO::Select::has_error();
+print "not " unless $w == 0 ;
+$w = 0 ;
+print "ok 22\n" ;
+use warnings 'IO::Select' ;
+IO::Select::has_error();
+print "not " unless $w == 1 ;
+$w = 0 ;
+print "ok 23\n" ;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

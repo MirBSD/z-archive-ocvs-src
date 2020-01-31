@@ -1,0 +1,411 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.29.15;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.57;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.57;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.35.19;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.01.26.18.41.48;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: pcc.c,v 1.9 2002/04/27 23:21:05 miod Exp $ */
+
+/*
+ * Copyright (c) 1995 Theo de Raadt
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed under OpenBSD by
+ *	Theo de Raadt for Willowglen Singapore.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * VME147 peripheral channel controller
+ */
+#include <sys/param.h>
+#include <sys/conf.h>
+#include <sys/ioctl.h>
+#include <sys/proc.h>
+#include <sys/user.h>
+#include <sys/tty.h>
+#include <sys/uio.h>
+#include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/syslog.h>
+#include <sys/fcntl.h>
+#include <sys/device.h>
+#include <machine/cpu.h>
+#include <machine/autoconf.h>
+#include <dev/cons.h>
+
+#include <mvme68k/dev/pccreg.h>
+
+struct pccsoftc {
+	struct device	sc_dev;
+	void		*sc_vaddr;
+	void		*sc_paddr;
+	struct pccreg	*sc_pcc;
+	struct intrhand	sc_nmiih;
+};
+
+void pccattach(struct device *, struct device *, void *);
+int  pccmatch(struct device *, void *, void *);
+int  pccabort(void *);
+int  pcc_print(void *, const char *);
+int  pcc_scan(struct device *, void *, void *);
+
+struct cfattach pcc_ca = {
+	sizeof(struct pccsoftc), pccmatch, pccattach
+};
+
+struct cfdriver pcc_cd = {
+	NULL, "pcc", DV_DULL, 0
+};
+
+struct pccreg *sys_pcc = NULL;
+
+int
+pccmatch(parent, vcf, args)
+	struct device *parent;
+	void *vcf, *args;
+{
+	struct confargs *ca = args;
+
+	/* the pcc only exist on vme147's */
+	if (cputyp != CPU_147)
+		return (0);
+	return (!badvaddr(IIOV(ca->ca_paddr) + PCCSPACE_PCCCHIP_OFF, 1));
+}
+
+int
+pcc_print(args, bus)
+	void *args;
+	const char *bus;
+{
+	struct confargs *ca = args;
+
+	if (ca->ca_offset != -1)
+		printf(" offset 0x%x", ca->ca_offset);
+	if (ca->ca_ipl > 0)
+		printf(" ipl %d", ca->ca_ipl);
+	return (UNCONF);
+}
+
+int
+pcc_scan(parent, child, args)
+	struct device *parent;
+	void *child, *args;
+{
+	struct cfdata *cf = child;
+	struct pccsoftc *sc = (struct pccsoftc *)parent;
+	struct confargs oca;
+
+	if (parent->dv_cfdata->cf_driver->cd_indirect) {
+                printf(" indirect devices not supported\n");
+                return 0;
+        }
+
+	bzero(&oca, sizeof oca);
+	oca.ca_offset = cf->cf_loc[0];
+	oca.ca_ipl = cf->cf_loc[1];
+	if (oca.ca_offset != -1) {
+		oca.ca_vaddr = sc->sc_vaddr + oca.ca_offset;
+		oca.ca_paddr = sc->sc_paddr + oca.ca_offset;
+	} else {
+		oca.ca_vaddr = (void *)-1;
+		oca.ca_paddr = (void *)-1;
+	}	
+	oca.ca_bustype = BUS_PCC;
+	oca.ca_master = (void *)sc->sc_pcc;
+	oca.ca_name = cf->cf_driver->cd_name;
+	if ((*cf->cf_attach->ca_match)(parent, cf, &oca) == 0)
+		return (0);
+	config_attach(parent, cf, &oca, pcc_print);
+	return (1);
+}
+
+void
+pccattach(parent, self, args)
+	struct device *parent, *self;
+	void *args;
+{
+	struct confargs *ca = args;
+	struct pccsoftc *sc = (struct pccsoftc *)self;
+
+	if (sys_pcc)
+		panic("pcc already attached!");
+
+	/*
+	 * since we know ourself to land in intiobase land,
+	 * we must adjust our address
+	 */
+	sc->sc_paddr = ca->ca_paddr;
+	sc->sc_vaddr = (void *)IIOV(sc->sc_paddr);
+	sc->sc_pcc = (struct pccreg *)(sc->sc_vaddr + PCCSPACE_PCCCHIP_OFF);
+	sys_pcc = sc->sc_pcc;
+
+	printf(": rev %d\n", sc->sc_pcc->pcc_chiprev);
+
+	sc->sc_nmiih.ih_fn = pccabort;
+	sc->sc_nmiih.ih_ipl = 7;
+	sc->sc_nmiih.ih_wantframe = 1;
+	pccintr_establish(PCCV_ABORT, &sc->sc_nmiih);
+
+	sc->sc_pcc->pcc_vecbase = PCC_VECBASE;
+	sc->sc_pcc->pcc_abortirq = PCC_ABORT_IEN | PCC_ABORT_ACK;
+	sc->sc_pcc->pcc_genctl |= PCC_GENCTL_IEN;
+
+	/* XXX further init of PCC chip? */
+
+	config_search(pcc_scan, self, args);
+}
+
+/*
+ * PCC interrupts land in a PCC_NVEC sized hole starting at PCC_VECBASE
+ */
+int
+pccintr_establish(vec, ih)
+	int vec;
+	struct intrhand *ih;
+{
+	if (vec >= PCC_NVEC) {
+		printf("pcc: illegal vector: 0x%x\n", vec);
+		panic("pccintr_establish");
+	}
+	return (intr_establish(PCC_VECBASE+vec, ih));
+}
+
+int
+pccabort(frame)
+	void *frame;
+{
+#if 0
+	/* XXX wait for it to debounce -- there is something wrong here */
+	while (sys_pcc->pcc_abortirq & PCC_ABORT_ABS)
+		;
+	delay(2);
+#endif
+	sys_pcc->pcc_abortirq = PCC_ABORT_IEN | PCC_ABORT_ACK;
+	nmihand(frame);
+	return (1);
+}
+
+int
+pccspeed(pcc)
+	struct pccreg *pcc;
+{
+	volatile u_short lim = pcc_timer_us2lim(400);
+	volatile u_short tmp;
+	volatile int cnt;
+	int speed;
+
+	pcc->pcc_t1irq = 0;		/* just in case */
+	pcc->pcc_t1pload = 0;
+	pcc->pcc_t1ctl = PCC_TIMERCLEAR;
+	pcc->pcc_t1ctl = PCC_TIMERSTART;
+	
+	cnt = 0;
+	for (;;) {
+		tmp = pcc->pcc_t1count;
+		if (tmp > lim)
+			break;
+		tmp = lim;
+		cnt++;
+	}
+
+	pcc->pcc_t1ctl = PCC_TIMERCLEAR;
+	printf("pccspeed cnt=%d\n", cnt);
+
+	/*
+	 * Empirically determined. Unfortunately, because of various
+	 * memory board effects and such, it is rather unlikely that
+	 * we will find a nice formula.
+	 */
+	if (cnt > 230000)
+		speed = 50;
+	else if (cnt > 210000)
+		speed = 33;
+	else if (cnt > 190000)
+		speed = 25;
+	else if (cnt > 170000)	/* 171163, 170335 */
+		speed = 20;
+	else
+		speed = 16;
+	return (speed);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: pcc.c,v 1.10 2003/06/02 05:09:14 deraadt Exp $ */
+d15 6
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: pcc.c,v 1.12 2004/01/14 20:52:49 miod Exp $ */
+d68 1
+a68 1
+	NULL, "pcc", DV_DULL
+d108 5
+@
+
+

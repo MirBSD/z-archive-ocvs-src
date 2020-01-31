@@ -1,0 +1,391 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.05.16.17.43.06;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.48;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.48;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.29.49;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@#   Copyright (C) 1995 Free Software Foundation, Inc.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+if $nosignals {
+	verbose "Skipping sigall.exp because of nosignals."
+	continue
+	}
+
+if $tracelevel then {
+	strace $tracelevel
+}
+
+set prms_id 0
+set bug_id 0
+
+gdb_reinitialize_dir $srcdir/$subdir
+
+set testfile sigall
+set srcfile ${testfile}.c
+set binfile ${objdir}/${subdir}/${testfile}
+if  { [compile "${srcdir}/${subdir}/${srcfile} -g -o ${binfile}"] != "" } {
+    perror "Couldn't compile ${srcfile}"
+    return -1
+}
+
+# Make the first signal SIGABRT because it is always supported.
+set sig_supported 1
+set thissig "ABRT"
+
+proc test_one_sig {nextsig} {
+    global sig_supported
+    global prompt
+    global thissig
+
+    set this_sig_supported $sig_supported
+    gdb_test "handle SIG$thissig stop print" \
+	"SIG$thissig\[ \t\]*Yes\[ \t\]*Yes\[ \t\]*Yes.*"
+    gdb_test "b handle_$thissig" "Breakpoint \[0-9\]+ .*"
+    gdb_test "b gen_$nextsig" "Breakpoint \[0-9\]+ .*"
+
+    set need_another_continue 1
+    set missed_handler 0
+    if $this_sig_supported then {
+	send "continue\n"
+	if { $thissig == "IO" } {
+	    setup_xfail "i*86-*-linuxoldld" "i*86-*-linuxaout"
+	}
+	expect {
+	    -re "Continuing.*Program received signal SIG$thissig.*$prompt $" {
+		pass "get signal $thissig"
+	    }
+	    -re ".*$prompt $" {
+		fail "get signal $thissig"
+		set need_another_continue 0
+	    }
+	    default {
+		fail "get signal $thissig (eof or timeout)"
+	    }
+	}
+    }
+    if [ istarget "alpha-dec-osf3*" ] then {
+	# OSF/1-3.x is unable to continue with a job control stop signal.
+	# The inferior remains stopped without an event of interest
+	# and GDB waits forever for the inferior to stop on an event
+	# of interest. Work around the kernel bug.
+	if { $thissig == "TSTP" || $thissig == "TTIN" || $thissig == "TTOU" } {
+	    setup_xfail "alpha-dec-osf3*"
+	    fail "cannot continue from signal $thissig"
+	    set need_another_continue 0
+	}
+    }
+
+    if $need_another_continue then {
+	send "continue\n"
+	if { $thissig == "URG" } {
+	    setup_xfail "i*86-*-linuxoldld" "i*86-*-linuxaout"
+	}
+        # Either Lynx or GDB screws up on SIGPRIO
+	if { $thissig == "PRIO" } {
+	    setup_xfail "*-*-*lynx*"
+	}
+	expect {
+	    -re "Breakpoint.*handle_$thissig.*$prompt $" {
+		pass "send signal $thissig"
+	    }
+	    -re "Breakpoint.*gen_$nextsig.*kill.*$prompt $" {
+		fail "missed breakpoint at handle_$thissig"
+		set missed_handler 1
+	    }
+	}
+    }
+
+    if { $missed_handler == "0" } then {
+        send "signal 0\n"
+        expect {
+	    -re "Breakpoint.*gen_$nextsig.*kill.*$prompt $" {
+	        pass "advance to $nextsig"
+	        set sig_supported 1
+	    }
+	    -re "Breakpoint.*gen_$nextsig.*handle.*$prompt $" {
+	        pass "advance to $nextsig"
+	        set sig_supported 0
+	    }
+	    -re ".*$prompt $" { fail "advance to $nextsig" }
+	    default { fail "advance to $nextsig (eof or timeout)" }
+        }
+    }
+    set thissig $nextsig
+}
+
+gdb_load $binfile
+
+runto gen_ABRT
+test_one_sig HUP
+test_one_sig QUIT
+test_one_sig ILL
+test_one_sig EMT
+test_one_sig FPE
+test_one_sig BUS
+test_one_sig SEGV
+test_one_sig SYS
+test_one_sig PIPE
+test_one_sig ALRM
+test_one_sig URG
+test_one_sig TSTP
+test_one_sig CONT
+test_one_sig CHLD
+test_one_sig TTIN
+test_one_sig TTOU
+test_one_sig IO
+test_one_sig XCPU
+test_one_sig XFSZ
+test_one_sig VTALRM
+test_one_sig PROF
+test_one_sig WINCH
+test_one_sig LOST
+test_one_sig USR1
+test_one_sig USR2
+test_one_sig PWR
+test_one_sig POLL
+test_one_sig WIND
+test_one_sig PHONE
+test_one_sig WAITING
+test_one_sig LWP
+test_one_sig DANGER
+test_one_sig GRANT
+test_one_sig RETRACT
+test_one_sig MSG
+test_one_sig SOUND
+test_one_sig SAK
+test_one_sig PRIO
+test_one_sig 33
+test_one_sig 34
+test_one_sig 35
+test_one_sig 36
+test_one_sig 37
+test_one_sig 38
+test_one_sig 39
+test_one_sig 40
+test_one_sig 41
+test_one_sig 42
+test_one_sig 43
+test_one_sig 44
+test_one_sig 45
+test_one_sig 46
+test_one_sig 47
+test_one_sig 48
+test_one_sig 49
+test_one_sig 50
+test_one_sig 51
+test_one_sig 52
+test_one_sig 53
+test_one_sig 54
+test_one_sig 55
+test_one_sig 56
+test_one_sig 57
+test_one_sig 58
+test_one_sig 59
+test_one_sig 60
+test_one_sig 61
+test_one_sig 62
+test_one_sig 63
+test_one_sig TERM
+
+# The last signal (SIGTERM) gets handled slightly differently because
+# we are not setting up for another test.
+gdb_test "handle SIGTERM stop print" \
+    "SIGTERM\[ \t\]*Yes\[ \t\]*Yes\[ \t\]*Yes.*"
+gdb_test "b handle_TERM" "Breakpoint \[0-9\]+ .*"
+gdb_test "continue" \
+    "Continuing.*Program received signal SIGTERM.*" \
+    "get signal TERM"
+gdb_test "continue" "Breakpoint.*handle_TERM.*" "send signal TERM"
+gdb_test "continue" "Program exited normally\\." "continue to sigall exit"
+
+return 0
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d1 1
+a1 1
+#   Copyright 1995, 1996, 1997, 1999 Free Software Foundation, Inc.
+d15 1
+a15 1
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  
+d17 4
+a20 4
+if [target_info exists gdb,nosignals] {
+    verbose "Skipping sigall.exp because of nosignals."
+    continue
+}
+a28 2
+gdb_exit
+gdb_start
+d34 3
+a36 2
+if  { [gdb_compile "${srcdir}/${subdir}/${srcfile}" "${binfile}" executable {debug}] != "" } {
+     gdb_suppress_entire_file "Testcase compile failed, so all tests in this file will automatically fail."
+d45 1
+a45 1
+    global gdb_prompt
+d57 1
+a57 1
+	send_gdb "continue\n"
+d59 1
+a59 1
+	    setup_xfail "i*86-pc-linuxoldld-gnu" "i*86-pc-linuxaout-gnu"
+d61 2
+a62 2
+	gdb_expect {
+	    -re "Continuing.*Program received signal SIG$thissig.*$gdb_prompt $" {
+d65 1
+a65 1
+	    -re ".*$gdb_prompt $" {
+d87 1
+a87 1
+	send_gdb "continue\n"
+d89 1
+a89 1
+	    setup_xfail "i*86-pc-linuxoldld-gnu" "i*86-pc-linuxaout-gnu"
+d95 2
+a96 2
+	gdb_expect {
+	    -re "Breakpoint.*handle_$thissig.*$gdb_prompt $" {
+d99 1
+a99 1
+	    -re "Breakpoint.*gen_$nextsig.*kill.*$gdb_prompt $" {
+d107 3
+a109 3
+        send_gdb "signal 0\n"
+        gdb_expect {
+	    -re "Breakpoint.*gen_$nextsig.*kill.*$gdb_prompt $" {
+d113 1
+a113 1
+	    -re "Breakpoint.*gen_$nextsig.*handle.*$gdb_prompt $" {
+d117 1
+a117 1
+	    -re ".*$gdb_prompt $" { fail "advance to $nextsig" }
+d207 1
+a207 1
+gdb_continue_to_end "continue to sigall exit"
+@
+

@@ -1,0 +1,487 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.43;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.43;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: ex_shell.c,v 1.9 2002/06/12 06:07:17 mpech Exp $	*/
+
+/*-
+ * Copyright (c) 1992, 1993, 1994
+ *	The Regents of the University of California.  All rights reserved.
+ * Copyright (c) 1992, 1993, 1994, 1995, 1996
+ *	Keith Bostic.  All rights reserved.
+ *
+ * See the LICENSE file for redistribution information.
+ */
+
+#include "config.h"
+
+#ifndef lint
+static const char sccsid[] = "@@(#)ex_shell.c	10.38 (Berkeley) 8/19/96";
+#endif /* not lint */
+
+#include <sys/param.h>
+#include <sys/queue.h>
+#include <sys/wait.h>
+
+#include <bitstring.h>
+#include <errno.h>
+#include <limits.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "../common/common.h"
+
+static const char *sigmsg(int);
+
+/*
+ * ex_shell -- :sh[ell]
+ *	Invoke the program named in the SHELL environment variable
+ *	with the argument -i.
+ *
+ * PUBLIC: int ex_shell(SCR *, EXCMD *);
+ */
+int
+ex_shell(sp, cmdp)
+	SCR *sp;
+	EXCMD *cmdp;
+{
+	int rval;
+	char buf[MAXPATHLEN];
+
+	/* We'll need a shell. */
+	if (opts_empty(sp, O_SHELL, 0))
+		return (1);
+
+	/*
+	 * XXX
+	 * Assumes all shells use -i.
+	 */
+	(void)snprintf(buf, sizeof(buf), "%s -i", O_STR(sp, O_SHELL));
+
+	/* Restore the window name. */
+	(void)sp->gp->scr_rename(sp, NULL, 0);
+
+	/* If we're still in a vi screen, move out explicitly. */
+	rval = ex_exec_proc(sp, cmdp, buf, NULL, !F_ISSET(sp, SC_SCR_EXWROTE));
+
+	/* Set the window name. */
+	(void)sp->gp->scr_rename(sp, sp->frp->name, 1);
+
+	/*
+	 * !!!
+	 * Historically, vi didn't require a continue message after the
+	 * return of the shell.  Match it.
+	 */
+	F_SET(sp, SC_EX_WAIT_NO);
+
+	return (rval);
+}
+
+/*
+ * ex_exec_proc --
+ *	Run a separate process.
+ *
+ * PUBLIC: int ex_exec_proc(SCR *, EXCMD *, char *, const char *, int);
+ */
+int
+ex_exec_proc(sp, cmdp, cmd, msg, need_newline)
+	SCR *sp;
+	EXCMD *cmdp;
+	char *cmd;
+	const char *msg;
+	int need_newline;
+{
+	GS *gp;
+	const char *name;
+	pid_t pid;
+
+	gp = sp->gp;
+
+	/* We'll need a shell. */
+	if (opts_empty(sp, O_SHELL, 0))
+		return (1);
+
+	/* Enter ex mode. */
+	if (F_ISSET(sp, SC_VI)) {
+		if (gp->scr_screen(sp, SC_EX)) {
+			ex_emsg(sp, cmdp->cmd->name, EXM_NOCANON);
+			return (1);
+		}
+		(void)gp->scr_attr(sp, SA_ALTERNATE, 0);
+		F_SET(sp, SC_SCR_EX | SC_SCR_EXWROTE);
+	}
+
+	/* Put out additional newline, message. */
+	if (need_newline)
+		(void)ex_puts(sp, "\n");
+	if (msg != NULL) {
+		(void)ex_puts(sp, msg);
+		(void)ex_puts(sp, "\n");
+	}
+	(void)ex_fflush(sp);
+
+	switch (pid = vfork()) {
+	case -1:			/* Error. */
+		msgq(sp, M_SYSERR, "vfork");
+		return (1);
+	case 0:				/* Utility. */
+		if ((name = strrchr(O_STR(sp, O_SHELL), '/')) == NULL)
+			name = O_STR(sp, O_SHELL);
+		else
+			++name;
+		execl(O_STR(sp, O_SHELL), name, "-c", cmd, (char *)NULL);
+		msgq_str(sp, M_SYSERR, O_STR(sp, O_SHELL), "execl: %s");
+		_exit(127);
+		/* NOTREACHED */
+	default:			/* Parent. */
+		return (proc_wait(sp, pid, cmd, 0, 0));
+	}
+	/* NOTREACHED */
+}
+
+/*
+ * proc_wait --
+ *	Wait for one of the processes.
+ *
+ * !!!
+ * The pid_t type varies in size from a short to a long depending on the
+ * system.  It has to be cast into something or the standard promotion
+ * rules get you.  I'm using a long based on the belief that nobody is
+ * going to make it unsigned and it's unlikely to be a quad.
+ *
+ * PUBLIC: int proc_wait(SCR *, pid_t, const char *, int, int);
+ */
+int
+proc_wait(sp, pid, cmd, silent, okpipe)
+	SCR *sp;
+	pid_t pid;
+	const char *cmd;
+	int silent, okpipe;
+{
+	size_t len;
+	int nf, pstat;
+	char *p;
+
+	/* Wait for the utility, ignoring interruptions. */
+	for (;;) {
+		errno = 0;
+		if (waitpid(pid, &pstat, 0) != -1)
+			break;
+		if (errno != EINTR) {
+			msgq(sp, M_SYSERR, "waitpid");
+			return (1);
+		}
+	}
+
+	/*
+	 * Display the utility's exit status.  Ignore SIGPIPE from the
+	 * parent-writer, as that only means that the utility chose to
+	 * exit before reading all of its input.
+	 */
+	if (WIFSIGNALED(pstat) && (!okpipe || WTERMSIG(pstat) != SIGPIPE)) {
+		for (; isblank(*cmd); ++cmd);
+		p = msg_print(sp, cmd, &nf);
+		len = strlen(p);
+		msgq(sp, M_ERR, "%.*s%s: received signal: %s%s",
+		    MIN(len, 20), p, len > 20 ? " ..." : "",
+		    sigmsg(WTERMSIG(pstat)),
+		    WCOREDUMP(pstat) ? "; core dumped" : "");
+		if (nf)
+			FREE_SPACE(sp, p, 0);
+		return (1);
+	}
+
+	if (WIFEXITED(pstat) && WEXITSTATUS(pstat)) {
+		/*
+		 * Remain silent for "normal" errors when doing shell file
+		 * name expansions, they almost certainly indicate nothing
+		 * more than a failure to match.
+		 *
+		 * Remain silent for vi read filter errors.  It's historic
+		 * practice.
+		 */
+		if (!silent) {
+			for (; isblank(*cmd); ++cmd);
+			p = msg_print(sp, cmd, &nf);
+			len = strlen(p);
+			msgq(sp, M_ERR, "%.*s%s: exited with status %d",
+			    MIN(len, 20), p, len > 20 ? " ..." : "",
+			    WEXITSTATUS(pstat));
+			if (nf)
+				FREE_SPACE(sp, p, 0);
+		}
+		return (1);
+	}
+	return (0);
+}
+
+/*
+ * XXX
+ * The sys_siglist[] table in the C library has this information, but there's
+ * no portable way to get to it.  (Believe me, I tried.)
+ */
+typedef struct _sigs {
+	int	 number;		/* signal number */
+	char	*message;		/* related message */
+} SIGS;
+
+SIGS const sigs[] = {
+#ifdef SIGABRT
+	SIGABRT,	"Abort trap",
+#endif
+#ifdef SIGALRM
+	SIGALRM,	"Alarm clock",
+#endif
+#ifdef SIGBUS
+	SIGBUS,		"Bus error",
+#endif
+#ifdef SIGCLD
+	SIGCLD,		"Child exited or stopped",
+#endif
+#ifdef SIGCHLD
+	SIGCHLD,	"Child exited",
+#endif
+#ifdef SIGCONT
+	SIGCONT,	"Continued",
+#endif
+#ifdef SIGDANGER
+	SIGDANGER,	"System crash imminent",
+#endif
+#ifdef SIGEMT
+	SIGEMT,		"EMT trap",
+#endif
+#ifdef SIGFPE
+	SIGFPE,		"Floating point exception",
+#endif
+#ifdef SIGGRANT
+	SIGGRANT,	"HFT monitor mode granted",
+#endif
+#ifdef SIGHUP
+	SIGHUP,		"Hangup",
+#endif
+#ifdef SIGILL
+	SIGILL,		"Illegal instruction",
+#endif
+#ifdef SIGINFO
+	SIGINFO,	"Information request",
+#endif
+#ifdef SIGINT
+	SIGINT,		"Interrupt",
+#endif
+#ifdef SIGIO
+	SIGIO,		"I/O possible",
+#endif
+#ifdef SIGIOT
+	SIGIOT,		"IOT trap",
+#endif
+#ifdef SIGKILL
+	SIGKILL,	"Killed",
+#endif
+#ifdef SIGLOST
+	SIGLOST,	"Record lock",
+#endif
+#ifdef SIGMIGRATE
+	SIGMIGRATE,	"Migrate process to another CPU",
+#endif
+#ifdef SIGMSG
+	SIGMSG,		"HFT input data pending",
+#endif
+#ifdef SIGPIPE
+	SIGPIPE,	"Broken pipe",
+#endif
+#ifdef SIGPOLL
+	SIGPOLL,	"I/O possible",
+#endif
+#ifdef SIGPRE
+	SIGPRE,		"Programming error",
+#endif
+#ifdef SIGPROF
+	SIGPROF,	"Profiling timer expired",
+#endif
+#ifdef SIGPWR
+	SIGPWR,		"Power failure imminent",
+#endif
+#ifdef SIGRETRACT
+	SIGRETRACT,	"HFT monitor mode retracted",
+#endif
+#ifdef SIGQUIT
+	SIGQUIT,	"Quit",
+#endif
+#ifdef SIGSAK
+	SIGSAK,		"Secure Attention Key",
+#endif
+#ifdef SIGSEGV
+	SIGSEGV,	"Segmentation fault",
+#endif
+#ifdef SIGSOUND
+	SIGSOUND,	"HFT sound sequence completed",
+#endif
+#ifdef SIGSTOP
+	SIGSTOP,	"Suspended (signal)",
+#endif
+#ifdef SIGSYS
+	SIGSYS,		"Bad system call",
+#endif
+#ifdef SIGTERM
+	SIGTERM,	"Terminated",
+#endif
+#ifdef SIGTRAP
+	SIGTRAP,	"Trace/BPT trap",
+#endif
+#ifdef SIGTSTP
+	SIGTSTP,	"Suspended",
+#endif
+#ifdef SIGTTIN
+	SIGTTIN,	"Stopped (tty input)",
+#endif
+#ifdef SIGTTOU
+	SIGTTOU,	"Stopped (tty output)",
+#endif
+#ifdef SIGURG
+	SIGURG,		"Urgent I/O condition",
+#endif
+#ifdef SIGUSR1
+	SIGUSR1,	"User defined signal 1",
+#endif
+#ifdef SIGUSR2
+	SIGUSR2,	"User defined signal 2",
+#endif
+#ifdef SIGVTALRM
+	SIGVTALRM,	"Virtual timer expired",
+#endif
+#ifdef SIGWINCH
+	SIGWINCH,	"Window size changes",
+#endif
+#ifdef SIGXCPU
+	SIGXCPU,	"Cputime limit exceeded",
+#endif
+#ifdef SIGXFSZ
+	SIGXFSZ,	"Filesize limit exceeded",
+#endif
+};
+
+/*
+ * sigmsg --
+ * 	Return a pointer to a message describing a signal.
+ */
+static const char *
+sigmsg(signo)
+	int signo;
+{
+	static char buf[40];
+	const SIGS *sigp;
+	int n;
+
+	for (n = 0,
+	    sigp = &sigs[0]; n < sizeof(sigs) / sizeof(sigs[0]); ++n, ++sigp)
+		if (sigp->number == signo)
+			return (sigp->message);
+	(void)snprintf(buf, sizeof(buf), "Unknown signal: %d", signo);
+	return (buf);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,322 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.30.23;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.30;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.30;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: devopen.c,v 1.3 2002/06/11 09:36:23 hugh Exp $ */
+/*	$NetBSD: devopen.c,v 1.10 2002/05/24 21:40:59 ragge Exp $ */
+/*
+ * Copyright (c) 1997 Ludd, University of Lule}, Sweden.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed at Ludd, University of 
+ *      Lule}, Sweden and its contributors.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include "lib/libsa/stand.h"
+
+#include "machine/rpb.h"
+#include "machine/sid.h"
+#include "machine/pte.h"
+#define	VAX780 1
+#include "machine/ka750.h"
+
+#include "arch/vax/bi/bireg.h"
+
+#include "vaxstand.h"
+
+int	atoi(char *);
+int nexaddr, csrbase;
+
+int
+devopen(f, fname, file)
+	struct open_file *f;
+	const char *fname;
+	char **file;
+{
+	int dev, unit, ctlr, part, adapt, i, a[4], x;
+	int *mapregs;
+	struct devsw *dp;
+	extern int cnvtab[];
+	char *s, *c;
+
+	part = 0;
+
+	/*
+	 * Adaptor and controller are normally zero (or uninteresting),
+	 * but we need to do some conversion here anyway (if it's a 
+	 * manual boot, but that's checked by the device driver).
+	 * Set them to -1 to tell if it's a set number or default.
+	 */
+	dev = bootrpb.devtyp;
+	unit = bootrpb.unit;
+	adapt = ctlr = -1;
+
+	if (dev == BDEV_KDB)
+		dev = BDEV_UDA; /* use the same driver */
+
+	for (i = 0, dp = 0; i < ndevs; i++)
+		if (cnvtab[i] == dev)
+			dp = devsw + i;
+
+	x = 0;
+	if ((s = index((char *)fname, '('))) {
+		*s++ = 0;
+
+		for (i = 0, dp = devsw; i < ndevs; i++, dp++)
+			if (dp->dv_name && strcmp(dp->dv_name, fname) == 0)
+				break;
+
+		if (i == ndevs) {
+			printf("No such device - Configured devices are:\n");
+			for (dp = devsw, i = 0; i < ndevs; i++, dp++)
+				if (dp->dv_name)
+					printf(" %s", dp->dv_name);
+			printf("\n");
+			return -1;
+		}
+		dev = cnvtab[i];
+		if ((c = index(s, ')')) == 0)
+			goto usage;
+
+		*c++ = 0;
+
+		if (*s) do {
+			a[x++] = atoi(s);
+			while (*s >= '0' && *s <= '9')
+				s++;
+
+			if (*s != ',' && *s != 0)
+				goto usage;
+		} while (*s++);
+
+		if (x)
+			part = a[x - 1];
+		if (x > 1)
+			unit = a[x - 2];
+		if (x > 2)
+			ctlr = a[x - 3];
+		if (x > 3)
+			adapt = a[0];
+		*file = c;
+	} else {
+		*file = (char *)fname;
+		c = (char *)fname;
+	}
+
+	if (!dp->dv_open) {
+		printf("Can't open device type %d\n", dev);
+		return(ENODEV);
+	}
+	f->f_dev = dp;
+	bootrpb.unit = unit;
+	bootrpb.devtyp = dev;
+
+	nexaddr = bootrpb.adpphy;
+	switch (vax_boardtype) {
+	case VAX_BTYP_750:
+		csrbase = (nexaddr == 0xf30000 ? 0xffe000 : 0xfbe000);
+		if (adapt < 0)
+			break;
+		nexaddr = (NEX750 + NEXSIZE * adapt);
+		csrbase = (adapt == 8 ? 0xffe000 : 0xfbe000);
+		break;
+	case VAX_BTYP_780:
+	case VAX_BTYP_790:
+		csrbase = 0x2007e000 + 0x40000 * ((nexaddr & 0x1e000) >> 13);
+		if (adapt < 0)
+			break;
+		nexaddr = ((int)NEX780 + NEXSIZE * adapt);
+		csrbase = 0x2007e000 + 0x40000 * adapt;
+		break;
+	case VAX_BTYP_9CC: /* 6000/200 */
+	case VAX_BTYP_9RR: /* 6000/400 */
+	case VAX_BTYP_1202: /* 6000/500 */
+		csrbase = 0;
+		if (ctlr < 0)
+			ctlr = bootrpb.adpphy & 15;
+		if (adapt < 0)
+			adapt = (bootrpb.adpphy >> 4) & 15;
+		nexaddr = BI_BASE(adapt, ctlr);
+		break;
+
+	case VAX_BTYP_8000:
+	case VAX_BTYP_8800:
+	case VAX_BTYP_8PS:
+		csrbase = 0; /* _may_ be a KDB */
+		nexaddr = bootrpb.csrphy;
+		if (ctlr < 0)
+			break;
+		if (adapt < 0)
+			nexaddr = (nexaddr & 0xff000000) + BI_NODE(ctlr);
+		else
+			nexaddr = BI_BASE(adapt, ctlr);
+		break;
+	case VAX_BTYP_610:
+		nexaddr = 0; /* No map regs */
+		csrbase = 0x20000000;
+		break;
+
+	case VAX_BTYP_VXT:
+		nexaddr = 0;
+		csrbase = bootrpb.csrphy;
+		break;
+	default:
+		nexaddr = 0; /* No map regs */
+		csrbase = 0x20000000;
+		/* Always map in the lowest 4M on qbus-based machines */
+		mapregs = (void *)0x20088000;
+		if (bootrpb.adpphy == 0x20087800)
+			for (i = 0; i < 8192; i++)
+				mapregs[i] = PG_V | i;
+		break;
+	}
+
+#ifdef DEV_DEBUG
+	printf("rpb.type %d rpb.unit %d rpb.csr %lx rpb.adp %lx\n",
+	    bootrpb.devtyp, bootrpb.unit, bootrpb.csrphy, bootrpb.adpphy);
+	printf("adapter %d ctlr %d unit %d part %d\n", adapt, ctlr, unit, part);
+	printf("nexaddr %x csrbase %x\n", nexaddr, csrbase);
+#endif
+
+	return (*dp->dv_open)(f, adapt, ctlr, unit, part);
+
+usage:
+	printf("usage: dev(adapter,controller,unit,partition)file -asd\n");
+	return -1;
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

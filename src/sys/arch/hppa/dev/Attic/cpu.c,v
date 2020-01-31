@@ -1,0 +1,429 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.5
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.4
+	cvs-200312222040:1.1.1.4
+	cvs-200310020700:1.1.1.4
+	cvs-200309271030:1.1.1.4
+	cvs-200309261655:1.1.1.4
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.4
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.2
+	ctm-3229:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.28.20;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.29;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.29;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.14.46.30;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.08.11.18.33.47;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.08.30.23.09.07;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2004.05.16.08.41.18;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: cpu.c,v 1.20 2002/12/08 17:21:43 mickey Exp $	*/
+
+/*
+ * Copyright (c) 1998-2002 Michael Shalayeff
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Michael Shalayeff.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF MIND,
+ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/device.h>
+#include <sys/reboot.h>
+
+#include <machine/cpufunc.h>
+#include <machine/pdc.h>
+#include <machine/reg.h>
+#include <machine/iomod.h>
+#include <machine/autoconf.h>
+
+#include <hppa/dev/cpudevs.h>
+
+struct cpu_softc {
+	struct  device sc_dev;
+
+	hppa_hpa_t sc_hpa;
+	void *sc_ih;
+};
+
+int	cpumatch(struct device *, void *, void *);
+void	cpuattach(struct device *, struct device *, void *);
+
+struct cfattach cpu_ca = {
+	sizeof(struct cpu_softc), cpumatch, cpuattach
+};
+
+struct cfdriver cpu_cd = {
+	NULL, "cpu", DV_DULL
+};
+
+int
+cpumatch(parent, cfdata, aux)   
+	struct device *parent;
+	void *cfdata;
+	void *aux;
+{
+	struct confargs *ca = aux;
+	struct cfdata *cf = cfdata;
+
+	/* there will be only one for now XXX */
+	/* probe any 1.0, 1.1 or 2.0 */
+	if (cf->cf_unit > 0 ||
+	    ca->ca_type.iodc_type != HPPA_TYPE_NPROC ||
+	    ca->ca_type.iodc_sv_model != HPPA_NPROC_HPPA)
+		return 0;
+
+	return 1;
+}
+
+int
+cpu_hardclock(void *v)
+{
+	hardclock(v);
+	return (1);
+}
+
+void
+cpuattach(parent, self, aux)
+	struct device *parent;
+	struct device *self;
+	void *aux;
+{
+	/* machdep.c */
+	extern struct pdc_cache pdc_cache;
+	extern struct pdc_btlb pdc_btlb;
+	extern u_int cpu_ticksnum, cpu_ticksdenom;
+	extern u_int fpu_enable;
+
+	struct pdc_model pdc_model PDC_ALIGNMENT;
+	struct pdc_cpuid pdc_cpuid PDC_ALIGNMENT;
+	u_int pdc_cversion[32] PDC_ALIGNMENT;
+	register struct cpu_softc *sc = (struct cpu_softc *)self;
+	register struct confargs *ca = aux;
+	const char *p = NULL;
+	u_int mhz = 100 * cpu_ticksnum / cpu_ticksdenom;
+	int err;
+
+	bzero (&pdc_cpuid, sizeof(pdc_cpuid));
+	if (pdc_call((iodcio_t)pdc, 0, PDC_MODEL, PDC_MODEL_CPUID,
+		     &pdc_cpuid, sc->sc_dev.dv_unit, 0, 0, 0) >= 0) {
+
+		/* patch for old 8200 */
+		if (pdc_cpuid.version == HPPA_CPU_PCXUP &&
+		    pdc_cpuid.revision > 0x0d)
+			pdc_cpuid.version = HPPA_CPU_PCXUP1;
+			
+		p = hppa_mod_info(HPPA_TYPE_CPU, pdc_cpuid.version);
+	}
+	/* otherwise try to guess on component version numbers */
+	else if (pdc_call((iodcio_t)pdc, 0, PDC_MODEL, PDC_MODEL_COMP,
+		     &pdc_cversion, sc->sc_dev.dv_unit) >= 0) {
+		/* XXX p = hppa_mod_info(HPPA_TYPE_CPU,pdc_cversion[0]); */
+	}
+
+	printf (": %s ", p? p : cpu_typename);
+	if (sc->sc_dev.dv_xname)
+		(*cpu_desidhash)();
+
+	if ((err = pdc_call((iodcio_t)pdc, 0, PDC_MODEL, PDC_MODEL_INFO,
+			    &pdc_model)) < 0) {
+#ifdef DEBUG
+		printf("PDC_MODEL(%d) ", err);
+#endif
+	} else {
+		static const char lvls[4][4] = { "0", "1", "1.5", "2" };
+
+		printf("L%s-%c ", lvls[pdc_model.pa_lvl], "AB"[pdc_model.mc]);
+	}
+
+	printf ("%d", mhz / 100);
+	if (mhz % 100 > 9)
+		printf(".%02d", mhz % 100);
+	printf("MHz, ");
+
+	if (fpu_enable) {
+		u_int32_t ver[2];
+
+		mtctl(fpu_enable, CR_CCR);
+		__asm volatile(
+		    "fstds   %%fr0,0(%0)\n\t"
+		    "copr,0,0\n\t"
+		    "fstds   %%fr0,0(%0)"
+		    :: "r" (&ver) : "memory");
+		mtctl(0, CR_CCR);
+		ver[0] = HPPA_FPUVER(ver[0]);
+		printf("FPU %s rev %d",
+		    hppa_mod_info(HPPA_TYPE_FPU, ver[0] >> 5), ver[0] & 0x1f);
+	}
+
+	/* if (pdc_model.sh)
+		printf("shadows, "); */
+
+	printf("\n%s: ", self->dv_xname);
+	p = "";
+	if (!pdc_cache.dc_conf.cc_sh) {
+		printf("%uK(%db/l) Icache, ",
+		    pdc_cache.ic_size / 1024, pdc_cache.ic_conf.cc_line * 16);
+		p = "D";
+	}
+	/* TODO decode associativity */
+	printf("%uK(%db/l) wr-%s %scoherent %scache, ",
+	    pdc_cache.dc_size / 1024, pdc_cache.dc_conf.cc_line * 16,
+	    pdc_cache.dc_conf.cc_wt? "thru" : "back",
+	    pdc_cache.dc_conf.cc_cst? "" : "in", p);
+
+	p = "";
+	if (!pdc_cache.dt_conf.tc_sh) {
+		printf("%u ITLB, ", pdc_cache.it_size);
+		p = "D";
+	}
+	printf("%u %scoherent %sTLB",
+	    pdc_cache.dt_size, pdc_cache.dt_conf.tc_cst? "" : "in", p);
+
+	if (pdc_btlb.finfo.num_c)
+		printf(", %u BTLB\n", pdc_btlb.finfo.num_c);
+	else
+		printf(", %u/%u D/I BTLBs\n",
+		    pdc_btlb.finfo.num_i, pdc_btlb.finfo.num_d);
+
+	/* sanity against lusers amongst config editors */
+	if (ca->ca_irq == 31)
+		sc->sc_ih = cpu_intr_establish(IPL_CLOCK, ca->ca_irq,
+		    cpu_hardclock, NULL /*frame*/, &sc->sc_dev);
+	else
+		printf ("%s: bad irq %d\n", sc->sc_dev.dv_xname, ca->ca_irq);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: cpu.c,v 1.21 2003/03/29 00:52:45 mickey Exp $	*/
+d146 1
+a146 1
+	printf("MHz");
+d159 1
+a159 1
+		printf(", FPU %s rev %d",
+d162 3
+@
+
+
+1.1.1.3
+log
+@Import the complete OpenBSD source tree (base system)
+as of CTM delta 3496 (roughly 1200 UTC today) into the
+vendor branch.
+Attention: this is a big update. Don't even try to
+build this system, OpenBSD 3.4-beta, yet on your own.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: cpu.c,v 1.22 2003/08/07 19:47:33 mickey Exp $	*/
+d193 1
+a193 1
+		    cpu_hardclock, NULL /*frame*/, sc->sc_dev.dv_xname);
+@
+
+
+1.1.1.4
+log
+@Synchronize with OpenBSD 3.4-beta
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: cpu.c,v 1.23 2003/08/22 18:09:52 mickey Exp $	*/
+a96 1
+	extern struct pdc_model pdc_model;
+d102 6
+a107 2
+	struct cpu_softc *sc = (struct cpu_softc *)self;
+	struct confargs *ca = aux;
+d109 1
+a109 1
+	const char *p;
+d111 27
+a137 2
+	printf (": %s ", cpu_typename);
+	if (pdc_model.hvers) {
+@
+
+
+1.1.1.5
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: cpu.c,v 1.24 2004/04/07 18:24:19 mickey Exp $	*/
+d4 1
+a4 1
+ * Copyright (c) 1998-2003 Michael Shalayeff
+d15 5
+d24 7
+a30 8
+ * IN NO EVENT SHALL THE AUTHOR OR HIS RELATIVES BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF MIND, USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+ * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+@
+
+

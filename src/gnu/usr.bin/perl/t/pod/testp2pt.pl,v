@@ -1,0 +1,355 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.44.01;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.01;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.57.58;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package TestPodIncPlainText;
+
+BEGIN {
+   use File::Basename;
+   use File::Spec;
+   use Cwd qw(abs_path);
+   push @@INC, '..';
+   my $THISDIR = abs_path(dirname $0);
+   unshift @@INC, $THISDIR;
+   require "testcmp.pl";
+   import TestCompare;
+   my $PARENTDIR = dirname $THISDIR;
+   push @@INC, map { File::Spec->catfile($_, 'lib') } ($PARENTDIR, $THISDIR);
+}
+
+#use strict;
+#use diagnostics;
+use Carp;
+use Exporter;
+#use File::Compare;
+#use Cwd qw(abs_path);
+
+use vars qw($MYPKG @@EXPORT @@ISA);
+$MYPKG = eval { (caller)[0] };
+@@EXPORT = qw(&testpodplaintext);
+BEGIN {
+    if ( $] >= 5.005_58 ) {
+       require Pod::Text;
+       @@ISA = qw( Pod::Text );
+    }
+    else {
+       require Pod::PlainText;
+       @@ISA = qw( Pod::PlainText );
+    }
+    require VMS::Filespec if $^O eq 'VMS';
+}
+
+## Hardcode settings for TERMCAP and COLUMNS so we can try to get
+## reproducible results between environments
+@@ENV{qw(TERMCAP COLUMNS)} = ('co=76:do=^J', 76);
+
+sub catfile(@@) { File::Spec->catfile(@@_); }
+
+my $INSTDIR = abs_path(dirname $0);
+if ($^O eq 'VMS') { # clean up directory spec
+    $INSTDIR = VMS::Filespec::unixpath($INSTDIR);
+    $INSTDIR =~ s#/$##;
+    $INSTDIR =~ s#/000000/#/#;
+}
+
+if ($^O eq 'VMS') {
+  # File::Spec::VMS::splitdir doesn't work on Unix syntax filespecs, but
+  # on VMS syntax filespecs dirname returns (as documented) the directory
+  # part of the path (NOT the parent directory, as is assumed in this script).
+  $INSTDIR = (dirname $INSTDIR) if (basename($INSTDIR) eq 'pod');
+  $INSTDIR = (dirname $INSTDIR) if (basename($INSTDIR) eq 't');
+}
+else {
+  $INSTDIR = (dirname $INSTDIR) if ((File::Spec->splitdir($INSTDIR))[-1] eq 'pod');
+  $INSTDIR = (dirname $INSTDIR) if ((File::Spec->splitdir($INSTDIR))[-1] eq 't');
+}
+
+my @@PODINCDIRS = ( catfile($INSTDIR, 'lib', 'Pod'),
+                   catfile($INSTDIR, 'scripts'),
+                   catfile($INSTDIR, 'pod'),
+                   catfile($INSTDIR, 't', 'pod')
+                 );
+print "PODINCDIRS = ",join(', ',@@PODINCDIRS),"\n";
+
+## Find the path to the file to =include
+sub findinclude {
+    my $self    = shift;
+    my $incname = shift;
+
+    ## See if its already found w/out any "searching;
+    return  $incname if (-r $incname);
+
+    ## Need to search for it. Look in the following directories ...
+    ##   1. the directory containing this pod file
+    my $thispoddir = dirname $self->input_file;
+    ##   2. the parent directory of the above
+    my $parentdir  = dirname $thispoddir;
+    my @@podincdirs = ($thispoddir, $parentdir, @@PODINCDIRS);
+
+    for (@@podincdirs) {
+       my $incfile = catfile($_, $incname);
+       return $incfile  if (-r $incfile);
+    }
+    warn("*** Can't find =include file $incname in @@podincdirs\n");
+    return "";
+}
+
+sub command {
+    my $self = shift;
+    my ($cmd, $text, $line_num, $pod_para)  = @@_;
+    $cmd     = ''  unless (defined $cmd);
+    local $_ = $text || '';
+    my $out_fh  = $self->output_handle;
+
+    ## Defer to the superclass for everything except '=include'
+    return  $self->SUPER::command(@@_) unless ($cmd eq "include");
+
+    ## We have an '=include' command
+    my $incdebug = 1; ## debugging
+    my @@incargs = split;
+    if (@@incargs == 0) {
+        warn("*** No filename given for '=include'\n");
+        return;
+    }
+    my $incfile  = $self->findinclude(shift @@incargs)  or  return;
+    my $incbase  = basename $incfile;
+    print $out_fh "###### begin =include $incbase #####\n"  if ($incdebug);
+    $self->parse_from_file( {-cutting => 1}, $incfile );
+    print $out_fh "###### end =include $incbase #####\n"    if ($incdebug);
+}
+
+sub begin_input {
+   $_[0]->{_INFILE} = VMS::Filespec::unixify($_[0]->{_INFILE}) if $^O eq 'VMS';
+}
+
+sub podinc2plaintext( $ $ ) {
+    my ($infile, $outfile) = @@_;
+    local $_;
+    my $text_parser = $MYPKG->new(quotes => "`'");
+    $text_parser->parse_from_file($infile, $outfile);
+}
+
+sub testpodinc2plaintext( @@ ) {
+   my %args = @@_;
+   my $infile  = $args{'-In'}  || croak "No input file given!";
+   my $outfile = $args{'-Out'} || croak "No output file given!";
+   my $cmpfile = $args{'-Cmp'} || croak "No compare-result file given!";
+
+   my $different = '';
+   my $testname = basename $cmpfile, '.t', '.xr';
+
+   unless (-e $cmpfile) {
+      my $msg = "*** Can't find comparison file $cmpfile for testing $infile";
+      warn  "$msg\n";
+      return  $msg;
+   }
+
+   print "# Running testpodinc2plaintext for '$testname'...\n";
+   ## Compare the output against the expected result
+   podinc2plaintext($infile, $outfile);
+   if ( testcmp($outfile, $cmpfile) ) {
+       $different = "$outfile is different from $cmpfile";
+   }
+   else {
+       unlink($outfile);
+   }
+   return  $different;
+}
+
+sub testpodplaintext( @@ ) {
+   my %opts = (ref $_[0] eq 'HASH') ? %{shift()} : ();
+   my @@testpods = @@_;
+   my ($testname, $testdir) = ("", "");
+   my ($podfile, $cmpfile) = ("", "");
+   my ($outfile, $errfile) = ("", "");
+   my $passes = 0;
+   my $failed = 0;
+   local $_;
+
+   print "1..", scalar @@testpods, "\n"  unless ($opts{'-xrgen'});
+
+   for $podfile (@@testpods) {
+      ($testname, $_) = fileparse($podfile);
+      $testdir ||=  $_;
+      $testname  =~ s/\..*$//;
+      $cmpfile   =  $testdir . $testname . '.xr';
+      $outfile   =  $testdir . $testname . '.OUT';
+
+      if ($opts{'-xrgen'}) {
+          if ($opts{'-force'} or ! -e $cmpfile) {
+             ## Create the comparison file
+             print "# Creating expected result for \"$testname\"" .
+                   " pod2plaintext test ...\n";
+             podinc2plaintext($podfile, $cmpfile);
+          }
+          else {
+             print "# File $cmpfile already exists" .
+                   " (use '-force' to regenerate it).\n";
+          }
+          next;
+      }
+
+      my $failmsg = testpodinc2plaintext
+                        -In  => $podfile,
+                        -Out => $outfile,
+                        -Cmp => $cmpfile;
+      if ($failmsg) {
+          ++$failed;
+          print "#\tFAILED. ($failmsg)\n";
+	  print "not ok ", $failed+$passes, "\n";
+      }
+      else {
+          ++$passes;
+          unlink($outfile);
+          print "#\tPASSED.\n";
+	  print "ok ", $failed+$passes, "\n";
+      }
+   }
+   return  $passes;
+}
+
+1;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d27 8
+a34 2
+    require Pod::PlainText;
+    @@ISA = qw( Pod::PlainText );
+d45 18
+a62 6
+$INSTDIR = VMS::Filespec::unixpath($INSTDIR) if $^O eq 'VMS';
+$INSTDIR =~ s#/$## if $^O eq 'VMS';
+$INSTDIR =~ s#:$## if $^O eq 'MacOS';
+$INSTDIR = (dirname $INSTDIR) if (basename($INSTDIR) eq 'pod');
+$INSTDIR =~ s#:$## if $^O eq 'MacOS';
+$INSTDIR = (dirname $INSTDIR) if (basename($INSTDIR) eq 't');
+d68 1
+d124 1
+a124 1
+    my $text_parser = $MYPKG->new;
+d170 1
+a170 1
+      $testname  =~ s/\.t$//;
+@
+

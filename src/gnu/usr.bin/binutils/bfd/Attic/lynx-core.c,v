@@ -1,0 +1,612 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.52.55;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.00.38;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.07;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.07;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.26.56;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.53;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.04.33;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* BFD back end for Lynx core files
+   Copyright 1993, 1994, 1995, 2001, 2002 Free Software Foundation, Inc.
+   Written by Stu Grossman of Cygnus Support.
+
+This file is part of BFD, the Binary File Descriptor library.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "bfd.h"
+#include "sysdep.h"
+#include "libbfd.h"
+
+#ifdef LYNX_CORE
+
+#include <sys/conf.h>
+#include <sys/kernel.h>
+/* sys/kernel.h should define this, but doesn't always, sigh.  */
+#ifndef __LYNXOS
+#define __LYNXOS
+#endif
+#include <sys/mem.h>
+#include <sys/signal.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <sys/itimer.h>
+#include <sys/file.h>
+#include <sys/proc.h>
+
+/* These are stored in the bfd's tdata */
+
+struct lynx_core_struct
+{
+  int sig;
+  char cmd[PNMLEN + 1];
+};
+
+#define core_hdr(bfd) ((bfd)->tdata.lynx_core_data)
+#define core_signal(bfd) (core_hdr(bfd)->sig)
+#define core_command(bfd) (core_hdr(bfd)->cmd)
+
+/* Handle Lynx core dump file.  */
+
+static asection *
+make_bfd_asection (abfd, name, flags, _raw_size, vma, filepos)
+     bfd *abfd;
+     const char *name;
+     flagword flags;
+     bfd_size_type _raw_size;
+     bfd_vma vma;
+     file_ptr filepos;
+{
+  asection *asect;
+  char *newname;
+
+  newname = bfd_alloc (abfd, (bfd_size_type) strlen (name) + 1);
+  if (!newname)
+    return NULL;
+
+  strcpy (newname, name);
+
+  asect = bfd_make_section (abfd, newname);
+  if (!asect)
+    return NULL;
+
+  asect->flags = flags;
+  asect->_raw_size = _raw_size;
+  asect->vma = vma;
+  asect->filepos = filepos;
+  asect->alignment_power = 2;
+
+  return asect;
+}
+
+const bfd_target *
+lynx_core_file_p (abfd)
+     bfd *abfd;
+{
+  int secnum;
+  struct pssentry pss;
+  bfd_size_type tcontext_size;
+  core_st_t *threadp;
+  int pagesize;
+  asection *newsect;
+  bfd_size_type amt;
+
+  pagesize = getpagesize ();	/* Serious cross-target issue here...  This
+				   really needs to come from a system-specific
+				   header file.  */
+
+  /* Get the pss entry from the core file */
+
+  if (bfd_seek (abfd, (file_ptr) 0, SEEK_SET) != 0)
+    return NULL;
+
+  amt = sizeof pss;
+  if (bfd_bread ((void *) &pss, amt, abfd) != amt)
+    {
+      /* Too small to be a core file */
+      if (bfd_get_error () != bfd_error_system_call)
+	bfd_set_error (bfd_error_wrong_format);
+      return NULL;
+    }
+
+  amt = sizeof (struct lynx_core_struct);
+  core_hdr (abfd) = (struct lynx_core_struct *) bfd_zalloc (abfd, amt);
+
+  if (!core_hdr (abfd))
+    return NULL;
+
+  strncpy (core_command (abfd), pss.pname, PNMLEN + 1);
+
+  /* Compute the size of the thread contexts */
+
+  tcontext_size = pss.threadcnt * sizeof (core_st_t);
+
+  /* Allocate space for the thread contexts */
+
+  threadp = (core_st_t *) bfd_alloc (abfd, tcontext_size);
+  if (!threadp)
+    goto fail;
+
+  /* Save thread contexts */
+
+  if (bfd_seek (abfd, (file_ptr) pagesize, SEEK_SET) != 0)
+    goto fail;
+
+  if (bfd_bread ((void *) threadp, tcontext_size, abfd) != tcontext_size)
+    {
+      /* Probably too small to be a core file */
+      if (bfd_get_error () != bfd_error_system_call)
+	bfd_set_error (bfd_error_wrong_format);
+      goto fail;
+    }
+
+  core_signal (abfd) = threadp->currsig;
+
+  newsect = make_bfd_asection (abfd, ".stack",
+			       SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS,
+			       pss.ssize,
+			       pss.slimit,
+			       pagesize + tcontext_size);
+  if (!newsect)
+    goto fail;
+
+  newsect = make_bfd_asection (abfd, ".data",
+			       SEC_ALLOC + SEC_LOAD + SEC_HAS_CONTENTS,
+			       pss.data_len + pss.bss_len,
+			       pss.data_start,
+			       pagesize + tcontext_size + pss.ssize
+#if defined (SPARC) || defined (__SPARC__)
+			       /* SPARC Lynx seems to start dumping
+                                  the .data section at a page
+                                  boundary.  It's OK to check a
+                                  #define like SPARC here because this
+                                  file can only be compiled on a Lynx
+                                  host.  */
+			       + pss.data_start % pagesize
+#endif
+			       );
+  if (!newsect)
+    goto fail;
+
+/* And, now for the .reg/XXX pseudo sections.  Each thread has it's own
+   .reg/XXX section, where XXX is the thread id (without leading zeros).  The
+   currently running thread (at the time of the core dump) also has an alias
+   called `.reg' (just to keep GDB happy).  Note that we use `.reg/XXX' as
+   opposed to `.regXXX' because GDB expects that .reg2 will be the floating-
+   point registers.  */
+
+  newsect = make_bfd_asection (abfd, ".reg",
+			       SEC_HAS_CONTENTS,
+			       sizeof (core_st_t),
+			       0,
+			       pagesize);
+  if (!newsect)
+    goto fail;
+
+  for (secnum = 0; secnum < pss.threadcnt; secnum++)
+    {
+      char secname[100];
+
+      sprintf (secname, ".reg/%d", BUILDPID (0, threadp[secnum].tid));
+      newsect = make_bfd_asection (abfd, secname,
+				   SEC_HAS_CONTENTS,
+				   sizeof (core_st_t),
+				   0,
+				   pagesize + secnum * sizeof (core_st_t));
+      if (!newsect)
+	goto fail;
+    }
+
+  return abfd->xvec;
+
+ fail:
+  bfd_release (abfd, core_hdr (abfd));
+  core_hdr (abfd) = NULL;
+  bfd_section_list_clear (abfd);
+  return NULL;
+}
+
+char *
+lynx_core_file_failing_command (abfd)
+     bfd *abfd;
+{
+  return core_command (abfd);
+}
+
+int
+lynx_core_file_failing_signal (abfd)
+     bfd *abfd;
+{
+  return core_signal (abfd);
+}
+
+bfd_boolean
+lynx_core_file_matches_executable_p  (core_bfd, exec_bfd)
+     bfd *core_bfd, *exec_bfd;
+{
+  return TRUE;		/* FIXME, We have no way of telling at this point */
+}
+
+#endif /* LYNX_CORE */
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 1995, 2001 Free Software Foundation, Inc.
+d58 1
+a58 1
+     CONST char *name;
+d67 1
+a67 1
+  newname = bfd_alloc (abfd, strlen (name) + 1);
+a89 1
+  int val;
+d92 1
+a92 1
+  size_t tcontext_size;
+d96 1
+d104 1
+a104 1
+  if (bfd_seek (abfd, 0, SEEK_SET) != 0)
+d107 2
+a108 2
+  val = bfd_read ((void *)&pss, 1, sizeof pss, abfd);
+  if (val != sizeof pss)
+d116 2
+a117 2
+  core_hdr (abfd) = (struct lynx_core_struct *)
+    bfd_zalloc (abfd, sizeof (struct lynx_core_struct));
+d130 1
+a130 1
+  threadp = (core_st_t *)bfd_alloc (abfd, tcontext_size);
+d132 1
+a132 1
+    return NULL;
+d136 2
+a137 4
+  if (bfd_seek (abfd, pagesize, SEEK_SET) != 0)
+    return NULL;
+
+  val = bfd_read ((void *)threadp, pss.threadcnt, sizeof (core_st_t), abfd);
+d139 1
+a139 1
+  if (val != tcontext_size)
+d144 1
+a144 1
+      return NULL;
+d155 1
+a155 1
+    return NULL;
+d173 1
+a173 1
+    return NULL;
+d188 1
+a188 1
+    return NULL;
+d201 1
+a201 1
+	return NULL;
+d205 6
+d227 1
+a227 1
+boolean
+d231 1
+a231 1
+  return true;		/* FIXME, We have no way of telling at this point */
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 1995, 2001, 2002 Free Software Foundation, Inc.
+d58 1
+a58 1
+     const char *name;
+d67 1
+a67 1
+  newname = bfd_alloc (abfd, (bfd_size_type) strlen (name) + 1);
+d90 1
+d93 1
+a93 1
+  bfd_size_type tcontext_size;
+a96 1
+  bfd_size_type amt;
+d104 1
+a104 1
+  if (bfd_seek (abfd, (file_ptr) 0, SEEK_SET) != 0)
+d107 2
+a108 2
+  amt = sizeof pss;
+  if (bfd_bread ((void *) &pss, amt, abfd) != amt)
+d116 2
+a117 2
+  amt = sizeof (struct lynx_core_struct);
+  core_hdr (abfd) = (struct lynx_core_struct *) bfd_zalloc (abfd, amt);
+d130 1
+a130 1
+  threadp = (core_st_t *) bfd_alloc (abfd, tcontext_size);
+d132 1
+a132 1
+    goto fail;
+d136 4
+a139 2
+  if (bfd_seek (abfd, (file_ptr) pagesize, SEEK_SET) != 0)
+    goto fail;
+d141 1
+a141 1
+  if (bfd_bread ((void *) threadp, tcontext_size, abfd) != tcontext_size)
+d146 1
+a146 1
+      goto fail;
+d157 1
+a157 1
+    goto fail;
+d175 1
+a175 1
+    goto fail;
+d190 1
+a190 1
+    goto fail;
+d203 1
+a203 1
+	goto fail;
+a206 6
+
+ fail:
+  bfd_release (abfd, core_hdr (abfd));
+  core_hdr (abfd) = NULL;
+  bfd_section_list_clear (abfd);
+  return NULL;
+d223 1
+a223 1
+bfd_boolean
+d227 1
+a227 1
+  return TRUE;		/* FIXME, We have no way of telling at this point */
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 1995, 2001, 2002 Free Software Foundation, Inc.
+d58 1
+a58 1
+     const char *name;
+d67 1
+a67 1
+  newname = bfd_alloc (abfd, (bfd_size_type) strlen (name) + 1);
+d90 1
+d93 1
+a93 1
+  bfd_size_type tcontext_size;
+a96 1
+  bfd_size_type amt;
+d104 1
+a104 1
+  if (bfd_seek (abfd, (file_ptr) 0, SEEK_SET) != 0)
+d107 2
+a108 2
+  amt = sizeof pss;
+  if (bfd_bread ((void *) &pss, amt, abfd) != amt)
+d116 2
+a117 2
+  amt = sizeof (struct lynx_core_struct);
+  core_hdr (abfd) = (struct lynx_core_struct *) bfd_zalloc (abfd, amt);
+d130 1
+a130 1
+  threadp = (core_st_t *) bfd_alloc (abfd, tcontext_size);
+d132 1
+a132 1
+    goto fail;
+d136 4
+a139 2
+  if (bfd_seek (abfd, (file_ptr) pagesize, SEEK_SET) != 0)
+    goto fail;
+d141 1
+a141 1
+  if (bfd_bread ((void *) threadp, tcontext_size, abfd) != tcontext_size)
+d146 1
+a146 1
+      goto fail;
+d157 1
+a157 1
+    goto fail;
+d175 1
+a175 1
+    goto fail;
+d190 1
+a190 1
+    goto fail;
+d203 1
+a203 1
+	goto fail;
+a206 6
+
+ fail:
+  bfd_release (abfd, core_hdr (abfd));
+  core_hdr (abfd) = NULL;
+  bfd_section_list_clear (abfd);
+  return NULL;
+d223 1
+a223 1
+bfd_boolean
+d227 1
+a227 1
+  return TRUE;		/* FIXME, We have no way of telling at this point */
+@
+

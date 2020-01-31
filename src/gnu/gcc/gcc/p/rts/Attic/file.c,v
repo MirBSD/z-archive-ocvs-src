@@ -1,0 +1,3218 @@
+head	1.3;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.13.04.53.45;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2004.03.10.17.37.48;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.01.24;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.01.24;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@no C++, Java(TM), Pascal, Objective C or Fortran 77 for a while
+as discussed on the mailing list
+@
+text
+@/* $MirBSD: src/gnu/gcc/gcc/p/rts/file.c,v 1.2 2004/03/10 17:37:48 tg Exp $ */
+
+/*File handling
+
+  Note: No files are actually packed.
+
+  Copyright (C) 1991-2003 Free Software Foundation, Inc.
+
+  Authors: Jukka Virtanen <jtv@@hut.fi>
+           Frank Heckenbach <frank@@pascal.gnu.de>
+           Peter Gerwinski <peter@@gerwinski.de>
+
+  This file is part of GNU Pascal.
+
+  GNU Pascal is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published
+  by the Free Software Foundation; either version 2, or (at your
+  option) any later version.
+
+  GNU Pascal is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with GNU Pascal; see the file COPYING. If not, write to the
+  Free Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+  02111-1307, USA.
+
+  As a special exception, if you link this file with files compiled
+  with a GNU compiler to produce an executable, this does not cause
+  the resulting executable to be covered by the GNU General Public
+  License. This exception does not however invalidate any other
+  reasons why the executable file might be covered by the GNU
+  General Public License. */
+
+#include "rts.h"
+
+/*This file does not call any system routines directly, only
+  through the routines in rts.c. It is therefore ready for
+  translation to Pascal (see ../script/file-c-to-pas). Translation
+  should be done "atomically", so there won't be versions of the
+  structures declared here in C *and* Pascal in the meantime. The
+  following external declarations for Pascal routines will become
+  superfluous then, and some of these routines can actually be
+  merged with the translation of this file. The declarations of the
+  routines of this file in rts.c will, of course, also become
+  superfluous then -- Pascal declarations are available in rtsc.pas.
+ */
+
+#ifdef HAVE_STDIO_H
+#include <stdio.h>
+#endif
+
+/* rts.c */
+Boolean _p_IsInfinity (long double x) __attribute__((const));
+Boolean _p_IsNotANumber (long double x) __attribute__((const));
+int _p_Access (const char *Name, int Request);
+int _p_Stat (const char *Name, FileSizeType *size,
+  UnixTimeType *atime, UnixTimeType *mtime, UnixTimeType *ctime,
+  int *user, int *group, int *mode, int *device, int *inode, int *links,
+  Boolean *symlink, Boolean *dir, Boolean *special);
+int _p_OpenHandle (const char *Name, int Mode);
+ssize_t _p_ReadHandle (int Handle, char *Buffer, size_t Size);
+ssize_t _p_WriteHandle (int Handle, const char *Buffer, size_t Size);
+int _p_CloseHandle (int Handle);
+void _p_FlushHandle (int Handle);
+int _p_CStringRename (const char *OldName, const char *NewName);
+int _p_CStringUnlink (const char *Name);
+int _p_CStringChMod (const char *Name, int Mode);
+int _p_CStringChOwn (const char *Name, int Owner, int Group);
+int _p_CStringUTime (const char *Name, UnixTimeType AccessTime, UnixTimeType ModificationTime);
+FileSizeType _p_SeekHandle (int Handle, FileSizeType Offset, int Whence);
+int _p_TruncateHandle (int Handle, FileSizeType Size);
+Boolean _p_LockHandle (int Handle, Boolean WriteLock, Boolean Block);
+Boolean _p_UnlockHandle (int Handle);
+int _p_SelectHandle (int Count, InternalSelectType *Events, MicroSecondTimeType MicroSeconds);
+void *_p_MMapHandle (void *Start, size_t Length, int Access, Boolean Shared, int Handle, FileSizeType Offset);
+int _p_MUnMapHandle (void *Start, size_t Length);
+char *_p_GetTerminalNameHandle (int Handle, Boolean NeedName, char *DefaultName);
+/* numtodec.pas */
+char *_p_CardToDecimal (unsigned int, char *);
+char *_p_LongCardToDecimal (unsigned long long int, char *);
+char *_p_LongRealToDecimal (long double, int, int, int, int, int, int *);
+/* files.pas */
+void _p_InternalAssign (FDR, const char *, int);
+/* filename.pas */
+extern char *_p_TtyDeviceNameVar;
+Boolean _p_IsDirSeparator (char);
+char *_p_GetTempFileName_CString (void);
+char *_p_Slash2OSDirSeparator_CString (char *);
+/* error.pas */
+extern int _p_InOutRes;
+extern void *_p_InOutResString;
+char *_p_GetErrorMessage (int);
+void _p_IOError (int, Boolean);
+void _p_IOErrorCString (int, const char *, Boolean);
+void _p_IOErrorFile (int, FDR, Boolean);
+void _p_RuntimeWarning (const char *);
+void _p_RuntimeWarningInteger (const char *, long int);
+void _p_RuntimeWarningCString (const char *, const char *);
+void _p_StartTempIOError (void);
+int _p_EndTempIOError (void);
+/* string.pas */
+int _p_CStringCaseComp (const char *, const char *);
+char *_p_CStringLastChPos (const char *, char);
+char *_p_CStringLoCase (char *);
+/* rts.c */
+enum {
+  MODE_EXEC     = 1 << 0,
+  MODE_WRITE    = 1 << 1,
+  MODE_READ     = 1 << 2,
+  MODE_FILE     = 1 << 3,
+  MODE_DIR      = 1 << 4,
+  MODE_SPECIAL  = 1 << 5,
+  MODE_SYMLINK  = 1 << 6,
+  MODE_CREATE   = 1 << 7,
+  MODE_EXCL     = 1 << 8,
+  MODE_TRUNCATE = 1 << 9,
+  MODE_BINARY   = 1 << 10
+};
+enum {
+  SeekAbsolute = 0,
+  SeekRelative = 1,
+  SeekFileEnd  = 2
+};
+
+#define ValInternalError 999
+
+#define IOERROR(err, ErrNoFlag, retval) do { _p_IOError (err, ErrNoFlag); return retval; } while (0)
+#define IOERROR_STRING(err, str, ErrNoFlag, retval) do { _p_IOErrorCString (err, str, ErrNoFlag); return retval; } while (0)
+#define IOERROR_FILE(err, f, ErrNoFlag, retval) do { _p_IOErrorFile (err, f, ErrNoFlag); return retval; } while (0)
+
+#define NEWPAGE '\f'  /* `Page' writes this */
+#define NEWLINE '\n'  /* `WriteLn' writes this */
+
+#define EOT '\004'  /* File name queries abort if first char is EOT */
+
+/* For `Write (Boolean)' */
+#define FALSE_str "False"
+#define TRUE_str  "True"
+
+typedef enum { NoRangeCheck, SignedRangeCheck, UnsignedRangeCheck } TRangeCheck;
+typedef enum { fo_None, fo_Reset, fo_Rewrite, fo_Append, fo_SeekRead, fo_SeekWrite, fo_SeekUpdate } TOpenMode;
+int _p_OpenErrorCode[7] = { 911, 442, 443, 445, 442, 443, 444 };
+typedef void      (*TOpenProc)   (void *, TOpenMode);
+typedef int       (*TSelectFunc) (void *, Boolean);
+typedef void      (*TSelectProc) (void *, Boolean *, Boolean *, Boolean *);
+typedef size_t    (*TReadFunc)   (void *, char *, size_t);
+typedef size_t    (*TWriteFunc)  (void *, const char *, size_t);
+typedef void      (*TFileProc)   (void *);
+typedef TFileProc TFlushProc;
+typedef TFileProc TCloseProc;
+typedef TFileProc TDoneProc;
+
+#define DefaultOpenProc  ((TOpenProc)  -1)
+#define DefaultReadFunc  ((TReadFunc)  -1)
+#define DefaultWriteFunc ((TWriteFunc) -1)
+#define DefaultFlushProc ((TFlushProc) -1)
+#define DefaultCloseProc ((TCloseProc) -1)
+
+/* Association list for internal and external file names set with an
+   RTS command line option, see init.pas (`int_name' is the file
+   name in the program, case is irrelevant). */
+typedef struct FileAssociation
+{
+  struct FileAssociation *Next;
+  const char *int_name, *ext_name;
+} TFileAssociation;
+
+typedef struct
+{
+  FDR f;
+  Boolean WantedReadOrEOF,
+          WantedRead,
+          WantedEOF,
+          WantedWrite,
+          WantedException,
+          WantedAlways,
+          OccurredReadOrEOF,
+          OccurredRead,
+          OccurredEOF,
+          OccurredWrite,
+          OccurredException;
+} InternalIOSelectType;
+
+/* This is a RECORD_TYPE in the compiler, so it can be a struct. It
+   works only if you pass a reference to this, because the string
+   field is variable length. */
+typedef struct
+{
+  int  Capacity;
+  int  length;
+  char string[1];
+} STRING;
+
+/* This type must match the compiler definition of BindingType in
+   predef.c. The name is copied to heap, so the string length does
+   not matter for the Run Time System. */
+typedef struct
+{
+  char Bound;
+  char Force;
+  char Extensions_Valid;
+  char Readable;
+  char Writable;
+  char Executable;
+  char Existing;
+  char Directory;
+  char Special;
+  char SymLink;
+  FileSizeType Size;
+  UnixTimeType AccessTime;
+  UnixTimeType ModificationTime;
+  UnixTimeType ChangeTime;
+  int User;
+  int Group;
+  int Mode;
+  int Device;
+  int INode;
+  int Links;
+  Boolean TextBinary;
+  int Handle;
+  Boolean CloseFlag;
+  STRING Name;
+} BindingType;
+
+/* The Pascal file object */
+struct Fdr
+{
+  const char *FilNam;     /* internal name of the file */
+  int    RtsSta;          /* RTS status bits */
+  int    FilSta;          /* status bits */
+  size_t FilSiz;          /* buffer size: if packed then in bits else bytes */
+
+  BindingType *Binding;   /* binding of the file */
+  const char *BoundName;  /* name the binding refers to as a CString */
+  int   BindingChanged;
+
+  unsigned char *FilBuf, DefaultFilBuf[8];  /* file buffer */
+
+  /* Internal buffering and used for ReadStr/WriteStr */
+  unsigned char *BufPtr;  /* NOT the Standard Pascal file buffer, that is (*FilBuf) */
+  size_t BufSize;
+  size_t BufPos;
+  int    Flags;
+
+  const char *ExtNam;    /* external name of the file */
+  const char *NameToUnlink;
+  int   Handle;          /* file handle */
+  Boolean CloseFlag;
+
+  void       *PrivateData;
+  TOpenProc   OpenProc;
+  TSelectFunc SelectFunc;
+  TSelectProc SelectProc;
+  TReadFunc   ReadFunc;
+  TWriteFunc  WriteFunc;
+  TFlushProc  FlushProc;
+  TCloseProc  CloseProc;
+  TDoneProc   DoneProc;
+  unsigned char InternalBuffer[FILE_BUFSIZE];  /* NOT the Standard Pascal file buffer, that is (*FilBuf) */
+};
+
+/* Make sure that FDR_Size >= sizeof (struct Fdr). Otherwise, you'll
+   get a compiler error here (size of array `Dummy' is negative). */
+static int AssertDummy[(FDR_Size >= sizeof (struct Fdr)) * 2 - 1];
+
+/* FilSta bit definitions */
+#define FiUnd      (1 << 0)   /* File buffer is totally undefined */
+#define FiEof      (1 << 2)   /* End of file is True */
+#define FiEoln     (1 << 3)   /* End of line is True. Text files only */
+#define FiTxt      (1 << 4)   /* It's a text file */
+#define FiUntyped  (1 << 5)   /* It's an untyped file */
+#define FiExt      (1 << 6)   /* External file */
+#define FiExtB     (1 << 7)   /* External or bound file */
+#define FiPck      (1 << 8)   /* Packed file */
+#define FiUnread   (1 << 9)   /* Nothing read yet */
+#define FiEofOK    (1 << 10)  /* Internal flag if FiUnd is set: Accept EOF without EOLn */
+#define FiDacc     (1 << 11)  /* This is a direct access file */
+#define FiLGet     (1 << 12)  /* Must do a get before buffer reference (lazy I/O) */
+#define FiByte     (1 << 13)  /* File buffer is actually one byte size */
+#define FiFileName (1 << 14)  /* Derive external file name from internal file name */
+#define FiBindable (1 << 15)  /* File is bindable */
+#define FiExcl     (1 << 16)  /* Open file exclusively */
+
+/* RtsSta bit definitions */
+#define FiNOP    0          /* File has not been opened */
+#define FiRONLY  (1 << 0)   /* File opened but is read only */
+#define FiORE    (1 << 1)   /* File open for reading */
+#define FiWRI    (1 << 2)   /* File open for writing */
+#define FiRND    (1 << 3)   /* File open for random access */
+#define FiWONLY  (1 << 4)   /* File opened but is write only */
+#define FiTty    (1 << 10)  /* Device is a Tty: flush output before GET */
+
+/* RtsSta bits altered by Seek* routines */
+#define FiANY (FiORE | FiWRI | FiRND)
+
+/* FilSta bits that must be preserved by the RTS when files are manipulated. */
+#define STATUS_KEEP (FiTxt | FiUntyped | FiExt | FiExtB | FiPck | FiDacc | FiByte | FiFileName | FiBindable)
+
+/* Test, clear and set status bits in FilSta */
+#define fil_tst(f, bit) ((f)->FilSta & (bit))
+#define fil_clr(f, bit) ((f)->FilSta &= ~(bit))
+#define fil_set(f, bit) ((f)->FilSta |= (bit))
+
+/* Test, clear and set status bits in RtsSta */
+#define TST_STATUS(f, bit) ((f)->RtsSta & (bit))
+#define CLR_STATUS(f, bit) ((f)->RtsSta &= ~(bit))
+#define SET_STATUS(f, bit) ((f)->RtsSta |= (bit))
+
+#define is_READABLE(f) TST_STATUS (f, FiORE | FiRONLY | FiRND)
+#define is_WRITABLE(f) TST_STATUS (f, FiWRI | FiWONLY | FiRND)
+
+/* BYTENUM calculates the byte where NumE'th element starts in file.
+   First possible element is 1. */
+#define BYTENUM(f, NumE) (fil_tst (f, FiPck) ? ((NumE) - 1) / (8 / (f)->FilSiz) : ((NumE) * (f)->FilSiz))
+
+/* Opposite of BYTENUM. Calculates the number of the Pascal file component
+   the byte is in. */
+#define NUMBYTE(f, NumBytes) (fil_tst (f, FiPck) ? ((8 / (f)->FilSiz) * NumBytes) : (NumBytes / (f)->FilSiz))
+
+#define IsSpaceNl(ch) ((ch) == ' ' || (ch) == '\t' || (ch) == '\n')
+#define IsDigit(ch) ((ch) >= '0' && (ch) <= '9')
+
+int _p_FileMode = 2;
+
+/* Program standard input, output and error */
+#define EMPTYFDR(NAME) { NAME, FiNOP, 0, 0, 0, 0, 0, 0, { 0 }, 0, 0, 0, \
+                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, { 0 } }
+struct Fdr _p_Input  = EMPTYFDR ("uninitialized Input"),
+           _p_Output = EMPTYFDR ("uninitialized Output"),
+           _p_StdErr = EMPTYFDR ("uninitialized StdErr");
+Boolean _p_EOLnResetHack = False, _p_ForceDirectFiles = False;
+FDR _p_CurrentStdin = NULL;
+TFileAssociation *_p_FileAssociation = NULL;
+
+typedef struct FDRList
+{
+  struct FDRList *Next;
+  FDR Item;
+} TFDRList;
+
+/* FDR list. Add an FDR to the list when reset/rewritten, remove it on close.
+   The list can be used to flush buffered output to terminal
+   1) on runtime error, dump everything before giving error message
+   2) when something is read from a Tty, flush output to other Ttys first */
+static TFDRList *_p_FDRList = NULL;
+
+static inline void _p_InitTFDD (FDR f)
+{
+  f->PrivateData = NULL;
+  f->OpenProc    = DefaultOpenProc;
+  f->SelectFunc  = NULL;
+  f->SelectProc  = NULL;
+  f->ReadFunc    = DefaultReadFunc;
+  f->WriteFunc   = DefaultWriteFunc;
+  f->FlushProc   = DefaultFlushProc;
+  f->CloseProc   = DefaultCloseProc;
+  f->DoneProc    = NULL;
+}
+
+static inline void _p_ReInitFDR (FDR f)
+{
+  fil_clr (f, ~STATUS_KEEP);
+  fil_set (f, FiUnd);  /* Mark the file buffer contents undefined */
+  f->BufPtr = f->InternalBuffer;
+  f->NameToUnlink = NULL;
+  f->RtsSta = FiNOP;
+  f->Handle = -1;
+  f->CloseFlag = True;
+}
+
+static inline void _p_ClearBuffer (FDR f)
+{
+  f->BufSize = 0;
+  f->BufPos = 0;
+}
+
+static inline void _p_FlushBuffer (FDR f)
+{
+  /* empty -- will be needed when we add write buffers */
+  /* if (is_WRITABLE (f)) ... */
+  (void) f;
+}
+
+/* Bind (f, b)
+   Attempt to Bind f to b.Name.
+   This routine must not update any fields in b.
+   `Binding (f)' can be used to get the binding status info of
+   f after Bind has returned. */
+GLOBAL (void _p_Bind (FDR f, const BindingType *b))
+{
+  int permissions = 0, OK, ch;
+  FileSizeType size = -1;
+  UnixTimeType atime = -1, mtime = -1, ctime = -1;
+  int onlydir = 0, user = -1, group = -1, mode = 0, device = -1, inode = -1, links = -1;
+  Boolean symlink, dir, special;
+  char *name, *copy;
+  BindingType *binding;
+  int len = b->Name.length;
+
+  if (_p_InOutRes) return;
+
+  if (!fil_tst (f, FiBindable))
+    IOERROR_FILE (402, f, False,);  /* `Bind' applied to non-bindable %s */
+
+  if (f->Binding)
+    IOERROR_STRING (441, f->BoundName, False,);  /* File already bound to `%s' */
+
+  if (len < 0)
+    IOERROR_FILE (424, f, False,);  /* Invalid string length in `Bind' of `%s' */
+
+  if (len >= BINDING_NAME_LENGTH)
+    _p_RuntimeWarningInteger ("external names of bound objects must be shorter than %d characters", (int) BINDING_NAME_LENGTH);
+
+  /* strip trailing dir separators */
+  while (len > 1 && _p_IsDirSeparator (b->Name.string[len - 1])
+         #ifdef __OS_DOS__
+         && (len > 3 || b->Name.string[1] != ':')
+         #endif
+        ) onlydir = 1, len--;
+
+  /* Copy the name we are binding to (need it null terminated) */
+  name = _p_New (len + 1);
+  _p_CStringLCopy (name, &b->Name.string[0], len);
+  name[len] = 0;
+
+  _p_Slash2OSDirSeparator_CString (name);
+  copy = _p_CStringNew (name);
+
+  if (f->RtsSta != FiNOP)
+    /* @@@@ Should we close it if it is opened instead of this? */
+    _p_RuntimeWarning ("`Bind': file already opened; binding takes effect with the next open");
+
+  /* Unfortunately there is no knowledge if the file will be reset,
+     rewritten or extended, so I added some fields to BindingType
+     to let the user have control. */
+  OK = True;
+  if (
+#ifdef __OS_DOS__
+           /* Write-only Dos devices */
+           !_p_CStringCaseComp (copy, "prn")  ||
+           !_p_CStringCaseComp (copy, "lpt1") ||
+           !_p_CStringCaseComp (copy, "lpt2") ||
+           !_p_CStringCaseComp (copy, "lpt3") ||
+           !_p_CStringCaseComp (copy, "lpt4") ||
+           !_p_CStringCaseComp (copy, "nul"))
+    permissions = MODE_SPECIAL | MODE_WRITE;
+  /* Read-Write Dos devices */
+  else if (!_p_CStringCaseComp (copy, "aux")  ||
+           !_p_CStringCaseComp (copy, "com1") ||
+           !_p_CStringCaseComp (copy, "com2") ||
+           !_p_CStringCaseComp (copy, "com3") ||
+           !_p_CStringCaseComp (copy, "com4") ||
+           !_p_CStringCaseComp (copy, "con")  ||
+#endif
+           !_p_CStringComp (copy, "") ||
+           !_p_CStringComp (copy, "-"))
+    permissions = MODE_SPECIAL | MODE_READ | MODE_WRITE;
+  else
+    {
+      permissions = _p_Access (copy, MODE_FILE | MODE_EXEC | MODE_WRITE | MODE_READ);
+      if (permissions)
+        {
+          if (_p_Stat (copy, &size, &atime, &mtime, &ctime, &user, &group, &mode, &device, &inode, &links, &symlink, &dir, &special) == 0)
+            {
+              if (symlink) permissions |= MODE_SYMLINK;
+              if (dir)
+                {
+                  permissions = (permissions & ~MODE_FILE) | MODE_DIR;
+                  OK = False;
+                }
+              else if (special)
+                permissions = (permissions & ~MODE_FILE) | MODE_SPECIAL;
+            }
+        }
+      else
+        {
+          /* Check for permissions to write the directory
+             Only check the directory where the unexisting
+             file would be created (not /tmp/non1/non2/non3) */
+          char *slash = copy;
+          while (*slash) slash++;
+          slash--;
+          while (slash >= copy && !_p_IsDirSeparator (*slash)) slash--;
+          if (slash < copy)
+            {
+              /* Nonexisting file in current directory */
+              ch = '.';
+              copy[0] = '.';
+              copy[1] = 0;
+            }
+          else
+            {
+              ch = slash[1];
+              if (slash == copy)
+                slash[1] = 0;  /* root directory */
+              else
+                slash[0] = 0;  /* get rid of the file component, leave the path */
+            }
+          if (!ch)  /* /directory/name/ending/with/slash/ */
+            OK = False;  /* path is not valid */
+          else
+            {
+              /* Note: Don't set OK to False if access fails. If we did this,
+                 a set[ug]id program couldn't write to a directory writable by
+                 the effective [ug]id, but not by the real [ug]id. This way, it
+                 will be marked not writable, but the program can write to it
+                 if it really wants to. */
+              int t = _p_Stat (copy, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, &dir, NULL);
+              if (t == -2 || (t == 0 && dir))
+                permissions = _p_Access (copy, MODE_WRITE);  /* Only write permissions are valid because the file did not exist. */
+              else
+                OK = False;  /* path is not valid */
+            }
+        }
+    }
+
+  if (onlydir && !(permissions & MODE_DIR))
+    {
+      permissions = 0;
+      OK = False;
+    }
+
+  _p_Dispose (copy);
+
+  if (!(OK || b->Force))
+    {
+      _p_Dispose (name);
+      return;
+    }
+  _p_InitTFDD (f);
+  f->BoundName = name;
+  f->Binding = binding = (BindingType *) _p_New (sizeof (BindingType));
+  f->BindingChanged = 1;
+  _p_Move (b, binding, sizeof (BindingType));
+  binding->Extensions_Valid = True;
+  binding->Readable         = !!(permissions & MODE_READ);
+  binding->Writable         = !!(permissions & MODE_WRITE);
+  binding->Executable       = !!(permissions & MODE_EXEC);
+  binding->Existing         = !!(permissions & MODE_FILE);
+  binding->Directory        = !!(permissions & MODE_DIR);
+  binding->Special          = !!(permissions & MODE_SPECIAL);
+  binding->SymLink          = !!(permissions & MODE_SYMLINK);
+  binding->Size             = size;
+  binding->AccessTime       = atime;
+  binding->ModificationTime = mtime;
+  binding->ChangeTime       = ctime;
+  binding->User             = user;
+  binding->Group            = group;
+  binding->Mode             = mode;
+  binding->Device           = device;
+  binding->INode            = inode;
+  binding->Links            = links;
+  binding->Bound            = True;  /* Standard flag */
+}
+
+GLOBAL (void _p_ClearBinding (BindingType *b))
+{
+  b->Bound            = False;
+  b->Force            = False;
+  b->Extensions_Valid = False;
+  b->Readable         = False;
+  b->Writable         = False;
+  b->Executable       = False;
+  b->Existing         = False;
+  b->Directory        = False;
+  b->Special          = False;
+  b->SymLink          = False;
+  b->Size             = -1;
+  b->AccessTime       = -1;
+  b->ModificationTime = -1;
+  b->ChangeTime       = -1;
+  b->User             = -1;
+  b->Group            = -1;
+  b->Mode             = 0;
+  b->Device           = -1;
+  b->INode            = -1;
+  b->Links            = -1;
+  b->TextBinary       = False;
+  b->Handle           = -1;
+  b->CloseFlag        = True;
+  b->Name.length      = 0;
+  b->Name.string[0]   = 0;
+}
+
+GLOBAL (void _p_Binding (const FDR f, BindingType *b))
+{
+  int len;
+
+  _p_ClearBinding (b);
+
+  if (_p_InOutRes) return;
+  if (!fil_tst (f, FiBindable))
+    IOERROR_FILE (403, f, False,);  /* `Binding' applied to non-bindable %s */
+
+  if (!f->Binding) return;
+
+  /* Copy all fields except the Name field */
+  *b = *(f->Binding);
+
+  /* Now copy the name, does not matter if null terminated or not */
+  len = _p_CStringLength (f->BoundName);
+  if (len >= BINDING_NAME_LENGTH)
+    {
+      len = BINDING_NAME_LENGTH - 1;
+      _p_RuntimeWarningInteger ("bound name truncated to %d characters in `Binding'", (int) len);
+    }
+  b->Name.length = len;
+  _p_CStringLCopy (&b->Name.string[0], f->BoundName, len);
+}
+
+static void _p_Unlink (FDR f, const char *filename, int candelay UNUSED)
+{
+  if (_p_CStringUnlink (filename) != 0)
+    {
+      #ifdef __OS_DOS__
+      /* Dos does not like unlinking an opened file in some circumstances,
+         so remember the file name and unlink it later from _p_Close(). */
+      if (candelay)
+        f->NameToUnlink = _p_CStringNew (filename);
+      else
+      #endif
+        IOERROR_FILE (474, f, True,);  /* error when trying to erase %s */
+    }
+}
+
+static void _p_Close1 (FDR f)
+{
+  TFDRList *p, **pp;
+  /* Remove the FDR from the list before doing anything else, in order
+     to prevent endless error-handling recursion. */
+  for (pp = &_p_FDRList; *pp && (*pp)->Item != f; pp = &((*pp)->Next));
+  if (*pp)
+    {
+      p = *pp;
+      *pp = p->Next;
+      _p_Dispose (p);
+    }
+  if (f->RtsSta == FiNOP)
+    return;
+  /* Don't check _p_InOutRes here! We still want to close the file,
+     even after an I/O error. */
+  _p_FlushBuffer (f);
+  fil_set (f, FiEof);
+  if (f->CloseProc == DefaultCloseProc)
+    {
+      if (f->CloseFlag)
+        {
+          int Handle = f->Handle;
+          f->Handle = -1;
+          f->CloseFlag = True;
+          if (_p_CloseHandle (Handle) && !_p_InOutRes)
+            IOERROR_FILE (418, f, True,);  /* error while closing %s */
+        }
+    }
+  else if (f->CloseProc)
+    {
+      DO_RETURN_ADDRESS (f->CloseProc (f->PrivateData));
+      if (!TST_STATUS (f, FiANY)) return;
+    }
+}
+
+GLOBAL (void _p_Close (FDR f))
+{
+  /* Don't check _p_InOutRes here! We still want to close the file,
+     even after an I/O error. */
+  _p_Close1 (f);
+  if (f->NameToUnlink)
+    {
+      _p_Unlink (f, f->NameToUnlink, False);
+      _p_Dispose (f->NameToUnlink);
+      f->NameToUnlink = NULL;
+    }
+  if (f->ExtNam)
+    {
+      if (!f->Binding)
+        _p_Dispose (f->ExtNam);
+      f->ExtNam = NULL;
+    }
+  _p_ReInitFDR (f);
+  f->BindingChanged = 1;
+}
+
+GLOBAL (void _p_Unbind (FDR f))
+{
+  if (_p_InOutRes) return;
+  if (!fil_tst (f, FiBindable))
+    IOERROR_FILE (404, f, False,);  /* `Unbind' applied to non-bindable %s */
+  if (f->Binding)
+    {
+      DO_RETURN_ADDRESS (_p_Close (f));
+      _p_InitTFDD (f);
+      if (_p_InOutRes) return;
+      _p_Dispose (f->BoundName);
+      _p_Dispose (f->Binding);
+      f->Binding = NULL;
+      f->ExtNam = NULL;
+      f->BindingChanged = 1;
+    }
+}
+
+GLOBAL (void _p_SetTFDD (FDR f, TOpenProc OpenProc, TSelectFunc SelectFunc, TSelectProc SelectProc, TReadFunc ReadFunc,
+                         TWriteFunc WriteFunc, TFlushProc FlushProc, TCloseProc CloseProc, TDoneProc DoneProc, void *PrivateData))
+{
+  f->OpenProc    = OpenProc;
+  f->SelectFunc  = SelectFunc;
+  f->SelectProc  = SelectProc;
+  f->ReadFunc    = ReadFunc;
+  f->WriteFunc   = WriteFunc;
+  f->FlushProc   = FlushProc;
+  f->CloseProc   = CloseProc;
+  f->DoneProc    = DoneProc;
+  f->PrivateData = PrivateData;
+}
+
+GLOBAL (void _p_GetTFDD (FDR f, TOpenProc *OpenProc, TSelectFunc *SelectFunc, TSelectProc *SelectProc, TReadFunc *ReadFunc,
+                         TWriteFunc *WriteFunc, TFlushProc *FlushProc, TCloseProc *CloseProc, TDoneProc *DoneProc, void **PrivateData))
+{
+  if (OpenProc)    *OpenProc    = f->OpenProc;
+  if (SelectFunc)  *SelectFunc  = f->SelectFunc;
+  if (SelectProc)  *SelectProc  = f->SelectProc;
+  if (ReadFunc)    *ReadFunc    = f->ReadFunc;
+  if (WriteFunc)   *WriteFunc   = f->WriteFunc;
+  if (FlushProc)   *FlushProc   = f->FlushProc;
+  if (CloseProc)   *CloseProc   = f->CloseProc;
+  if (DoneProc)    *DoneProc    = f->DoneProc;
+  if (PrivateData) *PrivateData = f->PrivateData;
+}
+
+GLOBAL (void _p_AssignTFDD (FDR f, TOpenProc OpenProc, TSelectFunc SelectFunc, TSelectProc SelectProc, TReadFunc ReadFunc,
+                            TWriteFunc WriteFunc, TFlushProc FlushProc, TCloseProc CloseProc, TDoneProc DoneProc, void *PrivateData))
+{
+  SAVE_RETURN_ADDRESS;
+  _p_InternalAssign (f, "", 0);
+  RESTORE_RETURN_ADDRESS;
+  _p_SetTFDD (f, OpenProc, SelectFunc, SelectProc, ReadFunc, WriteFunc, FlushProc, CloseProc, DoneProc, PrivateData);
+}
+
+static inline void _p_CheckFileType (FDR f)
+{
+  if (_p_GetTerminalNameHandle (f->Handle, False, _p_TtyDeviceNameVar))
+    SET_STATUS (f, FiTty);
+  else
+    CLR_STATUS (f, FiTty);
+}
+
+GLOBAL (void _p_DoneFDR (FDR f))
+{
+  SAVE_RETURN_ADDRESS;
+  _p_Close (f);
+  if (f->DoneProc)
+    {
+      f->DoneProc (f->PrivateData);
+      f->DoneProc = NULL;
+    }
+  if (fil_tst (f, FiBindable))
+    _p_Unbind (f);
+  if (f->FilBuf != f->DefaultFilBuf)
+    _p_Dispose (f->FilBuf);
+  RESTORE_RETURN_ADDRESS;
+}
+
+static inline size_t _p_ReadInternal (FDR f, char *Buf, size_t Size)
+{
+  ssize_t result = _p_ReadHandle (f->Handle, Buf, Size);
+  if (result < 0)
+    IOERROR_FILE (464, f, True, 0);  /* error when reading from %s */
+  /* If we are reading from the options file and this is the end of
+     _p_CurrentStdin, continue with the original stdin instead of giving EOF. */
+  if (result == 0 && Size != 0
+      && _p_CurrentStdin && f != _p_CurrentStdin && f->Handle == _p_CurrentStdin->Handle)
+    {
+      _p_Close (_p_CurrentStdin);
+      _p_DoneFDR (_p_CurrentStdin);
+      _p_Dispose (_p_CurrentStdin);
+      _p_CurrentStdin = NULL;
+      f->Handle = 0;  /* real stdin */
+      f->CloseFlag = False;
+      _p_CheckFileType (f);
+      return _p_ReadInternal (f, Buf, Size);  /* read again */
+    }
+  return result;
+}
+
+/* Routine to flush files from Pascal */
+GLOBAL (void _p_Flush (FDR f))
+{
+  if (_p_InOutRes) return;
+  _p_FlushBuffer (f);
+  if (is_WRITABLE (f) && f->FlushProc)
+    {
+      if (f->FlushProc == DefaultFlushProc)
+        _p_FlushHandle (f->Handle);
+      else
+        DO_RETURN_ADDRESS (f->FlushProc (f->PrivateData));
+    }
+}
+
+/* flush buffers to synchronize output messages */
+GLOBAL (void _p_FlushAllFiles (void))
+{
+  TFDRList *scan;
+  for (scan = _p_FDRList; scan; scan = scan->Next)
+    _p_FlushBuffer (scan->Item);
+}
+
+GLOBAL (void _p_Done_Files (void))
+{
+  _p_FlushAllFiles ();
+  /* Clean up all open files. Note: Any FDR cleaned up might have
+     a TFDD whose close routine may close other files. However,
+     _p_FDRList will always be valid and is advanced in _p_Close1(). */
+  while (_p_FDRList)
+    _p_DoneFDR (_p_FDRList->Item);
+}
+
+GLOBAL (int _p_FileHandle (const FDR f))
+{
+  return f->Handle;
+}
+
+/* Name:internal name in program
+   Size: file buffer size; in bits, if packed, else in bytes
+   flags: see constants.h */
+GLOBAL (void _p_InitFDR (FDR f, const char *InternalName, int Size, int flags))
+{
+  (void) AssertDummy;
+  if (!InternalName)
+    _p_InternalError (912);  /* File has no internal name */
+  f->FilSta = 0;
+  _p_ReInitFDR (f);
+  if (flags & fkind_TEXT)
+    fil_set (f, FiTxt);
+  if (flags & fkind_UNTYPED)
+    fil_set (f, FiUntyped);
+  if (flags & fkind_PACKED)
+    fil_set (f, FiPck);
+  if (flags & fkind_EXTERN)
+    fil_set (f, FiExt);
+  if (flags & fkind_DIRECT)
+    fil_set (f, FiDacc);
+  if (flags & fkind_BYTE)
+    fil_set (f, FiByte);  /* Unused */
+  if (flags & fkind_FILENAME)
+    fil_set (f, FiFileName);
+  if (flags & fkind_BINDABLE)
+    fil_set (f, FiBindable);
+  _p_InitTFDD (f);
+  f->Binding = NULL;
+  f->BoundName = NULL;
+  f->ExtNam = NULL;
+  f->FilSiz = Size;
+  if (fil_tst (f, FiPck))
+    {
+      /* Convert to unpacked file, since we don't yet support
+         packed files. This may be done even if the compiler
+         thinks we support them. :-) */
+      f->FilSiz = (f->FilSiz + 7) / 8;
+      fil_clr (f, FiPck);
+    }
+  if (f->FilSiz == 0)
+    f->FilSiz = 1;
+  /* Allocate file buffer -- avoid heap allocation in the vast majority of cases */
+  if (f->FilSiz <= sizeof (f->DefaultFilBuf))
+    f->FilBuf = f->DefaultFilBuf;
+  else
+    f->FilBuf = _p_New (f->FilSiz);
+  f->FilNam = InternalName;
+  f->BindingChanged = 0;
+}
+
+static inline int _p_IsStdFile (FDR f)
+{
+  return f == &_p_Input  ||
+         f == &_p_Output ||
+         f == &_p_StdErr;
+}
+
+static const char *_p_NameIt (FDR f, TOpenMode mode)
+{
+  int tty, in, out, n, l;
+  TFileAssociation *ap;
+  char buf[512], *tmp;
+  void *RA;
+
+  if (_p_InOutRes) return NULL;
+  if (!fil_tst (f, FiExtB))
+    {
+      fil_set (f, FiExcl);
+      return _p_GetTempFileName_CString ();
+    }
+  for (ap = _p_FileAssociation; ap; ap = ap->Next)
+    if (_p_CStringCaseComp (f->FilNam, ap->int_name) == 0)
+      {
+        ap->int_name = "?KukkuuRESET?";  /* Allow Close (a); Reset (a) to access next one */
+        RA = _p_SetTempDummyReturnAddress ();
+        f->ExtNam = _p_CStringNew (ap->ext_name);
+        _p_RestoreTempReturnAddress (RA);
+        return f->ExtNam;
+      }
+  if (_p_IsStdFile (f))
+    return NULL;
+
+  if (fil_tst (f, FiFileName))
+    {
+      /* Derive the external file name from the internal one without asking the user. */
+      RA = _p_SetTempDummyReturnAddress ();
+      _p_Slash2OSDirSeparator_CString (tmp = _p_CStringNew (f->FilNam));
+      _p_RestoreTempReturnAddress (RA);
+      return f->ExtNam = tmp;
+    }
+
+  /* Try to write filename prompts to /dev/tty and try to read responses
+     from there also, to avoid mungling with stdin & stdout.
+
+     However, if everything fails, try stdin & stdout, if they don't
+     work, abort. You can also use the `-n' or `--file-name' option to
+     associate internal names to external ones. */
+
+  if ((tty = _p_OpenHandle (_p_TtyDeviceNameVar, MODE_READ | MODE_WRITE)) < 0)
+    {
+      _p_RuntimeWarning ("failed to open terminal for file name read, using stdin & stdout");
+      in = 0;
+      out = 1;
+    }
+  else
+    in = out = tty;
+
+  snprintf (buf, 512, "%s file `%s': ",
+           (mode == fo_Reset   || mode == fo_SeekRead)  ? "Input"  :
+           (mode == fo_Rewrite || mode == fo_SeekWrite) ? "Output" :
+           (mode == fo_SeekUpdate) ? "Input/Output" : "Extend",
+           f->FilNam);
+  l = _p_CStringLength (buf);
+  if (_p_WriteHandle (out, buf, l) != l)
+    {
+      if (out != 1)
+        _p_RuntimeWarning ("writing file name prompt to /dev/tty failed, using stdout");
+      if (out == 1 || _p_WriteHandle (1, buf, l) != l)
+        {
+          if (tty >= 0) _p_CloseHandle (tty);
+          IOERROR_FILE (419, f, False, "");  /* cannot prompt user for external file name binding for %s */
+        }
+      in = 0;
+    }
+  if ((n = _p_ReadHandle (in, buf, sizeof (buf))) < 0)
+    {
+      if (in != 0)
+        _p_RuntimeWarning ("reading filename from /dev/tty failed, trying stdin");
+      /* buf should still be ok still, since read failed. */
+      if (in == 0 || _p_WriteHandle (1, buf, l) != l || (n = _p_ReadHandle (0, buf, sizeof (buf))) < 0)
+        {
+          if (tty >= 0) _p_CloseHandle (tty);
+          IOERROR_FILE (420, f, False, "");  /* cannot query user for external file name binding for %s */
+        }
+    }
+  if (tty >= 0) _p_CloseHandle (tty);
+
+  if (buf[0] == EOT)
+    IOERROR_FILE (421, f, False, "");  /* EOT character given for query of file name for %s */
+
+  if (n > 0 && buf[n - 1] == '\n') n--;
+  buf[n] = '\0';
+  RA = _p_SetTempDummyReturnAddress ();
+  _p_Slash2OSDirSeparator_CString (tmp = _p_CStringNew (buf));
+  _p_RestoreTempReturnAddress (RA);
+  return f->ExtNam = tmp;
+}
+
+/* Check if f has a binding, and if so, set its external name */
+static inline void _p_CheckBinding (FDR f)
+{
+  if (f->Binding)
+    {
+      fil_set (f, FiExtB);
+      if (f->BindingChanged)
+        {
+          _p_Close (f);
+          f->BindingChanged = 0;
+          if (_p_InOutRes) return;
+          f->ExtNam = f->BoundName;
+        }
+    }
+  else
+    if (fil_tst (f, FiExt))
+      fil_set (f, FiExtB);
+    else
+      fil_clr (f, FiExtB);
+}
+
+static inline int _p_OK_Read (FDR f)
+{
+  if (is_READABLE (f)) return 1;
+  IOERROR_FILE (452, f, False, 0);  /* %s is not open for reading */
+}
+
+static inline int _p_OK_EOF (FDR f)
+{
+  if (_p_InOutRes || !_p_OK_Read (f)) return 0;
+  if (!fil_tst (f, FiEof)) return 1;
+  if (f->Flags & READ_WRITE_STRING_MASK)
+    IOERROR (550, False, 0);  /* Attempt to read past end of string in `ReadStr'*/
+  else
+    IOERROR_FILE (454, f, False, 0);  /* attempt to read past end of %s */
+}
+
+static inline int _p_OK_Write (FDR f)
+{
+  if (is_WRITABLE (f)) return 1;
+  IOERROR_FILE (450, f, False, 0);  /* %s is not open for writing */
+}
+
+static void _p_InternalBlockWrite (FDR f, const char *Buf, size_t size, size_t Count, unsigned int *Result)
+{
+  size_t m = 0, n;
+  Count *= size;
+  if (Result)
+    *Result = 0;
+  if (_p_InOutRes || !_p_OK_Write (f)) return;
+  if (Count > 0 && f->WriteFunc)
+    do
+      {
+        if (f->WriteFunc == DefaultWriteFunc)
+          {
+            ssize_t r = _p_WriteHandle (f->Handle, Buf + m, Count);
+            if (r < 0)
+              {
+                IOERROR_FILE (466, f, True,);  /* error when writing to %s */
+                n = 0;
+              }
+            else
+              n = r;
+          }
+        else
+          {
+            n = f->WriteFunc (f->PrivateData, Buf + m, Count);
+            if (_p_InOutRes && !_p_InOutResString)
+              IOERROR_FILE (_p_InOutRes, f, False,);
+          }
+        Count -= n;
+        m += n;
+      }
+    while (!_p_InOutRes && n > 0 && Count > 0 && (m % size != 0 || !Result));
+  if (Result)
+    *Result = m / size;
+  else if (!_p_InOutRes && Count > 0)
+    IOERROR_FILE ((m == 0) ? 466 : 467, f, False,);  /* error when writing to `%s'; cannot write all the data to `%s' */
+}
+
+GLOBAL (void _p_BlockWrite (FDR f, Boolean IsAnyFile, const char *Buf, unsigned int Count, unsigned int *Result))
+{
+  DO_RETURN_ADDRESS (_p_InternalBlockWrite (f, Buf, IsAnyFile ? 1 : f->FilSiz, Count, Result));
+}
+
+static inline void _p_InternalWrite (const char *ptr, size_t size, FDR f)
+{
+  _p_InternalBlockWrite (f, ptr, 1, size, NULL);
+}
+
+static void _p_ReadBuffer (FDR f)
+{
+  f->BufPos = 0;
+  if (f->ReadFunc)
+    {
+      if (TST_STATUS (f, FiTty)) _p_FlushAllFiles ();
+      if (f->ReadFunc == DefaultReadFunc)
+        f->BufSize = _p_ReadInternal (f, f->BufPtr, FILE_BUFSIZE);
+      else
+        {
+          f->BufSize = f->ReadFunc (f->PrivateData, f->BufPtr, FILE_BUFSIZE);
+          if (_p_InOutRes && !_p_InOutResString) IOERROR_FILE (_p_InOutRes, f, False,);
+        }
+    }
+  else
+    f->BufSize = 0;
+}
+
+static int _p_InternalGetC (FDR f)
+{
+  if (!(f->Flags & READ_WRITE_STRING_MASK))
+    {
+      if (fil_tst (f, FiEof)) return -1;
+      if (f->BufPos >= f->BufSize)
+        _p_ReadBuffer (f);
+    }
+  if (_p_InOutRes == 0)
+    {
+      fil_clr (f, FiEoln);
+      if (f->BufPos < f->BufSize)
+        {
+          unsigned char ch = f->BufPtr[f->BufPos++];
+          if (fil_tst (f, FiTxt) && ch == NEWLINE)
+            {
+              #if 0  /* why was this? (commenting this out fixes george1.pas) */
+              fil_clr (f, FiLGet);
+              #endif
+              fil_set (f, FiEoln | FiEofOK);
+              ch = ' ';
+            }
+          return *(f->FilBuf) = ch;
+        }
+      fil_set (f, FiEof | FiEoln);
+    }
+  return -1;
+}
+
+static inline int _p_DirectGetC (FDR f)
+{
+  if (!fil_tst (f, FiLGet))
+    {
+      fil_set (f, FiLGet);
+      return *(f->FilBuf);
+    }
+  /* If buffer is undefined, read in new contents */
+  return _p_InternalGetC (f);
+}
+
+static inline int _p_DirectGetCCheckEOF (FDR f)
+{
+  int ch = _p_DirectGetC (f);
+  if (_p_OK_EOF (f))
+    return ch;
+  else
+    return -1;
+}
+
+static inline void _p_UnGetCh (FDR f, int ch)
+{
+  fil_clr (f, FiEofOK);
+  if (ch < 0) return;
+  if (fil_tst (f, FiLGet))
+    {
+      fil_clr (f, FiLGet);
+      *(f->FilBuf) = ch;
+    }
+  else
+    /* I hope this case should never happen. Then we can remove it. -- Frank, 20010422 */
+    _p_InternalError (910);  /* read buffer underflow */
+}
+
+/* Move the file pointer to the requested Pascal record of the file.
+   record specifies how much to move, negative is backward, positive is
+   forward. whence corresponds to the `whence' parameter to `lseek'. */
+static FileSizeType _p_SeekInternal (FDR f, FileSizeType record, int whence)
+{
+  FileSizeType bytenum  /*@@@@gcc warning*/=0;
+  _p_ClearBuffer (f);
+  fil_set (f, FiLGet);
+  if (whence != SeekAbsolute)
+    bytenum = record * f->FilSiz;
+  else
+    bytenum = BYTENUM (f, record);
+  return _p_SeekHandle (f->Handle, bytenum, whence);
+}
+
+static inline void do_open (FDR f, const char *filename, int cond, int mode1, int mode2, int status, const char *msg)
+{
+  int mode_extra = ((!fil_tst (f, FiTxt) || (f->Binding && f->Binding->TextBinary)) ? MODE_BINARY : 0)
+                   | (fil_tst (f, FiExcl) ? MODE_EXCL : 0);
+  if (cond || !fil_tst (f, FiExtB))
+    f->Handle = _p_OpenHandle (filename, mode1 | mode_extra);
+  if (f->Handle < 0 && mode2 >= 0)
+    {
+      f->Handle = _p_OpenHandle (filename, mode2 | mode_extra);
+      if (f->Handle >= 0)
+        {
+          SET_STATUS (f, status);
+          _p_RuntimeWarning (msg);
+        }
+    }
+}
+
+/* Open a File in mode, depending on its binding etc.
+
+   fo_Reset:
+   pre-assertion:
+     The components f0.L and f0.R are not undefined
+   post-assertion:
+     (f.L = S ()) and (f.R = (f0.L~f0.R~X))
+     and (f.M = Inspection)
+     and (if f.R = S () then (f^ is undefined) else (f^ = f^.R.first))
+
+   fo_Rewrite:
+   pre-assertion:
+     True
+   post-assertion:
+     (f.L = f.R = S ()) and (f.M = Generation) and (f^ is undefined)
+
+   fo_Append:
+   pre-assertion:
+     f0.L and f0.R are not undefined
+   post-assertion:
+     (f.M = Generation) and (f.L = f0.L~f0.R~X)
+     and (f.R = S ())
+     and (f^ is undefined)
+
+   where, if F is of type Text, and f0.L~f0.R is not empty and
+   if (f0.L~f0.R).last is not an end-of-line, then X shall be a
+   sequence having an end-of-line component as its only component;
+   otherwise X = S (). */
+static void _p_Open (FDR f, TOpenMode mode)
+{
+  if (_p_InOutRes) return;
+  SAVE_RETURN_ADDRESS;
+  if (f->BufPtr == NULL)
+    _p_InternalError (913);  /* _p_InitFDR has not been called for file */
+
+  fil_clr (f, ~STATUS_KEEP);  /* Clear file status bits */
+  fil_set (f, FiUnd);  /* Mark the file buffer contents undefined */
+
+  if (f->OpenProc != DefaultOpenProc)
+    {
+      if (f->RtsSta != FiNOP)
+        {
+          _p_Close (f);
+          if (_p_InOutRes)
+            {
+              RESTORE_RETURN_ADDRESS;
+              return;
+            }
+        }
+      f->Handle = -1;
+      f->CloseFlag = True;
+      if (f->OpenProc) f->OpenProc (f->PrivateData, mode);
+      if (_p_InOutRes)
+        {
+          RESTORE_RETURN_ADDRESS;
+          return;
+        }
+    }
+  else
+    {
+      const char *filename = (char *) NULL;
+      if (f->Binding && f->Binding->Directory)
+        {
+          RESTORE_RETURN_ADDRESS;
+          IOERROR_STRING (401, f->BoundName, False,);  /* cannot open directory `%s' */
+        }
+      _p_CheckBinding (f);
+      if (_p_InOutRes)
+        {
+          RESTORE_RETURN_ADDRESS;
+          return;
+        }
+      filename = f->ExtNam;
+      if (f->RtsSta != FiNOP)
+        {
+          /* f is currently open in Pascal program */
+          int tempcloseflag = 0;
+          /* Don't complain when, e.g., the file is "read only" and
+             mode is fo_Rewrite. "Read only" is set for text files on
+             Reset regardless whether the file itself is writable.
+             Furthermore, the permissions might have been changed
+             since the last opening. */
+          if (TST_STATUS (f, FiRONLY | FiWONLY))
+            tempcloseflag = 1;
+          else if (mode == fo_Append)
+            _p_SeekInternal (f, 0, SeekFileEnd);  /* Start appending */
+          else if (mode != fo_Rewrite)
+            _p_SeekInternal (f, 0, SeekAbsolute);  /* Start reading or updating */
+          else
+            {
+              _p_SeekInternal (f, 0, SeekAbsolute);  /* Start writing */
+              if (_p_TruncateHandle (f->Handle, 0) < 0)
+                /* If truncation failed (or isn't supported), emulate the behaviour */
+                tempcloseflag = 1;
+            }
+          if (tempcloseflag)
+            {
+              _p_Close1 (f);
+              f->RtsSta = FiNOP;
+              if (_p_InOutRes)
+                {
+                  RESTORE_RETURN_ADDRESS;
+                  return;
+                }
+              /* Let the code below re-open the same external file for writing.
+                 If the file is internal, it will not be the same, but who cares. */
+            }
+        }
+
+      if (f->RtsSta == FiNOP)
+        {
+          if ((mode == fo_Reset || mode == fo_SeekRead || mode == fo_SeekUpdate) && !fil_tst (f, FiExtB))
+            {
+              RESTORE_RETURN_ADDRESS;
+              IOERROR_FILE (436, f, False,);  /* `Reset', `SeekUpdate' or `SeekRead' to nonexistent %s */
+            }
+          if (f->Binding && f->Binding->Handle >= 0 && f->BoundName[0] == 0)
+            {
+              f->Handle = f->Binding->Handle;
+              f->CloseFlag = f->Binding->CloseFlag;
+            }
+          else
+            {
+              if (!filename) filename = _p_NameIt (f, mode);
+              if (_p_InOutRes)
+                {
+                  RESTORE_RETURN_ADDRESS;
+                  return;
+                }
+              if (!filename || filename[0] == 0 || (filename[0] == '-' && filename[1] == 0))
+                {
+                  f->Handle = (mode == fo_Reset
+                               ? (_p_CurrentStdin ? _p_CurrentStdin->Handle : 0 /* stdin */)
+                               : ((f == &_p_StdErr) ? 2 /* stderr */ : 1 /* stdout */));
+                  f->CloseFlag = False;  /* don't close standard file handles */
+                }
+              else
+                {
+                  /* Try to open the file. If it fails, but we only want to read
+                     from or write to the file, check if that is possible */
+                  f->Handle = -1;
+                  f->CloseFlag = True;
+                  switch (mode)
+                    {
+                      case fo_Reset:
+                      case fo_SeekRead:
+                        do_open (f, filename, _p_FileMode & (fil_tst (f, FiTxt) ? 0x100 : 2), MODE_READ | MODE_WRITE,
+                          MODE_READ, FiRONLY, "file is read only");
+                        break;
+                      case fo_Rewrite:
+                        do_open (f, filename, !(_p_FileMode & 4), MODE_READ | MODE_WRITE | MODE_CREATE | MODE_TRUNCATE,
+                          MODE_WRITE | MODE_CREATE | MODE_TRUNCATE, FiWONLY, "file is write only");
+                        break;
+                      case fo_Append:
+                      case fo_SeekWrite:
+                        /* do not use O_APPEND for fo_Append because it does not allow
+                           writing before the current end of file even after a seek */
+                        do_open (f, filename, mode == fo_SeekWrite || !(_p_FileMode & 8), MODE_READ | MODE_WRITE | MODE_CREATE,
+                          MODE_WRITE | MODE_CREATE, FiWONLY, "file is write only");
+                        break;
+                      case fo_SeekUpdate:
+                        do_open (f, filename, 1, MODE_READ | MODE_WRITE, -1, 0, "");
+                        break;
+                      default:
+                        _p_InternalError (911);  /* invalid file open mode */
+                    }
+                }
+            }
+          if (f->Handle < 0)
+            {
+              filename = (char *) NULL;
+              RESTORE_RETURN_ADDRESS;
+              IOERROR_FILE ((mode >= fo_Reset && mode <= fo_SeekUpdate) ? _p_OpenErrorCode[mode] : 911, f, True,);
+            }
+          else
+            if (!fil_tst (f, FiExtB))
+              _p_Unlink (f, filename, True);
+        }
+      _p_CheckFileType (f);
+    }
+  if (mode == fo_Rewrite || mode == fo_SeekWrite || mode == fo_Append) SET_STATUS (f, FiWRI);
+  if (mode == fo_Reset || mode == fo_SeekRead  || mode == fo_SeekUpdate || (!fil_tst (f, FiTxt) && !TST_STATUS (f, FiWONLY))) SET_STATUS (f, FiORE);
+  if (!(TST_STATUS (f, FiRONLY | FiWONLY) || fil_tst (f, FiTxt))) SET_STATUS (f, FiRND);
+  if (fil_tst (f, FiTxt))
+    fil_set (f, FiEofOK);
+  fil_clr (f, FiUnread);
+  _p_ClearBuffer (f);
+  f->Flags = 0;
+  /* Add to FDR chain. Do it only when necessary, to speed up e.g. the
+     string TFDD */
+  if (f->FlushProc || f->CloseProc || f->DoneProc)
+    {
+      TFDRList *p;
+      for (p = _p_FDRList; p && p->Item != f; p = p->Next);
+      if (!p)  /* f not yet in list */
+        {
+          void *RA = _p_SetTempDummyReturnAddress ();
+          p = _p_New (sizeof (TFDRList));
+          _p_RestoreTempReturnAddress (RA);
+          p->Next = _p_FDRList;
+          p->Item = f;
+          _p_FDRList = p;
+        }
+    }
+  switch (mode)
+    {
+      case fo_Append:
+        if (fil_tst (f, FiTxt) && /*@@@@TFDD*/f->OpenProc == DefaultOpenProc
+            && !(f->Binding && f->Binding->TextBinary))
+          {
+            if (TST_STATUS (f, FiWONLY))
+              _p_RuntimeWarningCString ("appending to write only text file `%s'; trailing EOLn not checked", f->FilNam);
+            else if (_p_SeekInternal (f, -1, SeekFileEnd) >= 0)
+              {
+                char nl = NEWLINE;
+                _p_InternalGetC (f);
+                #ifdef __EMX__
+                _p_InternalGetC (f);
+                #endif
+                /* file pointer is now at EOF */
+                if (!fil_tst (f, FiEoln))
+                  _p_InternalWrite (&nl, sizeof (nl), f);
+              }
+          }
+        fil_set (f, FiEof | FiLGet);
+        fil_clr (f, FiEoln);
+        if (/*@@@@TFDD*/f->OpenProc == DefaultOpenProc && _p_SeekInternal (f, 0, SeekFileEnd) < 0)
+          {
+#if 0  /* @@@@@@@@ pipes, ttys? */
+            RESTORE_RETURN_ADDRESS;
+            IOERROR_FILE (416, f, True,);  /* `Extend'' could not seek to end of % */
+#endif
+          }
+        break;
+      case fo_Rewrite:
+        fil_set (f, FiEof | FiLGet);
+        fil_clr (f, FiEoln);
+        break;
+      case fo_Reset:
+        fil_clr (f, FiEof | FiEoln | FiUnd);
+        fil_set (f, FiLGet);
+        if (fil_tst (f, FiTxt) && TST_STATUS (f, FiTty) && _p_EOLnResetHack)
+          fil_set (f, FiUnread);  /* Mark for EOLn; nothing has been read yet */
+        break;
+      case fo_None:
+      case fo_SeekRead:
+      case fo_SeekWrite:
+      case fo_SeekUpdate:
+        /* NOTHING */ ;
+    }
+  RESTORE_RETURN_ADDRESS;
+}
+
+GLOBAL (void _p_InternalOpen (FDR f, char *FileName, int Length, int BufferSize, TOpenMode Mode))
+{
+  if (_p_InOutRes) return;
+  if (fil_tst (f, FiUntyped))
+    {
+      if (BufferSize > 0)
+        f->FilSiz = BufferSize;
+      else
+        IOERROR_FILE (400, f, False,);  /* file buffer size of % must be > 0 */
+    }
+  /* else error, but compiler should not let a bufsize be passed for typed files */
+  if (FileName)
+    {
+      _p_InternalAssign (f, FileName, Length);
+      if (!_p_InOutRes && (!f->Binding || !f->Binding->Bound))
+        {
+          /* Append #0 terminator for IOERROR_STRING */
+          static char *buf = NULL;
+          void *RA = _p_SetTempDummyReturnAddress ();
+          if (buf) _p_Dispose (buf);
+          buf = _p_New (Length + 1);
+          _p_RestoreTempReturnAddress (RA);
+          _p_CStringLCopy (buf, FileName, Length);
+          buf[Length] = 0;
+          IOERROR_STRING (405, buf, False,);  /* cannot open `%s'' */
+        }
+    }
+  _p_Open (f, Mode);
+}
+
+#define STD_FILE_FLAGS (fkind_TEXT | fkind_PACKED | fkind_EXTERN | fkind_BINDABLE)
+GLOBAL (void _p_Initialize_Std_Files (void))
+{
+  static int init_std_files_done = 0;
+  if (init_std_files_done) return;
+  init_std_files_done++;
+  SAVE_RETURN_ADDRESS;
+  _p_InitFDR (&_p_StdErr, "StdErr", 8, STD_FILE_FLAGS);
+  _p_InternalOpen (&_p_StdErr, NULL, 0, -1, fo_Rewrite);
+  _p_InitFDR (&_p_Output, "Output", 8, STD_FILE_FLAGS);
+  _p_InternalOpen (&_p_Output, NULL, 0, -1, fo_Rewrite);
+  _p_InitFDR (&_p_Input,  "Input", 8, STD_FILE_FLAGS);
+  _p_InternalOpen (&_p_Input,  NULL, 0, -1, fo_Reset);
+  RESTORE_RETURN_ADDRESS;
+}
+
+static void _p_InternalRead (unsigned char *ptr, size_t size, size_t *presult, FDR f)
+{
+  size_t result = 0;
+  if (fil_tst (f, FiEof)) return;
+  while (_p_InOutRes == 0 && result < size)
+    {
+      if (f->BufPos < f->BufSize)
+        {
+          size_t r = f->BufSize - f->BufPos;
+          if (r > size - result) r = size - result;
+          _p_Move (f->BufPtr + f->BufPos, ptr, r);
+          f->BufPos += r;
+          ptr += r;
+          result += r;
+        }
+      if (result < size)
+        {
+          _p_ReadBuffer (f);
+          if (f->BufPos >= f->BufSize)
+            {
+              fil_set (f, FiEof | FiEoln);
+              break;
+            }
+        }
+    }
+  if (presult)
+    *presult = result;
+  else
+    if (!_p_InOutRes && result != size)
+      IOERROR_FILE (465, f, False,);  /* cannot read all the data from %s */
+}
+
+/* Get FilSiz bytes from the file.
+
+   First get from the terminal input device
+   This is done to take care of an EOLn test
+   before anything is read in. Otherwise we
+   would have to read in a character to test.
+
+   @@@@ Document: If Input is reset, the file buffer
+   is set `undefined' and when nothing is read in yet:
+
+   EOF (Input) = False
+
+   (This is according to the standard, because EOLn must be on
+   before EOF can be True).
+
+   EOLn (Input)
+
+   If it is tested it is True.
+   If it is not tested it is False. */
+static void _p_GetN (FDR f)
+{
+  size_t n;
+  int eof_now, temp;
+  if (!_p_OK_EOF (f)) return;
+  eof_now = fil_tst (f, FiEofOK);
+  fil_clr (f, FiUnread | FiUnd | FiLGet | FiEofOK);
+  /* @@@@ this different treatment is suspicious ... */
+  if (f->FilSiz == 1)  /* No files are packed yet. */
+    {
+      *(f->FilBuf) = temp = _p_InternalGetC (f);
+      if (temp >= 0) return;
+      if (fil_tst (f, FiTxt) && !eof_now && !fil_tst (f, FiEoln))
+        {
+          /* When reading from a Text file EOLn is always True just before
+             EOF, even if there is no end of line at the end of the file */
+          fil_set (f, FiEoln);
+          *(f->FilBuf) = ' ';
+        }
+      else
+        fil_set (f, FiEof | FiUnd);
+      return;
+    }
+  _p_InternalRead (f->FilBuf, f->FilSiz, &n, f);
+  if (_p_InOutRes) return;
+  if (n < f->FilSiz)
+    {
+      if (n != 0)
+        _p_RuntimeWarning ("read partial record in `Get'");
+      else
+        fil_set (f, FiEof | FiEoln);
+      fil_set (f, FiUnd);
+    }
+  else
+    fil_clr (f, FiLGet);
+}
+
+/* Because of lazy I/O, each buffer access needs to check
+   that the buffer is valid. If not, we need to do a get before
+   accessing the buffer.
+
+   When we do a reset or read something from a file, the old method
+   needs to read new contents to the buffer before the data is
+   actually needeed. This is annoying if you do interactive programs,
+   the output to terminal asking for input comes after you have
+   already given the input to the program, or you have to code
+   things differently for terminals and files, which is also annoying.
+
+   Lazy I/O means that we must not do a PUT too late, and do a GET as
+   late as we can. The first condition is satisfied either by not
+   buffering output at all, or else flushing output to terminals
+   before each get; the second condition is fulfilled when we check
+   that the buffer is valid each time we generate buffer references. */
+
+/* This is the buffer referencing routine for read-only access. */
+GLOBAL (unsigned char *_p_LazyGet (FDR f))
+{
+  /* If the file buffer contents is lazy, validate it */
+  if (!_p_InOutRes && fil_tst (f, FiLGet))
+    {
+      _p_GetN (f);
+      _p_OK_EOF (f);
+    }
+  return f->FilBuf;
+}
+
+/* Empty a file buffer before writing to it */
+GLOBAL (unsigned char *_p_LazyUnget (FDR f))
+{
+  /* If the file buffer content is filled, clear it and seek back */
+  if (!_p_InOutRes && !fil_tst (f, FiLGet))
+    {
+      _p_SeekInternal (f, -1, SeekRelative);
+      fil_clr (f, FiEof | FiEoln);
+      fil_set (f, FiLGet | FiUnd);
+    }
+  return f->FilBuf;
+}
+
+/* This is the buffer referencing routine. Nothing is actually done
+   if fil_tst (f, FiLGet) is not on. */
+GLOBAL (unsigned char *_p_LazyTryGet (FDR f))
+{
+  if (_p_InOutRes) return f->FilBuf;
+#if 0
+  /* @@@@ This is called also for `Buffer^ := Val;'
+     So it must not blindly trap the reference.
+     The compiler should clear the FiUnd bit for these ... (?) */
+  if (fil_tst (f, FiUnd) && !fil_tst (f, FiLGet))
+    IOERROR_FILE (440, f, False,);  /* reference to buffer variable of %s with undefined value */
+#endif
+
+  /* If the file buffer contents is lazy, validate it */
+  if (fil_tst (f, FiLGet))
+    {
+      if (is_READABLE (f) && !fil_tst (f, FiEof))
+        {
+          _p_GetN (f);
+          _p_OK_EOF (f);
+        }
+      else
+        /* Buffer cannot be read in. But perhaps someone only wants to
+           write to it, who knows? (This routine doesn't know, and that's
+           the problem!)-: So we just mark it as undefined. :-*/
+        fil_set (f, FiUnd);
+    }
+  return f->FilBuf;
+}
+
+/* Get
+   pre-assertion:
+     (f0.M = Inspection or f0.M = Update) and
+     (neither f0.L nor f0.R is undefined) and
+     (f0.R <> S ())
+   post-assertion:
+     (f.M = f0.M) and (f.L = f0.L~S (f0.R.first)) and (f.R = f0.R.rest) and
+     (if (f.R = S ()) then
+       (f^ is undefined)
+     else
+       (f^ = f.R.first)) */
+GLOBAL (void _p_Get (FDR f))
+{
+  _p_LazyGet (f);
+  fil_set (f, FiLGet);
+}
+
+static inline int _p_DirectWarn (FDR f, int n)
+{
+  if (!fil_tst (f, FiDacc))
+    {
+      if (_p_ForceDirectFiles)
+        IOERROR_FILE (n, f, False, 1);
+      else
+        _p_RuntimeWarningCString (_p_GetErrorMessage (n), f->FilNam);
+    }
+  return 0;
+}
+
+GLOBAL (FileSizeType _p_FileSize (FDR f))
+{
+  FileSizeType OrigPos, LastPos = -1;
+  if (_p_DirectWarn (f, 590) || _p_InOutRes)  /* Direct access routine `GetSize' applied to non-direct % */
+    return 0;
+  if (f->RtsSta == FiNOP)
+    IOERROR_FILE (407, f, False, 0);  /* % has not been opened */
+  _p_FlushBuffer (f);
+  OrigPos = _p_SeekHandle (f->Handle, 0, SeekRelative);
+  if (OrigPos >= 0)
+    {
+      LastPos = _p_SeekHandle (f->Handle, 0, SeekFileEnd);
+      _p_SeekHandle (f->Handle, OrigPos, SeekAbsolute);
+    }
+  if (LastPos >= 0)
+    return NUMBYTE (f, LastPos);
+  else
+    IOERROR_FILE (446, f, True, 0);  /* cannot get the size of % */
+}
+
+/* Position (f) = Succ (a, Length (f.L))
+   This function returns the element number, always counted from zero
+   (since the RTS does not know the lower bound of the direct access
+   file type), so the compiler needs to adjust the value before it is
+   returned to the user. */
+GLOBAL (FileSizeType _p_Position (FDR f))
+{
+  FileSizeType NumBytes, pos;
+  if (_p_DirectWarn (f, 596) || _p_InOutRes)  /* Direct access routine `Position' applied to non-direct % */
+     return 0;
+  if (f->RtsSta == FiNOP)
+    IOERROR_FILE (407, f, False, 0);  /* % has not been opened */
+  NumBytes = _p_SeekHandle (f->Handle, 0, SeekRelative);
+  if (NumBytes < 0)
+    IOERROR_FILE (417, f, True, 0);  /* `FilePos'' could not get file position of % */
+  if (f->BufPos < f->BufSize)
+    NumBytes -= f->BufSize - f->BufPos;
+  /*@@@@avoid superfluous warning under m68-linux (gcc-2.8.1 bug?)*/ pos = 0;
+  pos = NUMBYTE (f, NumBytes);
+  if (!(fil_tst (f, FiUnd) || fil_tst (f, FiLGet)))
+    pos--;
+  return pos;
+}
+
+/* The standard requires that EOLn be set before EOF in text files.
+   Based on this we do not validate an undefined buffer for text files
+   when reading from a terminal if EOLn is not set. */
+GLOBAL (int _p_EOF (FDR f))
+{
+  if (_p_InOutRes) return True;
+  if (f->RtsSta == FiNOP)
+    IOERROR_FILE (455, f, False, True);  /* `EOF' tested for unopened %s */
+  /* If EOF is already set, don't try to read past EOF */
+  if (fil_tst (f, FiEof))
+    return True;
+  if (fil_tst (f, FiLGet) && is_READABLE (f))
+    {
+      /* If we do not have EOLn or EOFOK when reading from terminal
+         text file, this can't be EOF */
+      if (fil_tst (f, FiTxt) && TST_STATUS (f, FiTty) && !fil_tst (f, FiEoln | FiEofOK))
+        return 0;
+      else
+        {
+          if (_p_OK_Read (f)) _p_GetN (f);
+          if (_p_InOutRes) return True;
+        }
+    }
+  return !!fil_tst (f, FiEof);
+}
+
+GLOBAL (int _p_EOLn (FDR f))
+{
+  if (_p_InOutRes) return True;
+  if (f->RtsSta == FiNOP)
+    IOERROR_FILE (456, f, False, True);  /* `EOLn' tested for unopened %s */
+  if (!fil_tst (f, FiTxt))
+    IOERROR_FILE (458, f, False, True);  /* `EOLn' applied to non-text %s */
+  if (fil_tst (f, FiEof))
+    return True; /*IOERROR_FILE (457, f, False, True);*/  /* `EOLn' tested for %s when `EOF' is True */
+  if (fil_tst (f, FiLGet) && is_READABLE (f))
+    {
+      /* If EOLn is tested on a terminal device where nothing has
+         been read yet, return True.
+         If it is not tested, it is False.
+         FiUnread is set before anything is read. */
+      if (TST_STATUS (f, FiTty) && fil_tst (f, FiUnread))
+        {
+          *(f->FilBuf) = ' ';
+          fil_set (f, FiEoln);
+          fil_clr (f, FiLGet | FiUnd | FiUnread);
+          return True;
+        }
+      if (_p_OK_Read (f)) _p_GetN (f);
+      if (_p_InOutRes) return True;
+    }
+  if (fil_tst (f, FiEof))
+    return True; /*IOERROR_FILE (457, f, False, True);*/  /* `EOLn' tested for %s when `EOF' is True */
+  return !!fil_tst (f, FiEoln);
+}
+
+static inline int _p_SelectOccurredRead (InternalIOSelectType *p)
+{
+  p->OccurredReadOrEOF = 1;
+  if (p->WantedRead || p->WantedEOF)
+    p->OccurredRead = !((p->OccurredEOF = _p_EOF (p->f)));  /* assignment! */
+  return p->WantedReadOrEOF || (p->WantedRead && p->OccurredRead) || (p->WantedEOF && p->OccurredEOF);
+}
+
+GLOBAL (int _p_Select (InternalIOSelectType *Events, int Low, int Count, MicroSecondTimeType MicroSeconds))
+{
+  int i, sresult, result = 0, always = 0;
+  InternalSelectType SelectEvents[Count];
+  if (!Events || Count <= 0)
+    return (_p_SelectHandle (0, NULL, MicroSeconds) < 0) ? - 1 : 0;
+  for (i = 0; i < Count; i++)
+    {
+      InternalIOSelectType *p = &Events[i];
+      int f = 0, fa = 0;
+      SelectEvents[i].Handle = -1;
+      p->OccurredReadOrEOF = p->OccurredRead = p->OccurredEOF = p->OccurredWrite = p->OccurredException = 0;
+      if (p->f && p->f->RtsSta != FiNOP)
+        {
+          int fn = p->f->SelectFunc ? p->f->SelectFunc (p->f->PrivateData, p->WantedWrite) : p->f->Handle;
+          Boolean WantRead = (p->WantedReadOrEOF || p->WantedRead || p->WantedEOF) && is_READABLE (p->f),
+                  WantWrite = p->WantedWrite && is_WRITABLE (p->f),
+                  WantExcept = p->WantedException;
+          int buffered = WantRead && (fil_tst (p->f, FiEof) || !fil_tst (p->f, FiLGet) || p->f->BufPos < p->f->BufSize);
+          if (buffered && _p_SelectOccurredRead (p))
+            {
+              WantRead = 0;
+              f = 1;
+            }
+          if (fn >= 0)
+            {
+              SelectEvents[i].Handle = fn;
+              SelectEvents[i].Read = (WantRead && !buffered);
+              SelectEvents[i].Write = WantWrite;
+              SelectEvents[i].Exception = WantExcept;
+              if (SelectEvents[i].Read || SelectEvents[i].Write || SelectEvents[i].Exception)
+                fa = 1;
+            }
+          if ((WantRead || WantWrite || WantExcept) &&
+              (p->f->SelectProc || fn < 0))
+            {
+              if (p->f->SelectProc)
+                p->f->SelectProc (p->f->PrivateData, &WantRead, &WantWrite, &WantExcept);
+              else
+                {
+                  if (!p->f->ReadFunc) WantRead = 0;
+                  if (!p->f->WriteFunc) WantWrite = 0;
+                }
+              if (WantRead && _p_SelectOccurredRead (p)) f = 1;
+              if (WantWrite)  f = p->OccurredWrite = 1;
+              if (WantExcept) f = p->OccurredWrite = 1;
+            }
+        }
+      if (p->WantedAlways && fa) always = 1;
+      if (f) result = Low + i;
+    }
+  if (result && !always) return result;
+  sresult = _p_SelectHandle (Count, SelectEvents, MicroSeconds);
+  for (i = 0; i < Count; i++)
+    {
+      InternalIOSelectType *p = &Events[i];
+      if (p->f && p->f->RtsSta != FiNOP)
+        {
+          Boolean WantRead = (p->WantedReadOrEOF || p->WantedRead || p->WantedEOF) && is_READABLE (p->f),
+                  WantWrite = p->WantedWrite && is_WRITABLE (p->f),
+                  WantExcept = p->WantedException;
+          int f = 0;
+          if (sresult > 0 && SelectEvents[i].Handle >= 0)
+            {
+              if (SelectEvents[i].Read)
+                {
+                  WantRead = 0;
+                  f = _p_SelectOccurredRead (p);
+                }
+              if (SelectEvents[i].Write)
+                {
+                  WantWrite = 0;
+                  f = p->OccurredWrite = 1;
+                }
+              if (SelectEvents[i].Exception)
+                {
+                  WantExcept = 0;
+                  f = p->OccurredException = 1;
+                }
+            }
+          /* Call SelectProc even if select returned an error --
+             TFDDs might use signals to interrupt select when ready. */
+          if ((WantRead || WantWrite || WantExcept) && p->f->SelectProc)
+            {
+              p->f->SelectProc (p->f->PrivateData, &WantRead, &WantWrite, &WantExcept);
+              if (WantRead && _p_SelectOccurredRead (p)) f = 1;
+              if (WantWrite)  f = p->OccurredWrite = 1;
+              if (WantExcept) f = p->OccurredWrite = 1;
+            }
+          if (f) result = Low + i;
+        }
+    }
+  if (result == 0 && sresult < 0) result = - 1;
+  return result;
+}
+
+GLOBAL (Boolean _p_CanRead (FDR f))
+{
+  int result;
+  InternalIOSelectType e;
+  e.f = f;
+  e.WantedRead = 1;
+  e.WantedReadOrEOF = e.WantedEOF = e.WantedWrite = e.WantedException = e.WantedAlways = 0;
+  DO_RETURN_ADDRESS (result = _p_Select (&e, 1, 1, 0) > 0);
+  return result;
+}
+
+GLOBAL (Boolean _p_CanWrite (FDR f))
+{
+  int result;
+  InternalIOSelectType e;
+  e.f = f;
+  e.WantedWrite = 1;
+  e.WantedRead = e.WantedReadOrEOF = e.WantedEOF = e.WantedException = e.WantedAlways = 0;
+  DO_RETURN_ADDRESS (result = _p_Select (&e, 1, 1, 0) > 0);
+  return result;
+}
+
+/*@@@@ Make Result the return value (affects compiler), somewhat more efficient (also BlockWrite) */
+GLOBAL (void _p_BlockRead (FDR f, Boolean IsAnyFile, char *Buf, unsigned int Count, unsigned int *Result))
+{
+  size_t m = 0, n, r, size = IsAnyFile ? 1 : f->FilSiz;
+  if (Result)
+    *Result = 0;
+  if (_p_InOutRes || !_p_OK_Read (f)) return;
+  Count *= size;
+  if (!fil_tst (f, FiEof))
+    {
+      int bufagain;
+      /* If something was read ahead (e.g. in _p_EOF()), copy this to the
+         destination buffer first */
+      if (Count > 0 && !fil_tst (f, FiLGet))
+        {
+          /* For AnyFiles it might happen that the requested amount of
+             data is less than the file buffer size. Discard the rest.
+             (There's nothing sensible to do then.) */
+          m = f->FilSiz < Count ? f->FilSiz : Count;
+          _p_Move (f->FilBuf, Buf, m);
+          Count -= m;
+          fil_set (f, FiLGet);
+        }
+      do
+        {
+          bufagain = 0;
+          if (Count > 0 && f->BufPos < f->BufSize)
+            {
+              n = f->BufSize - f->BufPos;
+              if (n > Count) n = Count;
+              _p_Move (f->BufPtr + f->BufPos, Buf + m, n);
+              f->BufPos += n;
+              if (f->BufPos >= f->BufSize) _p_ClearBuffer (f);
+              Count -= n;
+              m += n;
+            }
+          if (Count > 0)
+            {
+              if (m >= size && Result)
+                {
+                  InternalIOSelectType e;
+                  e.f = f;
+                  e.WantedReadOrEOF = 1;
+                  e.WantedRead = e.WantedEOF = e.WantedWrite = e.WantedException = e.WantedAlways = 0;
+                  if (_p_Select (&e, 1, 1, 0) <= 0) break;
+                }
+              if (Count < FILE_BUFSIZE)
+                {
+                  _p_ReadBuffer (f);
+                  bufagain = f->BufSize > f->BufPos;
+                }
+              if (!bufagain)
+                {
+                  if (TST_STATUS (f, FiTty)) _p_FlushAllFiles ();
+                  do
+                    {
+                      if (f->ReadFunc)
+                        {
+                          if (f->ReadFunc == DefaultReadFunc)
+                            n = _p_ReadInternal (f, Buf + m, Count);
+                          else
+                            {
+                              n = f->ReadFunc (f->PrivateData, Buf + m, Count);
+                              if (_p_InOutRes && !_p_InOutResString) IOERROR_FILE (_p_InOutRes, f, False,);
+                            }
+                        }
+                      else
+                        n = 0;
+                      Count -= n;
+                      m += n;
+                    }
+                  while (n > 0 && Count > 0 && (m < size || !Result));
+                  if (n == 0)
+                    fil_set (f, FiEof);
+                }
+            }
+        }
+      while (bufagain);
+    }
+  r = m % size;
+  if (r)
+    {
+      _p_Move (Buf + m - r, f->BufPtr + f->BufSize, r);
+      f->BufSize += r;
+    }
+  if (Result)
+    *Result = m / size;
+  else
+    if (Count > 0)
+      IOERROR_FILE (415, f, False,);  /* BlockRead: could not read all the data from `%s' */
+}
+
+static inline int TestDigit (int ch, int *digit, int base)
+{
+  *digit = (ch >= '0' && ch <= '9') ? ch - '0'
+         : (ch >= 'A' && ch <= 'Z') ? ch - 'A' + 10
+         : (ch >= 'a' && ch <= 'z') ? ch - 'a' + 10
+         : base;
+  return *digit < base;
+}
+
+/* Read an integer number
+   Actually min and max are unsigned if check == UnsignedRangeCheck */
+static LongestInt _p_ReadICheck (FDR f, TRangeCheck check, LongestInt min, LongestInt max)
+{
+  int negative;
+  int ch;
+  LongestCard num,           /* Absolute value of the number read */
+              u_min, u_max;  /* bounds for the absolute value */
+  int base = 10;
+  int base_changed = 0;
+  int digit;
+
+  if (_p_InOutRes) return 0;
+
+  negative = False;
+  do
+    {
+      ch = _p_DirectGetCCheckEOF (f);
+      if (_p_InOutRes) return 0;
+    }
+  while (IsSpaceNl (ch));
+  if (!(TestDigit (ch, &digit, base) || ch == '+' || ch == '-' || (ch == '$' && (f->Flags & INT_READ_HEX_MASK))))
+    IOERROR (552, False, 0);
+  else
+    {
+      if (ch == '+' || ch == '-')
+        {
+          if (ch == '-')
+            negative = True;
+          ch = _p_DirectGetCCheckEOF (f);
+          if (_p_InOutRes) return 0;
+          if (!(TestDigit (ch, &digit, base) || (ch == '$' && (f->Flags & INT_READ_HEX_MASK))))
+            IOERROR (551, False, 0);
+        }
+    }
+
+  /* Compute bounds for absolute value, depending on the actual sign */
+  u_min = min;
+  u_max = max;
+
+  if (check == UnsignedRangeCheck && negative)
+    {
+      if (u_min == 0)
+        u_max = 0;
+      else
+        IOERROR (553, False, 0);
+    }
+
+  if (check == SignedRangeCheck)
+    {
+      if (negative)
+        {
+          if (min > 0) IOERROR (553, False, 0);
+          u_max = - min;
+          u_min = (max > 0) ? 0 : - max;
+        }
+      else
+        {
+          if (min < 0) u_min = 0;
+          if (max < 0) IOERROR (553, False, 0);
+        }
+    }
+
+  /* Check for `$' hex base specifier */
+  if (ch == '$' && (f->Flags & INT_READ_HEX_MASK))
+    {
+      base = 0x10;
+      base_changed = 1;
+      ch = _p_DirectGetCCheckEOF (f);
+      if (_p_InOutRes) return 0;
+      if (!TestDigit (ch, &digit, base))
+        IOERROR (557, False, 0);
+    }
+
+  /* Now ch contains the first digit. Get the integer */
+  num = 0;
+  do
+    {
+      if (check != NoRangeCheck &&
+          num > (((u_max < 36 && !base_changed && (f->Flags & INT_READ_BASE_SPEC_MASK))
+                  ? 36 : u_max) - digit) / base)
+        IOERROR (553, False, 0);
+
+      num = num * base + digit;
+      ch = _p_DirectGetC (f);
+
+      /* Check for `n#' base specifier */
+      if (ch == '#' && (f->Flags & INT_READ_BASE_SPEC_MASK))
+        {
+          if (base_changed)
+            IOERROR (559, False, 0);
+
+          if (num < 2 || num > 36)
+            IOERROR (560, False, 0);
+
+          base = num;
+          base_changed = 1;
+          num = 0;
+
+          ch = _p_DirectGetCCheckEOF (f);
+          if (_p_InOutRes) return 0;
+          if (!TestDigit (ch, &digit, base))
+            IOERROR (558, False, 0);
+        }
+    }
+  while (TestDigit (ch, &digit, base));
+
+  if (check != NoRangeCheck && (num < u_min || num > u_max))
+    IOERROR (553, False, 0);
+
+  if ((f->Flags & NUM_READ_CHK_WHITE_MASK) && !(ch < 0 || IsSpaceNl (ch)))
+    IOERROR (561, False, 0);
+
+  _p_UnGetCh (f, ch);
+
+  if ((f->Flags & VAL_MASK) && f->BufPos - !fil_tst (f, FiLGet) < f->BufSize)
+    {
+      f->BufPos++;
+      _p_InOutRes = ValInternalError;
+    }
+
+  return negative ? -num : num;
+}
+
+GLOBAL (LongestInt _p_ReadICheckSigned (FDR f, LongestInt min, LongestInt max))
+{
+  return _p_ReadICheck (f, SignedRangeCheck, min, max);
+}
+
+GLOBAL (LongestCard _p_ReadICheckUnsigned (FDR f, LongestCard min, LongestCard max))
+{
+  return (LongestCard) _p_ReadICheck (f, UnsignedRangeCheck, (LongestInt) min, (LongestInt) max);
+}
+
+GLOBAL (LongestInt _p_ReadI (FDR f))
+{
+  return _p_ReadICheck (f, NoRangeCheck, 0ll, 0ll);
+}
+
+/* check if two real numbers are approximately equal */
+static inline int _p_RealEQ (long double X, long double Y)
+{
+  long double tmp = 1.0e-6 * ((X >= 0) ? X : -X);
+  return X-Y <= tmp && Y-X <= tmp;
+}
+
+static inline void _p_CheckRealOverUnderflow (long double tmp, long double p)
+{
+  if (_p_InOutRes) return;
+  if (p == 0.0 && tmp != 0.0)
+    IOERROR (564, False,);
+  if ((tmp < -1.0 || tmp > 1.0) && !_p_RealEQ (tmp, p))
+    IOERROR (563, False,);
+}
+
+/* Unless REAL_READ_SP_ONLY_MASK is set, accept the Extended Pascal
+   real number format extension:
+   [ sign ] (digit-sequence [ "." ] | "." fractional-part) [ "e" scale-factor ] */
+GLOBAL (long double _p_Read_LongReal (FDR f))
+{
+  int require_fractional = 0;
+  int negative = False;
+  int expon = 0, lastexp;
+  int enegative = False;
+  int ch, i;
+  long double val = 0.0, lastval, frac = 1.0;
+
+  if (_p_InOutRes) return 0.0;
+
+  ch = _p_DirectGetCCheckEOF (f);
+  if (_p_InOutRes) return 0.0;
+
+  while (IsSpaceNl (ch))
+    {
+      ch = _p_DirectGetCCheckEOF (f);
+      if (_p_InOutRes) return 0.0;
+    }
+  if (!(IsDigit (ch) || ch == '+' || ch == '-' || (ch == '.' && !(f->Flags & REAL_READ_SP_ONLY_MASK))))
+    IOERROR (552, False, 0.0);
+  else
+    {
+      if (ch == '+' || ch == '-')
+        {
+          if (ch == '-')
+            negative = True;
+          ch = _p_DirectGetCCheckEOF (f);
+          if (_p_InOutRes) return 0.0;
+
+          /* Skip spaces between sign and digit (or '.') */
+          while (IsSpaceNl (ch))
+            {
+              ch = _p_DirectGetCCheckEOF (f);
+              if (_p_InOutRes) return 0.0;
+            }
+        }
+    }
+
+  if (!(IsDigit (ch) || (ch == '.' && !(f->Flags & REAL_READ_SP_ONLY_MASK))))
+    IOERROR ((f->Flags & REAL_READ_SP_ONLY_MASK) ? 551 : 562, False, 0.0);
+
+  require_fractional = ((f->Flags & REAL_READ_SP_ONLY_MASK) || !IsDigit (ch));
+
+  /* Read the mantissa. ch is now a digit or '.' */
+  while (IsDigit (ch))
+    {
+      lastval = val;
+      val = 10.0 * val + (ch - '0');
+      if (!_p_RealEQ ((val - (ch - '0')) / 10.0, lastval))
+        IOERROR (563, False, 0.0);
+      ch = _p_DirectGetC (f);
+    }
+
+  if (ch == '.')
+    {
+      /* Read the fractional part */
+      ch = _p_DirectGetC (f);
+
+      if (require_fractional && !IsDigit (ch))
+        IOERROR (554, False, 0.0);
+
+      while (IsDigit (ch))
+        {
+          frac /= 10.0;
+          val += frac * (ch - '0');
+          ch = _p_DirectGetC (f);
+        }
+    }
+
+  /* read the exponent */
+  if (ch == 'e' || ch == 'E')
+    {
+      ch = _p_DirectGetCCheckEOF (f);
+      if (_p_InOutRes) return 0.0;
+      if (ch == '+' || ch == '-')
+        {
+          if (ch == '-')
+            enegative = True;
+          ch = _p_DirectGetCCheckEOF (f);
+          if (_p_InOutRes) return 0.0;
+        }
+
+      if (!IsDigit (ch))
+        IOERROR (555, False, 0.0);
+
+      while (IsDigit (ch))
+        {
+          lastexp = expon;
+          expon = 10 * expon + (ch - '0');
+          if ((expon - (ch - '0')) / 10 != lastexp)
+            IOERROR (556, False, 0.0);
+          ch = _p_DirectGetC (f);
+        }
+
+      if (val != 0.0)
+        {
+          if (enegative)
+            {
+              /* @@@@ should do square and divide */
+              for (i = 1; i <= expon; i++)
+                val /= 10.0;
+              if (val == 0.0)  /* note that val != 0.0 originally */
+                IOERROR (556, False, 0.0);  /* @@@@ or should we just return 0? */
+            }
+          else
+            {
+              /* @@@@ should do square and multiply */
+              for (i = 1; i <= expon; i++)
+                val *= 10.0;
+              if (_p_IsInfinity (val) || _p_IsNotANumber (val))
+                IOERROR (556, False, 0.0);
+            }
+        }
+
+    }
+
+  if ((f->Flags & NUM_READ_CHK_WHITE_MASK) && !(ch < 0 || IsSpaceNl (ch)))
+    IOERROR (561, False, 0.0);
+
+  _p_UnGetCh (f, ch);
+
+  if ((f->Flags & VAL_MASK) && f->BufPos - !fil_tst (f, FiLGet) < f->BufSize)
+    {
+      f->BufPos++;
+      _p_InOutRes = ValInternalError;
+    }
+
+  return negative ? -val : val;
+}
+
+GLOBAL (float _p_Read_ShortReal (FDR f))
+{
+  long double tmp = _p_Read_LongReal (f);
+  volatile float p = (float) tmp;
+  _p_CheckRealOverUnderflow (tmp, (long double) p);
+  return (_p_InOutRes && _p_InOutRes != ValInternalError) ? 0.0 : p;
+}
+
+GLOBAL (double _p_Read_Real (FDR f))
+{
+  long double tmp = _p_Read_LongReal (f);
+  volatile double p = (double) tmp;
+  _p_CheckRealOverUnderflow (tmp, (long double) p);
+  return (_p_InOutRes && _p_InOutRes != ValInternalError) ? 0.0 : p;
+}
+
+GLOBAL (char _p_Read_Char (FDR f))
+{
+  if (_p_InOutRes)
+    return ' ';
+  else
+    return _p_DirectGetCCheckEOF (f);
+}
+
+static char *_p_Read_Word (FDR f)
+{
+  int ch, length = 0, size = 16;
+  char *buf;
+  if (_p_InOutRes)
+    return NULL;
+  buf = _p_New (size);
+  do
+    {
+      ch = _p_DirectGetCCheckEOF (f);
+      if (_p_InOutRes) return NULL;
+    }
+  while (IsSpaceNl (ch));
+  do
+    {
+      buf[length++] = ch;
+      if (length >= size)
+        _p_ReAllocMem ((void *) &buf, size *= 2);
+      ch = _p_DirectGetC (f);
+    }
+  while ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_');
+  _p_UnGetCh (f, ch);
+  buf[length] = 0;
+  return buf;
+}
+
+GLOBAL (Boolean _p_Read_Boolean (FDR f))
+{
+  char *v;
+  Boolean Result;
+  v = _p_Read_Word (f);
+  if (_p_InOutRes)
+    {
+      _p_Dispose (v);
+      return False;
+    }
+  if (!_p_CStringCaseComp (v, FALSE_str))
+    Result = False;
+  else if (!_p_CStringCaseComp (v, TRUE_str))
+    Result = True;
+  else
+    Result = 2;
+  _p_Dispose (v);
+  if (Result == 2)
+    IOERROR (566, False, False);
+  return Result;
+}
+
+GLOBAL (int _p_Read_Enum (FDR f, char **IDs, int IDCount))
+{
+  char *v;
+  int Result = 0;
+  v = _p_Read_Word (f);
+  if (_p_InOutRes)
+    {
+      _p_Dispose (v);
+      return 0;
+    }
+  while (Result < IDCount && _p_CStringCaseComp (v, IDs[Result]))
+    Result++;
+  _p_Dispose (v);
+  if (Result >= IDCount)
+    IOERROR (567, False, 0);
+  return Result;
+}
+
+/* Read a string up to the max length or newline, whichever comes first.
+   The number of characters read is returned. */
+GLOBAL (int _p_Read_String (FDR f, char *str, int Capacity))
+{
+  int length = 0, ch;
+  if (_p_InOutRes) return 0;
+  if (!(f->Flags & READ_WRITE_STRING_MASK) && !_p_OK_EOF (f)) return 0;
+  if (Capacity < 0)
+    _p_InternalError (907);  /* string capacity cannot be negative */
+  /* If EOLn (f) is on, nothing is read and length is left zero. */
+  if (!fil_tst (f, FiEoln))
+    while (length < Capacity)
+      {
+        ch = _p_DirectGetC (f);
+        if (ch < 0 || fil_tst (f, FiEoln))
+          {
+            _p_UnGetCh (f, ch);
+            break;
+          }
+        str[length] = ch;
+        length++;
+      }
+  return length;
+}
+
+GLOBAL (void _p_ReadLn (FDR f))
+{
+  if (_p_InOutRes) return;
+  if (fil_tst (f, FiEofOK) && !_p_OK_EOF (f)) return;
+  while (!(fil_tst (f, FiEof | FiEoln)))
+    _p_GetN (f);
+  /* Now EOLn is not True because we just read it off */
+  fil_clr (f, FiEoln);
+  fil_set (f, FiLGet | FiEofOK);
+}
+
+GLOBAL (void _p_Read_Init (FDR f, int Flags))
+{
+  f->Flags = Flags;
+  _p_OK_Read (f);
+}
+
+GLOBAL (void _p_ReadStr_Init (FDR f, char *s, int Length, int Flags))
+{
+  f->BufPtr = s;
+  f->BufSize = Length;
+  f->BufPos = 0;
+  f->Flags = Flags | READ_WRITE_STRING_MASK;
+  f->FilSta = 0;
+  f->FilBuf = f->InternalBuffer;  /* only 1 char is actually needed */
+  fil_clr (f, FiEof | FiEofOK | FiEoln);
+  fil_set (f, FiLGet | FiTxt);
+  SET_STATUS (f, FiRONLY);
+  if (f->BufPos >= f->BufSize)
+    fil_set (f, FiEof | FiEoln);
+}
+
+static inline void _p_Val_Init (FDR f, char *s, int Length, int Flags)
+{
+  _p_StartTempIOError ();
+  _p_ReadStr_Init (f, s, Length, Flags | VAL_MASK);
+}
+
+static inline int _p_GetValResult (FDR f)
+{
+  int Eof = fil_tst (f, FiEof), Pos = f->BufPos - !fil_tst (f, FiLGet);
+  return _p_EndTempIOError () || !Eof ? (Pos ? Pos : 1) : 0;
+}
+
+#define VAL_ROUTINE(FUNCTION) \
+{ \
+  struct Fdr TempFile;  /* This is no real file, be careful what you do with it. Don't call _p_InitFDR(). ;*/ \
+  _p_Val_Init (&TempFile, string, ((maxchars == -1) ? (int) _p_CStringLength (string) : maxchars), \
+               flags & ~NUM_READ_CHK_WHITE_MASK); \
+  *var = FUNCTION; \
+  return _p_GetValResult (&TempFile); \
+}
+
+#define VAL_REAL(func, type, read_func) \
+GLOBAL (int func (char *string, int maxchars, int flags, type *var)) \
+VAL_ROUTINE (read_func (&TempFile))
+
+VAL_REAL (_p_Val_ShortReal, float,       _p_Read_ShortReal)
+VAL_REAL (_p_Val_Real,      double,      _p_Read_Real)
+VAL_REAL (_p_Val_LongReal,  long double, _p_Read_LongReal)
+
+/* read from a string into one integer argument */
+#define VAL_INT_NOCHECK(func, sign, type) \
+GLOBAL (int func (char *string, int maxchars, int flags, sign type *var)) \
+VAL_ROUTINE (_p_ReadI (&TempFile))
+
+VAL_INT_NOCHECK (_p_Val_ByteInt_NoCheck,   signed,   char)
+VAL_INT_NOCHECK (_p_Val_ShortInt_NoCheck,  signed,   short)
+VAL_INT_NOCHECK (_p_Val_Integer_NoCheck,   signed,   int)
+VAL_INT_NOCHECK (_p_Val_MedInt_NoCheck,    signed,   long)
+VAL_INT_NOCHECK (_p_Val_LongInt_NoCheck,   signed,   long long)
+VAL_INT_NOCHECK (_p_Val_ByteCard_NoCheck,  unsigned, char)
+VAL_INT_NOCHECK (_p_Val_ShortCard_NoCheck, unsigned, short)
+VAL_INT_NOCHECK (_p_Val_Cardinal_NoCheck,  unsigned, int)
+VAL_INT_NOCHECK (_p_Val_MedCard_NoCheck,   unsigned, long)
+VAL_INT_NOCHECK (_p_Val_LongCard_NoCheck,  unsigned, long long)
+
+#if 0  /* so they don't waste space in libgpc.a -- not implemented in the compiler yet, anyway */
+#define VAL_INT_CHECK(func, check, sign, type) \
+GLOBAL (int func (char *string, int maxchars, int flags, sign type *var, sign type min, sign type max)) \
+VAL_ROUTINE (_p_ReadICheck (&TempFile, check, (sign long long) min, (sign long long) max))
+
+VAL_INT_CHECK (_p_Val_ByteInt_Check,   SignedRangeCheck,   signed,   char)
+VAL_INT_CHECK (_p_Val_ShortInt_Check,  SignedRangeCheck,   signed,   short)
+VAL_INT_CHECK (_p_Val_Integer_Check,   SignedRangeCheck,   signed,   int)
+VAL_INT_CHECK (_p_Val_MedInt_Check,    SignedRangeCheck,   signed,   long)
+VAL_INT_CHECK (_p_Val_LongInt_Check,   SignedRangeCheck,   signed,   long long)
+VAL_INT_CHECK (_p_Val_ByteCard_Check,  UnsignedRangeCheck, unsigned, char)
+VAL_INT_CHECK (_p_Val_ShortCard_Check, UnsignedRangeCheck, unsigned, short)
+VAL_INT_CHECK (_p_Val_Cardinal_Check,  UnsignedRangeCheck, unsigned, int)
+VAL_INT_CHECK (_p_Val_MedCard_Check,   UnsignedRangeCheck, unsigned, long)
+VAL_INT_CHECK (_p_Val_LongCard_Check,  UnsignedRangeCheck, unsigned, long long)
+#endif
+
+static void _p_WriteToBuf (FDR f, const char *ptr, size_t size)
+{
+  size_t a;
+  a = f->BufSize - f->BufPos;
+  if (a < size && (f->Flags & FORMAT_STRING_MASK))
+    {
+      while ((a = f->BufSize - f->BufPos) < size) f->BufSize *= 2;
+      _p_ReAllocMem ((void **) &f->BufPtr, f->BufSize);
+    }
+  if (size < a) a = size;
+  if (a > 0)
+    {
+      _p_Move (ptr, f->BufPtr + f->BufPos, a);
+      f->BufPos += a;
+      ptr += a;
+      size -= a;
+    }
+  if (size == 0) return;
+  if (f->Flags & READ_WRITE_STRING_MASK)
+    {
+      if (f->Flags & TRUNCATE_STRING_MASK)
+        return;
+      else
+        IOERROR (584, False,);  /* string capacity exceeded in `WriteStr' */
+    }
+  if (_p_InOutRes) return;
+  _p_InternalWrite (f->BufPtr, f->BufPos, f);
+  if (size <= f->BufSize)
+    {
+      _p_Move (ptr, f->BufPtr, size);
+      f->BufPos = size;
+    }
+  else
+    {
+      _p_InternalWrite (ptr, size, f);
+      f->BufPos = 0;
+    }
+}
+
+GLOBAL (void _p_Write_Flush (FDR f))
+{
+  if (_p_InOutRes) return;
+  if (f->BufPos != 0)
+    _p_InternalWrite (f->BufPtr, f->BufPos, f);
+  _p_ClearBuffer (f);
+  _p_FlushBuffer (f);
+}
+
+/* pad with spaces */
+static inline void _p_WritePad (FDR f, int count)
+{
+  static const char blanks[] = "                                ";
+  #define PADSIZE ((int) (sizeof (blanks) - 1))
+  int i;
+  for (i = count; i > 0; i -= PADSIZE)
+    _p_WriteToBuf (f, blanks, (i >= PADSIZE) ? PADSIZE : i);
+}
+
+static void _p_WritePadded (FDR f, const char *buf, int length, int width, int clip)
+{
+  int pad_left = 0, pad_right = 0;
+  if (width != _p_LowInteger)
+    {
+      int abs_width, pad;
+      abs_width = (width >= 0) ? width : -width;
+      if (length > abs_width)
+        {
+          pad = 0;
+          if (clip) length = abs_width;
+        }
+      else
+        pad = abs_width - length;
+      if (width <= 0 && (f->Flags & NEG_ZERO_WIDTH_ERROR_MASK))
+        IOERROR (581, False,);  /* fixed field width must be positive */
+      else if (width >= 0)
+        pad_left = pad;
+      else
+        switch (f->Flags & (NEG_WIDTH_ERROR_MASK | NEG_WIDTH_LEFT_MASK | NEG_WIDTH_CENTER_MASK))
+          {
+            case NEG_WIDTH_ERROR_MASK:  IOERROR (580, False,);  /* fixed field width cannot be negative */
+            case NEG_WIDTH_LEFT_MASK:   pad_right = pad;
+                                        break;
+            case NEG_WIDTH_CENTER_MASK: pad_left = pad / 2;
+                                        pad_right = pad - pad_left;
+          }
+    }
+  _p_WritePad (f, pad_left);
+  _p_WriteToBuf (f, buf, length);
+  _p_WritePad (f, pad_right);
+}
+
+/* Sufficient width to hold a LongestInt in decimal representation */
+#define MAX_LONG_WIDTH (sizeof (LongestInt) * 64/*BITS_PER_UNIT*/ / 3 + 2)
+
+#define DEFWRITEINT(fnname, type, conv_fn)         \
+GLOBAL (void fnname (FDR f, type num, int width))  \
+{                                                  \
+  char buf[MAX_LONG_WIDTH], *buf_begin;            \
+  int negative = num < 0;                          \
+  if (negative) num = -num;                        \
+  buf_begin = conv_fn (num, buf + MAX_LONG_WIDTH); \
+  if (negative) *(--buf_begin) = '-';              \
+  _p_WritePadded (f, buf_begin, buf + MAX_LONG_WIDTH - buf_begin, width, 0); \
+}
+DEFWRITEINT (_p_Write_Integer, signed int, _p_CardToDecimal)
+DEFWRITEINT (_p_Write_LongInt, long long int, _p_LongCardToDecimal)
+
+#define DEFWRITEUINT(fnname, type, conv_fn)        \
+GLOBAL (void fnname (FDR f, type num, int width))  \
+{                                                  \
+  char buf[MAX_LONG_WIDTH], *buf_begin;            \
+  buf_begin = conv_fn (num, buf + MAX_LONG_WIDTH); \
+  _p_WritePadded (f, buf_begin, buf + MAX_LONG_WIDTH - buf_begin, width, 0); \
+}
+DEFWRITEUINT (_p_Write_Cardinal, unsigned int, _p_CardToDecimal)
+DEFWRITEUINT (_p_Write_LongCard, unsigned long long int, _p_LongCardToDecimal)
+
+GLOBAL (void _p_Write_Real (FDR f, long double num, int width, int prec))
+{
+  char *buf;
+  int buf_size;
+  if (prec <= 0 && prec != _p_LowInteger)
+    {
+      if (f->Flags & NEG_ZERO_WIDTH_ERROR_MASK)
+        IOERROR (583, False,);  /* fixed real fraction field width must be positive */
+      if (prec < 0)
+        IOERROR (582, False,);  /* fixed real fraction field width cannot be negative */
+    }
+  buf = _p_LongRealToDecimal (num, width, prec,
+        width != _p_LowInteger,
+        (f->Flags & REAL_NOBLANK_MASK) == 0,
+        (f->Flags & REAL_CAPITAL_EXP_MASK) != 0, &buf_size);
+  _p_WritePadded (f, buf, _p_CStringLength (buf), width, 0);
+  if (buf_size)
+    _p_Dispose (buf);
+}
+
+GLOBAL (void _p_Write_Char (FDR f, char ch, int width))
+{
+  _p_WritePadded (f, &ch, sizeof (ch), width, f->Flags & CLIP_STRING_MASK);
+}
+
+GLOBAL (void _p_Write_Boolean (FDR f, int b, int width))
+{
+  const char *str_val = b ? TRUE_str : FALSE_str;
+  _p_WritePadded (f, str_val, _p_CStringLength (str_val), width, 1);
+}
+
+GLOBAL (void _p_Write_Enum (FDR f, char **IDs, int IDCount, int v, int width))
+{
+  const char *str = (v < 0 || v >= IDCount) ? "invalid enumeration value" : IDs[v];
+  _p_WritePadded (f, str, _p_CStringLength (str), width, 0);
+}
+
+GLOBAL (void _p_Write_String (FDR f, char *s, int length, int width))
+{
+  if (s == NULL)
+    length = 0;
+  else if (length < 0)  /* CString */
+    length = _p_CStringLength (s);
+  _p_WritePadded (f, s, length, width, f->Flags & CLIP_STRING_MASK);
+}
+
+GLOBAL (void _p_WriteLn (FDR f))
+{
+  char newline = NEWLINE;
+  _p_WriteToBuf (f, &newline, sizeof (newline));
+}
+
+GLOBAL (void _p_Write_Init (FDR f, int Flags))
+{
+  if (_p_InOutRes) return;
+  _p_OK_Write (f);
+  /*@@@@_p_FlushBuffer (f);*/
+  f->BufSize = FILE_BUFSIZE;
+  f->BufPos = 0;
+  f->Flags = Flags;
+}
+
+GLOBAL (void _p_WriteStr_Init (FDR f, char *s, int Capacity, int Flags))
+{
+  f->BufPtr = s;
+  f->BufSize = Capacity;
+  f->BufPos = 0;
+  f->Flags = Flags | READ_WRITE_STRING_MASK;
+}
+
+GLOBAL (int _p_WriteStr_GetLength (FDR f, unsigned char **Buf))
+{
+  if (Buf) *Buf = f->BufPtr;
+  return f->BufPos;
+}
+
+GLOBAL (void _p_Page (FDR f))
+{
+  char c = NEWPAGE;
+  _p_InternalWrite (&c, sizeof (c), f);
+}
+
+/* Put
+   pre-assertion:
+     (f0.M = Generation or f0.M = Update) and
+     (neither f0.L nor f0.R is undefined) and
+     (f0.R = S () or f is a direct access file type) and
+     (f0^ is not undefined)
+   post-assertion:
+     (f.M = f0.M) and (f.L = f0.L~S (f0^)) and
+     (if f0.R = S () then
+       (f.R = S ())
+     else
+       (f.R = f0.R.rest)) and
+       (if (f.R = S ()) or (f0.M = Generation) then
+         (f^ is undefined)
+       else
+         (f^ = f.R.first)) */
+GLOBAL (void _p_Put (FDR f))
+{
+  if (fil_tst (f, FiDacc))
+    _p_FlushBuffer (f);
+  _p_InternalWrite (f->FilBuf, f->FilSiz, f);
+  if (_p_InOutRes) return;
+  /* f^ set undefined if EOF or mode is generation */
+  if (fil_tst (f, FiEof) || !TST_STATUS (f, FiRND))
+    fil_set (f, FiUnd);
+}
+
+/* Random access file routines.
+
+   NOTE: Extended Pascal defined the following operations only to
+   direct access file types:
+
+   SeekRead, SeekWrite, SeekUpdate, Empty, Position, LastPosition, Update
+
+   Direct access files are defined by: file [indextype] of type
+   (the ord (a) in assertions means the smallest value of indextype)
+
+   However, GPC does not currently implement direct access files, and
+   anyhow maybe we should allow the operations also to other
+   files capable of seeking. These non-direct access files may be
+   thought of the following direct access file type:
+
+   type Natural0 = 0 .. MaxInt;
+        GPCFiles = file [Natural0] of <type> */
+
+GLOBAL (void _p_Truncate (FDR f))
+{
+  FileSizeType position, ByteNum;
+  if (_p_InOutRes) return;
+  if (f->RtsSta == FiNOP)
+    IOERROR_FILE (407, f, False,);  /* % has not been opened */
+  else if (TST_STATUS (f, FiRONLY))
+    IOERROR_FILE (438, f, False,);  /* `Truncate' or `DefineSize' applied to read only % */
+  position = _p_Position (f);
+  if (_p_InOutRes) return;
+  _p_ClearBuffer (f);
+  /*@@@@avoid superfluous warning under m68-linux (gcc-2.8.1 bug?)*/ ByteNum = 0;
+  ByteNum = BYTENUM (f, position);
+  if (_p_TruncateHandle (f->Handle, ByteNum) < 0)
+    /* @@@@ emulate by copying and renaming */
+    IOERROR_FILE (425, f, True,);  /* truncation failed for % */
+}
+
+/* SeekRead
+   pre-assertion:
+     (neither f0.L nor f0.R is undefined) and
+     (0 <= ord (n) - ord (a) <= length (f0.L~f0.R))
+   post-assertion:
+     (f.M = Inspection) and (f.L~f.R = f0.L~f0.R) and
+     (if length (f0.L~f0.R) > ord (n) - ord (a) then
+       ((length (f.L) = ord (n) - ord (a)) and (f^ = f.R.first))
+     else
+       ((f.R = S () and f^ is undefined)))
+
+   NewPlace is an offset from zero to the correct location. */
+GLOBAL (void _p_SeekRead (FDR f, FileSizeType NewPlace))
+{
+  if (_p_DirectWarn (f, 591) || _p_InOutRes)  /* Direct access routine `SeekRead' applied to non-direct % */
+    return;
+  if (TST_STATUS (f, FiWONLY))
+    IOERROR_FILE (426, f, False,);  /* `SeekRead' to write only % */
+  else if (NewPlace < 0)
+    IOERROR_FILE (410, f, False,);  /* attempt to access elements before beginning of random access % */
+  if (f->RtsSta == FiNOP)
+    {
+      _p_Open (f, fo_SeekRead);
+      if (_p_InOutRes) return;
+    }
+  if (_p_SeekInternal (f, NewPlace, SeekAbsolute) < 0)
+    IOERROR_FILE (427, f, True,);  /* SeekRead seek failed on % */
+  /* Change the current status of file to INSPECTION */
+  CLR_STATUS (f, FiANY);
+  SET_STATUS (f, FiORE);
+  fil_clr (f, FiEof);
+  fil_set (f, FiLGet);
+}
+
+/* SeekWrite
+   pre-assertion:
+     (neither f0.L nor f0.R is undefined) and
+     (0 <= ord (n) - ord (a) <= length (f0.L~f0.R))
+   post-assertion:
+     (f.M = Generation) and (f.L~f.R = f0.L~f0.R) and
+     (length (f.L) = ord (n) - ord (a)) and (f^ is undefined)
+
+   Note: this definition DOES NOT WRITE anything. It just moves the
+   file pointer and changes the MODE to GENERATION.
+
+   NewPlace is an offset from zero to the correct location. */
+GLOBAL (void _p_SeekWrite (FDR f, FileSizeType NewPlace))
+{
+  if (_p_DirectWarn (f, 592) || _p_InOutRes)  /* Direct access routine `SeekWrite' applied to non-direct % */
+    return;
+  if (TST_STATUS (f, FiRONLY))
+    IOERROR_FILE (411, f, False,);  /* attempt to modify read only % */
+  else if (NewPlace < 0)
+    IOERROR_FILE (410, f, False,);  /* attempt to access elements before beginning of random access % */
+  if (f->RtsSta == FiNOP)
+    {
+      _p_Open (f, fo_SeekWrite);
+      if (_p_InOutRes) return;
+    }
+  if (_p_SeekInternal (f, NewPlace, SeekAbsolute) < 0)
+    IOERROR_FILE (429, f, True,);  /* SeekWrite seek failed on % */
+  /* Change the mode to generation */
+  CLR_STATUS (f, FiANY);
+  SET_STATUS (f, FiWRI);
+}
+
+/* SeekUpdate
+   pre-assertion:
+     (neither f0.L nor f0.R is undefined) and
+     (0 <= ord (n) - ord (a) <= length (f0.L~f0.R))
+   post-assertion:
+     (f.M = Update) and (f.L~f.R = f0.L~f0.R) and
+     (if length (f0.L~f0.R) > ord (n) - ord (a) then
+       ((length (f.L) =  ord (n) - ord (a)) and
+        (f^ = f.R.first))
+     else
+       ((f.R = S ()) and (f^ is undefined)))
+
+   The (only) difference with SeekRead is that this leaves f.M to
+   UPDATE mode. */
+GLOBAL (void _p_SeekUpdate (FDR f, FileSizeType NewPlace))
+{
+  if (_p_DirectWarn (f, 593) || _p_InOutRes)  /* Direct access routine `SeekUpdate' applied to non-direct % */
+    return;
+  if (TST_STATUS (f, FiRONLY | FiWONLY))
+    IOERROR_FILE (430, f, False,);  /* `SeekUpdate' to read-only or write-only % */
+  else if (NewPlace < 0)
+    IOERROR_FILE (410, f, False,);  /* attempt to access elements before beginning of random access % */
+  if (f->RtsSta == FiNOP)
+    {
+      _p_Open (f, fo_SeekUpdate);
+      if (_p_InOutRes) return;
+    }
+  if (_p_SeekInternal (f, NewPlace, SeekAbsolute) < 0)
+    IOERROR_FILE (431, f, True,);  /* `SeekUpdate' seek failed on % */
+  CLR_STATUS (f, FiANY);
+  if (!TST_STATUS (f, FiRONLY | FiWONLY))
+    SET_STATUS (f, FiRND);
+  fil_clr (f, FiEof);
+  fil_set (f, FiLGet);
+}
+
+GLOBAL (void _p_Seek (FDR f, FileSizeType NewPlace))
+{
+  if (_p_InOutRes) return;
+  if (is_WRITABLE (f))
+    {
+      if (is_READABLE (f))
+        _p_SeekUpdate (f, NewPlace);
+      else
+        _p_SeekWrite (f, NewPlace);
+    }
+  else
+    _p_SeekRead (f, NewPlace);
+}
+
+/* DefineSize (GPC extension): Define files size as count of its
+   component type units. May be applied only to random access files
+   and files opened for writing. */
+GLOBAL (void _p_DefineSize (FDR f, FileSizeType NewSize))
+{
+  if (_p_InOutRes) return;
+  _p_SeekWrite (f, NewSize);
+  if (_p_InOutRes) return;
+  _p_Truncate (f);
+}
+
+/* Update
+   pre-assertion:
+     (f0.M = Generation or f0.M = Update) and
+     (neither f0.L nor f0.R is undefined) and
+     (f is a direct access file type) and
+     (f0^ is not undefined)
+   post-assertion:
+     (f.M = f0.M) and (f.L = f0.L) and
+     (if f0.R = S () then
+       (f.R = S (f0^))
+     else
+       (f.R = S (f0^)~f0.R.rest)) and
+     (f^ = f0^)
+   i.e. write the stuff in, and leave it also in the file buffer.
+   don't advance the file pointer from the pre-assert state! */
+GLOBAL (void _p_Update (FDR f))
+{
+  int is_random;
+  if (_p_DirectWarn (f, 595) || _p_InOutRes)  /* Direct access routine `Update' applied to non-direct % */
+    return;
+  /* If the file buffer contents is lazy, validate it */
+  if (fil_tst (f, FiLGet))
+    {
+      fil_clr (f, FiLGet);
+      _p_Get (f);
+      if (_p_InOutRes) return;
+    }
+#if 0
+  /* @@@@ Ooops: Currently assigning a value to a file buffer does not clear
+     the FiUnd bit in the status word. Disable this check => Undefined
+     file buffers may be written with update ... */
+  if (fil_tst (f, FiUnd))
+    IOERROR_FILE (439, f, False,);  /* `Update' with an undefined file buffer in % */
+#endif
+  is_random = TST_STATUS (f, FiRND);
+  if (is_random)
+    {
+      /* Change the mode to generation, prevents implicit Get.
+         Yes, Put in UPDATE mode gets the next element by default. */
+      CLR_STATUS (f, FiANY);
+      SET_STATUS (f, FiWRI);
+    }
+  _p_Put (f);  /* Write to the current location. _p_Put does not clobber file buffer. */
+  if (_p_InOutRes) return;
+  if (is_random)
+    {
+      /* Change the mode back to random access */
+      CLR_STATUS (f, FiANY);
+      if (!TST_STATUS (f, FiRONLY | FiWONLY))
+        SET_STATUS (f, FiRND);
+    }
+  fil_clr (f, FiUnd);  /* The file buffer is still f0^ */
+  /* Seek back to the place where we were before the Put.
+     It's f->FilSiz bytes before the place we are now */
+  if (_p_SeekInternal (f, -1, SeekRelative) < 0)
+    IOERROR_FILE (433, f, True,);  /* `Update' failed to reset the position of % */
+}
+
+/* LastPosition (f) = Succ (a, length (f.L~f.R) - 1) */
+GLOBAL (FileSizeType _p_LastPosition (FDR f))
+{
+  return _p_FileSize (f) - 1;
+}
+
+/* Returns True if file is empty, otherwise False */
+GLOBAL (int _p_Empty (const FDR f))
+{
+  if (_p_DirectWarn (f, 594) || _p_InOutRes)  /* Direct access routine `Empty' applied to non-direct % */
+    return 1;
+  return _p_FileSize (f) == 0;
+}
+
+/* Get the external file name */
+GLOBAL (const char *_p_FileName_CString (FDR f))
+{
+  return f->ExtNam;
+}
+
+/* Get internal or external file name with a description
+   Currently used for error messages. NOTE: result is only valid
+   until the function is called again. */
+GLOBAL (const char *_p_GetErrorMessageFileName (const FDR f))
+{
+  static char *buf = NULL;
+  size_t buflen;
+  void *RA = _p_SetTempDummyReturnAddress ();
+  if (buf) _p_Dispose (buf);
+  if (_p_IsStdFile (f))
+    buf = NULL;
+  else if (f->ReadFunc != DefaultReadFunc)
+    {
+      buflen = 26 + _p_CStringLength (f->FilNam);
+      buf = (char *) _p_New (buflen);
+      if (buf) snprintf (buf, buflen, "TFDD file `%s'", f->FilNam);
+    }
+  else if (f->Binding && f->Binding->Handle >= 0 && f->BoundName[0] == 0)
+    {
+      buflen = 80 + _p_CStringLength (f->FilNam);
+      buf = (char *) _p_New (buflen);
+      if (buf) snprintf (buf, buflen, "file `%s' bound to file handle #%i",
+	f->FilNam, f->Binding->Handle);
+    }
+  else if (fil_tst (f, FiExtB))
+    {
+      buflen = 18 + _p_CStringLength (f->ExtNam);
+      buf = (char *) _p_New (buflen);
+      if (buf) snprintf (buf, buflen, "file `%s'", f->ExtNam);
+    }
+  else
+    {
+      buflen = 27 + _p_CStringLength (f->FilNam);
+      buf = (char *) _p_New (buflen);
+      if (buf) snprintf (buf, buflen, "internal file `%s'", f->FilNam);
+    }
+  _p_RestoreTempReturnAddress (RA);
+  if (buf)
+    return buf;
+  else
+    return f->FilNam;
+}
+
+GLOBAL (void _p_Erase (FDR f))
+{
+  if (_p_InOutRes) return;
+  if (f->Binding && f->Binding->Directory)
+    IOERROR_STRING (473, f->BoundName, False,);  /* `Erase' cannot erase directory `%s' */
+  DO_RETURN_ADDRESS (_p_CheckBinding (f));
+  if (_p_InOutRes) return;
+  if (!fil_tst (f, FiExtB))
+    IOERROR_FILE (468, f, False,);  /* cannot erase %s */
+  if (!f->ExtNam)
+    IOERROR_STRING (469, f->FilNam, False,);  /* `Erase': external file `%s' has no external name */
+  /*if (f->RtsSta != FiNOP)
+    IOERROR_FILE (470, f, False,); *//* cannot erase opened %s */
+  /* Only allow delayed unlinking if the file is opened (RtsSta), otherwise
+     a real error (e.g., erasing a nonexisting file) could lead to later
+     erasing or strange errors. */
+  _p_Unlink (f, f->ExtNam, f->RtsSta != FiNOP);
+}
+
+GLOBAL (void _p_Mv (FDR f, char *NewName, Boolean Overwrite))
+{
+  void *RA;
+  if (_p_InOutRes) return;
+  DO_RETURN_ADDRESS (_p_CheckBinding (f));
+  if (_p_InOutRes) return;
+  if (!fil_tst (f, FiExtB))
+    IOERROR_FILE (475, f, False,);  /* cannot rename %s */
+  if (!f->ExtNam)
+    IOERROR_STRING (476, f->FilNam, False,);  /* `Rename/FileMove': external file `%s' has no external name */
+  /*if (f->RtsSta != FiNOP)
+    IOERROR_FILE (477, f, False,); *//* cannot rename opened %s */
+  if (!Overwrite && _p_Access (NewName, MODE_FILE) != 0)
+    IOERROR_STRING (482, NewName, False,);  /* `Rename': cannot overwrite file `%s' */
+  if (_p_CStringRename (f->ExtNam, NewName) != 0)
+    IOERROR_FILE (481, f, True, );  /* error when trying to rename %s */
+  _p_Dispose (f->ExtNam);
+  RA = _p_SetTempDummyReturnAddress ();
+  f->ExtNam = _p_CStringNew (NewName);
+  _p_RestoreTempReturnAddress (RA);
+  if (f->Binding) f->BoundName = f->ExtNam;
+}
+
+GLOBAL (void _p_ChMod (FDR f, int Mode))
+{
+  if (_p_InOutRes) return;
+  DO_RETURN_ADDRESS (_p_CheckBinding (f));
+  if (_p_InOutRes) return;
+  /* @@@@ TFDD */
+  if (!f->ExtNam)
+    IOERROR_STRING (491, f->FilNam, False,);  /* `ChMod': file `%s' has no external name */
+  if (_p_CStringChMod (f->ExtNam, Mode) != 0)
+    IOERROR_FILE (494, f, True,);  /* error when trying to change mode of %s */
+}
+
+GLOBAL (void _p_ChOwn (FDR f, int Owner, int Group))
+{
+  if (_p_InOutRes) return;
+  DO_RETURN_ADDRESS (_p_CheckBinding (f));
+  if (_p_InOutRes) return;
+  /* @@@@ TFDD */
+  if (!f->ExtNam)
+    IOERROR_STRING (498, f->FilNam, False,);  /* `ChOwn': file `%s' has no external name */
+  if (_p_CStringChOwn (f->ExtNam, Owner, Group) != 0)
+    IOERROR_FILE (499, f, True,);  /* error when trying to change owner of %s */
+}
+
+GLOBAL (void _p_SetFileTime (FDR f, UnixTimeType AccessTime, UnixTimeType ModificationTime))
+{
+  if (_p_InOutRes) return;
+  DO_RETURN_ADDRESS (_p_CheckBinding (f));
+  if (_p_InOutRes) return;
+  if (!fil_tst (f, FiExtB) || !f->ExtNam)
+    IOERROR_STRING (486, f->FilNam, False,);  /* `SetFTime': file `%s' has no external name */
+  if (_p_CStringUTime (f->ExtNam, AccessTime, ModificationTime))
+    IOERROR_FILE (487, f, True,);  /* cannot set time for %s */
+}
+
+GLOBAL (Boolean _p_FileLock (FDR f, Boolean WriteLock, Boolean Block))
+{
+  return _p_LockHandle (f->Handle, WriteLock, Block);
+}
+
+GLOBAL (Boolean _p_FileUnlock (FDR f))
+{
+  _p_FlushBuffer (f);
+  return _p_UnlockHandle (f->Handle);
+}
+
+GLOBAL (void *_p_MemoryMap (void *Start, size_t Length, int Access, Boolean Shared, FDR f, FileSizeType Offset))
+{
+  return _p_MMapHandle (Start, Length, Access, Shared, f->Handle, Offset);
+}
+
+GLOBAL (void _p_MemoryUnMap (void *Start, size_t Length))
+{
+  if (_p_MUnMapHandle (Start, Length) != 0)
+    IOERROR (409, True,);  /* cannot unmap memory */
+}
+@
+
+
+1.2
+log
+@* fix the build system
+* fix and enable the GNU Pascal RTS and Utils
+  -> gpc is now fully supported; Hello World works.
+* merge OpenBSD-OpenSSH 3.8, bump patchlevel
+* add fchroot(2) diff, From: Pedro Martelletto <pbastos@@rdc.puc-rio.br>
+* add fchroot(2) man page from NetBSD and myself
+* fix orders of manpage sections
+* fix displaying of .Nx mdoc macro
+* convert scripts requiring bash to ksh
+* nuke a shutload of GNU make idiotisms
+* add pregenerated manpages - help2man is just bloat
+* increase shlib versions after fchroot addition
+* adjust and unbreak mk.conf after recent changes
+* fix boot system version number after CD boot changes
+* understand why Makefile.bsd-wrapper is needed as filename. Finally.
+* regenerate files after syscalls.master change
+* fix RCS Id detection and generation while here
+* remove unused archs while there
+* use __RCSID() macro in ssh ifdef __MirBSD__
+* build ssh with -Werror, too
+
+Note: this is a pre-snapshot, pre-build commit. Nothing
+of this has actually been tested.
+
+Like I said, please wait for the snapshot. Though, the
+snapshot doesn't have any more circumstances preventing
+me from working towards a release and upload now.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD$ */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+d49 1
+a49 2
+  Inclusion of stdio can also be removed (use WriteStr instead of
+  sprintf()). */
+d931 1
+a931 1
+  sprintf (buf, "%s file `%s': ",
+d2961 1
+d2968 3
+a2970 2
+      buf = (char *) _p_New (26 + _p_CStringLength (f->FilNam));
+      if (buf) sprintf (buf, "TFDD file `%s'", f->FilNam);
+d2974 4
+a2977 2
+      buf = (char *) _p_New (80 + _p_CStringLength (f->FilNam));
+      if (buf) sprintf (buf, "file `%s' bound to file handle #%i", f->FilNam, f->Binding->Handle);
+d2981 3
+a2983 2
+      buf = (char *) _p_New (18 + _p_CStringLength (f->ExtNam));
+      if (buf) sprintf (buf, "file `%s'", f->ExtNam);
+d2987 3
+a2989 2
+      buf = (char *) _p_New (27 + _p_CStringLength (f->FilNam));
+      if (buf) sprintf (buf, "internal file `%s'", f->FilNam);
+@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

@@ -1,0 +1,682 @@
+head	1.6;
+access;
+symbols
+	MIRBSD_7quater:1.5
+	MIRBSD_7_ALPHA:1.5.0.6
+	MIRBSD_7:1.5.0.4
+	MIRBSD_7ter:1.5
+	MIRBSD_7_DEV:1.5.0.2
+	MIRBSD_5:1.3
+	MIRBSD_4:1.2;
+locks; strict;
+comment	@ * @;
+
+
+1.6
+date	2004.06.20.02.56.46;	author tg;	state dead;
+branches;
+next	1.5;
+
+1.5
+date	2003.07.06.20.22.59;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2003.06.30.15.44.11;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2003.06.02.19.56.31;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.03.29.23.25.45;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.23.22.50.13;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.6
+log
+@first (user-land) part of time_t64 building
+* gcc and egcs are only half-made, using GCC_FOR_TARGET=pgcc/gcc
+  (I hope I won't lose Ada now...)
+* perl isn't made at all (miniperl...)
+* ndat is obsolete anyways
+@
+text
+@/* $MirBSD: src/usr.bin/ndat/ndat.c,v 1.5 2003/07/06 20:22:59 tg Exp $
+ *-
+ * Copyright (c) 1997, 1998, 1999, 2002, 2003 Thorsten Glaser <x86@@ePost.de>
+ *
+ * Subject to these terms, everybody who obtained a copy of this work
+ * is hereby permitted to deal in the work without restriction inclu-
+ * ding without limitation the rights to use, distribute, sell, modi-
+ * fy, give away, merge or sublicense it provided this notice is kept
+ * and the authors and contributors are given due credit in derivates
+ * or accompanying documents.
+ * This work is provided "as is" with no explicit or implicit warran-
+ * ties whatsoever to the maximum extend permitted by applicable law;
+ * in no event may an author or contributor be held liable for damage
+ * that is, directly or indirectly, caused by the work, even if advi-
+ * sed of the possibility of such damage.
+ *-
+ * Offizielles Programm der Republica Occultae Germanorum zur Umrechnung
+ * zwischen naturamistischen und neu-christlichen (VAW) Zeitangaben.
+ * Finale Version, funktional identisch und getestet. Bugs gefixt.
+ * manual page still missing... hexadecimal time-of-day too.
+ */
+
+static const char RCSId[]="$MirBSD: src/usr.bin/ndat/ndat.c,v 1.5 2003/07/06 20:22:59 tg Exp $";
+
+#include <sys/types.h>
+
+#include <time.h>
+#include <stdio.h>
+
+int main(int argc, char *argv[]);
+int DatCN(char s, char *otm);
+int DatNC(char s, char *otm);
+int dpm(int m, int y);
+
+char buf[16];
+
+char *tag[]=	{ "Pd", "Sc", "Td", "Qa", "Qi", "Vd" };
+char *chrtag[]=	{ "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa" };
+
+#ifdef NO_8BIT
+char *langtag[]={ "Primdies", "Secundies", "Tertdies",
+		  "Quartdies", "Quintdies", "Veyrdag" };
+#else
+char *langtag[]={ "Prìmdies", "Secúndies", "Tèrtdies",
+		  "Quàrtdies", "Quìntdies", "Véyrdag" };
+#endif
+
+#define	bounds(v, min, max)	(((v<min) || (v>max)) ? -1 : 0)
+#define	februar(y)	((y&3) ? 28 : ((y%100) ? 29 : ((y%400) ? 28 : 29)))
+
+
+int main(int argc, char *argv[])
+{
+	time_t v;
+	struct tm *tts;
+
+	if (argc == 3) {
+		/*
+		 * +!	nat -> chr		inp: d.m.y
+		 * +	nat(short) -> chr	inp: day-of-year.y
+		 */
+		if (argv[1][0] == '+')
+			return DatNC(argv[1][1], argv[2]);
+
+		/*
+		 * -	chr -> nat			 xx ddd.yy
+		 * -!	chr -> nat(short)		 xx yyddd
+		 * -+	chr -> nat(absurdly verbose)	xxx dd.mm.yy
+		 */
+		if (argv[1][0] == '-')
+			return DatCN(argv[1][1], argv[2]);
+	}
+
+	if ((argc == 2) && (argv[1][0] == '-')) {
+		/*
+		 * -	convert today's date
+		 */
+		v = time(NULL);
+		tts = gmtime(&v);
+		strftime(buf, 16, "%d.%m.%Y", tts);
+		return DatCN(argv[1][1], buf);
+	}
+
+	fprintf(stderr, "Syntax:\n\n ndat +[!] naturamistic.date\n ndat"
+	    " -[!+] [christian.date]\n\n%s\n", RCSId);
+	return -1;
+}
+
+/* Days per month depending on year */
+int dpm(int m, int y)
+{
+	switch(m) {
+		case 1:
+		case 3:
+		case 5:
+		case 7:
+		case 8:
+		case 10:
+		case 12: return 31;
+
+		case 4:
+		case 6:
+		case 9:
+		case 11: return 30;
+	}
+	return februar(y);
+}
+
+/* convert Christian to Naturamistic date */
+int DatCN(char s, char *otm)
+{
+	int d, m, y, dp, a, b, c, t;
+	int64_t ofs;
+
+	if (sscanf(otm, "%d.%d.%d", &d, &m, &y) != 3)
+		return -1;
+	if (bounds(y, 1600, 9999))
+		return -1;
+
+	/* Trick bei Jahr < 1982 */
+	y += 400;
+
+	if (bounds(m, 1, 12)) return -1;
+	dp = dpm(m, y);
+	if (bounds(d, 1, dp)) return -1;
+
+	ofs = 10 + d;
+	for (a = 1; a < m; a++)
+		ofs += dpm(a, y);
+	for (a = 1982; a < y; a++)
+		if (februar(a) == 29)
+			ofs += 366;
+		else	ofs += 365;
+
+	t = (ofs - 4) % 6;
+
+	y = 0;
+	b = 1982;
+getny:	c = (februar(b) == 29) ? 366 : 365;
+	if (ofs > c) {
+		++y;
+		++b;
+		ofs -= c;
+		goto getny;
+	}
+
+	/*
+	 * y ist jetzt das naturamistische Jahr
+	 * ofs der Tag des Jahres
+	 */
+
+	/* Trick bei Jahr < 0 */
+	y -= 400;
+
+	m = ofs / 30 + 1;
+	d = ofs % 30;
+	if (!d) {
+		d = 30;
+		--m;
+	}
+
+	if (s == '!') {
+		printf("%s %01i%03d\n", tag[t], y, (int) ofs);
+	} else if ((m < 12) && (s == '+')) {
+		printf("%s %02d.%02d.%01i\n", langtag[t], d, m, y);
+	} else	printf("%s %03d.%01i\n", tag[t], (int) ofs, y);
+	return 0;
+}
+
+/* convert Naturamistic to Christian date */
+int DatNC(char s, char *otm)
+{
+	int d, m, y, ny, nd, w;
+	struct tm *tts;
+
+	if (s == '!') {
+		if (sscanf(otm, "%d.%d.%d", &d, &m, &ny) != 3)
+			return -1;
+		nd = (m-1)*30 + d;
+	} else	{
+		d = sscanf(otm, "%d.%d", &nd, &ny);
+		if (d == 1) {
+			if (nd < 0) {
+				ny = -1;
+				nd *= -1;
+			} else	ny = 1;
+			ny *= nd / 1000;
+			nd %= 1000;
+		} else if (d != 2)
+			return -1;
+	}
+	if (bounds(ny, -382, 8018))
+		return -1;
+	if (bounds(nd, 1, 366))
+		return -1;
+	if ((ny == -382) && (nd < 11))
+		return -1;
+	if ((ny == 8018) && (nd > 10))
+		return -1;
+	y = ny + 1982;
+	if ((februar(y)==28) && (nd==366))
+		return -1;
+
+	if (nd < 11) {
+		d = 21 + nd;
+		m = 12;
+		y--;
+		goto dny;
+	}
+	d = nd - 10;
+	m = 1;
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d <= februar(y)) goto dny;
+	++m; d -= februar(y);
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d < 31) goto dny;
+	++m; d -= 30;
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d < 31) goto dny;
+	++m; d -= 30;
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d < 31) goto dny;
+	++m; d -= 30;
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d < 31) goto dny;
+	++m; d -= 30;
+
+	if (d > 31) return -1;
+
+dny:	w = 7;
+
+	/* Unix time "struct tm" year starts at 1900 and ends at 32 bit */
+	if ((y < 1900) || (y > 2037))
+		goto dnyw;
+
+	/* Now calculate the day of week, using heavy kludges */
+	if ((tts = gmtime(&w)) == NULL)
+		goto dnyw;
+	snprintf(buf, 16, "%d %d %d", d, m, y);
+	if (strptime(buf, "%d %m %Y", tts) == NULL)
+		goto dnyw;
+	mktime(tts);
+	w = tts->tm_wday;
+
+dnyw:	if (bounds(w, 0, 7))
+		w = 7;
+	printf("%s%s%i.%02i.%04i\n", ((w==7) ? "" : chrtag[w]),
+	    ((w==7) ? "" : " "), d, m, y);
+	return 0;
+}
+
+/* XXX TODO: hexadecimal clock */
+@
+
+
+1.5
+log
+@mop up
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.3 2003/07/04 20:03:27 tg Exp $
+d23 1
+a23 1
+static const char RCSId[]="$MirBSD: ndat.c,v 1.4 2003/06/30 15:44:11 tg Exp $";
+@
+
+
+1.4
+log
+@misc. improvements
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.2 2003/06/19 11:38:18 tg Exp $
+d3 1
+a3 7
+ * Copyright (c) 2003 Thorsten Glaser <x86@@ePost.de>
+ *
+ * Everybody who obtained a copy of this work is hereby permitted, as
+ * long as due credit is given to the authors and the notice below is
+ * retained, to deal in the work without restriction, including with-
+ * out limitation the rights to use, distribute, sell, give away, mo-
+ * dify, merge or sublicense it.
+d5 6
+d12 4
+a15 5
+ * ty whatsoever. Use it only at your own risk. In no event an author
+ * or contributor may be held liable for any damage that, directly or
+ * indirectly, originated through or is caused by this work, creation
+ * or any event connected with it, to the maximum extend permitted by
+ * applicable law.
+d23 1
+a23 1
+static const char RCSId[]="$MirBSD: ndat.c,v 1.3 2003/06/02 19:56:31 tg Exp $";
+@
+
+
+1.3
+log
+@licence cleanup
+@
+text
+@d1 3
+a3 2
+/*-
+ * Copyright (c) 1982-2003 Thorsten Glaser <x86@@ePost.de>
+d5 5
+a9 4
+ * Everybody who obtained a copy of this work is hereby permitted to,
+ * without further restrictions as long as due credit is given to the
+ * authors and the notice below is retained, use, distribute, modify,
+ * sell, give away, merge or sublicense it.
+d14 3
+a16 1
+ * indirectly, originated through or is caused by this work.
+d24 1
+a24 1
+static const char RCSId[]="$MirBSD: ndat.c,v 1.2 2003/03/29 23:25:45 tg Exp $";
+@
+
+
+1.2
+log
+@whoops, this one looks bad. must be left from MirBSD-old merge failures.
+@
+text
+@d1 2
+a2 1
+/* Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+d4 4
+a7 3
+ * Anyone who obtained a copy of this work is hereby permitted to freely use,
+ * distribute, modify, merge, sublicence, give away or sell it as long as the
+ * authors are given due credit and the following notice is retained:
+d9 6
+a14 7
+ * This work is provided "as is", with no explicit or implicit warranty what-
+ * soever. Use it only at your own risk. In no event may an author or contri-
+ * butor be held liable for any damage, directly or indirectly, that origina-
+ * ted through or is caused by creation or modification of this work.
+ */
+
+/* Offizielles Programm der Republica Occultae Germanorum zur Umrechnung
+d20 1
+a20 1
+static const char RCSId[]="$MirBSD: ndat.c,v 1.1 2003/03/23 22:50:13 tg Exp $";
+@
+
+
+1.1
+log
+@forgot to cvs add these files as well...
+@
+text
+@d19 1
+a19 1
+static const char RCSId[]="$MirBSD: obsd.util,v 1.34 2003/03/22 22:33:31 tg Exp $";
+a253 17
+/* Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+ *
+ * Anyone who obtained a copy of this work is hereby permitted to freely use,
+ * distribute, modify, merge, sublicence, give away or sell it as long as the
+ * authors are given due credit and the following notice is retained:
+ *
+ * This work is provided "as is", with no explicit or implicit warranty what-
+ * soever. Use it only at your own risk. In no event may an author or contri-
+ * butor be held liable for any damage, directly or indirectly, that origina-
+ * ted through or is caused by creation or modification of this work.
+ */
+
+/* Offizielles Programm der Republica Occultae Germanorum zur Umrechnung
+ * zwischen naturamistischen und neu-christlichen (VAW) Zeitangaben.
+ * Finale Version, funktional identisch und getestet. Bugs gefixt.
+ * manual page still missing... hexadecimal time-of-day too.
+ */
+d255 1
+a255 235
+static const char RCSId[]="$MirBSD: obsd.util,v 1.34 2003/03/22 22:33:31 tg Exp $";
+
+#include <sys/types.h>
+
+#include <time.h>
+#include <stdio.h>
+
+int main(int argc, char *argv[]);
+int DatCN(char s, char *otm);
+int DatNC(char s, char *otm);
+int dpm(int m, int y);
+
+char buf[16];
+
+char *tag[]=	{ "Pd", "Sc", "Td", "Qa", "Qi", "Vd" };
+char *chrtag[]=	{ "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa" };
+
+#ifdef RESTRICT_ASCII
+char *langtag[]={ "Primdies", "Secundies", "Tertdies",
+		  "Quartdies", "Quintdies", "Veyrdag" };
+#else
+char *langtag[]={ "Prìmdies", "Secúndies", "Tèrtdies",
+		  "Quàrtdies", "Quìntdies", "Véyrdag" };
+#endif
+
+#define	bounds(v, min, max)	(((v<min) || (v>max)) ? -1 : 0)
+#define	februar(y)	((y&3) ? 28 : ((y%100) ? 29 : ((y%400) ? 28 : 29)))
+
+
+int main(int argc, char *argv[])
+{
+	time_t v;
+	struct tm *tts;
+
+	if (argc == 3) {
+		/*
+		 * +!	nat -> chr		inp: d.m.y
+		 * +	nat(short) -> chr	inp: day-of-year.y
+		 */
+		if (argv[1][0] == '+')
+			return DatNC(argv[1][1], argv[2]);
+
+		/*
+		 * -	chr -> nat			 xx ddd.yy
+		 * -!	chr -> nat(short)		 xx yyddd
+		 * -+	chr -> nat(absurdly verbose)	xxx dd.mm.yy
+		 */
+		if (argv[1][0] == '-')
+			return DatCN(argv[1][1], argv[2]);
+	}
+
+	if ((argc == 2) && (argv[1][0] == '-')) {
+		/*
+		 * -	convert today's date
+		 */
+		v = time(NULL);
+		tts = gmtime(&v);
+		strftime(buf, 16, "%d.%m.%Y", tts);
+		return DatCN(argv[1][1], buf);
+	}
+
+	fprintf(stderr, "Syntax:\n\n ndat +[!] naturamistic.date\n ndat"
+	    " -[!+] [christian.date]\n\n%s\n", RCSId);
+	return -1;
+}
+
+/* Days per month depending on year */
+int dpm(int m, int y)
+{
+	switch(m) {
+		case 1:
+		case 3:
+		case 5:
+		case 7:
+		case 8:
+		case 10:
+		case 12: return 31;
+
+		case 4:
+		case 6:
+		case 9:
+		case 11: return 30;
+	}
+	return februar(y);
+}
+
+/* convert Christian to Naturamistic date */
+int DatCN(char s, char *otm)
+{
+	int d, m, y, dp, a, b, c, t;
+	int64_t ofs;
+
+	if (sscanf(otm, "%d.%d.%d", &d, &m, &y) != 3)
+		return -1;
+	if (bounds(y, 1600, 9999))
+		return -1;
+
+	/* Trick bei Jahr < 1982 */
+	y += 400;
+
+	if (bounds(m, 1, 12)) return -1;
+	dp = dpm(m, y);
+	if (bounds(d, 1, dp)) return -1;
+
+	ofs = 10 + d;
+	for (a = 1; a < m; a++)
+		ofs += dpm(a, y);
+	for (a = 1982; a < y; a++)
+		if (februar(a) == 29)
+			ofs += 366;
+		else	ofs += 365;
+
+	t = (ofs - 4) % 6;
+
+	y = 0;
+	b = 1982;
+getny:	c = (februar(b) == 29) ? 366 : 365;
+	if (ofs > c) {
+		++y;
+		++b;
+		ofs -= c;
+		goto getny;
+	}
+
+	/*
+	 * y ist jetzt das naturamistische Jahr
+	 * ofs der Tag des Jahres
+	 */
+
+	/* Trick bei Jahr < 0 */
+	y -= 400;
+
+	m = ofs / 30 + 1;
+	d = ofs % 30;
+	if (!d) {
+		d = 30;
+		--m;
+	}
+
+	if (s == '!') {
+		printf("%s %01i%03d\n", tag[t], y, (int) ofs);
+	} else if ((m < 12) && (s == '+')) {
+		printf("%s %02d.%02d.%01i\n", langtag[t], d, m, y);
+	} else	printf("%s %03d.%01i\n", tag[t], (int) ofs, y);
+	return 0;
+}
+
+/* convert Naturamistic to Christian date */
+int DatNC(char s, char *otm)
+{
+	int d, m, y, ny, nd, w;
+	struct tm *tts;
+
+	if (s == '!') {
+		if (sscanf(otm, "%d.%d.%d", &d, &m, &ny) != 3)
+			return -1;
+		nd = (m-1)*30 + d;
+	} else	{
+		d = sscanf(otm, "%d.%d", &nd, &ny);
+		if (d == 1) {
+			if (nd < 0) {
+				ny = -1;
+				nd *= -1;
+			} else	ny = 1;
+			ny *= nd / 1000;
+			nd %= 1000;
+		} else if (d != 2)
+			return -1;
+	}
+	if (bounds(ny, -382, 8018))
+		return -1;
+	if (bounds(nd, 1, 366))
+		return -1;
+	if ((ny == -382) && (nd < 11))
+		return -1;
+	if ((ny == 8018) && (nd > 10))
+		return -1;
+	y = ny + 1982;
+	if ((februar(y)==28) && (nd==366))
+		return -1;
+
+	if (nd < 11) {
+		d = 21 + nd;
+		m = 12;
+		y--;
+		goto dny;
+	}
+	d = nd - 10;
+	m = 1;
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d <= februar(y)) goto dny;
+	++m; d -= februar(y);
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d < 31) goto dny;
+	++m; d -= 30;
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d < 31) goto dny;
+	++m; d -= 30;
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d < 31) goto dny;
+	++m; d -= 30;
+	if (d < 32) goto dny;
+	++m; d -= 31;
+	if (d < 31) goto dny;
+	++m; d -= 30;
+
+	if (d > 31) return -1;
+
+dny:	w = 7;
+
+	/* Unix time "struct tm" year starts at 1900 and ends at 32 bit */
+	if ((y < 1900) || (y > 2037))
+		goto dnyw;
+
+	/* Now calculate the day of week, using heavy kludges */
+	if ((tts = gmtime(&w)) == NULL)
+		goto dnyw;
+	snprintf(buf, 16, "%d %d %d", d, m, y);
+	if (strptime(buf, "%d %m %Y", tts) == NULL)
+		goto dnyw;
+	mktime(tts);
+	w = tts->tm_wday;
+
+dnyw:	if (bounds(w, 0, 7))
+		w = 7;
+	printf("%s%s%i.%02i.%04i\n", ((w==7) ? "" : chrtag[w]),
+	    ((w==7) ? "" : " "), d, m, y);
+	return 0;
+}
+@
+

@@ -1,0 +1,236 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.10;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.10;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.32;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@;# $RCSfile: validate.pl,v $$Revision: 1.6 $$Date: 2002/10/27 22:25:26 $
+
+;# The validate routine takes a single multiline string consisting of
+;# lines containing a filename plus a file test to try on it.  (The
+;# file test may also be a 'cd', causing subsequent relative filenames
+;# to be interpreted relative to that directory.)  After the file test
+;# you may put '|| die' to make it a fatal error if the file test fails.
+;# The default is '|| warn'.  The file test may optionally have a ! prepended
+;# to test for the opposite condition.  If you do a cd and then list some
+;# relative filenames, you may want to indent them slightly for readability.
+;# If you supply your own "die" or "warn" message, you can use $file to
+;# interpolate the filename.
+
+;# Filetests may be bunched:  -rwx tests for all of -r, -w and -x.
+;# Only the first failed test of the bunch will produce a warning.
+
+;# The routine returns the number of warnings issued.
+
+;# Usage:
+;#	require "validate.pl";
+;#	$warnings += do validate('
+;#	/vmunix			-e || die
+;#	/boot			-e || die
+;#	/bin			cd
+;#	    csh			-ex
+;#	    csh			!-ug
+;#	    sh			-ex
+;#	    sh			!-ug
+;#	/usr			-d || warn "What happened to $file?\n"
+;#	');
+
+sub validate {
+    local($file,$test,$warnings,$oldwarnings);
+    foreach $check (split(/\n/,$_[0])) {
+	next if $check =~ /^#/;
+	next if $check =~ /^$/;
+	($file,$test) = split(' ',$check,2);
+	if ($test =~ s/^(!?-)(\w{2,}\b)/$1Z/) {
+	    $testlist = $2;
+	    @@testlist = split(//,$testlist);
+	}
+	else {
+	    @@testlist = ('Z');
+	}
+	$oldwarnings = $warnings;
+	foreach $one (@@testlist) {
+	    $this = $test;
+	    $this =~ s/(-\w\b)/$1 \$file/g;
+	    $this =~ s/-Z/-$one/;
+	    $this .= ' || warn' unless $this =~ /\|\|/;
+	    $this =~ s/^(.*\S)\s*\|\|\s*(die|warn)$/$1 || do valmess('$2','$1')/;
+	    $this =~ s/\bcd\b/chdir (\$cwd = \$file)/g;
+	    eval $this;
+	    last if $warnings > $oldwarnings;
+	}
+    }
+    $warnings;
+}
+
+sub valmess {
+    local($disposition,$this) = @@_;
+    $file = $cwd . '/' . $file unless $file =~ m|^/|;
+    if ($this =~ /^(!?)-(\w)\s+\$file\s*$/) {
+	$neg = $1;
+	$tmp = $2;
+	$tmp eq 'r' && ($mess = "$file is not readable by uid $>.");
+	$tmp eq 'w' && ($mess = "$file is not writable by uid $>.");
+	$tmp eq 'x' && ($mess = "$file is not executable by uid $>.");
+	$tmp eq 'o' && ($mess = "$file is not owned by uid $>.");
+	$tmp eq 'R' && ($mess = "$file is not readable by you.");
+	$tmp eq 'W' && ($mess = "$file is not writable by you.");
+	$tmp eq 'X' && ($mess = "$file is not executable by you.");
+	$tmp eq 'O' && ($mess = "$file is not owned by you.");
+	$tmp eq 'e' && ($mess = "$file does not exist.");
+	$tmp eq 'z' && ($mess = "$file does not have zero size.");
+	$tmp eq 's' && ($mess = "$file does not have non-zero size.");
+	$tmp eq 'f' && ($mess = "$file is not a plain file.");
+	$tmp eq 'd' && ($mess = "$file is not a directory.");
+	$tmp eq 'l' && ($mess = "$file is not a symbolic link.");
+	$tmp eq 'p' && ($mess = "$file is not a named pipe (FIFO).");
+	$tmp eq 'S' && ($mess = "$file is not a socket.");
+	$tmp eq 'b' && ($mess = "$file is not a block special file.");
+	$tmp eq 'c' && ($mess = "$file is not a character special file.");
+	$tmp eq 'u' && ($mess = "$file does not have the setuid bit set.");
+	$tmp eq 'g' && ($mess = "$file does not have the setgid bit set.");
+	$tmp eq 'k' && ($mess = "$file does not have the sticky bit set.");
+	$tmp eq 'T' && ($mess = "$file is not a text file.");
+	$tmp eq 'B' && ($mess = "$file is not a binary file.");
+	if ($neg eq '!') {
+	    $mess =~ s/ is not / should not be / ||
+	    $mess =~ s/ does not / should not / ||
+	    $mess =~ s/ not / /;
+	}
+	print STDERR $mess,"\n";
+    }
+    else {
+	$this =~ s/\$file/'$file'/g;
+	print STDERR "Can't do $this.\n";
+    }
+    if ($disposition eq 'die') { exit 1; }
+    ++$warnings;
+}
+
+1;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d1 1
+a1 1
+;# $RCSfile: validate.pl,v $$Revision: 1.7 $$Date: 2003/12/03 03:02:36 $
+@
+

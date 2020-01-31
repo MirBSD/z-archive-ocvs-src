@@ -1,0 +1,1098 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.7
+	tg-mergefixes-1-branch:1.1.1.7.0.8
+	tg-mergefixes-1-base:1.1.1.7
+	MIROS_X:1.1.1.7.0.6
+	MIROS_X_BASE:1.1.1.7
+	tg-mergetmp-3:1.1.1.7
+	MIRBSD_XP_MIRPPC:1.1.1.7.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.7
+	MIRBSD_XP_SPARC:1.1.1.7.0.2
+	MIRBSD_7quater:1.1.1.5
+	cvs-200405160640:1.1.1.7
+	cvs-200401271800:1.1.1.7
+	cvs-200401261630:1.1.1.7
+	cvs-200401021645:1.1.1.6
+	MIRBSD_7_ALPHA:1.1.1.5.0.6
+	MIRBSD_7:1.1.1.5.0.4
+	cvs-200312222040:1.1.1.6
+	MIRBSD_7ter:1.1.1.5
+	MIRBSD_7_DEV:1.1.1.5.0.2
+	cvs-200310081750:1.1.1.5
+	cvs-200310020700:1.1.1.4
+	cvs-200309271030:1.1.1.4
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.4
+	cvs-200308171200:1.1.1.4
+	ctm-3496:1.1.1.4
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.35.08;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.35.08;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.19.12.15.49;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.07.19.18.21.08;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.08.11.17.46.06;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2003.10.08.17.54.41;	author tg;	state Exp;
+branches;
+next	1.1.1.6;
+
+1.1.1.6
+date	2003.12.22.20.23.00;	author tg;	state Exp;
+branches;
+next	1.1.1.7;
+
+1.1.1.7
+date	2004.01.26.16.55.24;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: systrace.c,v 1.42 2002/12/12 00:39:14 avsm Exp $	*/
+/*
+ * Copyright 2002 Niels Provos <provos@@citi.umich.edu>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed by Niels Provos.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/wait.h>
+#include <sys/tree.h>
+#include <sys/socket.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <syslog.h>
+#include <string.h>
+#include <err.h>
+#include <errno.h>
+#include <pwd.h>
+
+#include "intercept.h"
+#include "systrace.h"
+#include "util.h"
+
+pid_t trpid;
+int trfd;
+int connected = 0;		/* Connected to GUI */
+int inherit = 0;		/* Inherit policy to childs */
+int automatic = 0;		/* Do not run interactively */
+int allow = 0;			/* Allow all and generate */
+int userpolicy = 1;		/* Permit user defined policies */
+int noalias = 0;		/* Do not do system call aliasing */
+int iamroot = 0;		/* Set if we are running as root */
+char cwd[MAXPATHLEN];		/* Current working directory */
+char home[MAXPATHLEN];		/* Home directory of user */
+char username[MAXLOGNAME];	/* Username: predicate match and expansion */
+
+static void child_handler(int);
+static void usage(void);
+static int requestor_start(char *);
+
+void
+systrace_parameters(void)
+{
+	struct passwd *pw;
+	uid_t uid = getuid();
+
+	iamroot = getuid() == 0;
+
+	/* Find out current username. */
+	if ((pw = getpwuid(uid)) == NULL)
+		snprintf(username, sizeof(username), "uid %u", uid);
+	else
+		snprintf(username, sizeof(username), "%s", pw->pw_name);
+
+	strlcpy(home, pw->pw_dir, sizeof(home));
+
+	/* Determine current working directory for filtering */
+	if (getcwd(cwd, sizeof(cwd)) == NULL)
+		err(1, "getcwd");
+}
+
+/*
+ * Generate human readable output and setup replacements if available.
+ */
+
+void
+make_output(char *output, size_t outlen, const char *binname,
+    pid_t pid, pid_t ppid,
+    int policynr, const char *policy, int nfilters, const char *emulation,
+    const char *name, int code, struct intercept_tlq *tls,
+    struct intercept_replace *repl)
+{
+	struct intercept_translate *tl;
+	char *p, *line;
+	int size;
+
+	snprintf(output, outlen,
+	    "%s, pid: %d(%d)[%d], policy: %s, filters: %d, syscall: %s-%s(%d)",
+	    binname, pid, policynr, ppid, policy, nfilters,
+	    emulation, name, code);
+
+	p = output + strlen(output);
+	size = outlen - strlen(output);
+
+	if (repl != NULL)
+		intercept_replace_init(repl);
+
+	if (tls == NULL)
+		return;
+
+	TAILQ_FOREACH(tl, tls, next) {
+		if (!tl->trans_valid)
+			continue;
+		line = intercept_translate_print(tl);
+		if (line == NULL)
+			continue;
+
+		snprintf(p, size, ", %s: %s", tl->name, line);
+		p = output + strlen(output);
+		size = outlen - strlen(output);
+
+		if (repl != NULL && tl->trans_size)
+			intercept_replace_add(repl, tl->off,
+			    tl->trans_data, tl->trans_size);
+	}
+}
+
+short
+trans_cb(int fd, pid_t pid, int policynr,
+    const char *name, int code, const char *emulation,
+    void *args, int argsize, struct intercept_tlq *tls, void *cbarg)
+{
+	short action, future;
+	struct policy *policy;
+	struct intercept_pid *ipid;
+	struct intercept_replace repl;
+	struct intercept_tlq alitls;
+	struct intercept_translate alitl[SYSTRACE_MAXALIAS];
+	struct systrace_alias *alias = NULL;
+	struct filterq *pflq = NULL;
+	const char *binname = NULL;
+	char output[_POSIX2_LINE_MAX];
+	pid_t ppid;
+	int dolog = 0;
+
+	action = ICPOLICY_PERMIT;
+
+	if (policynr == -1)
+		goto out;
+
+	if ((policy = systrace_findpolnr(policynr)) == NULL)
+		errx(1, "%s:%d: find %d", __func__, __LINE__,
+		    policynr);
+
+	ipid = intercept_getpid(pid);
+	ipid->uflags = 0;
+	binname = ipid->name != NULL ? ipid->name : policy->name;
+	ppid = ipid->ppid;
+
+	/* Required to set up replacements */
+	make_output(output, sizeof(output), binname, pid, ppid, policynr,
+	    policy->name, policy->nfilters, emulation, name, code,
+	    tls, &repl);
+
+	if ((pflq = systrace_policyflq(policy, emulation, name)) == NULL)
+		errx(1, "%s:%d: no filter queue", __func__, __LINE__);
+
+	action = filter_evaluate(tls, pflq, ipid);
+	if (action != ICPOLICY_ASK)
+		goto replace;
+
+	/* Do aliasing here */
+	if (!noalias)
+		alias = systrace_find_alias(emulation, name);
+	if (alias != NULL) {
+		int i;
+
+		/* Set up variables for further filter actions */
+		tls = &alitls;
+		emulation = alias->aemul;
+		name = alias->aname;
+
+		/* Create an aliased list for filter_evaluate */
+		TAILQ_INIT(tls);
+		for (i = 0; i < alias->nargs; i++) {
+			memcpy(&alitl[i], alias->arguments[i], 
+			    sizeof(struct intercept_translate));
+			TAILQ_INSERT_TAIL(tls, &alitl[i], next);
+		}
+
+		if ((pflq = systrace_policyflq(policy,
+			 alias->aemul, alias->aname)) == NULL)
+			errx(1, "%s:%d: no filter queue", __func__, __LINE__);
+
+		action = filter_evaluate(tls, pflq, ipid);
+		if (action != ICPOLICY_ASK)
+			goto replace;
+
+		make_output(output, sizeof(output), binname, pid, ppid,
+		    policynr, policy->name, policy->nfilters,
+		    alias->aemul, alias->aname, code, tls, NULL);
+	}
+
+	if (policy->flags & POLICY_UNSUPERVISED) {
+		action = ICPOLICY_NEVER;
+		dolog = 1;
+		goto out;
+	}
+
+	action = filter_ask(fd, tls, pflq, policynr, emulation, name,
+	    output, &future, ipid);
+	if (future != ICPOLICY_ASK)
+		filter_modifypolicy(fd, policynr, emulation, name, future);
+
+	if (policy->flags & POLICY_DETACHED) {
+		if (intercept_detach(fd, pid) == -1)
+			err(1, "intercept_detach");
+		return (action);
+	} else if (action == ICPOLICY_KILL) {
+		kill(pid, SIGKILL);
+		return (ICPOLICY_NEVER);
+	}
+ replace:
+	if (ipid->uflags & SYSCALL_LOG)
+		dolog = 1;
+
+	if (action < ICPOLICY_NEVER) {
+		/* If we can not rewrite the arguments, system call fails */
+		if (intercept_replace(fd, pid, &repl) == -1)
+			action = ICPOLICY_NEVER;
+	}
+ out:
+	if (dolog)
+		syslog(LOG_WARNING, "%s user: %s, prog: %s",
+		    action < ICPOLICY_NEVER ? "permit" : "deny",
+		    ipid->username, output);
+
+	return (action);
+}
+
+short
+gen_cb(int fd, pid_t pid, int policynr, const char *name, int code,
+    const char *emulation, void *args, int argsize, void *cbarg)
+{
+	char output[_POSIX2_LINE_MAX];
+	struct policy *policy;
+	struct intercept_pid *ipid;
+	struct filterq *pflq = NULL;
+	short action = ICPOLICY_PERMIT;
+	short future;
+	int len, off, dolog = 0;
+
+	if (policynr == -1)
+		goto out;
+
+	if ((policy = systrace_findpolnr(policynr)) == NULL)
+		errx(1, "%s:%d: find %d", __func__, __LINE__,
+		    policynr);
+
+	ipid = intercept_getpid(pid);
+	ipid->uflags = 0;
+
+	make_output(output, sizeof(output),
+	    ipid->name != NULL ? ipid->name : policy->name,
+	    pid, ipid->ppid, policynr,
+	    policy->name, policy->nfilters, emulation, name, code,
+	    NULL, NULL);
+
+	off = strlen(output);
+	len = sizeof(output) - off;
+	if (len > 0)
+		snprintf(output + off, len, ", args: %d", argsize);
+
+	if ((pflq = systrace_policyflq(policy, emulation, name)) == NULL)
+		errx(1, "%s:%d: no filter queue", __func__, __LINE__);
+
+	action = filter_evaluate(NULL, pflq, ipid);
+
+	if (ipid->uflags & SYSCALL_LOG)
+		dolog = 1;
+
+	if (action != ICPOLICY_ASK)
+		goto out;
+
+	if (policy->flags & POLICY_UNSUPERVISED) {
+		action = ICPOLICY_NEVER;
+		dolog = 1;
+		goto out;
+	}
+
+	action = filter_ask(fd, NULL, NULL, policynr, emulation, name,
+	    output, &future, ipid);
+	if (future != ICPOLICY_ASK)
+		systrace_modifypolicy(fd, policynr, name, future);
+
+	if (policy->flags & POLICY_DETACHED) {
+		if (intercept_detach(fd, pid) == -1)
+			err(1, "intercept_detach");
+	} else if (action == ICPOLICY_KILL) {
+		kill(pid, SIGKILL);
+		return (ICPOLICY_NEVER);
+	}
+ out:
+	if (dolog)
+		syslog(LOG_WARNING, "%s user: %s, prog: %s",
+		    action < ICPOLICY_NEVER ? "permit" : "deny",
+		    ipid->username, output);
+
+	return (action);
+}
+
+void
+execres_cb(int fd, pid_t pid, int policynr, const char *emulation,
+    const char *name, void *arg)
+{
+	struct policy *policy;
+
+	if (policynr != -1) {
+		struct intercept_pid *ipid;
+
+		ipid = intercept_getpid(pid);
+		if (ipid->uflags & PROCESS_DETACH) {
+			if (intercept_detach(fd, pid) == -1)
+				err(1, "%s: intercept_detach", __func__);
+			return;
+		}
+		if (inherit)
+			return;
+
+		if (ipid->uflags & PROCESS_INHERIT_POLICY)
+			return;
+	}
+	if ((policy = systrace_newpolicy(emulation, name)) == NULL)
+		goto error;
+
+	/* See if this policies runs without interactive feedback */
+	if (automatic)
+		policy->flags |= POLICY_UNSUPERVISED;
+
+	policynr = policy->policynr;
+
+	/* Try to find existing policy in file system */
+	if (policynr == -1 && TAILQ_FIRST(&policy->prefilters) == NULL)
+		systrace_addpolicy(name);
+
+	if (policy->flags & POLICY_DETACHED) {
+		if (intercept_detach(fd, pid) == -1)
+			err(1, "intercept_detach");
+		return;
+	}
+
+	if (policynr == -1) {
+		policynr = systrace_newpolicynr(fd, policy);
+		if (policynr == -1)
+			goto error;
+	}
+
+	if (intercept_assignpolicy(fd, pid, policynr) == -1)
+		goto error;
+
+	if (TAILQ_FIRST(&policy->prefilters) != NULL)
+		filter_prepolicy(fd, policy);
+
+	return;
+
+ error:
+	kill(pid, SIGKILL);
+	fprintf(stderr, "Terminating %d: %s\n", pid, name);
+}
+
+static void
+child_handler(int sig)
+{
+	int s = errno, status;
+
+	if (signal(SIGCHLD, child_handler) == SIG_ERR) {
+		close(trfd);
+	}
+
+	while (wait4(-1, &status, WNOHANG, NULL) > 0)
+		;
+
+	errno = s;
+}
+
+static void
+usage(void)
+{
+	fprintf(stderr,
+	    "Usage: systrace [-aAituU] [-d poldir] [-g gui] [-f policy]\n"
+	    "\t [-c uid:gid] [-p pid] command ...\n");
+	exit(1);
+}
+
+static int
+requestor_start(char *path)
+{
+	char *argv[2];
+	int pair[2];
+	pid_t pid;
+
+	argv[0] = path;
+	argv[1] = NULL;
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == -1)
+		err(1, "socketpair");
+
+	pid = fork();
+	if (pid == -1)
+		err(1, "fork");
+	if (pid == 0) {
+		close(pair[0]);
+		if (dup2(pair[1], fileno(stdin)) == -1)
+			err(1, "dup2");
+		if (dup2(pair[1], fileno(stdout)) == -1)
+			err(1, "dup2");
+		setlinebuf(stdout);
+
+		close(pair[1]);
+
+		execvp(path, argv);
+
+		err(1, "execvp: %s", path);
+	}
+
+	close(pair[1]);
+	if (dup2(pair[0], fileno(stdin)) == -1)
+		err(1, "dup2");
+
+	if (dup2(pair[0], fileno(stdout)) == -1)
+		err(1, "dup2");
+
+	close(pair[0]);
+
+	setlinebuf(stdout);
+
+	connected = 1;
+
+	return (0);
+}
+
+int
+main(int argc, char **argv)
+{
+	int i, c;
+	char **args;
+	char *filename = NULL;
+	char *policypath = NULL;
+	char *guipath = _PATH_XSYSTRACE, *p;
+	struct timeval tv, tv_wait = {60, 0};
+	pid_t pidattach = 0;
+	int usex11 = 1, count;
+	int background;
+	int setcredentials = 0;
+	uid_t cr_uid;
+	gid_t cr_gid;
+
+	while ((c = getopt(argc, argv, "c:aAituUd:g:f:p:")) != -1) {
+		switch (c) {
+		case 'c':
+			p = strsep(&optarg, ":");
+			if (optarg == NULL || *optarg == '\0')
+				usage();
+			setcredentials = 1;
+			cr_uid = atoi(p);
+			cr_gid = atoi(optarg);
+
+			if (cr_uid <= 0 || cr_gid <= 0)
+				usage();
+			break;
+		case 'a':
+			if (allow)
+				usage();
+			automatic = 1;
+			break;
+		case 'd':
+			policypath = optarg;
+			break;
+		case 'A':
+			if (automatic)
+				usage();
+			allow = 1;
+			break;
+		case 'u':
+			noalias = 1;
+			break;
+		case 'i':
+			inherit = 1;
+			break;
+		case 'g':
+			guipath = optarg;
+			break;
+		case 'f':
+			filename = optarg;
+			break;
+		case 'p':
+			if (setcredentials)
+				usage();
+			if ((pidattach = atoi(optarg)) == 0) {
+				warnx("bad pid: %s", optarg);
+				usage();
+			}
+			break;
+		case 't':
+			usex11 = 0;
+			break;
+		case 'U':
+			userpolicy = 0;
+			break;
+		default:
+			usage();
+			break;
+		}
+	}
+	argc -= optind;
+	argv += optind;
+
+	if (argc == 0 || (pidattach && *argv[0] != '/'))
+		usage();
+
+	systrace_parameters();
+
+	if (setcredentials && !iamroot) {
+		fprintf(stderr, "Need to be root to change credentials.\n");
+		usage();
+	}
+
+	/* Local initalization */
+	systrace_initalias();
+	systrace_initpolicy(filename, policypath);
+	systrace_initcb();
+
+	if ((trfd = intercept_open()) == -1)
+		exit(1);
+
+	/* See if we can run the systrace process in the background */
+	background = usex11 || automatic || allow;
+
+	if (pidattach == 0) {
+		/* Run a command and attach to it */
+		if ((args = malloc((argc + 1) * sizeof(char *))) == NULL)
+			err(1, "malloc");
+
+		for (i = 0; i < argc; i++)
+			args[i] = argv[i];
+		args[i] = NULL;
+
+		if (setcredentials)
+			trpid = intercept_run(background, trfd,
+			    cr_uid, cr_gid, args[0], args);
+		else
+			trpid = intercept_run(background, trfd, 0, 0,
+			    args[0], args);
+		if (trpid == -1)
+			err(1, "fork");
+
+		if (intercept_attach(trfd, trpid) == -1)
+			err(1, "attach");
+
+		if (kill(trpid, SIGUSR1) == -1)
+			err(1, "kill");
+	} else {
+		/* Attach to a running command */
+		if (intercept_attachpid(trfd, pidattach, argv[0]) == -1)
+			err(1, "attachpid");
+
+		if (background) {
+			if (daemon(1, 1) == -1)
+				err(1, "daemon");
+		}
+	}
+
+	if (signal(SIGCHLD, child_handler) == SIG_ERR)
+		err(1, "signal");
+
+	/* Start the policy gui if necessary */
+	if (usex11 && !automatic && !allow)
+		requestor_start(guipath);
+
+	/* Loop on requests */
+	count = 0;
+	while (intercept_read(trfd) != -1) {
+		if (!intercept_existpids())
+			break;
+		if (userpolicy) {
+			/* Periodically save modified policies */
+			if (count == 0) {
+				/* Set new wait time */
+				gettimeofday(&tv, NULL);
+				timeradd(&tv, &tv_wait, &tv);
+			} else if (count > 10) {
+				struct timeval now;
+				gettimeofday(&now, NULL);
+
+				count = 0;
+				if (timercmp(&now, &tv, >)) {
+					/* Dump policy and cause new time */
+					systrace_dumppolicy();
+					continue;
+				}
+			}
+			count++;
+		}
+	}
+
+	if (userpolicy)
+		systrace_dumppolicy();
+
+	close(trfd);
+
+	exit(0);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@sync with OpenBSD, this gives us a fair amount of fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: systrace.c,v 1.43 2003/06/16 06:36:40 itojun Exp $	*/
+d127 1
+a127 1
+		snprintf(p, size, ", %s: %s", tl->name, strescape(line));
+a377 12
+}
+
+void
+policyfree_cb(int policynr, void *arg)
+{
+	struct policy *policy;
+
+	if ((policy = systrace_findpolnr(policynr)) == NULL)
+		errx(1, "%s:%d: find %d", __func__, __LINE__,
+		    policynr);
+
+	systrace_freepolicy(policy);
+@
+
+
+1.1.1.3
+log
+@Another sync to OpenBSD
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: systrace.c,v 1.44 2003/07/19 11:48:58 sturm Exp $	*/
+a46 1
+#include <grp.h>
+d300 1
+a300 1
+	action = filter_ask(fd, NULL, pflq, policynr, emulation, name,
+d411 2
+a412 2
+	    "Usage: systrace [-AaitUu] [-c uid:gid] [-d policydir] [-f file]\n"
+	    "\t [-g gui] [-p pid] command ...\n");
+a462 48
+static int
+get_uid_gid(const char *argument, uid_t *uid, gid_t *gid)
+{
+	struct group *gp;
+	struct passwd *pw;
+	unsigned long ulval;
+	char uid_gid_str[128];
+	char *endp, *g, *u;
+
+	strlcpy(uid_gid_str, argument, sizeof(uid_gid_str));
+	g = uid_gid_str;
+	u = strsep(&g, ":");
+
+	if ((pw = getpwnam(u)) != NULL) {
+		memset(pw->pw_passwd, 0, strlen(pw->pw_passwd));
+		*uid = pw->pw_uid;
+		*gid = pw->pw_gid;
+		/* Ok if group not specified. */
+		if (g == NULL)
+			return (0);
+	} else {
+		errno = 0;
+		ulval = strtoul(u, &endp, 10);
+		if (u[0] == '\0' || *endp != '\0')
+			errx(1, "no such user '%s'", u);
+		if (errno == ERANGE && ulval == ULONG_MAX)
+			errx(1, "invalid uid %s", u);
+		*uid = (uid_t)ulval;
+	}
+
+	if (g == NULL)
+		return (-1);
+
+	if ((gp = getgrnam(g)) != NULL)
+		*gid = gp->gr_gid;
+	else {
+		errno = 0;
+		ulval = strtoul(g, &endp, 10);
+		if (g[0] == '\0' || *endp != '\0')
+			errx(1, "no such group '%s'", g);
+		if (errno == ERANGE && ulval == ULONG_MAX)
+			errx(1, "invalid gid %s", g);
+		*gid = (gid_t)ulval;
+	}
+
+	return (0);
+}
+
+d470 1
+a470 1
+	char *guipath = _PATH_XSYSTRACE;
+d482 3
+d486 4
+a489 1
+			if (get_uid_gid(optarg, &cr_uid, &cr_gid) == -1)
+@
+
+
+1.1.1.4
+log
+@Import the complete OpenBSD source tree (base system)
+as of CTM delta 3496 (roughly 1200 UTC today) into the
+vendor branch.
+Attention: this is a big update. Don't even try to
+build this system, OpenBSD 3.4-beta, yet on your own.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: systrace.c,v 1.45 2003/08/04 18:15:11 sturm Exp $	*/
+a74 1
+	char *normcwd;
+a89 4
+	if ((normcwd = normalize_filename(-1, 0, cwd, ICLINK_ALL)) == NULL)
+		errx(1, "normalize_filename");
+	if (strlcpy(cwd, normcwd, sizeof(cwd)) >= sizeof(cwd))
+		errx(1, "cwd too long");
+@
+
+
+1.1.1.5
+log
+@Fix kernel ./. userland race, from OpenBSD
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: systrace.c,v 1.46 2003/10/08 16:32:44 sturm Exp $	*/
+d120 3
+d139 1
+a139 2
+			    tl->trans_data, tl->trans_size,
+			    tl->trans_flags);
+d146 1
+a146 3
+    void *args, int argsize,
+    struct intercept_replace *repl,
+    struct intercept_tlq *tls, void *cbarg)
+d151 1
+d178 1
+a178 1
+	    tls, repl);
+d185 1
+a185 1
+		goto done;
+d212 1
+a212 1
+			goto done;
+d238 1
+a238 1
+ done:
+d242 5
+a251 2
+
+ 	/* Argument replacement in intercept might still fail */
+@
+
+
+1.1.1.6
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: systrace.c,v 1.47 2003/10/18 19:26:00 jmc Exp $	*/
+d593 1
+a593 1
+	/* Local initialization */
+@
+
+
+1.1.1.7
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: systrace.c,v 1.49 2004/01/23 20:51:18 sturm Exp $	*/
+a36 1
+#include <sys/stat.h>
+a40 1
+#include <stdarg.h>
+a53 3
+#define CRADLE_SERVER "cradle_server"
+#define CRADLE_UI     "cradle_ui"
+
+a62 2
+int cradle = 0;			/* Set if we are running in cradle mode */
+int logstderr = 0;		/* Log to STDERR instead of syslog */
+a65 2
+char *guipath = _PATH_XSYSTRACE; /* Path to GUI executable */
+char dirpath[MAXPATHLEN];
+a67 1
+static void log_msg(int, const char *, ...);
+d69 1
+d243 1
+a243 1
+		log_msg(LOG_WARNING, "%s user: %s, prog: %s",
+d316 1
+a316 1
+		log_msg(LOG_WARNING, "%s user: %s, prog: %s",
+a409 18
+log_msg(int priority, const char *fmt, ...)
+{
+	char buf[_POSIX2_LINE_MAX];
+	extern char *__progname;
+	va_list ap;
+
+	va_start(ap, fmt);
+
+	if (logstderr) {
+		vsnprintf(buf, sizeof(buf), fmt, ap);
+		fprintf(stderr, "%s: %s\n", __progname, buf);
+	} else
+		vsyslog(priority, fmt, ap);
+
+	va_end(ap);
+}
+
+static void
+d413 1
+a413 1
+	    "Usage: systrace [-AaCeitUu] [-c uid:gid] [-d policydir] [-f file]\n"
+d418 2
+a419 2
+int
+requestor_start(char *path, int docradle)
+d421 1
+a421 1
+	char *argv[3];
+d426 1
+a426 2
+	argv[1] = docradle ? "-C" : NULL;
+	argv[2] = NULL;
+d428 1
+a428 1
+	if (!docradle && socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == -1)
+d435 6
+a440 7
+		if (!docradle) {
+			close(pair[0]);
+			if (dup2(pair[1], fileno(stdin)) == -1)
+				err(1, "dup2");
+			if (dup2(pair[1], fileno(stdout)) == -1)
+				err(1, "dup2");
+			setlinebuf(stdout);
+d442 1
+a442 2
+			close(pair[1]);
+		}
+a446 1
+
+d449 3
+a451 4
+	if (!docradle) {
+		close(pair[1]);
+		if (dup2(pair[0], fileno(stdin)) == -1)
+			err(1, "dup2");
+d453 2
+a454 2
+		if (dup2(pair[0], fileno(stdout)) == -1)
+			err(1, "dup2");
+d456 1
+a456 1
+		close(pair[0]);
+d458 1
+a458 1
+		setlinebuf(stdout);
+d460 1
+a460 2
+		connected = 1;
+	}
+a464 30
+
+static void
+cradle_setup(char *pathtogui)
+{
+	struct stat sb;
+	char cradlepath[MAXPATHLEN], cradleuipath[MAXPATHLEN];
+
+	snprintf(dirpath, sizeof(dirpath), "/tmp/systrace-%d", getuid());
+
+	if (stat(dirpath, &sb) == -1) {
+		if (errno != ENOENT)
+			err(1, "stat()");
+		if (mkdir(dirpath, S_IRUSR | S_IWUSR | S_IXUSR) == -1)
+			err(1, "mkdir()");
+	} else {
+		if (sb.st_uid != getuid())
+			errx(1, "Wrong owner on directory %s", dirpath);
+		if (sb.st_mode != (S_IFDIR | S_IRUSR | S_IWUSR | S_IXUSR))
+			errx(1, "Wrong permissions on directory %s", dirpath);
+	}
+
+	strlcpy(cradlepath, dirpath, sizeof (cradlepath));
+	strlcat(cradlepath, "/" CRADLE_SERVER, sizeof (cradlepath));
+
+	strlcpy(cradleuipath, dirpath, sizeof (cradleuipath));
+	strlcat(cradleuipath, "/" CRADLE_UI, sizeof (cradleuipath));
+
+	cradle_start(cradlepath, cradleuipath, pathtogui);
+}
+
+d520 1
+d529 1
+a529 1
+	while ((c = getopt(argc, argv, "c:aAeituUCd:g:f:p:")) != -1) {
+a543 3
+		case 'e':
+			logstderr = 1;
+			break;
+a557 3
+		case 'C':
+			cradle = 1;
+			break;
+d641 3
+a643 8
+	/* Start the policy gui or cradle if necessary */
+	if (usex11 && (!automatic && !allow)) {
+		if (cradle)
+			cradle_setup(guipath);
+		else
+			requestor_start(guipath, 0);
+
+	}
+@
+
+

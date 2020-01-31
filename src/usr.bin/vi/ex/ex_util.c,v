@@ -1,0 +1,342 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.45;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: ex_util.c,v 1.6 2002/02/17 19:42:34 millert Exp $	*/
+
+/*-
+ * Copyright (c) 1993, 1994
+ *	The Regents of the University of California.  All rights reserved.
+ * Copyright (c) 1993, 1994, 1995, 1996
+ *	Keith Bostic.  All rights reserved.
+ *
+ * See the LICENSE file for redistribution information.
+ */
+
+#include "config.h"
+
+#ifndef lint
+static const char sccsid[] = "@@(#)ex_util.c	10.23 (Berkeley) 6/19/96";
+#endif /* not lint */
+
+#include <sys/types.h>
+#include <sys/queue.h>
+#include <sys/stat.h>
+
+#include <bitstring.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "../common/common.h"
+
+/*
+ * ex_cinit --
+ *	Create an EX command structure.
+ *
+ * PUBLIC: void ex_cinit(EXCMD *, int, int, recno_t, recno_t, int, ARGS **);
+ */
+void
+ex_cinit(cmdp, cmd_id, naddr, lno1, lno2, force, ap)
+	EXCMD *cmdp;
+	int cmd_id, force, naddr;
+	recno_t lno1, lno2;
+	ARGS **ap;
+{
+	memset(cmdp, 0, sizeof(EXCMD));
+	cmdp->cmd = &cmds[cmd_id];
+	cmdp->addrcnt = naddr;
+	cmdp->addr1.lno = lno1;
+	cmdp->addr2.lno = lno2;
+	cmdp->addr1.cno = cmdp->addr2.cno = 1;
+	if (force)
+		cmdp->iflags |= E_C_FORCE;
+	cmdp->argc = 0;
+	if ((cmdp->argv = ap) != NULL)
+		cmdp->argv[0] = NULL;
+}
+
+/*
+ * ex_cadd --
+ *	Add an argument to an EX command structure.
+ *
+ * PUBLIC: void ex_cadd(EXCMD *, ARGS *, char *, size_t);
+ */
+void
+ex_cadd(cmdp, ap, arg, len)
+	EXCMD *cmdp;
+	ARGS *ap;
+	char *arg;
+	size_t len;
+{
+	cmdp->argv[cmdp->argc] = ap;
+	ap->bp = arg;
+	ap->len = len;
+	cmdp->argv[++cmdp->argc] = NULL;
+}
+
+/*
+ * ex_getline --
+ *	Return a line from the file.
+ *
+ * PUBLIC: int ex_getline(SCR *, FILE *, size_t *);
+ */
+int
+ex_getline(sp, fp, lenp)
+	SCR *sp;
+	FILE *fp;
+	size_t *lenp;
+{
+	EX_PRIVATE *exp;
+	size_t off;
+	int ch;
+	char *p;
+
+	exp = EXP(sp);
+	for (errno = 0, off = 0, p = exp->ibp;;) {
+		if (off >= exp->ibp_len) {
+			BINC_RET(sp, exp->ibp, exp->ibp_len, off + 1);
+			p = exp->ibp + off;
+		}
+		if ((ch = getc(fp)) == EOF && !feof(fp)) {
+			if (errno == EINTR) {
+				errno = 0;
+				clearerr(fp);
+				continue;
+			}
+			return (1);
+		}
+		if (ch == EOF || ch == '\n') {
+			if (ch == EOF && !off)
+				return (1);
+			*lenp = off;
+			return (0);
+		}
+		*p++ = ch;
+		++off;
+	}
+	/* NOTREACHED */
+}
+
+/*
+ * ex_ncheck --
+ *	Check for more files to edit.
+ *
+ * PUBLIC: int ex_ncheck(SCR *, int);
+ */
+int
+ex_ncheck(sp, force)
+	SCR *sp;
+	int force;
+{
+	char **ap;
+
+	/*
+	 * !!!
+	 * Historic practice: quit! or two quit's done in succession
+	 * (where ZZ counts as a quit) didn't check for other files.
+	 */
+	if (!force && sp->ccnt != sp->q_ccnt + 1 &&
+	    sp->cargv != NULL && sp->cargv[1] != NULL) {
+		sp->q_ccnt = sp->ccnt;
+
+		for (ap = sp->cargv + 1; *ap != NULL; ++ap);
+		msgq(sp, M_ERR,
+		    "167|%d more files to edit", (ap - sp->cargv) - 1);
+
+		return (1);
+	}
+	return (0);
+}
+
+/*
+ * ex_init --
+ *	Init the screen for ex.
+ *
+ * PUBLIC: int ex_init(SCR *);
+ */
+int
+ex_init(sp)
+	SCR *sp;
+{
+	GS *gp;
+
+	gp = sp->gp;
+
+	if (gp->scr_screen(sp, SC_EX))
+		return (1);
+	(void)gp->scr_attr(sp, SA_ALTERNATE, 0);
+
+	sp->rows = O_VAL(sp, O_LINES);
+	sp->cols = O_VAL(sp, O_COLUMNS);
+
+	F_CLR(sp, SC_VI);
+	F_SET(sp, SC_EX | SC_SCR_EX);
+	return (0);
+}
+
+/*
+ * ex_emsg --
+ *	Display a few common ex and vi error messages.
+ *
+ * PUBLIC: void ex_emsg(SCR *, char *, exm_t);
+ */
+void
+ex_emsg(sp, p, which)
+	SCR *sp;
+	char *p;
+	exm_t which;
+{
+	switch (which) {
+	case EXM_EMPTYBUF:
+		msgq(sp, M_ERR, "168|Buffer %s is empty", p);
+		break;
+	case EXM_FILECOUNT:
+		 msgq_str(sp, M_ERR, p, 
+		     "144|%s: expanded into too many file names");
+		break;
+	case EXM_NOCANON:
+		msgq(sp, M_ERR,
+		    "283|The %s command requires the ex terminal interface", p);
+		break;
+	case EXM_NOCANON_F:
+		msgq(sp, M_ERR,
+		    "272|That form of %s requires the ex terminal interface",
+		    p);
+		break;
+	case EXM_NOFILEYET:
+		if (p == NULL)
+			msgq(sp, M_ERR,
+			    "274|Command failed, no file read in yet.");
+		else
+			msgq(sp, M_ERR,
+	"173|The %s command requires that a file have already been read in", p);
+		break;
+	case EXM_NOPREVBUF:
+		msgq(sp, M_ERR, "171|No previous buffer to execute");
+		break;
+	case EXM_NOPREVRE:
+		msgq(sp, M_ERR, "172|No previous regular expression");
+		break;
+	case EXM_NOSUSPEND:
+		msgq(sp, M_ERR, "230|This screen may not be suspended");
+		break;
+	case EXM_SECURE:
+		msgq(sp, M_ERR,
+"290|The %s command is not supported when the secure edit option is set", p);
+		break;
+	case EXM_SECURE_F:
+		msgq(sp, M_ERR,
+"284|That form of %s is not supported when the secure edit option is set", p);
+		break;
+	case EXM_USAGE:
+		msgq(sp, M_ERR, "174|Usage: %s", p);
+		break;
+	}
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

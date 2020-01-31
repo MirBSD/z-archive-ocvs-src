@@ -1,0 +1,479 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.4
+	tg-mergefixes-1-branch:1.1.1.4.0.4
+	tg-mergefixes-1-base:1.1.1.4
+	MIROS_X:1.1.1.4.0.2
+	MIROS_X_BASE:1.1.1.4
+	tg-mergetmp-3:1.1.1.4
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.4
+	cvs-200410231830:1.1.1.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.2
+	cvs-200406091940:1.1.1.3
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.45;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.54.02;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.08.01.34;	author tg;	state Stab;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.10.23.18.38.17;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+# $Id: piconv,v 1.25 2002/06/01 18:07:49 dankogai Exp dankogai $
+#
+use 5.8.0;
+use strict;
+use Encode ;
+use Encode::Alias;
+my %Scheme =  map {$_ => 1} qw(from_to decode_encode perlio);
+
+use Getopt::Std;
+
+my %Opt; getopts("pcC:hDS:lf:t:s:", \%Opt);
+$Opt{h} and help();
+$Opt{l} and list_encodings();
+my $locale = $ENV{LC_CTYPE} || $ENV{LC_ALL} || $ENV{LANG};
+$Opt{f} || $Opt{t} || help();
+my $from = $Opt{f} || $locale or help("from_encoding unspecified");
+my $to   = $Opt{t} || $locale or help("to_encoding unspecified");
+$Opt{s} and Encode::from_to($Opt{s}, $from, $to) and print $Opt{s} and exit;
+my $scheme = exists $Scheme{$Opt{S}} ? $Opt{S} :  'from_to';
+$Opt{C} ||= $Opt{c};
+$Opt{p} and $Opt{C} = Encode::FB_PERLQQ;
+
+if ($Opt{D}){
+    my $cfrom = Encode->getEncoding($from)->name;
+    my $cto   = Encode->getEncoding($to)->name;
+    print <<"EOT";
+Scheme: $scheme
+From:   $from => $cfrom
+To:     $to => $cto
+EOT
+}
+
+# default
+if     ($scheme eq 'from_to'){ 
+    while(<>){
+	Encode::from_to($_, $from, $to, $Opt{C}); print;
+    };
+# step-by-step
+}elsif ($scheme eq 'decode_encode'){
+   while(<>){
+       my $decoded = decode($from, $_, $Opt{C});
+       my $encoded = encode($to, $decoded);
+       print $encoded;
+    };
+# NI-S favorite
+}elsif ($scheme eq 'perlio'){ 
+    binmode(STDIN,  ":encoding($from)");
+    binmode(STDOUT, ":encoding($to)");
+    while(<>){ print; }
+}else{ # won't reach
+    die "unknown scheme: $scheme";
+}
+
+sub list_encodings{
+    print join("\n", Encode->encodings(":all")), "\n";
+    exit;
+}
+
+sub help{
+    my $message = shift;
+    use File::Basename;
+    my $name = basename($0);
+    $message and print STDERR "$name error: $message\n";
+    print STDERR <<"EOT";
+$name [-f from_encoding] [-t to_encoding] [-s string] [files...]
+$name -l
+  -l lists all available encodings (the canonical names, many aliases exist)
+  -f from_encoding  When omitted, the current locale will be used.
+  -t to_encoding    When omitted, the current locale will be used.
+  -s string         "string" will be converted instead of STDIN.
+EOT
+  exit;
+}
+
+__END__
+
+=head1 NAME
+
+piconv -- iconv(1), reinvented in perl
+
+=head1 SYNOPSIS
+
+  piconv [-f from_encoding] [-t to_encoding] [-s string] [files...]
+  piconv -l
+
+=head1 DESCRIPTION
+
+B<piconv> is perl version of B<iconv>, a character encoding converter
+widely available for various Unixen today.  This script was primarily
+a technology demonstrator for Perl 5.8.0, but you can use piconv in the
+place of iconv for virtually any case.
+
+piconv converts the character encoding of either STDIN or files
+specified in the argument and prints out to STDOUT.
+
+Here is the  list of options.
+
+=over 4
+
+=item -f from_encoding
+
+Specifies the encoding you are converting from.  Unlike B<iconv>,
+this option can be omitted.  In such cases, the current locale is used.
+
+=item -t to_encoding
+
+Specifies the encoding you are converting to.  Unlike B<iconv>,
+this option can be omitted.  In such cases, the current locale is used.
+
+Therefore, when both -f and -t are omitted, B<piconv> just acts
+like B<cat>.
+
+=item -s I<string>
+
+uses I<string> instead of file for the source of text.  Same as B<iconv>.
+
+=item -l
+
+Lists all available encodings, one per line, in case-insensitive
+order.  Note that only the canonical names are listed; many aliases
+exist.  For example, the names are case-insensitive, and many standard
+and common aliases work, such as "latin1" for "ISO-8859-1", or "ibm850"
+instead of "cp850", or "winlatin1" for "cp1252".  See L<Encode::Supported>
+for a full discussion.
+
+=item -C I<N>
+
+Check the validity of the stream if I<N> = 1.  When I<N> = -1, something
+interesting happens when it encounters an invalid character.
+
+=item -c
+
+Same as C<-C 1>.
+
+=item -p
+
+Same as C<-C -1>.
+
+=item -h
+
+Show usage.
+
+=item -D
+
+Invokes debugging mode.  Primarily for Encode hackers.
+
+=item -S scheme
+
+Selects which scheme is to be used for conversion.  Available schemes
+are as follows:
+
+=over 4
+
+=item from_to
+
+Uses Encode::from_to for conversion.  This is the default.
+
+=item decode_encode
+
+Input strings are decode()d then encode()d.  A straight two-step
+implementation.
+
+=item perlio
+
+The new perlIO layer is used.  NI-S' favorite.
+
+=back
+
+Like the I<-D> option, this is also for Encode hackers.
+
+=back
+
+=head1 SEE ALSO
+
+L<iconv(1)>
+L<locale(3)>
+L<Encode>
+L<Encode::Supported>
+L<Encode::Alias>
+L<PerlIO>
+
+=cut
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d2 1
+a2 1
+# $Id: piconv,v 1.27 2003/06/18 09:29:02 dankogai Exp $
+d10 1
+a10 2
+use File::Basename;
+my $name = basename($0);
+d12 3
+a14 22
+use Getopt::Long;
+
+my %Opt;
+
+help()
+    unless
+      GetOptions(\%Opt,
+		 'from|f=s',
+		 'to|t=s',
+		 'list|l',
+		 'string|s=s',
+		 'check|C=i',
+		 'c',
+		 'perlqq|p',
+		 'debug|D',
+		 'scheme|S=s',
+		 'resolve|r=s',
+		 'help',
+		 );
+
+$Opt{help} and help();
+$Opt{list} and list_encodings();
+d16 7
+a22 8
+defined $Opt{resolve} and resolve_encoding($Opt{resolve});
+$Opt{from} || $Opt{to} || help();
+my $from = $Opt{from} || $locale or help("from_encoding unspecified");
+my $to   = $Opt{to}   || $locale or help("to_encoding unspecified");
+$Opt{string} and Encode::from_to($Opt{string}, $from, $to) and print $Opt{string} and exit;
+my $scheme = exists $Scheme{$Opt{Scheme}} ? $Opt{Scheme} :  'from_to';
+$Opt{check} ||= $Opt{c};
+$Opt{perlqq} and $Opt{check} = Encode::FB_PERLQQ;
+d24 1
+a24 1
+if ($Opt{debug}){
+d37 1
+a37 1
+	Encode::from_to($_, $from, $to, $Opt{check}); print;
+d42 1
+a42 1
+       my $decoded = decode($from, $_, $Opt{check});
+d51 2
+a52 2
+} else { # won't reach
+    die "$name: unknown scheme: $scheme";
+d57 1
+a57 11
+    exit 0;
+}
+
+sub resolve_encoding {
+    if (my $alias = Encode::resolve_alias($_[0])) {
+	print $alias, "\n";
+	exit 0;
+    } else {
+	warn "$name: $_[0] is not known to Encode\n";
+	exit 1;
+    }
+d62 2
+d68 4
+a71 15
+$name -r encoding_alias
+  -l,--list
+     lists all available encodings
+  -r,--resolve encoding_alias
+    resolve encoding to its (Encode) canonical name
+  -f,--from from_encoding  
+     when omitted, the current locale will be used
+  -t,--to to_encoding    
+     when omitted, the current locale will be used
+  -s,--string string         
+     "string" will be the input instead of STDIN or files
+The following are mainly of interest to Encode hackers:
+  -D,--debug          show debug information
+  -C N | -c | -p      check the validity of the input
+  -S,--scheme scheme  use the scheme for conversion
+a85 5
+  piconv [-C N|-c|-p]
+  piconv -S scheme ...
+  piconv -r encoding
+  piconv -D ...
+  piconv -h
+d97 1
+a97 2
+Here is the list of options.  Each option can be in short format (-f)
+or long (--from).
+d101 1
+a101 1
+=item -f,--from from_encoding
+d106 1
+a106 1
+=item -t,--to to_encoding
+d114 1
+a114 1
+=item -s,--string I<string>
+d116 1
+a116 1
+uses I<string> instead of file for the source of text.
+d118 1
+a118 1
+=item -l,--list
+d127 1
+a127 1
+=item -C,--check I<N>
+d136 1
+a136 1
+=item -p,--perlqq
+d140 1
+a140 1
+=item -h,--help
+d144 1
+a144 1
+=item -D,--debug
+d148 1
+a148 1
+=item -S,--scheme scheme
+d176 2
+a177 2
+L<iconv/1>
+L<locale/3>
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d13 1
+a13 1
+use Getopt::Long qw(:config no_ignore_case);
+@
+
+
+1.1.1.4
+log
+@5.8.5
+@
+text
+@d2 1
+a2 1
+# $Id: piconv,v 2.0 2004/05/16 20:55:16 dankogai Exp $
+@
+
+

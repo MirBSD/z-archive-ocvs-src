@@ -1,0 +1,345 @@
+head	1.2;
+access;
+symbols
+	cvs-1_12_11:1.1.2.1
+	cvs-1_12_10:1.1.2.1
+	FSF:1.1.2
+	MIRBSD_XP_MIRPPC:1.1.3.1.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.3.1
+	MIRBSD_XP_SPARC:1.1.3.1.0.2
+	cvs-1_11_12:1.1.3.1
+	tg:1.1.3;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.12.02.12.39.59;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.02.12.19.43.51;	author tg;	state Exp;
+branches
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.2.1
+date	2004.12.02.11.58.32;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.02.12.19.43.51;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@update to cvs 1.12.10-MirOS except automatically
+generated files
+XXX this installs as /usr/bin/ncvs yet, so no
+XXX conflicts during the test phase.
+XXX I suggest to _not_ update.
+
+XXX *** IMPORTANT *** DO NOT ACCESS CVS 1.11 REPOSITORIES
+XXX *** IMPORTANT *** WITH CVS 1.12 OR VICE VERSA!
+@
+text
+@/* Copyright (C) 1992,93,94,95,96,97,98,99,2000, 2001 Free Software Foundation, Inc.
+   This file is part of the GNU C Library.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along
+   with this program; if not, write to the Free Software Foundation,
+   Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#if HAVE_CONFIG_H
+# include <config.h>
+#endif
+
+#include <stdio.h>
+#ifndef SEEK_CUR
+#define SEEK_CUR 1
+#endif
+#include <termios.h>
+#include <unistd.h>
+#include "getline.h"
+
+/* It is desirable to use this bit on systems that have it.
+   The only bit of terminal state we want to twiddle is echoing, which is
+   done in software; there is no need to change the state of the terminal
+   hardware.  */
+
+#ifndef TCSASOFT
+# define TCSASOFT 0
+#endif
+
+char *
+getpass (const char *prompt)
+{
+  FILE *in, *out;
+  struct termios s, t;
+  int tty_changed;
+  static char *buf;
+  static size_t bufsize;
+  ssize_t nread;
+
+  /* Try to write to and read from the terminal if we can.
+     If we can't open the terminal, use stderr and stdin.  */
+
+  in = fopen ("/dev/tty", "w+");
+  if (in == NULL)
+    {
+      in = stdin;
+      out = stderr;
+    }
+  else
+    out = in;
+
+  /* Turn echoing off if it is on now.  */
+
+  if (tcgetattr (fileno (in), &t) == 0)
+    {
+      /* Save the old one. */
+      s = t;
+      /* Tricky, tricky. */
+      t.c_lflag &= ~(ECHO|ISIG);
+      tty_changed = (tcsetattr (fileno (in), TCSAFLUSH|TCSASOFT, &t) == 0);
+    }
+  else
+    tty_changed = 0;
+
+  /* Write the prompt.  */
+  fputs (prompt, out);
+  fflush (out);
+
+  /* Read the password.  */
+  nread = getline (&buf, &bufsize, in);
+  if (buf != NULL)
+    {
+      if (nread < 0)
+	buf[0] = '\0';
+      else if (buf[nread - 1] == '\n')
+	{
+	  /* Remove the newline.  */
+	  buf[nread - 1] = '\0';
+	  if (tty_changed)
+	    {
+	      /* Write the newline that was not echoed.  */
+	      if (out == in) fseek (out, 0, SEEK_CUR);
+	      putc ('\n', out);
+	    }
+	}
+    }
+
+  /* Restore the original setting.  */
+  if (tty_changed)
+    (void) tcsetattr (fileno (in), TCSAFLUSH|TCSASOFT, &s);
+
+  if (in != stdin)
+    /* We opened the terminal; now close it.  */
+    fclose (in);
+
+  return buf;
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@vendor-branch-ify new cvs 1.12
+@
+text
+@d1 1
+a1 1
+/* Copyright (C) 1992-2001, 2003, 2004 Free Software Foundation, Inc.
+a21 10
+#if !_LIBC
+# include "getpass.h"
+#endif
+
+#if _LIBC
+# define HAVE_STDIO_EXT_H 1
+#endif
+
+#include <stdbool.h>
+
+d23 2
+a24 4
+#if HAVE_STDIO_EXT_H
+# include <stdio_ext.h>
+#else
+# define __fsetlocking(stream, type) /* empty */
+a25 4
+#if !_LIBC
+# include "getline.h"
+#endif
+
+d28 1
+a28 50
+
+#if _LIBC
+# include <wchar.h>
+#endif
+
+#if _LIBC
+# define NOTCANCEL_MODE "c"
+#else
+# define NOTCANCEL_MODE
+#endif
+
+#if _LIBC
+# define flockfile(s) _IO_flockfile (s)
+# define funlockfile(s) _IO_funlockfile (s)
+#elif USE_UNLOCKED_IO
+# include "unlocked-io.h"
+#else
+# if !HAVE_DECL_FFLUSH_UNLOCKED
+#  undef fflush_unlocked
+#  define fflush_unlocked(x) fflush (x)
+# endif
+# if !HAVE_DECL_FLOCKFILE
+#  undef flockfile
+#  define flockfile(x) ((void) 0)
+# endif
+# if !HAVE_DECL_FUNLOCKFILE
+#  undef funlockfile
+#  define funlockfile(x) ((void) 0)
+# endif
+# if !HAVE_DECL_FPUTS_UNLOCKED
+#  undef fputs_unlocked
+#  define fputs_unlocked(str,stream) fputs (str, stream)
+# endif
+# if !HAVE_DECL_PUTC_UNLOCKED
+#  undef putc_unlocked
+#  define putc_unlocked(c,stream) putc (c, stream)
+# endif
+#endif
+
+#if _LIBC
+# include <bits/libc-lock.h>
+#else
+# define __libc_cleanup_push(function, arg) /* empty */
+# define __libc_cleanup_pop(execute) /* empty */
+#endif
+
+#if !_LIBC
+# define __getline getline
+# define __tcgetattr tcgetattr
+#endif
+a38 7
+static void
+call_fclose (void *arg)
+{
+  if (arg != NULL)
+    fclose (arg);
+}
+
+a41 1
+  FILE *tty;
+d44 1
+a44 1
+  bool tty_changed;
+d52 2
+a53 2
+  tty = fopen ("/dev/tty", "w+" NOTCANCEL_MODE);
+  if (tty == NULL)
+d59 1
+a59 12
+    {
+      /* We do the locking ourselves.  */
+      __fsetlocking (tty, FSETLOCKING_BYCALLER);
+
+      out = in = tty;
+    }
+
+  /* Make sure the stream we opened is closed even if the thread is
+     canceled.  */
+  __libc_cleanup_push (call_fclose, tty);
+
+  flockfile (out);
+d63 1
+a63 1
+  if (__tcgetattr (fileno (in), &t) == 0)
+d72 1
+a72 1
+    tty_changed = false;
+d75 2
+a76 7
+#ifdef USE_IN_LIBIO
+  if (_IO_fwide (out, 0) > 0)
+    __fwprintf (out, L"%s", prompt);
+  else
+#endif
+    fputs_unlocked (prompt, out);
+  fflush_unlocked (out);
+d79 1
+a79 17
+  nread = __getline (&buf, &bufsize, in);
+
+#if !_LIBC
+  /* As far as is known, glibc doesn't need this no-op fseek.  */
+
+  /* According to the C standard, input may not be followed by output
+     on the same stream without an intervening call to a file
+     positioning function.  Suppose in == out; then without this fseek
+     call, on Solaris, HP-UX, AIX, OSF/1, the previous input gets
+     echoed, whereas on IRIX, the following newline is not output as
+     it should be.  POSIX imposes similar restrictions if fileno (in)
+     == fileno (out).  The POSIX restrictions are tricky and change
+     from POSIX version to POSIX version, so play it safe and invoke
+     fseek even if in != out.  */
+  fseek (out, 0, SEEK_CUR);
+#endif
+
+d91 2
+a92 6
+#ifdef USE_IN_LIBIO
+	      if (_IO_fwide (out, 0) > 0)
+		putwc_unlocked (L'\n', out);
+	      else
+#endif
+		putc_unlocked ('\n', out);
+d101 3
+a103 5
+  funlockfile (out);
+
+  __libc_cleanup_pop (0);
+
+  call_fclose (tty);
+@
+
+
+1.1.3.1
+log
+@CVS 1.11.12 is the latest stable version of CVS,
+released 06.02.2004, with a huge lot of bug fixes.
+
+/me hopes this will pay off...
+@
+text
+@@

@@ -1,0 +1,683 @@
+head	1.7;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.7
+	tg-mergefixes-1-branch:1.7.0.8
+	tg-mergefixes-1-base:1.7
+	MIROS_X:1.7.0.6
+	MIROS_X_BASE:1.7
+	tg-mergetmp-3:1.7
+	MIRBSD_XP_MIRPPC:1.7.0.4
+	MIRBSD_XP_SPARC_BASE:1.7
+	MIRBSD_XP_SPARC:1.7.0.2
+	MIRBSD_7quater:1.4.2.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.4.2.1.0.4
+	MIRBSD_7:1.4.2.1.0.2
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.4.2.1
+	MIRBSD_7_DEV:1.4.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.2
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.7
+date	2004.06.09.14.48.42;	author tg;	state Stab;
+branches;
+next	1.6;
+
+1.6
+date	2004.05.21.20.08.56;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2003.12.21.22.06.10;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2003.07.06.20.23.25;	author tg;	state Exp;
+branches
+	1.4.2.1;
+next	1.3;
+
+1.3
+date	2003.06.19.16.45.21;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.06.02.19.58.57;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.55.58;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.55.58;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.05.16.07.24.37;	author tg;	state Exp;
+branches;
+next	;
+
+1.4.2.1
+date	2003.11.09.19.10.52;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.7
+log
+@For the short time being, let rdate use /usr/share/zoneinfo/UTC
+for leap seconds instead of /usr/share/zoneinfo/right/UTC
+@
+text
+@/*	$OpenBSD: ntpleaps.c,v 1.7 2004/05/05 20:29:54 jakob Exp $	*/
+
+/*
+ * Copyright (c) 2002 Thorsten Glaser. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *    - Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *    - Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+ * COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ *
+ */
+
+#include <sys/cdefs.h>
+__RCSID("$MirBSD: src/usr.sbin/rdate/ntpleaps.c,v 1.6 2004/05/21 20:08:56 tg Exp $");
+
+/*
+ * I could include tzfile.h, but this would make the code unportable
+ * at no real benefit. Read tzfile.h for why.
+ */
+
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include "ntpleaps.h"
+
+u_int64_t *leapsecs = NULL;
+unsigned int leapsecs_num = 0;
+static int flaginit = -1;
+static int flagwarn = 0;
+
+
+int
+ntpleaps_init(void)
+{
+	if (!flaginit)
+		return 0;
+
+	if (!ntpleaps_read()) {
+		flaginit = 0;
+		return 0;
+	}
+
+	/* This does not really hurt, but users will complain about
+	 * off-by-22-seconds (at time of coding) errors if we don't warn.
+	 */
+	if (!flagwarn) {
+		fputs("Warning: error reading tzfile. You will NOT be\n"
+		    "able to get legal time or posix compliance! To fix this,\n"
+		    "install the 232 byte /usr/share/zoneinfo/right/UTC file.\n",
+		    stderr);
+		flagwarn = 1;	/* put it only once */
+	}
+
+	return -1;
+}
+
+int
+ntpleaps_sub(u_int64_t *t)
+{
+	unsigned int i = 0;
+	u_int64_t u;
+	int r = 1;
+
+	if (-1 == (flaginit ? ntpleaps_init() : 0))
+		return -1;
+
+	u = *t;
+
+	while (i < leapsecs_num) {
+		if (u < leapsecs[i])
+			break;
+		if (u == leapsecs[i++])
+			goto do_sub;
+	}
+	--r;
+
+do_sub:
+	*t = u - i;
+	return r;
+}
+
+u_int32_t
+read_be_dword(u_int8_t *ptr)
+{
+	u_int32_t res;
+
+	memcpy(&res, ptr, 4);
+	return ntohl(res);
+}
+
+
+int
+ntpleaps_read(void)
+{
+	int fd;
+	unsigned int r;
+	u_int8_t buf[32];
+	u_int32_t m1, m2, m3;
+	u_int64_t s;
+	u_int64_t *l;
+
+	fd = open("/usr/share/zoneinfo/UTC", O_RDONLY | O_NDELAY);
+	if (-1 == fd)
+		return -1;
+
+	/* Check signature */
+	read(fd, buf, 4);
+	buf[4] = 0;
+	if (strcmp((const char *)buf, "TZif")) {
+		close(fd);
+		return -1;
+	}
+
+	/* Pre-initalize buf[24..27] so we need not check read(2) result */
+	buf[24] = 0;
+	buf[25] = 0;
+	buf[26] = 0;
+	buf[27] = 0;
+
+	/* Skip uninteresting parts of header */
+	read(fd, buf, 28);
+
+	/* Read number of leap second entries */
+	r = read_be_dword(&buf[24]);
+	/* Check for plausibility - arbitrary values */
+	if ((r < 20) || (r > 60000)) {
+		close(fd);
+		return -1;
+	}
+	if (NULL == (l = (u_int64_t *)malloc(r << 3))) {
+		close(fd);
+		return -1;
+	}
+
+	/* Skip further uninteresting stuff */
+	read(fd, buf, 12);
+	m1 = read_be_dword(buf);
+	m2 = read_be_dword(&buf[4]);
+	m3 = read_be_dword(&buf[8]);
+	m3 += (m1 << 2)+m1+(m2 << 2)+(m2 << 1);
+	lseek(fd, (off_t)m3, SEEK_CUR);
+
+	/* Now go parse the tzfile leap second info */
+	for (m1 = 0; m1 < r; m1++) {
+		if (read(fd, buf, 8) != 8) {
+			free(l);
+			close(fd);
+			return -1;
+		}
+		s = SEC_TO_TAI64(read_be_dword(buf));
+		/*
+		 * Assume just _one_ leap second on each entry, and compensate
+		 * the lacking error checking by validating the first entry
+		 * against the known value
+		 */
+		if (!m1 && s != 0x4000000004B2580AULL)
+			return -1;
+		l[m1] = s;
+	}
+
+	/* Clean up and activate the table */
+	close(fd);
+	if (leapsecs != NULL)
+		free(leapsecs);
+	leapsecs = l;
+	leapsecs_num = r;
+	return 0;
+}
+@
+
+
+1.6
+log
+@* merge OpenBSD 3.5-current
+* re-sort entries in Makefile
+  => not a bunch of adds any more; all alphabetic
+  => remove obsolete SUBDIRS_ONLY_BSD for now
+     (MirLinux won't come that soon due to a certain lawsuit,
+      licence issues with unwillingly GNU fanatics, and my
+      chronic unwillingness to do masochistic work)
+* spacing, RCS IDs, etc.
+* pkg gets folded into pkg_install, so we only have one dir
+  to worry about
+* pkg_add leaves the tree - nobody cared about this kind
+  of package tools anyways, and they're not part of MirBSD
+  (although still supported by MirPorts)
+* mopd leaves - we don't have VAX support anyways
+@
+text
+@d33 1
+a33 1
+__RCSID("$MirBSD$");
+d125 1
+a125 2
+	/* this file is a constant. Argued by jakob@@openbsd. */
+	fd = open("/usr/share/zoneinfo/right/UTC", O_RDONLY | O_NDELAY);
+@
+
+
+1.5
+log
+@missed when merging MIRBSD_7ter into HEAD
+@
+text
+@d1 15
+a15 4
+/* $MirBSD: licence.template,v 1.8 2003/12/17 14:35:00 tg Exp $
+ *-
+ * Copyright (c) 2002, 2003
+ *	Thorsten Glaser <x86@@ePost.de> for the MirOS Project
+d17 12
+a28 6
+ * Subject to these terms, everybody who obtained a copy of this work
+ * is hereby permitted to deal in the work without restriction inclu-
+ * ding without limitation the rights to use, distribute, sell, modi-
+ * fy, publically perform, give away, merge or sublicence it provided
+ * this notice is kept and the authors and contributors are given due
+ * credit in derivates or accompanying documents.
+a29 7
+ * This work is provided "as is" with no explicit or implicit warran-
+ * ties whatsoever to the maximum extent permitted by applicable law;
+ * in no event may an author or contributor be held liable for damage
+ * that is, directly or indirectly, caused by the work, even if advi-
+ * sed of the possibility of such damage.
+ *-
+ * Leap second support for NTP clients (generic)
+d32 2
+a33 1
+static const char RCSId[] = "$MirBSD: ntpleaps.c,v 1.4.2.1 2003/11/09 19:10:52 tg Exp $";
+@
+
+
+1.4
+log
+@mop up
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.3 2003/07/04 20:03:27 tg Exp $
+d3 2
+a4 1
+ * Copyright (c) 2002 Thorsten Glaser <x86@@ePost.de>
+d9 4
+a12 3
+ * fy, give away, merge or sublicense it provided this notice is kept
+ * and the authors and contributors are given due credit in derivates
+ * or accompanying documents.
+d14 1
+a14 1
+ * ties whatsoever to the maximum extend permitted by applicable law;
+d22 1
+a22 2
+static const char RCSId[] = "$OpenBSD: ntpleaps.c,v 1.6 2002/08/10 21:37:28 jakob Exp $";
+
+a30 1
+
+a35 1
+
+d48 1
+a48 1
+		return (0);
+d52 1
+a52 1
+		return (0);
+d60 3
+a62 1
+		    "able to get legal time or posix compliance!\n", stderr);
+d66 1
+a66 1
+	return (-1);
+d76 2
+a77 2
+	if ((flaginit ? ntpleaps_init() : 0) == -1)
+		return (-1);
+d91 1
+a91 1
+	return (r);
+d100 1
+a100 1
+	return (ntohl(res));
+d114 1
+d116 2
+a117 2
+	if (fd == -1)
+		return (-1);
+d124 1
+a124 1
+		return (-1);
+d141 1
+a141 1
+		return (-1);
+d143 1
+a143 1
+	if ((l = (u_int64_t *)malloc(r << 3)) == NULL) {
+d145 1
+a145 1
+		return (-1);
+d161 1
+a161 1
+			return (-1);
+d170 1
+a170 1
+			return (-1);
+d180 1
+a180 1
+	return (0);
+@
+
+
+1.4.2.1
+log
+@update, sort options, etc.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.6 2003/10/22 08:19:40 tg Exp $
+d3 1
+a3 1
+ * Copyright (c) 2002, 2003 Thorsten Glaser <x86@@ePost.de>
+d8 3
+a10 3
+ * fy, publically perform, give away, merge or sublicense it provided
+ * this notice is kept and the authors and contributors are given due
+ * credit in derivates or accompanying documents.
+d20 2
+a21 1
+static const char RCSId[] = "$MirBSD: ntpleaps.c,v 1.6 2002/08/10 21:37:28 jakob Exp $";
+d30 1
+d36 1
+d49 1
+a49 1
+		return 0;
+d53 1
+a53 1
+		return 0;
+d61 1
+a61 3
+		    "able to get legal time or posix compliance! To fix this,\n"
+		    "install the 232 byte /usr/share/zoneinfo/right/UTC file.\n",
+		    stderr);
+d65 1
+a65 1
+	return -1;
+d75 2
+a76 2
+	if (-1 == (flaginit ? ntpleaps_init() : 0))
+		return -1;
+d90 1
+a90 1
+	return r;
+d99 1
+a99 1
+	return ntohl(res);
+a112 1
+	/* this file is a constant. Argued by jakob@@openbsd. */
+d114 2
+a115 2
+	if (-1 == fd)
+		return -1;
+d122 1
+a122 1
+		return -1;
+d139 1
+a139 1
+		return -1;
+d141 1
+a141 1
+	if (NULL == (l = (u_int64_t *)malloc(r << 3))) {
+d143 1
+a143 1
+		return -1;
+d159 1
+a159 1
+			return -1;
+d168 1
+a168 1
+			return -1;
+d178 1
+a178 1
+	return 0;
+@
+
+
+1.3
+log
+@merge cvs import - OpenBSD tree as of Thu Jun 19 16:13:15 UTC 2003
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.2 2003/06/19 11:38:18 tg Exp $
+d5 6
+a10 6
+ * Everybody who obtained a copy of this work is hereby permitted, as
+ * long as due credit is given to the authors and the notice below is
+ * retained, to deal in the work without restriction, including with-
+ * out limitation the rights to use, distribute, sell, give away, mo-
+ * dify, merge or sublicense it.
+ *
+d12 4
+a15 5
+ * ty whatsoever. Use it only at your own risk. In no event an author
+ * or contributor may be held liable for any damage that, directly or
+ * indirectly, originated through or is caused by this work, creation
+ * or any event connected with it, to the maximum extend permitted by
+ * applicable law.
+@
+
+
+1.2
+log
+@licence cleanup
+@
+text
+@d1 3
+a3 2
+/*-
+ * Copyright (c) 1982-2003 Thorsten Glaser <x86@@ePost.de>
+d5 5
+a9 4
+ * Everybody who obtained a copy of this work is hereby permitted to,
+ * without further restrictions as long as due credit is given to the
+ * authors and the notice below is retained, use, distribute, modify,
+ * sell, give away, merge or sublicense it.
+d14 5
+a18 1
+ * indirectly, originated through or is caused by this work.
+a19 2
+
+/* Leap second support for NTP clients (generic) */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 4
+/*	$OpenBSD: ntpleaps.c,v 1.6 2002/08/10 21:37:28 jakob Exp $	*/
+
+/*
+ * Copyright (c) 2002 by Thorsten "mirabile" Glaser <x86@@ePOST.de>
+d4 4
+a7 7
+ * Permission is hereby granted to any person obtaining a copy of this work
+ * to deal in the work, without restrictions, including unlimited rights to
+ * use, copy, modify, merge, publish, distribute, sublicense or sell copies
+ * of the work, and to permit persons to whom the work is furnished to also
+ * do so, as long as due credit is given to the original author and contri-
+ * butors, and the following disclaimer is kept in all substantial portions
+ * of the work or accompanying documentation:
+d9 4
+a12 6
+ * This work is provided "AS IS", without warranty of any kind, neither ex-
+ * press nor implied, including, but not limited to, the warranties of mer-
+ * chantability, fitness for particular purposes and noninfringement. In NO
+ * event shall the author and contributors be liable for any claim, damages
+ * and such, whether in contract, strict liability or otherwise, arising in
+ * any way out of this work, even if advised of the possibility of such.
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: ntpleaps.c,v 1.7 2004/05/05 20:29:54 jakob Exp $	*/
+d4 1
+a4 1
+ * Copyright (c) 2002 Thorsten Glaser. All rights reserved.
+d6 7
+a12 23
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *    - Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *    - Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+ * COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+d14 6
+d24 1
+a24 1
+static const char RCSId[] = "$OpenBSD: ntpleaps.c,v 1.7 2004/05/05 20:29:54 jakob Exp $";
+@
+

@@ -1,0 +1,563 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.12.07;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.18;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.28.44;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Scheme/Guile language support routines for GDB, the GNU debugger.
+   Copyright 1995 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "defs.h"
+#include "symtab.h"
+#include "gdbtypes.h"
+#include "expression.h"
+#include "parser-defs.h"
+#include "language.h"
+#include "value.h"
+#include "c-lang.h"
+#include "scm-lang.h"
+#include "scm-tags.h"
+#include "gdb_string.h"
+#include "gdbcore.h"
+
+static value_ptr evaluate_subexp_scm PARAMS ((struct type *, struct expression *,
+					      int *, enum noside));
+static value_ptr scm_lookup_name PARAMS ((char *));
+static int in_eval_c PARAMS ((void));
+static void scm_printstr PARAMS ((GDB_FILE *, char *, unsigned int, int));
+
+extern struct type ** CONST_PTR (c_builtin_types[]);
+
+struct type *builtin_type_scm;
+
+void
+scm_printchar (c, stream)
+     int c;
+     GDB_FILE *stream;
+{
+  fprintf_filtered (stream, "#\\%c", c);
+}
+
+static void
+scm_printstr (stream, string, length, force_ellipses)
+     GDB_FILE *stream;
+     char *string;
+     unsigned int length;
+     int force_ellipses;
+{
+  fprintf_filtered (stream, "\"%s\"", string);
+}
+
+int
+is_scmvalue_type (type)
+     struct type *type;
+{
+  if (TYPE_CODE (type) == TYPE_CODE_INT
+      && TYPE_NAME (type) && strcmp (TYPE_NAME (type), "SCM") == 0)
+    {
+      return 1;
+    }
+  return 0;
+}
+
+/* Get the INDEX'th SCM value, assuming SVALUE is the address
+   of the 0'th one.  */
+
+LONGEST
+scm_get_field (svalue, index)
+     LONGEST svalue;
+     int index;
+{
+  char buffer[20];
+  read_memory (SCM2PTR (svalue) + index * TYPE_LENGTH (builtin_type_scm),
+	       buffer, TYPE_LENGTH (builtin_type_scm));
+  return extract_signed_integer (buffer, TYPE_LENGTH (builtin_type_scm));
+}
+
+/* Unpack a value of type TYPE in buffer VALADDR as an integer
+   (if CONTEXT == TYPE_CODE_IN), a pointer (CONTEXT == TYPE_CODE_PTR),
+   or Boolean (CONTEXT == TYPE_CODE_BOOL).  */
+
+LONGEST
+scm_unpack (type, valaddr, context)
+     struct type *type;
+     char *valaddr;
+     enum type_code context;
+{
+  if (is_scmvalue_type (type))
+    {
+      LONGEST svalue = extract_signed_integer (valaddr, TYPE_LENGTH (type));
+      if (context == TYPE_CODE_BOOL)
+	{
+	  if (svalue == SCM_BOOL_F)
+	    return 0;
+	  else
+	    return 1;
+	}
+      switch (7 & svalue)
+	{
+	case 2:  case 6: /* fixnum */
+	  return svalue >> 2;
+	case 4: /* other immediate value */
+	  if (SCM_ICHRP (svalue)) /* character */
+	    return SCM_ICHR (svalue);
+	  else if (SCM_IFLAGP (svalue))
+	    {
+	      switch (svalue)
+		{
+#ifndef SICP
+		case SCM_EOL:
+#endif
+		case SCM_BOOL_F:
+		  return 0;
+		case SCM_BOOL_T:
+		  return 1;
+		}
+	    }
+	  error ("Value can't be converted to integer.");
+	default:
+	  return svalue;
+	}
+    }
+  else
+    return unpack_long (type, valaddr);
+}
+
+/* True if we're correctly in Guile's eval.c (the evaluator and apply). */
+
+static int
+in_eval_c ()
+{
+  if (current_source_symtab && current_source_symtab->filename)
+    {
+      char *filename = current_source_symtab->filename;
+      int len = strlen (filename);
+      if (len >= 6 && strcmp (filename + len - 6, "eval.c") == 0)
+	return 1;
+    }
+  return 0;
+}
+
+/* Lookup a value for the variable named STR.
+   First lookup in Scheme context (using the scm_lookup_cstr inferior
+   function), then try lookup_symbol for compiled variables. */
+
+static value_ptr
+scm_lookup_name (str)
+     char *str;
+{
+  value_ptr args[3];
+  int len = strlen (str);
+  value_ptr func, val;
+  struct symbol *sym;
+  args[0] = value_allocate_space_in_inferior (len);
+  args[1] = value_from_longest (builtin_type_int, len);
+  write_memory (value_as_long (args[0]), str, len);
+
+  if (in_eval_c ()
+      && (sym = lookup_symbol ("env",
+			       expression_context_block,
+			       VAR_NAMESPACE, (int *) NULL,
+			       (struct symtab **) NULL)) != NULL)
+    args[2] = value_of_variable (sym, expression_context_block);
+  else
+    /* FIXME in this case, we should try lookup_symbol first */
+    args[2] = value_from_longest (builtin_type_scm, SCM_EOL);
+
+  func = find_function_in_inferior ("scm_lookup_cstr");
+  val = call_function_by_hand (func, 3, args);
+  if (!value_logical_not (val))
+    return value_ind (val);
+
+  sym = lookup_symbol (str,
+		       expression_context_block,
+		       VAR_NAMESPACE, (int *) NULL,
+		       (struct symtab **) NULL);
+  if (sym)
+    return value_of_variable (sym, NULL);
+  error ("No symbol \"%s\" in current context.");
+}
+
+value_ptr
+scm_evaluate_string (str, len)
+     char *str; int len;
+{
+  value_ptr func;
+  value_ptr addr = value_allocate_space_in_inferior (len + 1);
+  LONGEST iaddr = value_as_long (addr);
+  write_memory (iaddr, str, len);
+  /* FIXME - should find and pass env */
+  write_memory (iaddr + len, "", 1);
+  func = find_function_in_inferior ("scm_evstr");
+  return call_function_by_hand (func, 1, &addr);
+}
+
+static value_ptr
+evaluate_subexp_scm (expect_type, exp, pos, noside)
+     struct type *expect_type;
+     register struct expression *exp;
+     register int *pos;
+     enum noside noside;
+{
+  enum exp_opcode op = exp->elts[*pos].opcode;
+  int len, pc;  char *str;
+  switch (op)
+    {
+    case OP_NAME:
+      pc = (*pos)++;
+      len = longest_to_int (exp->elts[pc + 1].longconst);
+      (*pos) += 3 + BYTES_TO_EXP_ELEM (len + 1);
+      if (noside == EVAL_SKIP)
+	goto nosideret;
+      str = &exp->elts[pc + 2].string;
+      return scm_lookup_name (str);
+    case OP_EXPRSTRING:
+      pc = (*pos)++;
+      len = longest_to_int (exp->elts[pc + 1].longconst);
+      (*pos) += 3 + BYTES_TO_EXP_ELEM (len + 1);
+      if (noside == EVAL_SKIP)
+	goto nosideret;
+      str = &exp->elts[pc + 2].string;
+      return scm_evaluate_string (str, len);
+    default: ;
+    }
+  return evaluate_subexp_standard (expect_type, exp, pos, noside);
+ nosideret:
+  return value_from_longest (builtin_type_long, (LONGEST) 1);
+}
+
+const struct language_defn scm_language_defn = {
+  "scheme",			/* Language name */
+  language_scm,
+  c_builtin_types,
+  range_check_off,
+  type_check_off,
+  scm_parse,
+  c_error,
+  evaluate_subexp_scm,
+  scm_printchar,			/* Print a character constant */
+  scm_printstr,			/* Function to print string constant */
+  NULL,	/* Create fundamental type in this language */
+  c_print_type,			/* Print a type using appropriate syntax */
+  scm_val_print,		/* Print a value using appropriate syntax */
+  scm_value_print,		/* Print a top-level value */
+  {"",     "",    "",  ""},	/* Binary format info */
+  {"#o%lo",  "#o",   "o", ""},	/* Octal format info */
+  {"%ld",   "",    "d", ""},	/* Decimal format info */
+  {"#x%lX", "#X",  "X", ""},	/* Hex format info */
+  NULL,				/* expression operators for printing */
+  1,				/* c-style arrays */
+  0,				/* String lower bound */
+  &builtin_type_char,		/* Type of string elements */ 
+  LANG_MAGIC
+};
+
+void
+_initialize_scheme_language ()
+{
+  add_language (&scm_language_defn);
+  builtin_type_scm = init_type (TYPE_CODE_INT,
+				TARGET_LONG_BIT / TARGET_CHAR_BIT,
+				0, "SCM", (struct objfile *) NULL);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+d4 1
+a4 2
+   Copyright 1995, 1996, 1998, 2000, 2001, 2002, 2003, 2004 Free Software
+   Foundation, Inc.
+d6 13
+a18 16
+   This file is part of GDB.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a29 1
+#include "source.h"
+a31 1
+#include "infcall.h"
+d33 5
+a37 8
+extern void _initialize_scheme_language (void);
+static struct value *evaluate_subexp_scm (struct type *, struct expression *,
+				      int *, enum noside);
+static struct value *scm_lookup_name (char *);
+static int in_eval_c (void);
+static void scm_printstr (struct ui_file * stream, char *string,
+			  unsigned int length, int width,
+			  int force_ellipses);
+d39 1
+a39 1
+extern struct type **const (c_builtin_types[]);
+d44 3
+a46 1
+scm_printchar (int c, struct ui_file *stream)
+d52 5
+a56 2
+scm_printstr (struct ui_file *stream, char *string, unsigned int length,
+	      int width, int force_ellipses)
+d62 2
+a63 1
+is_scmvalue_type (struct type *type)
+d77 3
+a79 1
+scm_get_field (LONGEST svalue, int index)
+d92 4
+a95 1
+scm_unpack (struct type *type, const char *valaddr, enum type_code context)
+d107 1
+a107 1
+      switch (7 & (int) svalue)
+d109 1
+a109 2
+	case 2:
+	case 6:		/* fixnum */
+d111 2
+a112 2
+	case 4:		/* other immediate value */
+	  if (SCM_ICHRP (svalue))	/* character */
+d116 1
+a116 1
+	      switch ((int) svalue)
+d139 1
+a139 1
+in_eval_c (void)
+d141 1
+a141 3
+  struct symtab_and_line cursal = get_current_source_symtab_and_line ();
+  
+  if (cursal.symtab && cursal.symtab->filename)
+d143 1
+a143 1
+      char *filename = cursal.symtab->filename;
+d155 3
+a157 2
+static struct value *
+scm_lookup_name (char *str)
+d159 1
+a159 1
+  struct value *args[3];
+d161 1
+a161 2
+  struct value *func;
+  struct value *val;
+d170 1
+a170 1
+			       VAR_DOMAIN, (int *) NULL,
+d184 1
+a184 1
+		       VAR_DOMAIN, (int *) NULL,
+d188 1
+a188 1
+  error ("No symbol \"%s\" in current context.", str);
+d191 3
+a193 2
+struct value *
+scm_evaluate_string (char *str, int len)
+d195 2
+a196 2
+  struct value *func;
+  struct value *addr = value_allocate_space_in_inferior (len + 1);
+d205 6
+a210 3
+static struct value *
+evaluate_subexp_scm (struct type *expect_type, struct expression *exp,
+		     int *pos, enum noside noside)
+d213 1
+a213 2
+  int len, pc;
+  char *str;
+d232 1
+a232 1
+    default:;
+d235 1
+a235 1
+nosideret:
+d239 1
+a239 11
+const struct exp_descriptor exp_descriptor_scm = 
+{
+  print_subexp_standard,
+  operator_length_standard,
+  op_name_standard,
+  dump_subexp_body_standard,
+  evaluate_subexp_scm
+};
+
+const struct language_defn scm_language_defn =
+{
+a244 2
+  case_sensitive_off,
+  &exp_descriptor_scm,
+d247 2
+a248 1
+  scm_printchar,		/* Print a character constant */
+d250 1
+a250 2
+  NULL,				/* Function to print a single character */
+  NULL,				/* Create fundamental type in this language */
+d254 4
+a257 9
+  NULL,				/* Language specific skip_trampoline */
+  value_of_this,		/* value_of_this */
+  basic_lookup_symbol_nonlocal,	/* lookup_symbol_nonlocal */
+  basic_lookup_transparent_type,/* lookup_transparent_type */
+  NULL,				/* Language specific symbol demangler */
+  {"", "", "", ""},		/* Binary format info */
+  {"#o%lo", "#o", "o", ""},	/* Octal format info */
+  {"%ld", "", "d", ""},		/* Decimal format info */
+  {"#x%lX", "#X", "X", ""},	/* Hex format info */
+d261 1
+a261 2
+  &builtin_type_char,		/* Type of string elements */
+  default_word_break_characters,
+d266 1
+a266 1
+_initialize_scheme_language (void)
+@
+

@@ -1,0 +1,307 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.10
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.8
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.3.1.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.3.1
+	MIRBSD_XP_SPARC:1.1.3.1.0.2
+	cvs-200408220000:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	openssl-0_9_7d:1.1.3.1
+	cvs-200405160640:1.1.1.1
+	cvs-200403222025:1.1.1.1
+	cvs-200403181737:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	openssl-0_9_7c:1.1.3.1
+	openssl-0_9_7b:1.1.3.1
+	tg:1.1.3
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.47.35;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.35;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2003.10.29.16.01.41;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/usr/local/bin/perl
+
+# define for pentium pro friendly version
+
+push(@@INC,"perlasm","../../perlasm");
+require "x86asm.pl";
+
+&asm_init($ARGV[0],"rc4-586.pl");
+
+$tx="eax";
+$ty="ebx";
+$x="ecx";
+$y="edx";
+$in="esi";
+$out="edi";
+$d="ebp";
+
+&RC4("RC4");
+
+&asm_finish();
+
+sub RC4_loop
+	{
+	local($n,$p,$char)=@@_;
+
+	&comment("Round $n");
+
+	if ($char)
+		{
+		if ($p >= 0)
+			{
+			 &mov($ty,	&swtmp(2));
+			&cmp($ty,	$in);
+			 &jle(&label("finished"));
+			&inc($in);
+			}
+		else
+			{
+			&add($ty,	8);
+			 &inc($in);
+			&cmp($ty,	$in);
+			 &jl(&label("finished"));
+			&mov(&swtmp(2),	$ty);
+			}
+		}
+	# Moved out
+	# &mov(	$tx,		&DWP(0,$d,$x,4)) if $p < 0;
+
+	 &add(	$y,		$tx);
+	&and(	$y,		0xff);
+	 &inc(	$x);			# NEXT ROUND 
+	&mov(	$ty,		&DWP(0,$d,$y,4));
+	 # XXX
+	&mov(	&DWP(-4,$d,$x,4),$ty);			# AGI
+	 &add(	$ty,		$tx);
+	&and(	$x,		0xff);	# NEXT ROUND
+	 &and(	$ty,		0xff);
+	&mov(	&DWP(0,$d,$y,4),$tx);
+	 &nop();
+	&mov(	$ty,		&DWP(0,$d,$ty,4));
+	 &mov(	$tx,		&DWP(0,$d,$x,4)) if $p < 1; # NEXT ROUND
+	 # XXX
+
+	if (!$char)
+		{
+		#moved up into last round
+		if ($p >= 1)
+			{
+			&add(	$out,	8)
+			}
+		&movb(	&BP($n,"esp","",0),	&LB($ty));
+		}
+	else
+		{
+		# Note in+=8 has occured
+		&movb(	&HB($ty),	&BP(-1,$in,"",0));
+		 # XXX
+		&xorb(&LB($ty),		&HB($ty));
+		 # XXX
+		&movb(&BP($n,$out,"",0),&LB($ty));
+		}
+	}
+
+
+sub RC4
+	{
+	local($name)=@@_;
+
+	&function_begin_B($name,"");
+
+	&comment("");
+
+	&push("ebp");
+	 &push("ebx");
+	&mov(	$d,	&wparam(0));	# key
+	 &mov(	$ty,	&wparam(1));	# num
+	&push("esi");
+	 &push("edi");
+
+	&mov(	$x,	&DWP(0,$d,"",1));
+	 &mov(	$y,	&DWP(4,$d,"",1));
+
+	&mov(	$in,	&wparam(2));
+	 &inc(	$x);
+
+	&stack_push(3);	# 3 temp variables
+	 &add(	$d,	8);
+	&and(	$x,		0xff);
+
+	 &lea(	$ty,	&DWP(-8,$ty,$in));
+
+	# check for 0 length input
+
+	&mov(	$out,	&wparam(3));
+	 &mov(	&swtmp(2),	$ty);	# this is now address to exit at
+	&mov(	$tx,	&DWP(0,$d,$x,4));
+
+	 &cmp(	$ty,	$in);
+	&jl(	&label("end")); # less than 8 bytes
+
+	&set_label("start");
+
+	# filling DELAY SLOT
+	&add(	$in,	8);
+
+	&RC4_loop(0,-1,0);
+	&RC4_loop(1,0,0);
+	&RC4_loop(2,0,0);
+	&RC4_loop(3,0,0);
+	&RC4_loop(4,0,0);
+	&RC4_loop(5,0,0);
+	&RC4_loop(6,0,0);
+	&RC4_loop(7,1,0);
+	
+	&comment("apply the cipher text");
+	# xor the cipher data with input
+
+	#&add(	$out,	8); #moved up into last round
+
+	&mov(	$tx,	&swtmp(0));
+	 &mov(	$ty,	&DWP(-8,$in,"",0));
+	&xor(	$tx,	$ty);
+	 &mov(	$ty,	&DWP(-4,$in,"",0)); 
+	&mov(	&DWP(-8,$out,"",0),	$tx);
+	 &mov(	$tx,	&swtmp(1));
+	&xor(	$tx,	$ty);
+	 &mov(	$ty,	&swtmp(2));	# load end ptr;
+	&mov(	&DWP(-4,$out,"",0),	$tx);
+	 &mov(	$tx,		&DWP(0,$d,$x,4));
+	&cmp($in,	$ty);
+	 &jle(&label("start"));
+
+	&set_label("end");
+
+	# There is quite a bit of extra crap in RC4_loop() for this
+	# first round
+	&RC4_loop(0,-1,1);
+	&RC4_loop(1,0,1);
+	&RC4_loop(2,0,1);
+	&RC4_loop(3,0,1);
+	&RC4_loop(4,0,1);
+	&RC4_loop(5,0,1);
+	&RC4_loop(6,1,1);
+
+	&set_label("finished");
+	&dec(	$x);
+	 &stack_pop(3);
+	&mov(	&DWP(-4,$d,"",0),$y);
+	 &movb(	&BP(-8,$d,"",0),&LB($x));
+
+	&function_end($name);
+	}
+
+@
+
+
+1.1.3.1
+log
+@for the damned sixth time: try to import (stock) OpenSSL 0.9.7b (on which
+the OpenBSD-openssl and our libcrypto and libssl are based) into a vendor
+branch in order to schedule an update to OpenSSL.
+
+CVS hates me today.
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,875 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.8
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.6
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.4
+	cvs-200410231830:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.2
+	cvs-200406091940:1.1.1.3
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.18;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.45;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.07.57.39;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+
+BEGIN {
+    chdir 't' if -d 't';
+    @@INC = '../lib';
+    if ($^O eq 'MacOS') {
+	push @@INC, "::lib:$MacPerl::Architecture";
+    }
+}
+# Grab all of the plain routines from File::Spec
+use File::Spec @@File::Spec::EXPORT_OK ;
+
+require File::Spec::Unix ;
+require File::Spec::Win32 ;
+
+eval {
+   require VMS::Filespec ;
+} ;
+
+my $skip_exception = "Install VMS::Filespec (from vms/ext)" ;
+
+if ( $@@ ) {
+   # Not pretty, but it allows testing of things not implemented soley
+   # on VMS.  It might be better to change File::Spec::VMS to do this,
+   # making it more usable when running on (say) Unix but working with
+   # VMS paths.
+   eval qq-
+      sub File::Spec::VMS::vmsify  { die "$skip_exception" }
+      sub File::Spec::VMS::unixify { die "$skip_exception" }
+      sub File::Spec::VMS::vmspath { die "$skip_exception" }
+   - ;
+   $INC{"VMS/Filespec.pm"} = 1 ;
+}
+require File::Spec::VMS ;
+
+require File::Spec::OS2 ;
+require File::Spec::Mac ;
+
+# $root is only needed by Mac OS tests; these particular
+# tests are skipped on other OSs
+my $root;
+if ($^O eq 'MacOS') {
+	$root = File::Spec::Mac->rootdir();
+}
+
+# Each element in this array is a single test. Storing them this way makes
+# maintenance easy, and should be OK since perl should be pretty functional
+# before these tests are run.
+
+@@tests = (
+# [ Function          ,            Expected          ,         Platform ]
+
+[ "Unix->catfile('a','b','c')", 'a/b/c'  ],
+
+[ "Unix->splitpath('file')",            ',,file'            ],
+[ "Unix->splitpath('/d1/d2/d3/')",      ',/d1/d2/d3/,'      ],
+[ "Unix->splitpath('d1/d2/d3/')",       ',d1/d2/d3/,'       ],
+[ "Unix->splitpath('/d1/d2/d3/.')",     ',/d1/d2/d3/.,'     ],
+[ "Unix->splitpath('/d1/d2/d3/..')",    ',/d1/d2/d3/..,'    ],
+[ "Unix->splitpath('/d1/d2/d3/.file')", ',/d1/d2/d3/,.file' ],
+[ "Unix->splitpath('d1/d2/d3/file')",   ',d1/d2/d3/,file'   ],
+[ "Unix->splitpath('/../../d1/')",      ',/../../d1/,'      ],
+[ "Unix->splitpath('/././d1/')",        ',/././d1/,'        ],
+
+[ "Unix->catpath('','','file')",            'file'            ],
+[ "Unix->catpath('','/d1/d2/d3/','')",      '/d1/d2/d3/'      ],
+[ "Unix->catpath('','d1/d2/d3/','')",       'd1/d2/d3/'       ],
+[ "Unix->catpath('','/d1/d2/d3/.','')",     '/d1/d2/d3/.'     ],
+[ "Unix->catpath('','/d1/d2/d3/..','')",    '/d1/d2/d3/..'    ],
+[ "Unix->catpath('','/d1/d2/d3/','.file')", '/d1/d2/d3/.file' ],
+[ "Unix->catpath('','d1/d2/d3/','file')",   'd1/d2/d3/file'   ],
+[ "Unix->catpath('','/../../d1/','')",      '/../../d1/'      ],
+[ "Unix->catpath('','/././d1/','')",        '/././d1/'        ],
+[ "Unix->catpath('d1','d2/d3/','')",        'd2/d3/'          ],
+[ "Unix->catpath('d1','d2','d3/')",         'd2/d3/'          ],
+
+[ "Unix->splitdir('')",           ''           ],
+[ "Unix->splitdir('/d1/d2/d3/')", ',d1,d2,d3,' ],
+[ "Unix->splitdir('d1/d2/d3/')",  'd1,d2,d3,'  ],
+[ "Unix->splitdir('/d1/d2/d3')",  ',d1,d2,d3'  ],
+[ "Unix->splitdir('d1/d2/d3')",   'd1,d2,d3'   ],
+
+[ "Unix->catdir()",                     ''          ],
+[ "Unix->catdir('/')",                  '/'         ],
+[ "Unix->catdir('','d1','d2','d3','')", '/d1/d2/d3' ],
+[ "Unix->catdir('d1','d2','d3','')",    'd1/d2/d3'  ],
+[ "Unix->catdir('','d1','d2','d3')",    '/d1/d2/d3' ],
+[ "Unix->catdir('d1','d2','d3')",       'd1/d2/d3'  ],
+
+[ "Unix->catfile('a','b','c')", 'a/b/c' ],
+
+[ "Unix->canonpath('')",                                      ''          ],
+[ "Unix->canonpath('///../../..//./././a//b/.././c/././')",   '/a/b/../c' ],
+[ "Unix->canonpath('/.')",                                    '/'         ],
+[ "Unix->canonpath('/./')",                                   '/'         ],
+[ "Unix->canonpath('/a/./')",                                 '/a'        ],
+[ "Unix->canonpath('/a/.')",                                  '/a'        ],
+
+[  "Unix->abs2rel('/t1/t2/t3','/t1/t2/t3')",          ''                   ],
+[  "Unix->abs2rel('/t1/t2/t4','/t1/t2/t3')",          '../t4'              ],
+[  "Unix->abs2rel('/t1/t2','/t1/t2/t3')",             '..'                 ],
+[  "Unix->abs2rel('/t1/t2/t3/t4','/t1/t2/t3')",       't4'                 ],
+[  "Unix->abs2rel('/t4/t5/t6','/t1/t2/t3')",          '../../../t4/t5/t6'  ],
+#[ "Unix->abs2rel('../t4','/t1/t2/t3')",              '../t4'              ],
+[  "Unix->abs2rel('/','/t1/t2/t3')",                  '../../..'           ],
+[  "Unix->abs2rel('///','/t1/t2/t3')",                '../../..'           ],
+[  "Unix->abs2rel('/.','/t1/t2/t3')",                 '../../..'           ],
+[  "Unix->abs2rel('/./','/t1/t2/t3')",                '../../..'           ],
+#[ "Unix->abs2rel('../t4','/t1/t2/t3')",              '../t4'              ],
+
+[ "Unix->rel2abs('t4','/t1/t2/t3')",             '/t1/t2/t3/t4'    ],
+[ "Unix->rel2abs('t4/t5','/t1/t2/t3')",          '/t1/t2/t3/t4/t5' ],
+[ "Unix->rel2abs('.','/t1/t2/t3')",              '/t1/t2/t3'       ],
+[ "Unix->rel2abs('..','/t1/t2/t3')",             '/t1/t2/t3/..'    ],
+[ "Unix->rel2abs('../t4','/t1/t2/t3')",          '/t1/t2/t3/../t4' ],
+[ "Unix->rel2abs('/t1','/t1/t2/t3')",            '/t1'             ],
+
+[ "Win32->splitpath('file')",                            ',,file'                            ],
+[ "Win32->splitpath('\\d1/d2\\d3/')",                    ',\\d1/d2\\d3/,'                    ],
+[ "Win32->splitpath('d1/d2\\d3/')",                      ',d1/d2\\d3/,'                      ],
+[ "Win32->splitpath('\\d1/d2\\d3/.')",                   ',\\d1/d2\\d3/.,'                   ],
+[ "Win32->splitpath('\\d1/d2\\d3/..')",                  ',\\d1/d2\\d3/..,'                  ],
+[ "Win32->splitpath('\\d1/d2\\d3/.file')",               ',\\d1/d2\\d3/,.file'               ],
+[ "Win32->splitpath('\\d1/d2\\d3/file')",                ',\\d1/d2\\d3/,file'                ],
+[ "Win32->splitpath('d1/d2\\d3/file')",                  ',d1/d2\\d3/,file'                  ],
+[ "Win32->splitpath('C:\\d1/d2\\d3/')",                  'C:,\\d1/d2\\d3/,'                  ],
+[ "Win32->splitpath('C:d1/d2\\d3/')",                    'C:,d1/d2\\d3/,'                    ],
+[ "Win32->splitpath('C:\\d1/d2\\d3/file')",              'C:,\\d1/d2\\d3/,file'              ],
+[ "Win32->splitpath('C:d1/d2\\d3/file')",                'C:,d1/d2\\d3/,file'                ],
+[ "Win32->splitpath('C:\\../d2\\d3/file')",              'C:,\\../d2\\d3/,file'              ],
+[ "Win32->splitpath('C:../d2\\d3/file')",                'C:,../d2\\d3/,file'                ],
+[ "Win32->splitpath('\\../..\\d1/')",                    ',\\../..\\d1/,'                    ],
+[ "Win32->splitpath('\\./.\\d1/')",                      ',\\./.\\d1/,'                      ],
+[ "Win32->splitpath('\\\\node\\share\\d1/d2\\d3/')",     '\\\\node\\share,\\d1/d2\\d3/,'     ],
+[ "Win32->splitpath('\\\\node\\share\\d1/d2\\d3/file')", '\\\\node\\share,\\d1/d2\\d3/,file' ],
+[ "Win32->splitpath('\\\\node\\share\\d1/d2\\file')",    '\\\\node\\share,\\d1/d2\\,file'    ],
+[ "Win32->splitpath('file',1)",                          ',file,'                            ],
+[ "Win32->splitpath('\\d1/d2\\d3/',1)",                  ',\\d1/d2\\d3/,'                    ],
+[ "Win32->splitpath('d1/d2\\d3/',1)",                    ',d1/d2\\d3/,'                      ],
+[ "Win32->splitpath('\\\\node\\share\\d1/d2\\d3/',1)",   '\\\\node\\share,\\d1/d2\\d3/,'     ],
+
+[ "Win32->catpath('','','file')",                            'file'                            ],
+[ "Win32->catpath('','\\d1/d2\\d3/','')",                    '\\d1/d2\\d3/'                    ],
+[ "Win32->catpath('','d1/d2\\d3/','')",                      'd1/d2\\d3/'                      ],
+[ "Win32->catpath('','\\d1/d2\\d3/.','')",                   '\\d1/d2\\d3/.'                   ],
+[ "Win32->catpath('','\\d1/d2\\d3/..','')",                  '\\d1/d2\\d3/..'                  ],
+[ "Win32->catpath('','\\d1/d2\\d3/','.file')",               '\\d1/d2\\d3/.file'               ],
+[ "Win32->catpath('','\\d1/d2\\d3/','file')",                '\\d1/d2\\d3/file'                ],
+[ "Win32->catpath('','d1/d2\\d3/','file')",                  'd1/d2\\d3/file'                  ],
+[ "Win32->catpath('C:','\\d1/d2\\d3/','')",                  'C:\\d1/d2\\d3/'                  ],
+[ "Win32->catpath('C:','d1/d2\\d3/','')",                    'C:d1/d2\\d3/'                    ],
+[ "Win32->catpath('C:','\\d1/d2\\d3/','file')",              'C:\\d1/d2\\d3/file'              ],
+[ "Win32->catpath('C:','d1/d2\\d3/','file')",                'C:d1/d2\\d3/file'                ],
+[ "Win32->catpath('C:','\\../d2\\d3/','file')",              'C:\\../d2\\d3/file'              ],
+[ "Win32->catpath('C:','../d2\\d3/','file')",                'C:../d2\\d3/file'                ],
+[ "Win32->catpath('','\\../..\\d1/','')",                    '\\../..\\d1/'                    ],
+[ "Win32->catpath('','\\./.\\d1/','')",                      '\\./.\\d1/'                      ],
+[ "Win32->catpath('\\\\node\\share','\\d1/d2\\d3/','')",     '\\\\node\\share\\d1/d2\\d3/'     ],
+[ "Win32->catpath('\\\\node\\share','\\d1/d2\\d3/','file')", '\\\\node\\share\\d1/d2\\d3/file' ],
+[ "Win32->catpath('\\\\node\\share','\\d1/d2\\','file')",    '\\\\node\\share\\d1/d2\\file'    ],
+
+[ "Win32->splitdir('')",             ''           ],
+[ "Win32->splitdir('\\d1/d2\\d3/')", ',d1,d2,d3,' ],
+[ "Win32->splitdir('d1/d2\\d3/')",   'd1,d2,d3,'  ],
+[ "Win32->splitdir('\\d1/d2\\d3')",  ',d1,d2,d3'  ],
+[ "Win32->splitdir('d1/d2\\d3')",    'd1,d2,d3'   ],
+
+[ "Win32->catdir()",                        ''                   ],
+[ "Win32->catdir('')",                      '\\'                 ],
+[ "Win32->catdir('/')",                     '\\'                 ],
+[ "Win32->catdir('//d1','d2')",             '\\\\d1\\d2'         ],
+[ "Win32->catdir('','/d1','d2')",           '\\\\d1\\d2'         ],
+[ "Win32->catdir('','','/d1','d2')",        '\\\\\\d1\\d2'       ],
+[ "Win32->catdir('','//d1','d2')",          '\\\\\\d1\\d2'       ],
+[ "Win32->catdir('','','//d1','d2')",       '\\\\\\\\d1\\d2'     ],
+[ "Win32->catdir('','d1','','d2','')",      '\\d1\\d2'           ],
+[ "Win32->catdir('','d1','d2','d3','')",    '\\d1\\d2\\d3'       ],
+[ "Win32->catdir('d1','d2','d3','')",       'd1\\d2\\d3'         ],
+[ "Win32->catdir('','d1','d2','d3')",       '\\d1\\d2\\d3'       ],
+[ "Win32->catdir('d1','d2','d3')",          'd1\\d2\\d3'         ],
+[ "Win32->catdir('A:/d1','d2','d3')",       'A:\\d1\\d2\\d3'     ],
+[ "Win32->catdir('A:/d1','d2','d3','')",    'A:\\d1\\d2\\d3'     ],
+#[ "Win32->catdir('A:/d1','B:/d2','d3','')", 'A:\\d1\\d2\\d3'     ],
+[ "Win32->catdir('A:/d1','B:/d2','d3','')", 'A:\\d1\\B:\\d2\\d3' ],
+[ "Win32->catdir('A:/')",                   'A:\\'               ],
+
+[ "Win32->catfile('a','b','c')", 'a\\b\\c' ],
+
+[ "Win32->canonpath('')",               ''                    ],
+[ "Win32->canonpath('a:')",             'A:'                  ],
+[ "Win32->canonpath('A:f')",            'A:f'                 ],
+[ "Win32->canonpath('//a\\b//c')",      '\\\\a\\b\\c'         ],
+[ "Win32->canonpath('/a/..../c')",      '\\a\\....\\c'        ],
+[ "Win32->canonpath('//a/b\\c')",       '\\\\a\\b\\c'         ],
+[ "Win32->canonpath('////')",           '\\\\\\'              ],
+[ "Win32->canonpath('//')",             '\\'                  ],
+[ "Win32->canonpath('/.')",             '\\.'                 ],
+[ "Win32->canonpath('//a/b/../../c')",  '\\\\a\\b\\..\\..\\c' ],
+[ "Win32->canonpath('//a/../../c')",    '\\\\a\\..\\..\\c'    ],
+
+## Hmmm, we should test missing and relative base paths some day...
+## would need to cd to a known place, get the cwd() and use it I
+## think.
+[  "Win32->abs2rel('/t1/t2/t3','/t1/t2/t3')",    ''                       ],
+[  "Win32->abs2rel('/t1/t2/t4','/t1/t2/t3')",    '..\\t4'                 ],
+[  "Win32->abs2rel('/t1/t2','/t1/t2/t3')",       '..'                     ],
+[  "Win32->abs2rel('/t1/t2/t3/t4','/t1/t2/t3')", 't4'                     ],
+[  "Win32->abs2rel('/t4/t5/t6','/t1/t2/t3')",    '..\\..\\..\\t4\\t5\\t6' ],
+#[ "Win32->abs2rel('../t4','/t1/t2/t3')",        '\\t1\\t2\\t3\\..\\t4'   ],
+[  "Win32->abs2rel('/','/t1/t2/t3')",            '..\\..\\..'             ],
+[  "Win32->abs2rel('///','/t1/t2/t3')",          '..\\..\\..'             ],
+[  "Win32->abs2rel('/.','/t1/t2/t3')",           '..\\..\\..\\.'          ],
+[  "Win32->abs2rel('/./','/t1/t2/t3')",          '..\\..\\..'             ],
+[  "Win32->abs2rel('\\\\a/t1/t2/t4','/t2/t3')",  '..\\t4'                 ],
+[  "Win32->abs2rel('//a/t1/t2/t4','/t2/t3')",    '..\\t4'                 ],
+[  "Win32->abs2rel('A:/t1/t2/t3','B:/t1/t2/t3')",''                       ],
+[  "Win32->abs2rel('A:/t1/t2/t3/t4','B:/t1/t2/t3')",'t4'                  ],
+
+[ "Win32->rel2abs('temp','C:/')",                       'C:\\temp'                        ],
+[ "Win32->rel2abs('temp','C:/a')",                      'C:\\a\\temp'                     ],
+[ "Win32->rel2abs('temp','C:/a/')",                     'C:\\a\\temp'                     ],
+[ "Win32->rel2abs('../','C:/')",                        'C:\\..'                          ],
+[ "Win32->rel2abs('../','C:/a')",                       'C:\\a\\..'                       ],
+[ "Win32->rel2abs('temp','//prague_main/work/')",       '\\\\prague_main\\work\\temp'     ],
+[ "Win32->rel2abs('../temp','//prague_main/work/')",    '\\\\prague_main\\work\\..\\temp' ],
+[ "Win32->rel2abs('temp','//prague_main/work')",        '\\\\prague_main\\work\\temp'     ],
+[ "Win32->rel2abs('../','//prague_main/work')",         '\\\\prague_main\\work\\..'       ],
+
+[ "VMS->splitpath('file')",                                       ',,file'                                   ],
+[ "VMS->splitpath('[d1.d2.d3]')",                                 ',[d1.d2.d3],'                               ],
+[ "VMS->splitpath('[.d1.d2.d3]')",                                ',[.d1.d2.d3],'                              ],
+[ "VMS->splitpath('[d1.d2.d3]file')",                             ',[d1.d2.d3],file'                           ],
+[ "VMS->splitpath('d1/d2/d3/file')",                              ',[.d1.d2.d3],file'                          ],
+[ "VMS->splitpath('/d1/d2/d3/file')",                             'd1:,[d2.d3],file'                         ],
+[ "VMS->splitpath('[.d1.d2.d3]file')",                            ',[.d1.d2.d3],file'                          ],
+[ "VMS->splitpath('node::volume:[d1.d2.d3]')",                    'node::volume:,[d1.d2.d3],'                  ],
+[ "VMS->splitpath('node::volume:[d1.d2.d3]file')",                'node::volume:,[d1.d2.d3],file'              ],
+[ "VMS->splitpath('node\"access_spec\"::volume:[d1.d2.d3]')",     'node"access_spec"::volume:,[d1.d2.d3],'     ],
+[ "VMS->splitpath('node\"access_spec\"::volume:[d1.d2.d3]file')", 'node"access_spec"::volume:,[d1.d2.d3],file' ],
+
+[ "VMS->catpath('','','file')",                                       'file'                                     ],
+[ "VMS->catpath('','[d1.d2.d3]','')",                                 '[d1.d2.d3]'                               ],
+[ "VMS->catpath('','[.d1.d2.d3]','')",                                '[.d1.d2.d3]'                              ],
+[ "VMS->catpath('','[d1.d2.d3]','file')",                             '[d1.d2.d3]file'                           ],
+[ "VMS->catpath('','[.d1.d2.d3]','file')",                            '[.d1.d2.d3]file'                          ],
+[ "VMS->catpath('','d1/d2/d3','file')",                               '[.d1.d2.d3]file'                            ],
+[ "VMS->catpath('v','d1/d2/d3','file')",                              'v:[.d1.d2.d3]file'                            ],
+[ "VMS->catpath('node::volume:','[d1.d2.d3]','')",                    'node::volume:[d1.d2.d3]'                  ],
+[ "VMS->catpath('node::volume:','[d1.d2.d3]','file')",                'node::volume:[d1.d2.d3]file'              ],
+[ "VMS->catpath('node\"access_spec\"::volume:','[d1.d2.d3]','')",     'node"access_spec"::volume:[d1.d2.d3]'     ],
+[ "VMS->catpath('node\"access_spec\"::volume:','[d1.d2.d3]','file')", 'node"access_spec"::volume:[d1.d2.d3]file' ],
+
+[ "VMS->canonpath('')",                                    ''                        ],
+[ "VMS->canonpath('volume:[d1]file')",                     'volume:[d1]file'         ],
+[ "VMS->canonpath('volume:[d1.-.d2.][d3.d4.-]')",              'volume:[d2.d3]'          ],
+[ "VMS->canonpath('volume:[000000.d1]d2.dir;1')",                 'volume:[d1]d2.dir;1'   ],
+
+[ "VMS->splitdir('')",            ''          ],
+[ "VMS->splitdir('[]')",          ''          ],
+[ "VMS->splitdir('d1.d2.d3')",    'd1,d2,d3'  ],
+[ "VMS->splitdir('[d1.d2.d3]')",  'd1,d2,d3'  ],
+[ "VMS->splitdir('.d1.d2.d3')",   ',d1,d2,d3' ],
+[ "VMS->splitdir('[.d1.d2.d3]')", ',d1,d2,d3' ],
+[ "VMS->splitdir('.-.d2.d3')",    ',-,d2,d3'  ],
+[ "VMS->splitdir('[.-.d2.d3]')",  ',-,d2,d3'  ],
+
+[ "VMS->catdir('')",                                                      ''                 ],
+[ "VMS->catdir('d1','d2','d3')",                                          '[.d1.d2.d3]'         ],
+[ "VMS->catdir('d1','d2/','d3')",                                         '[.d1.d2.d3]'         ],
+[ "VMS->catdir('','d1','d2','d3')",                                       '[.d1.d2.d3]'        ],
+[ "VMS->catdir('','-','d2','d3')",                                        '[-.d2.d3]'         ],
+[ "VMS->catdir('','-','','d3')",                                          '[-.d3]'            ],
+[ "VMS->catdir('dir.dir','d2.dir','d3.dir')",                             '[.dir.d2.d3]'        ],
+[ "VMS->catdir('[.name]')",                                               '[.name]'            ],
+[ "VMS->catdir('[.name]','[.name]')",                                     '[.name.name]'],
+
+[  "VMS->abs2rel('node::volume:[t1.t2.t3]','[t1.t2.t3]')", ''                 ],
+[  "VMS->abs2rel('node::volume:[t1.t2.t4]','[t1.t2.t3]')", '[-.t4]'           ],
+[  "VMS->abs2rel('[t1.t2.t3]','[t1.t2.t3]')",              ''                 ],
+[  "VMS->abs2rel('[t1.t2.t3]file','[t1.t2.t3]')",          'file'             ],
+[  "VMS->abs2rel('[t1.t2.t4]','[t1.t2.t3]')",              '[-.t4]'           ],
+[  "VMS->abs2rel('[t1.t2]file','[t1.t2.t3]')",             '[-]file'          ],
+[  "VMS->abs2rel('[t1.t2.t3.t4]','[t1.t2.t3]')",           '[t4]'             ],
+[  "VMS->abs2rel('[t4.t5.t6]','[t1.t2.t3]')",              '[---.t4.t5.t6]'   ],
+[ "VMS->abs2rel('[000000]','[t1.t2.t3]')",                 '[---]'            ],
+[ "VMS->abs2rel('a:[t1.t2.t4]','[t1.t2.t3]')",             '[-.t4]'           ],
+[ "VMS->abs2rel('[a.-.b.c.-]','[t1.t2.t3]')",              '[---.b]'          ],
+
+[ "VMS->rel2abs('[.t4]','[t1.t2.t3]')",          '[t1.t2.t3.t4]'    ],
+[ "VMS->rel2abs('[.t4.t5]','[t1.t2.t3]')",       '[t1.t2.t3.t4.t5]' ],
+[ "VMS->rel2abs('[]','[t1.t2.t3]')",             '[t1.t2.t3]'       ],
+[ "VMS->rel2abs('[-]','[t1.t2.t3]')",            '[t1.t2]'          ],
+[ "VMS->rel2abs('[-.t4]','[t1.t2.t3]')",         '[t1.t2.t4]'       ],
+[ "VMS->rel2abs('[t1]','[t1.t2.t3]')",           '[t1]'             ],
+
+[ "OS2->catdir('A:/d1','B:/d2','d3','')", 'A:/d1/B:/d2/d3' ],
+[ "OS2->catfile('a','b','c')",            'a/b/c'          ],
+
+
+[ "Mac->catpath('','','')",              ''                ],
+[ "Mac->catpath('',':','')",             ':'               ],
+[ "Mac->catpath('','::','')",            '::'              ],
+
+[ "Mac->catpath('hd','','')",            'hd:'             ],
+[ "Mac->catpath('hd:','','')",           'hd:'             ],
+[ "Mac->catpath('hd:',':','')",          'hd:'             ],
+[ "Mac->catpath('hd:','::','')",         'hd::'            ],
+
+[ "Mac->catpath('hd','','file')",       'hd:file'          ],
+[ "Mac->catpath('hd',':','file')",      'hd:file'          ],
+[ "Mac->catpath('hd','::','file')",     'hd::file'         ],
+[ "Mac->catpath('hd',':::','file')",    'hd:::file'        ],
+
+[ "Mac->catpath('hd:','',':file')",      'hd:file'         ],
+[ "Mac->catpath('hd:',':',':file')",     'hd:file'         ],
+[ "Mac->catpath('hd:','::',':file')",    'hd::file'        ],
+[ "Mac->catpath('hd:',':::',':file')",   'hd:::file'       ],
+
+[ "Mac->catpath('hd:','d1','file')",     'hd:d1:file'      ],
+[ "Mac->catpath('hd:',':d1:',':file')",  'hd:d1:file'      ],
+
+[ "Mac->catpath('','d1','')",            ':d1:'            ],
+[ "Mac->catpath('',':d1','')",           ':d1:'            ],
+[ "Mac->catpath('',':d1:','')",          ':d1:'            ],
+
+[ "Mac->catpath('','d1','file')",        ':d1:file'        ],
+[ "Mac->catpath('',':d1:',':file')",     ':d1:file'        ],
+
+[ "Mac->catpath('','','file')",          'file'            ],
+[ "Mac->catpath('','',':file')",         'file'            ], # !
+[ "Mac->catpath('',':',':file')",        ':file'           ], # !
+
+
+[ "Mac->splitpath(':')",              ',:,'               ],
+[ "Mac->splitpath('::')",             ',::,'              ],
+[ "Mac->splitpath(':::')",            ',:::,'             ],
+
+[ "Mac->splitpath('file')",           ',,file'            ],
+[ "Mac->splitpath(':file')",          ',:,file'           ],
+
+[ "Mac->splitpath('d1',1)",           ',:d1:,'            ], # dir, not volume
+[ "Mac->splitpath(':d1',1)",          ',:d1:,'            ],
+[ "Mac->splitpath(':d1:',1)",         ',:d1:,'            ],
+[ "Mac->splitpath(':d1:')",           ',:d1:,'            ],
+[ "Mac->splitpath(':d1:d2:d3:')",     ',:d1:d2:d3:,'      ],
+[ "Mac->splitpath(':d1:d2:d3:',1)",   ',:d1:d2:d3:,'      ],
+[ "Mac->splitpath(':d1:file')",       ',:d1:,file'        ],
+[ "Mac->splitpath('::d1:file')",      ',::d1:,file'       ],
+
+[ "Mac->splitpath('hd:', 1)",         'hd:,,'             ],
+[ "Mac->splitpath('hd:')",            'hd:,,'             ],
+[ "Mac->splitpath('hd:d1:d2:')",      'hd:,:d1:d2:,'      ],
+[ "Mac->splitpath('hd:d1:d2',1)",     'hd:,:d1:d2:,'      ],
+[ "Mac->splitpath('hd:d1:d2:file')",  'hd:,:d1:d2:,file'  ],
+[ "Mac->splitpath('hd:d1:d2::file')", 'hd:,:d1:d2::,file' ],
+[ "Mac->splitpath('hd::d1:d2:file')", 'hd:,::d1:d2:,file' ], # invalid path
+[ "Mac->splitpath('hd:file')",        'hd:,,file'         ],
+
+[ "Mac->splitdir()",                   ''            ],
+[ "Mac->splitdir('')",                 ''            ],
+[ "Mac->splitdir(':')",                ':'           ],
+[ "Mac->splitdir('::')",               '::'          ],
+[ "Mac->splitdir(':::')",              '::,::'       ],
+[ "Mac->splitdir(':::d1:d2')",         '::,::,d1,d2' ],
+
+[ "Mac->splitdir(':d1:d2:d3::')",      'd1,d2,d3,::'],
+[ "Mac->splitdir(':d1:d2:d3:')",       'd1,d2,d3'   ],
+[ "Mac->splitdir(':d1:d2:d3')",        'd1,d2,d3'   ],
+
+# absolute paths in splitdir() work, but you'd better use splitpath()
+[ "Mac->splitdir('hd:')",              'hd:'              ],
+[ "Mac->splitdir('hd::')",             'hd:,::'           ], # invalid path, but it works
+[ "Mac->splitdir('hd::d1:')",          'hd:,::,d1'        ], # invalid path, but it works
+[ "Mac->splitdir('hd:d1:d2:::')",      'hd:,d1,d2,::,::'  ],
+[ "Mac->splitdir('hd:d1:d2::')",       'hd:,d1,d2,::'     ],
+[ "Mac->splitdir('hd:d1:d2:')",        'hd:,d1,d2'        ],
+[ "Mac->splitdir('hd:d1:d2')",         'hd:,d1,d2'        ],
+[ "Mac->splitdir('hd:d1::d2::')",      'hd:,d1,::,d2,::'  ],
+
+[ "Mac->catdir()",                 ''             ],
+[ "Mac->catdir('')",               $root, 'MacOS' ], # skipped on other OS
+[ "Mac->catdir(':')",              ':'            ],
+
+[ "Mac->catdir('', '')",           $root, 'MacOS' ], # skipped on other OS
+[ "Mac->catdir('', ':')",          $root, 'MacOS' ], # skipped on other OS
+[ "Mac->catdir(':', ':')",         ':'            ],
+[ "Mac->catdir(':', '')",          ':'            ],
+
+[ "Mac->catdir('', '::')",         $root, 'MacOS' ], # skipped on other OS
+[ "Mac->catdir(':', '::')",        '::'           ],
+
+[ "Mac->catdir('::', '')",         '::'           ],
+[ "Mac->catdir('::', ':')",        '::'           ],
+
+[ "Mac->catdir('::', '::')",       ':::'          ],
+
+[ "Mac->catdir(':d1')",                    ':d1:'        ],
+[ "Mac->catdir(':d1:')",                   ':d1:'        ],
+[ "Mac->catdir(':d1','d2')",               ':d1:d2:'     ],
+[ "Mac->catdir(':d1',':d2')",              ':d1:d2:'     ],
+[ "Mac->catdir(':d1',':d2:')",             ':d1:d2:'     ],
+[ "Mac->catdir(':d1',':d2::')",            ':d1:d2::'     ],
+[ "Mac->catdir(':',':d1',':d2')",          ':d1:d2:'     ],
+[ "Mac->catdir('::',':d1',':d2')",         '::d1:d2:'    ],
+[ "Mac->catdir('::','::',':d1',':d2')",    ':::d1:d2:'   ],
+[ "Mac->catdir(':',':',':d1',':d2')",      ':d1:d2:'     ],
+[ "Mac->catdir('::',':',':d1',':d2')",     '::d1:d2:'    ],
+
+[ "Mac->catdir('d1')",                    ':d1:'         ],
+[ "Mac->catdir('d1','d2','d3')",          ':d1:d2:d3:'   ],
+[ "Mac->catdir('d1','d2/','d3')",         ':d1:d2/:d3:'  ],
+[ "Mac->catdir('d1','',':d2')",           ':d1:d2:'      ],
+[ "Mac->catdir('d1',':',':d2')",          ':d1:d2:'      ],
+[ "Mac->catdir('d1','::',':d2')",         ':d1::d2:'     ],
+[ "Mac->catdir('d1',':::',':d2')",        ':d1:::d2:'    ],
+[ "Mac->catdir('d1','::','::',':d2')",    ':d1:::d2:'    ],
+[ "Mac->catdir('d1','d2')",               ':d1:d2:'      ],
+[ "Mac->catdir('d1','d2', '')",           ':d1:d2:'      ],
+[ "Mac->catdir('d1','d2', ':')",          ':d1:d2:'      ],
+[ "Mac->catdir('d1','d2', '::')",         ':d1:d2::'     ],
+[ "Mac->catdir('d1','d2','','')",         ':d1:d2:'      ],
+[ "Mac->catdir('d1','d2',':','::')",      ':d1:d2::'     ],
+[ "Mac->catdir('d1','d2','::','::')",     ':d1:d2:::'    ],
+[ "Mac->catdir('d1',':d2')",              ':d1:d2:'      ],
+[ "Mac->catdir('d1',':d2:')",             ':d1:d2:'      ],
+
+[ "Mac->catdir('','d1','d2','d3')",        $root . 'd1:d2:d3:', 'MacOS' ], # skipped on other OS
+[ "Mac->catdir('',':','d1','d2')",         $root . 'd1:d2:'   , 'MacOS' ], # skipped on other OS
+[ "Mac->catdir('','::','d1','d2')",        $root . 'd1:d2:'   , 'MacOS' ], # skipped on other OS
+[ "Mac->catdir('',':','','d1')",           $root . 'd1:'      , 'MacOS' ], # skipped on other OS
+[ "Mac->catdir('', ':d1',':d2')",          $root . 'd1:d2:'   , 'MacOS' ], # skipped on other OS
+[ "Mac->catdir('','',':d1',':d2')",        $root . 'd1:d2:'   , 'MacOS' ], # skipped on other OS
+
+[ "Mac->catdir('hd:',':d1')",       'hd:d1:'      ],
+[ "Mac->catdir('hd:d1:',':d2')",    'hd:d1:d2:'   ],
+[ "Mac->catdir('hd:','d1')",        'hd:d1:'      ],
+[ "Mac->catdir('hd:d1:',':d2')",    'hd:d1:d2:'   ],
+[ "Mac->catdir('hd:d1:',':d2:')",   'hd:d1:d2:'   ],
+
+[ "Mac->catfile()",                      ''                      ],
+[ "Mac->catfile('')",                    ''                      ],
+[ "Mac->catfile('', '')",                $root         , 'MacOS' ], # skipped on other OS
+[ "Mac->catfile('', 'file')",            $root . 'file', 'MacOS' ], # skipped on other OS
+[ "Mac->catfile(':')",                   ':'                     ],
+[ "Mac->catfile(':', '')",               ':'                     ],
+
+[ "Mac->catfile('d1','d2','file')",      ':d1:d2:file' ],
+[ "Mac->catfile('d1','d2',':file')",     ':d1:d2:file' ],
+[ "Mac->catfile('file')",                'file'        ],
+[ "Mac->catfile(':', 'file')",           ':file'       ],
+
+[ "Mac->canonpath('')",                   ''     ],
+[ "Mac->canonpath(':')",                  ':'    ],
+[ "Mac->canonpath('::')",                 '::'   ],
+[ "Mac->canonpath('a::')",                'a::'  ],
+[ "Mac->canonpath(':a::')",               ':a::' ],
+
+[ "Mac->abs2rel('hd:d1:d2:','hd:d1:d2:')",            ':'            ],
+[ "Mac->abs2rel('hd:d1:d2:','hd:d1:d2:file')",        ':'            ], # ignore base's file portion
+[ "Mac->abs2rel('hd:d1:d2:file','hd:d1:d2:')",        ':file'        ],
+[ "Mac->abs2rel('hd:d1:','hd:d1:d2:')",               '::'           ],
+[ "Mac->abs2rel('hd:d3:','hd:d1:d2:')",               ':::d3:'       ],
+[ "Mac->abs2rel('hd:d3:','hd:d1:d2::')",              '::d3:'        ],
+[ "Mac->abs2rel('hd:d1:d4:d5:','hd:d1::d2:d3::')",    '::d1:d4:d5:'  ],
+[ "Mac->abs2rel('hd:d1:d4:d5:','hd:d1::d2:d3:')",     ':::d1:d4:d5:' ], # first, resolve updirs in base
+[ "Mac->abs2rel('hd:d1:d3:','hd:d1:d2:')",            '::d3:'        ],
+[ "Mac->abs2rel('hd:d1::d3:','hd:d1:d2:')",           ':::d3:'       ],
+[ "Mac->abs2rel('hd:d3:','hd:d1:d2:')",               ':::d3:'       ], # same as above
+[ "Mac->abs2rel('hd:d1:d2:d3:','hd:d1:d2:')",         ':d3:'         ],
+[ "Mac->abs2rel('hd:d1:d2:d3::','hd:d1:d2:')",        ':d3::'        ],
+[ "Mac->abs2rel('hd1:d3:d4:d5:','hd2:d1:d2:')",       ':::d3:d4:d5:' ], # ignore base's volume
+[ "Mac->abs2rel('hd:','hd:d1:d2:')",                  ':::'          ],
+
+[ "Mac->rel2abs(':d3:','hd:d1:d2:')",          'hd:d1:d2:d3:'     ],
+[ "Mac->rel2abs(':d3:d4:','hd:d1:d2:')",       'hd:d1:d2:d3:d4:'  ],
+[ "Mac->rel2abs('','hd:d1:d2:')",              ''                 ],
+[ "Mac->rel2abs('::','hd:d1:d2:')",            'hd:d1:d2::'       ],
+[ "Mac->rel2abs('::','hd:d1:d2:file')",        'hd:d1:d2::'       ],# ignore base's file portion
+[ "Mac->rel2abs(':file','hd:d1:d2:')",         'hd:d1:d2:file'    ],
+[ "Mac->rel2abs('::file','hd:d1:d2:')",        'hd:d1:d2::file'   ],
+[ "Mac->rel2abs('::d3:','hd:d1:d2:')",         'hd:d1:d2::d3:'    ],
+[ "Mac->rel2abs('hd:','hd:d1:d2:')",           'hd:'              ], # path already absolute
+[ "Mac->rel2abs('hd:d3:file','hd:d1:d2:')",    'hd:d3:file'       ],
+[ "Mac->rel2abs('hd:d3:','hd:d1:file')",       'hd:d3:'           ],
+) ;
+
+
+print "1..", scalar( @@tests ), "\n" ;
+
+my $current_test= 1 ;
+
+# Test out the class methods
+for ( @@tests ) {
+   tryfunc( @@$_ ) ;
+}
+
+
+#
+# Tries a named function with the given args and compares the result against
+# an expected result. Works with functions that return scalars or arrays.
+#
+sub tryfunc {
+    my $function = shift ;
+    my $expected = shift ;
+    my $platform = shift ;
+
+    if ($platform && $^O ne $platform) {
+	print "ok $current_test # skipped: $function\n" ;
+	++$current_test ;
+	return;
+    }
+
+    $function =~ s#\\#\\\\#g ;
+
+    my $got ;
+    if ( $function =~ /^[^\$].*->/ ) {
+	$got = eval( "join( ',', File::Spec::$function )" ) ;
+    }
+    else {
+	$got = eval( "join( ',', $function )" ) ;
+    }
+
+    if ( $@@ ) {
+        if ( substr( $@@, 0, length $skip_exception ) eq $skip_exception ) {
+	    chomp $@@ ;
+	    print "ok $current_test # skip $function: $@@\n" ;
+	}
+	else {
+	    chomp $@@ ;
+	    print "not ok $current_test # $function: $@@\n" ;
+	}
+    }
+    elsif ( !defined( $got ) || $got ne $expected ) {
+	print "not ok $current_test # $function: got '$got', expected '$expected'\n" ;
+    }
+    else {
+	print "ok $current_test # $function\n" ;
+    }
+    ++$current_test ;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d1 1
+a1 3
+#!/usr/bin/perl -w
+
+use Test;
+d3 7
+a37 2
+require File::Spec::Epoc ;
+require File::Spec::Cygwin ;
+d41 1
+a41 1
+my $root = '';
+d53 1
+a53 7
+[ "Unix->case_tolerant()",         '0'  ],
+
+[ "Unix->catfile('a','b','c')",         'a/b/c'  ],
+[ "Unix->catfile('a','b','./c')",       'a/b/c'  ],
+[ "Unix->catfile('./a','b','c')",       'a/b/c'  ],
+[ "Unix->catfile('c')",                 'c' ],
+[ "Unix->catfile('./c')",               'c' ],
+d90 2
+a117 2
+[ "Win32->case_tolerant()",         '1'  ],
+
+a170 4
+[ "Win32->catdir('/', '../')",              '\\'                 ],
+[ "Win32->catdir('/', '..\\')",             '\\'                 ],
+[ "Win32->catdir('\\', '../')",             '\\'                 ],
+[ "Win32->catdir('\\', '..\\')",            '\\'                 ],
+a171 4
+[ "Win32->catdir('\\d1\\','d2')",           '\\d1\\d2'         ],
+[ "Win32->catdir('\\d1','d2')",             '\\d1\\d2'         ],
+[ "Win32->catdir('\\d1','\\d2')",           '\\d1\\d2'         ],
+[ "Win32->catdir('\\d1','\\d2\\')",         '\\d1\\d2'         ],
+a185 7
+[ "Win32->catdir('\\', 'foo')",             '\\foo'              ],
+
+[ "Win32->catfile('a','b','c')",        'a\\b\\c' ],
+[ "Win32->catfile('a','b','.\\c')",      'a\\b\\c'  ],
+[ "Win32->catfile('.\\a','b','c')",      'a\\b\\c'  ],
+[ "Win32->catfile('c')",                'c' ],
+[ "Win32->catfile('.\\c')",              'c' ],
+d187 1
+a191 1
+[ "Win32->canonpath('A:/')",            'A:\\'                ],
+d198 30
+a227 52
+[ "Win32->canonpath('//a/b/../../c')",  '\\\\a\\b\\c'         ],
+[ "Win32->canonpath('//a/b/c/../d')",   '\\\\a\\b\\d'         ],
+[ "Win32->canonpath('//a/b/c/../../d')",'\\\\a\\b\\d'         ],
+[ "Win32->canonpath('//a/b/c/.../d')",  '\\\\a\\b\\d'         ],
+[ "Win32->canonpath('/a/b/c/../../d')", '\\a\\d'              ],
+[ "Win32->canonpath('/a/b/c/.../d')",   '\\a\\d'              ],
+[ "Win32->canonpath('\\../temp\\')",    '\\temp'              ],
+[ "Win32->canonpath('\\../')",          '\\'                  ],
+[ "Win32->canonpath('\\..\\')",         '\\'                  ],
+[ "Win32->canonpath('/../')",           '\\'                  ],
+[ "Win32->canonpath('/..\\')",          '\\'                  ],
+[ "Win32->can('_cwd')",                 qr/CODE/              ],
+
+# FakeWin32 subclass (see below) just sets CWD to C:\one\two
+
+[ "FakeWin32->abs2rel('/t1/t2/t3','/t1/t2/t3')",     ''                       ],
+[ "FakeWin32->abs2rel('/t1/t2/t4','/t1/t2/t3')",     '..\\t4'                 ],
+[ "FakeWin32->abs2rel('/t1/t2','/t1/t2/t3')",        '..'                     ],
+[ "FakeWin32->abs2rel('/t1/t2/t3/t4','/t1/t2/t3')",  't4'                     ],
+[ "FakeWin32->abs2rel('/t4/t5/t6','/t1/t2/t3')",     '..\\..\\..\\t4\\t5\\t6' ],
+[ "FakeWin32->abs2rel('../t4','/t1/t2/t3')",         '..\\..\\..\\one\\t4'    ],
+[ "FakeWin32->abs2rel('/','/t1/t2/t3')",             '..\\..\\..'             ],
+[ "FakeWin32->abs2rel('///','/t1/t2/t3')",           '..\\..\\..'             ],
+[ "FakeWin32->abs2rel('/.','/t1/t2/t3')",            '..\\..\\..'             ],
+[ "FakeWin32->abs2rel('/./','/t1/t2/t3')",           '..\\..\\..'             ],
+[ "FakeWin32->abs2rel('\\\\a/t1/t2/t4','/t2/t3')",   '\\\\a\\t1\\t2\\t4'      ],
+[ "FakeWin32->abs2rel('//a/t1/t2/t4','/t2/t3')",     '\\\\a\\t1\\t2\\t4'      ],
+[ "FakeWin32->abs2rel('A:/t1/t2/t3','A:/t1/t2/t3')",     ''                   ],
+[ "FakeWin32->abs2rel('A:/t1/t2/t3/t4','A:/t1/t2/t3')",  't4'                 ],
+[ "FakeWin32->abs2rel('A:/t1/t2/t3','A:/t1/t2/t3/t4')",  '..'                 ],
+[ "FakeWin32->abs2rel('A:/t1/t2/t3','B:/t1/t2/t3')",     'A:\\t1\\t2\\t3'     ],
+[ "FakeWin32->abs2rel('A:/t1/t2/t3/t4','B:/t1/t2/t3')",  'A:\\t1\\t2\\t3\\t4' ],
+[ "FakeWin32->abs2rel('E:/foo/bar/baz')",            'E:\\foo\\bar\\baz'      ],
+[ "FakeWin32->abs2rel('C:/one/two/three')",          'three'                  ],
+
+[ "FakeWin32->rel2abs('temp','C:/')",                       'C:\\temp'                        ],
+[ "FakeWin32->rel2abs('temp','C:/a')",                      'C:\\a\\temp'                     ],
+[ "FakeWin32->rel2abs('temp','C:/a/')",                     'C:\\a\\temp'                     ],
+[ "FakeWin32->rel2abs('../','C:/')",                        'C:\\'                            ],
+[ "FakeWin32->rel2abs('../','C:/a')",                       'C:\\'                            ],
+[ "FakeWin32->rel2abs('temp','//prague_main/work/')",       '\\\\prague_main\\work\\temp'     ],
+[ "FakeWin32->rel2abs('../temp','//prague_main/work/')",    '\\\\prague_main\\work\\temp'     ],
+[ "FakeWin32->rel2abs('temp','//prague_main/work')",        '\\\\prague_main\\work\\temp'     ],
+[ "FakeWin32->rel2abs('../','//prague_main/work')",         '\\\\prague_main\\work'           ],
+
+[ "VMS->case_tolerant()",         '1'  ],
+
+[ "VMS->catfile('a','b','c')",         '[.a.b]c'  ],
+[ "VMS->catfile('a','b','[]c')",       '[.a.b]c'  ],
+[ "VMS->catfile('[.a]','b','c')",       '[.a.b]c'  ],
+[ "VMS->catfile('c')",                 'c' ],
+[ "VMS->catfile('[]c')",               'c' ],
+a247 1
+[ "VMS->catpath('v','w:[d1.d2.d3]','file')",                          'v:[d1.d2.d3]file'                         ],
+d277 2
+a278 4
+[  "VMS->abs2rel('node::volume:[t1.t2.t3]','node::volume:[t1.t2.t3]')", ''                 ],
+[  "VMS->abs2rel('node::volume:[t1.t2.t3]','[t1.t2.t3]')", 'node::volume:[t1.t2.t3]'                 ],
+[  "VMS->abs2rel('node::volume:[t1.t2.t4]','node::volume:[t1.t2.t3]')", '[-.t4]'           ],
+[  "VMS->abs2rel('node::volume:[t1.t2.t4]','[t1.t2.t3]')", 'node::volume:[t1.t2.t4]'           ],
+a280 2
+[  "VMS->abs2rel('[t1.t2.t3]file','[t1.t2]')",             '[.t3]file'        ],
+[  "VMS->abs2rel('v:[t1.t2.t3]file','v:[t1.t2]')",         '[.t3]file'        ],
+d283 1
+a283 1
+[  "VMS->abs2rel('[t1.t2.t3.t4]','[t1.t2.t3]')",           '[.t4]'            ],
+d286 1
+a286 2
+[ "VMS->abs2rel('a:[t1.t2.t4]','a:[t1.t2.t3]')",             '[-.t4]'           ],
+[ "VMS->abs2rel('a:[t1.t2.t4]','[t1.t2.t3]')",             'a:[t1.t2.t4]'           ],
+a295 2
+[ "OS2->case_tolerant()",         '1'  ],
+
+a296 1
+
+a297 9
+[ "OS2->catfile('a','b','./c')",          'a/b/c'  ],
+[ "OS2->catfile('./a','b','c')",          'a/b/c'  ],
+[ "OS2->catfile('c')",                    'c' ],
+[ "OS2->catfile('./c')",                  'c' ],
+
+[ "OS2->catdir('/', '../')",              '/'                 ],
+[ "OS2->catdir('/', '..\\')",             '/'                 ],
+[ "OS2->catdir('\\', '../')",             '/'                 ],
+[ "OS2->catdir('\\', '..\\')",            '/'                 ],
+a298 1
+[ "Mac->case_tolerant()",         '1'  ],
+a320 1
+[ "Mac->catpath('hd:','hd:d1','')",      'hd:d1:'          ],
+d471 1
+a471 1
+[ "Mac->abs2rel('hd1:d3:d4:d5:','hd2:d1:d2:')",       'hd1:d3:d4:d5:'], # volume mismatch
+a484 14
+
+[ "Epoc->case_tolerant()",         '1'  ],
+
+[ "Epoc->canonpath('')",                                      ''          ],
+[ "Epoc->canonpath('///../../..//./././a//b/.././c/././')",   '/a/b/../c' ],
+[ "Epoc->canonpath('/./')",                                   '/'         ],
+[ "Epoc->canonpath('/a/./')",                                 '/a'        ],
+
+# XXX Todo, copied from Unix, but fail. Should they? 2003-07-07 Tels
+#[ "Epoc->canonpath('/a/.')",                                  '/a'        ],
+#[ "Epoc->canonpath('/.')",                                    '/'         ],
+
+[ "Cygwin->case_tolerant()",         '0'  ],
+
+a486 1
+plan tests => scalar @@tests;
+d488 1
+a488 4
+{
+    @@File::Spec::FakeWin32::ISA = qw(File::Spec::Win32);
+    sub File::Spec::FakeWin32::_cwd { 'C:\\one\\two' }
+}
+d490 1
+d508 2
+a509 1
+	skip("skip $function", 1);
+d514 8
+a521 2
+    $function =~ s/^([^\$].*->)/File::Spec::$1/;
+    my $got = join ',', eval $function;
+d524 11
+a534 7
+      if ( $@@ =~ /^\Q$skip_exception/ ) {
+	skip "skip $function: $skip_exception", 1;
+      }
+      else {
+	ok $@@, '', $function;
+      }
+      return;
+d536 4
+a539 2
+
+    ok $got, $expected, $function;
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d227 1
+a227 1
+[ "Win32->can('_cwd')",                 '/CODE/'              ],
+@
+
+

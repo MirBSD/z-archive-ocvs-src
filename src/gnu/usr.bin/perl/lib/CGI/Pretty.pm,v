@@ -1,0 +1,507 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.8
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.6
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.4
+	cvs-200410231830:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.2
+	cvs-200406091940:1.1.1.3
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.10;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.10;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.07.26.13.05.15;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.07.58.05;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package CGI::Pretty;
+
+# See the bottom of this file for the POD documentation.  Search for the
+# string '=head'.
+
+# You can run this file through either pod2man or pod2html to produce pretty
+# documentation in manual or html file format (these utilities are part of the
+# Perl 5 distribution).
+
+use strict;
+use CGI ();
+
+$CGI::Pretty::VERSION = '1.05_00';
+$CGI::DefaultClass = __PACKAGE__;
+$CGI::Pretty::AutoloadClass = 'CGI';
+@@CGI::Pretty::ISA = qw( CGI );
+
+initialize_globals();
+
+sub _prettyPrint {
+    my $input = shift;
+
+    foreach my $i ( @@CGI::Pretty::AS_IS ) {
+	if ( $$input =~ /<\/$i>/si ) {
+	    my ( $a, $b, $c, $d, $e ) = $$input =~ /(.*)<$i(\s?)(.*?)>(.*?)<\/$i>(.*)/si;
+	    _prettyPrint( \$a );
+	    _prettyPrint( \$e );
+	    
+	    $$input = "$a<$i$b$c>$d</$i>$e";
+	    return;
+	}
+    }
+    $$input =~ s/$CGI::Pretty::LINEBREAK/$CGI::Pretty::LINEBREAK$CGI::Pretty::INDENT/g if $CGI::Pretty::LINEBREAK; 
+}
+
+sub comment {
+    my($self,@@p) = CGI::self_or_CGI(@@_);
+
+    my $s = "@@p";
+    $s =~ s/$CGI::Pretty::LINEBREAK/$CGI::Pretty::LINEBREAK$CGI::Pretty::INDENT/g if $CGI::Pretty::LINEBREAK; 
+    
+    return $self->SUPER::comment( "$CGI::Pretty::LINEBREAK$CGI::Pretty::INDENT$s$CGI::Pretty::LINEBREAK" ) . $CGI::Pretty::LINEBREAK;
+}
+
+sub _make_tag_func {
+    my ($self,$tagname) = @@_;
+    return $self->SUPER::_make_tag_func($tagname) if $tagname=~/^(start|end)_/;
+
+    # As Lincoln as noted, the last else clause is VERY hairy, and it
+    # took me a while to figure out what I was trying to do.
+    # What it does is look for tags that shouldn't be indented (e.g. PRE)
+    # and makes sure that when we nest tags, those tags don't get
+    # indented.
+    # For an example, try print td( pre( "hello\nworld" ) );
+    # If we didn't care about stuff like that, the code would be
+    # MUCH simpler.  BTW: I won't claim to be a regular expression
+    # guru, so if anybody wants to contribute something that would
+    # be quicker, easier to read, etc, I would be more than
+    # willing to put it in - Brian
+    
+    return qq{
+	sub $tagname { 
+	    # handle various cases in which we're called
+	    # most of this bizarre stuff is to avoid -w errors
+            shift if \$_[0] && 
+                    (ref(\$_[0]) &&
+                     (substr(ref(\$_[0]),0,3) eq 'CGI' ||
+                    UNIVERSAL::isa(\$_[0],'CGI')));
+	    
+	    my(\$attr) = '';
+	    if (ref(\$_[0]) && ref(\$_[0]) eq 'HASH') {
+		my(\@@attr) = make_attributes(shift);
+		\$attr = " \@@attr" if \@@attr;
+	    }
+
+	    my(\$tag,\$untag) = ("\L<$tagname\E\$attr>","\L</$tagname>\E");
+	    return \$tag unless \@@_;
+
+	    my \@@result;
+	    my \$NON_PRETTIFY_ENDTAGS =  join "", map { "</\$_>" } \@@CGI::Pretty::AS_IS;
+
+	    if ( \$NON_PRETTIFY_ENDTAGS =~ /\$untag/ ) {
+		\@@result = map { "\$tag\$_\$untag\$CGI::Pretty::LINEBREAK" } 
+		 (ref(\$_[0]) eq 'ARRAY') ? \@@{\$_[0]} : "\@@_";
+	    }
+	    else {
+                my \@@args;
+		if(ref(\$_[0]) eq 'ARRAY') {
+                    \@@args = \@@{\$_[0]}
+                } else {
+                    foreach (\@@_) {
+                        \$args[0] .= \$_;
+                        \$args[0] .= " " unless \$args[0] =~ /\\s\$/;
+                    }
+                    chop \$args[0];
+                }
+		\@@result = map { 
+		    chomp; 
+		    if ( \$_ !~ /<\\// ) {
+			s/\$CGI::Pretty::LINEBREAK/\$CGI::Pretty::LINEBREAK\$CGI::Pretty::INDENT/g if \$CGI::Pretty::LINEBREAK; 
+		    } 
+		    else {
+			my \$tmp = \$_;
+			CGI::Pretty::_prettyPrint( \\\$tmp );
+			\$_ = \$tmp;
+		    }
+		    "\$tag\$CGI::Pretty::LINEBREAK\$CGI::Pretty::INDENT\$_\$CGI::Pretty::LINEBREAK\$untag\$CGI::Pretty::LINEBREAK" 
+                } \@@args;
+	    }
+	    local \$" = "";
+	    return "\@@result";
+	}
+    };
+}
+
+sub start_html {
+    return CGI::start_html( @@_ ) . $CGI::Pretty::LINEBREAK;
+}
+
+sub end_html {
+    return CGI::end_html( @@_ ) . $CGI::Pretty::LINEBREAK;
+}
+
+sub new {
+    my $class = shift;
+    my $this = $class->SUPER::new( @@_ );
+
+    Apache->request->register_cleanup(\&CGI::Pretty::_reset_globals) if ($CGI::MOD_PERL);
+    $class->_reset_globals if $CGI::PERLEX;
+
+    return bless $this, $class;
+}
+
+sub initialize_globals {
+    # This is the string used for indentation of tags
+    $CGI::Pretty::INDENT = "\t";
+    
+    # This is the string used for seperation between tags
+    $CGI::Pretty::LINEBREAK = "\n";
+
+    # These tags are not prettify'd.
+    @@CGI::Pretty::AS_IS = qw( a pre code script textarea );
+
+    1;
+}
+sub _reset_globals { initialize_globals(); }
+
+1;
+
+=head1 NAME
+
+CGI::Pretty - module to produce nicely formatted HTML code
+
+=head1 SYNOPSIS
+
+    use CGI::Pretty qw( :html3 );
+
+    # Print a table with a single data element
+    print table( TR( td( "foo" ) ) );
+
+=head1 DESCRIPTION
+
+CGI::Pretty is a module that derives from CGI.  It's sole function is to
+allow users of CGI to output nicely formatted HTML code.
+
+When using the CGI module, the following code:
+    print table( TR( td( "foo" ) ) );
+
+produces the following output:
+    <TABLE><TR><TD>foo</TD></TR></TABLE>
+
+If a user were to create a table consisting of many rows and many columns,
+the resultant HTML code would be quite difficult to read since it has no
+carriage returns or indentation.
+
+CGI::Pretty fixes this problem.  What it does is add a carriage
+return and indentation to the HTML code so that one can easily read
+it.
+
+    print table( TR( td( "foo" ) ) );
+
+now produces the following output:
+    <TABLE>
+       <TR>
+          <TD>
+             foo
+          </TD>
+       </TR>
+    </TABLE>
+
+
+=head2 Tags that won't be formatted
+
+The <A> and <PRE> tags are not formatted.  If these tags were formatted, the
+user would see the extra indentation on the web browser causing the page to
+look different than what would be expected.  If you wish to add more tags to
+the list of tags that are not to be touched, push them onto the C<@@AS_IS> array:
+
+    push @@CGI::Pretty::AS_IS,qw(CODE XMP);
+
+=head2 Customizing the Indenting
+
+If you wish to have your own personal style of indenting, you can change the
+C<$INDENT> variable:
+
+    $CGI::Pretty::INDENT = "\t\t";
+
+would cause the indents to be two tabs.
+
+Similarly, if you wish to have more space between lines, you may change the
+C<$LINEBREAK> variable:
+
+    $CGI::Pretty::LINEBREAK = "\n\n";
+
+would create two carriage returns between lines.
+
+If you decide you want to use the regular CGI indenting, you can easily do 
+the following:
+
+    $CGI::Pretty::INDENT = $CGI::Pretty::LINEBREAK = "";
+
+=head1 BUGS
+
+This section intentionally left blank.
+
+=head1 AUTHOR
+
+Brian Paulsen <Brian@@ThePaulsens.com>, with minor modifications by
+Lincoln Stein <lstein@@cshl.org> for incorporation into the CGI.pm
+distribution.
+
+Copyright 1999, Brian Paulsen.  All rights reserved.
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+Bug reports and comments to Brian@@ThePaulsens.com.  You can also write
+to lstein@@cshl.org, but this code looks pretty hairy to me and I'm not
+sure I understand it!
+
+=head1 SEE ALSO
+
+L<CGI>
+
+=cut
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD ports, XFree and source in sync
+@
+text
+@d13 1
+a13 1
+$CGI::Pretty::VERSION = '1.07_00';
+a21 4
+    return if !$$input;
+    return if !$CGI::Pretty::LINEBREAK || !$CGI::Pretty::INDENT;
+
+#    print STDERR "'", $$input, "'\n";
+d24 4
+a27 8
+	if ( $$input =~ m{</$i>}si ) {
+	    my ( $a, $b, $c ) = $$input =~ m{(.*)(<$i[\s/>].*?</$i>)(.*)}si;
+	    next if !$b;
+	    $a ||= "";
+	    $c ||= "";
+
+	    _prettyPrint( \$a ) if $a;
+	    _prettyPrint( \$c ) if $c;
+d29 1
+a29 2
+	    $b ||= "";
+	    $$input = "$a$b$c";
+d33 1
+a33 1
+    $$input =~ s/$CGI::Pretty::LINEBREAK/$CGI::Pretty::LINEBREAK$CGI::Pretty::INDENT/g;
+d47 1
+d60 15
+d76 2
+a77 2
+    my $func = qq"
+	sub $tagname {";
+d79 2
+a80 42
+    $func .= q'
+            shift if $_[0] && 
+                    (ref($_[0]) &&
+                     (substr(ref($_[0]),0,3) eq "CGI" ||
+                    UNIVERSAL::isa($_[0],"CGI")));
+	    my($attr) = "";
+	    if (ref($_[0]) && ref($_[0]) eq "HASH") {
+		my(@@attr) = make_attributes(shift()||undef,1);
+		$attr = " @@attr" if @@attr;
+	    }';
+
+    if ($tagname=~/start_(\w+)/i) {
+	$func .= qq! 
+            return "<\L$1\E\$attr>\$CGI::Pretty::LINEBREAK";} !;
+    } elsif ($tagname=~/end_(\w+)/i) {
+	$func .= qq! 
+            return "<\L/$1\E>\$CGI::Pretty::LINEBREAK"; } !;
+    } else {
+	$func .= qq#
+	    return ( \$CGI::XHTML ? "<\L$tagname\E\$attr />" : "<\L$tagname\E\$attr>" ) .
+                   \$CGI::Pretty::LINEBREAK unless \@@_;
+	    my(\$tag,\$untag) = ("<\L$tagname\E\$attr>","</\L$tagname>\E");
+
+            my \%ASIS = map { lc("\$_") => 1 } \@@CGI::Pretty::AS_IS;
+            my \@@args;
+            if ( \$CGI::Pretty::LINEBREAK || \$CGI::Pretty::INDENT ) {
+   	      if(ref(\$_[0]) eq 'ARRAY') {
+                 \@@args = \@@{\$_[0]}
+              } else {
+                  foreach (\@@_) {
+		      \$args[0] .= \$_;
+                      \$args[0] .= \$CGI::Pretty::LINEBREAK if \$args[0] !~ /\$CGI::Pretty::LINEBREAK\$/ && 0;
+                      chomp \$args[0] if exists \$ASIS{ "\L$tagname\E" };
+                      
+  	              \$args[0] .= \$" if \$args[0] !~ /\$CGI::Pretty::LINEBREAK\$/ && 1;
+		  }
+                  chop \$args[0];
+	      }
+            }
+            else {
+              \@@args = ref(\$_[0]) eq 'ARRAY' ? \@@{\$_[0]} : "\@@_";
+            }
+d82 1
+a82 2
+            my \@@result;
+            if ( exists \$ASIS{ "\L$tagname\E" } ) {
+d84 1
+a84 1
+		 \@@args;
+d87 10
+d99 9
+a107 5
+		    my \$tmp = \$_;
+		    CGI::Pretty::_prettyPrint( \\\$tmp );
+                    \$tag . \$CGI::Pretty::LINEBREAK .
+                    \$CGI::Pretty::INDENT . \$tmp . \$CGI::Pretty::LINEBREAK . 
+                    \$untag . \$CGI::Pretty::LINEBREAK
+d110 1
+a110 1
+	    local \$" = "" if \$CGI::Pretty::LINEBREAK || \$CGI::Pretty::INDENT;
+d112 2
+a113 4
+	}#;
+    }    
+
+    return $func;
+d128 1
+a128 9
+    if ($CGI::MOD_PERL) {
+        my $r = Apache->request;
+        if ($CGI::MOD_PERL == 1) {
+            $r->register_cleanup(\&CGI::Pretty::_reset_globals);
+        }
+        else {
+            $r->pool->cleanup_register(\&CGI::Pretty::_reset_globals);
+        }
+    }
+d139 1
+a139 1
+    $CGI::Pretty::LINEBREAK = $/;
+d142 1
+a142 1
+    @@CGI::Pretty::AS_IS = qw( a pre code script textarea td );
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d13 1
+a13 1
+$CGI::Pretty::VERSION = '1.08';
+@
+
+

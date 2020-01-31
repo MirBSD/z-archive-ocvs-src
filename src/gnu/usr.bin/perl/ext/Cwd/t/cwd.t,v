@@ -1,0 +1,418 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.4
+	tg-mergefixes-1-branch:1.1.1.4.0.4
+	tg-mergefixes-1-base:1.1.1.4
+	MIROS_X:1.1.1.4.0.2
+	MIROS_X_BASE:1.1.1.4
+	tg-mergetmp-3:1.1.1.4
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.4
+	cvs-200410231830:1.1.1.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.2
+	cvs-200406091940:1.1.1.3
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.42;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.42;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.53.56;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.08.00.19;	author tg;	state Stab;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.10.23.18.38.01;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+
+BEGIN {
+    chdir 't' if -d 't';
+    @@INC = '../lib';
+}
+
+use Config;
+use Cwd;
+use strict;
+use warnings;
+use File::Spec;
+use File::Path;
+
+use Test::More tests => 16;
+
+my $IsVMS = $^O eq 'VMS';
+my $IsMacOS = $^O eq 'MacOS';
+
+# check imports
+can_ok('main', qw(cwd getcwd fastcwd fastgetcwd));
+ok( !defined(&chdir),           'chdir() not exported by default' );
+ok( !defined(&abs_path),        '  nor abs_path()' );
+ok( !defined(&fast_abs_path),   '  nor fast_abs_path()');
+
+
+# XXX force Cwd to bootsrap its XSUBs since we have set @@INC = "../lib"
+# XXX and subsequent chdir()s can make them impossible to find
+eval { fastcwd };
+
+# Must find an external pwd (or equivalent) command.
+
+my $pwd = $^O eq 'MSWin32' ? "cmd" : "pwd";
+my $pwd_cmd =
+    ($^O eq "NetWare") ?
+        "cd" :
+    ($IsMacOS) ?
+        "pwd" :
+        (grep { -x && -f } map { "$_/$pwd$Config{exe_ext}" }
+	                   split m/$Config{path_sep}/, $ENV{PATH})[0];
+
+$pwd_cmd = 'SHOW DEFAULT' if $IsVMS;
+if ($^O eq 'MSWin32') {
+    $pwd_cmd =~ s,/,\\,g;
+    $pwd_cmd = "$pwd_cmd /c cd";
+}
+$pwd_cmd =~ s=\\=/=g if ($^O eq 'dos');
+
+print "# native pwd = '$pwd_cmd'\n";
+
+SKIP: {
+    skip "No native pwd command found to test against", 4 unless $pwd_cmd;
+
+    local @@ENV{qw(PATH IFS CDPATH ENV BASH_ENV)};
+    my ($pwd_cmd_untainted) = $pwd_cmd =~ /^(.+)$/; # Untaint.
+    chomp(my $start = `$pwd_cmd_untainted`);
+
+    # Win32's cd returns native C:\ style
+    $start =~ s,\\,/,g if ($^O eq 'MSWin32' || $^O eq "NetWare");
+    # DCL SHOW DEFAULT has leading spaces
+    $start =~ s/^\s+// if $IsVMS;
+    SKIP: {
+        skip "'$pwd_cmd' failed, nothing to test against", 4 if $?;
+
+	my $cwd        = cwd;
+	my $getcwd     = getcwd;
+	my $fastcwd    = fastcwd;
+	my $fastgetcwd = fastgetcwd;
+	is(cwd(),       $start, 'cwd()');
+	is(getcwd(),    $start, 'getcwd()');
+	is(fastcwd(),   $start, 'fastcwd()');
+	is(fastgetcwd(),$start, 'fastgetcwd()');
+    }
+}
+
+my $Top_Test_Dir = '_ptrslt_';
+my $Test_Dir     = "$Top_Test_Dir/_path_/_to_/_a_/_dir_";
+my $want = "t/$Test_Dir";
+if( $IsVMS ) {
+    # translate the unixy path to VMSish
+    $want =~ s|/|\.|g;
+    $want .= '\]';
+    $want = '((?i)' . $want . ')';  # might be ODS-2 or ODS-5
+} elsif ( $IsMacOS ) {
+    $_ = ":$_" for ($Top_Test_Dir, $Test_Dir);
+    s|/|:|g, s|$|:| for ($want, $Test_Dir);
+}
+
+mkpath(["$Test_Dir"], 0, 0777);
+Cwd::chdir "$Test_Dir";
+
+like(cwd(),        qr|$want$|, 'chdir() + cwd()');
+like(getcwd(),     qr|$want$|, '        + getcwd()');    
+like(fastcwd(),    qr|$want$|, '        + fastcwd()');
+like(fastgetcwd(), qr|$want$|, '        + fastgetcwd()');
+
+# Cwd::chdir should also update $ENV{PWD}
+like($ENV{PWD}, qr|$want$|,      'Cwd::chdir() updates $ENV{PWD}');
+my $updir = File::Spec->updir;
+Cwd::chdir $updir;
+print "#$ENV{PWD}\n";
+Cwd::chdir $updir;
+print "#$ENV{PWD}\n";
+Cwd::chdir $updir;
+print "#$ENV{PWD}\n";
+Cwd::chdir $updir;
+print "#$ENV{PWD}\n";
+Cwd::chdir $updir;
+print "#$ENV{PWD}\n";
+
+rmtree([$Top_Test_Dir], 0, 0);
+
+if ($IsVMS) {
+    like($ENV{PWD}, qr|\b((?i)t)\]$|);
+}
+elsif ($IsMacOS) {
+    like($ENV{PWD}, qr|\bt:$|);
+}
+else {
+    like($ENV{PWD}, qr|\bt$|);
+}
+
+SKIP: {
+    skip "no symlinks on this platform", 2 unless $Config{d_symlink};
+
+    mkpath([$Test_Dir], 0, 0777);
+    symlink $Test_Dir => "linktest";
+
+    my $abs_path      =  Cwd::abs_path("linktest");
+    my $fast_abs_path =  Cwd::fast_abs_path("linktest");
+    my $want          =  File::Spec->catdir("t", $Test_Dir);
+
+    like($abs_path,      qr|$want$|);
+    like($fast_abs_path, qr|$want$|);
+
+    rmtree([$Top_Test_Dir], 0, 0);
+    unlink "linktest";
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d49 2
+a53 2
+    print "# native pwd = '$pwd_cmd'\n";
+
+d63 1
+a63 17
+        skip("'$pwd_cmd' failed, nothing to test against", 4) if $?;
+        skip("/afs seen, paths unlikely to match", 4) if $start =~ m|/afs/|;
+
+	# Darwin's getcwd(3) (which Cwd.xs:bsd_realpath() uses which
+	# Cwd.pm:getcwd uses) has some magic related to the PWD
+	# environment variable: if PWD is set to a directory that
+	# looks about right (guess: has the same (dev,ino) as the '.'?),
+	# the PWD is returned.  However, if that path contains
+	# symlinks, the path will not be equal to the one returned by
+	# /bin/pwd (which probably uses the usual walking upwards in
+	# the path -trick).  This situation is easy to reproduce since
+	# /tmp is a symlink to /private/tmp.  Therefore we invalidate
+	# the PWD to force getcwd(3) to (re)compute the cwd in full.
+	# Admittedly fixing this in the Cwd module would be better
+	# long-term solution but deleting $ENV{PWD} should not be
+	# done light-heartedly. --jhi
+	delete $ENV{PWD} if $^O eq 'darwin';
+d69 4
+a72 5
+
+	is($cwd,        $start, 'cwd()');
+	is($getcwd,     $start, 'getcwd()');
+	is($fastcwd,    $start, 'fastcwd()');
+	is($fastgetcwd, $start, 'fastgetcwd()');
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@a2 1
+use Cwd;
+d5 1
+d9 1
+@
+
+
+1.1.1.4
+log
+@5.8.5
+@
+text
+@d3 1
+a5 3
+    if ($ENV{PERL_CORE}) {
+        @@INC = '../lib';
+    }
+a6 1
+use Cwd;
+d14 1
+a14 1
+use Test::More tests => 24;
+d92 20
+a111 11
+my @@test_dirs = qw{_ptrslt_ _path_ _to_ _a_ _dir_};
+my $Test_Dir     = File::Spec->catdir(@@test_dirs);
+
+mkpath([$Test_Dir], 0, 0777);
+Cwd::chdir $Test_Dir;
+
+foreach my $func (qw(cwd getcwd fastcwd fastgetcwd)) {
+  my $result = eval "$func()";
+  is $@@, '';
+  dir_ends_with( $result, $Test_Dir, "$func()" );
+}
+d114 1
+a114 1
+dir_ends_with( $ENV{PWD}, $Test_Dir, 'Cwd::chdir() updates $ENV{PWD}' );
+d127 1
+a127 1
+rmtree($test_dirs[0], 0, 0);
+d129 8
+a136 6
+{
+  my $check = ($IsVMS   ? qr|\b((?i)t)\]$| :
+	       $IsMacOS ? qr|\bt:$| :
+			  qr|\bt$| );
+  
+  like($ENV{PWD}, $check);
+d143 1
+a143 1
+    symlink $Test_Dir, "linktest";
+d152 1
+a152 1
+    rmtree($test_dirs[0], 0, 0);
+a153 41
+}
+
+if ($ENV{PERL_CORE}) {
+    chdir '../ext/Cwd/t';
+    unshift @@INC, '../../../lib';
+}
+
+# Make sure we can run abs_path() on files, not just directories
+my $path = 'cwd.t';
+path_ends_with(Cwd::abs_path($path), 'cwd.t', 'abs_path() can be invoked on a file');
+path_ends_with(Cwd::fast_abs_path($path), 'cwd.t', 'fast_abs_path() can be invoked on a file');
+
+$path = File::Spec->catfile(File::Spec->updir, 't', $path);
+path_ends_with(Cwd::abs_path($path), 'cwd.t', 'abs_path() can be invoked on a file');
+path_ends_with(Cwd::fast_abs_path($path), 'cwd.t', 'fast_abs_path() can be invoked on a file');
+
+
+#############################################
+# These routines give us sort of a poor-man's cross-platform
+# directory or path comparison capability.
+
+sub bracketed_form_dir {
+  return join '', map "[$_]", 
+    grep length, File::Spec->splitdir(File::Spec->canonpath( shift() ));
+}
+
+sub dir_ends_with {
+  my ($dir, $expect) = (shift, shift);
+  my $bracketed_expect = quotemeta bracketed_form_dir($expect);
+  like( bracketed_form_dir($dir), qr|$bracketed_expect$|i, (@@_ ? shift : ()) );
+}
+
+sub bracketed_form_path {
+  return join '', map "[$_]", 
+    grep length, File::Spec->splitpath(File::Spec->canonpath( shift() ));
+}
+
+sub path_ends_with {
+  my ($dir, $expect) = (shift, shift);
+  my $bracketed_expect = quotemeta bracketed_form_path($expect);
+  like( bracketed_form_path($dir), qr|$bracketed_expect$|i, (@@_ ? shift : ()) );
+@
+
+

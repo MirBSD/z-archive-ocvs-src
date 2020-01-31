@@ -1,0 +1,218 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.44.06;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.06;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!perl -w
+use strict;
+
+# All the IMAGE_* structures are defined in the WINNT.H file
+# of the Microsoft Platform SDK.
+
+my %subsys = (NATIVE    => 1,
+              WINDOWS   => 2,
+              CONSOLE   => 3,
+              POSIX     => 7,
+              WINDOWSCE => 9);
+
+unless (0 < @@ARGV && @@ARGV < 3) {
+    printf "Usage: $0 exefile [%s]\n", join '|', sort keys %subsys;
+    exit;
+}
+
+$ARGV[1] = uc $ARGV[1] if $ARGV[1];
+unless (@@ARGV == 1 || defined $subsys{$ARGV[1]}) {
+    (my $subsys = join(', ', sort keys %subsys)) =~ s/, (\w+)$/ or $1/;
+    print "Invalid subsystem $ARGV[1], please use $subsys\n";
+    exit;
+}
+
+my ($record,$magic,$signature,$offset,$size);
+open EXE, "+< $ARGV[0]" or die "Cannot open $ARGV[0]: $!\n";
+binmode EXE;
+
+# read IMAGE_DOS_HEADER structure
+read EXE, $record, 64;
+($magic,$offset) = unpack "Sx58L", $record;
+
+die "$ARGV[0] is not an MSDOS executable file.\n"
+    unless $magic == 0x5a4d; # "MZ"
+
+# read signature, IMAGE_FILE_HEADER and first WORD of IMAGE_OPTIONAL_HEADER
+seek EXE, $offset, 0;
+read EXE, $record, 4+20+2;
+($signature,$size,$magic) = unpack "Lx16Sx2S", $record;
+
+die "PE header not found" unless $signature == 0x4550; # "PE\0\0"
+
+die "Optional header is neither in NT32 nor in NT64 format"
+    unless ($size == 224 && $magic == 0x10b) || # IMAGE_NT_OPTIONAL_HDR32_MAGIC
+           ($size == 240 && $magic == 0x20b);   # IMAGE_NT_OPTIONAL_HDR64_MAGIC
+
+# Offset 68 in the IMAGE_OPTIONAL_HEADER(32|64) is the 16 bit subsystem code
+seek EXE, $offset+4+20+68, 0;
+if (@@ARGV == 1) {
+    read EXE, $record, 2;
+    my ($subsys) = unpack "S", $record;
+    $subsys = {reverse %subsys}->{$subsys} || "UNKNOWN($subsys)";
+    print "$ARGV[0] uses the $subsys subsystem.\n";
+}
+else {
+    print EXE pack "S", $subsys{$ARGV[1]};
+}
+close EXE;
+__END__
+
+=head1 NAME
+
+exetype - Change executable subsystem type between "Console" and "Windows"
+
+=head1 SYNOPSIS
+
+	C:\perl\bin> copy perl.exe guiperl.exe
+	C:\perl\bin> exetype guiperl.exe windows
+
+=head1 DESCRIPTION
+
+This program edits an executable file to indicate which subsystem the
+operating system must invoke for execution.
+
+You can specify any of the following subsystems:
+
+=over
+
+=item CONSOLE
+
+The CONSOLE subsystem handles a Win32 character-mode application that
+use a console supplied by the operating system.
+
+=item WINDOWS
+
+The WINDOWS subsystem handles an application that does not require a
+console and creates its own windows, if required.
+
+=item NATIVE
+
+The NATIVE subsystem handles a Windows NT device driver.
+
+=item WINDOWSCE
+
+The WINDOWSCE subsystem handles Windows CE consumer electronics
+applications.
+
+=item POSIX
+
+The POSIX subsystem handles a POSIX application in Windows NT.
+
+=back
+
+=head1 AUTHOR
+
+Jan Dubois <jand@@activestate.com>
+
+=cut
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

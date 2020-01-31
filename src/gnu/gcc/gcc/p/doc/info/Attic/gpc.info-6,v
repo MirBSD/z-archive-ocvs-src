@@ -1,0 +1,304 @@
+head	1.2;
+access;
+symbols
+	gpc-20030830:1.1.2.1 FSF:1.1.2;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.01.11.18.17.14;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.01.11.18.01.02;	author tg;	state Exp;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.11.18.01.02;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke some unused, redundant or generated files
+@
+text
+@This is ../p/doc/info/gpc.info, produced by makeinfo version 4.1 from
+gpc.texi.
+
+INFO-DIR-SECTION GNU programming tools
+START-INFO-DIR-ENTRY
+* GPC: (gpc).                   The GNU Pascal Compiler.
+END-INFO-DIR-ENTRY
+INFO-DIR-SECTION Individual utilities
+START-INFO-DIR-ENTRY
+* GPC: (gpc)Invoking GPC.       The GNU Pascal Compiler.
+END-INFO-DIR-ENTRY
+
+   This file documents the GNU Pascal Compiler.
+
+   Permission is granted to make and distribute verbatim copies of this
+manual provided the copyright notice and this permission notice are
+preserved on all copies.
+
+   Copyright (C) 1988-2003 Free Software Foundation, Inc.
+
+   Permission is granted to copy and distribute modified versions of
+this manual under the conditions for verbatim copying, provided also
+that the sections entitled "GNU General Public License", "The GNU
+Project", "The GNU Manifesto" and "Funding for free Software" are
+included exactly as in the original, and provided that the entire
+resulting derived work is distributed under the terms of a permission
+notice identical to this one.
+
+   Permission is granted to copy and distribute translations of this
+manual into another language, under the above conditions for modified
+versions, except that the sections entitled "GNU General Public
+License", "The GNU Project", "The GNU Manifesto" and "Funding for Free
+Software" and this permission notice, may be included in translations
+approved by the Free Software Foundation instead of in the original
+English.
+
+
+File: gpc.info,  Node: Other Languages,  Next: Notes for Debugging,  Prev: Library Routines,  Up: Programming
+
+Interfacing with Other Languages
+================================
+
+   The standardized GNU compiler back-end makes it relatively easy to
+share libraries between GNU Pascal and other GNU compilers. On
+Unix-like platforms (_not_ on Dos-like platforms), the GNU compiler
+back-end usually complies to the standards defined for that system, so
+communication with other compilers should be easy, too.
+
+   In this chapter we discuss how to import libraries written in other
+languages, and how to import libraries written in GNU Pascal from other
+languages. While the examples will specialize to compatibility to GNU
+C, generalization is straightforward if you are familiar with the other
+language in question.
+
+* Menu:
+
+* Importing Libraries from Other Languages::
+* Exporting GPC Libraries to Other Languages::
+
+
+File: gpc.info,  Node: Importing Libraries from Other Languages,  Next: Exporting GPC Libraries to Other Languages,  Up: Other Languages
+
+Importing Libraries from Other Languages
+----------------------------------------
+
+   To use a function written in another language, you need to provide
+an external declaration for it - either in the program, or in the
+interface part of a unit, or a module.
+
+   Let's say you want to use the following C library from Pascal:
+
+     File `callc.c':
+     
+     #include <unistd.h>
+     #include "callc.h"
+     
+     int foo = 1;
+     
+     void bar (void)
+     {
+       sleep (foo);
+     }
+
+     File `callc.h':
+     
+     /* Actually, we wouldn't need this header file, and could instead
+        put these prototypes into callc.c, unless we want to use callc.c
+        also from other C source files. */
+     
+     extern int foo;
+     extern void bar (void);
+
+   Then your program can look like this:
+
+     program CallCDemo;
+     
+     {$L callc.c}  { Or: `callc.o' if you don't have the source }
+     
+     var
+       MyFoo: Integer; external name 'foo';
+     
+     procedure Bar; external name 'bar';
+     
+     begin
+       MyFoo := 42;
+       Bar
+     end.
+
+   Or, if you want to provide a `CallCUnit' unit:
+
+     unit CallCUnit;
+     
+     interface
+     
+     var
+       MyFoo: Integer; external name 'foo';
+     
+     procedure Bar; external name 'bar';
+     
+     implementation
+     
+     {$L callc.c}  { Or: `callc.o' if you don't have the source }
+     
+     end.
+
+     program CallCUDemo;
+     
+     uses CallCUnit;
+     
+     begin
+       MyFoo := 42;
+       Bar
+     end.
+
+   You can either link your program manually with `callc.o' or put a
+compiler directive `{$L callc.o}' into your program or unit, and then
+GPC takes care of correct linking. If you have the source of the C
+library (you always have it if it is Free Software), you can even write
+`{$L callc.c}' in the program (like above). Then GPC will also link
+with `callc.o', but in addition GPC will run the C compiler whenever
+`callc.c' has changed if `--automake' is given, too.
+
+   While it is often convenient, there is no must to give the C
+function `bar' the name `Bar' in Pascal; you can name it as you like
+(e.g., the variable `MyFoo' has a C name of `foo' in the example above).
+
+   If you omit the `name', the default is the Pascal identifier,
+converted to lower-case. So, in this example, the `name' could be
+omitted for `Bar', but not for `MyFoo'.
+
+   It is important that data types of both languages are mapped
+correctly onto each other. C's `int', for instance, translates to GPC's
+`Integer', and C's `unsigned long' to `MedCard'. For a complete list of
+integer types with their C counterparts, see *Note Integer Types::.
+
+   In some cases it can be reasonable to translate a C pointer
+parameter to a Pascal `var' parameter.  Since const parameters in GPC
+can be passed by value _or_ by reference internally, possibly depending
+on the system, `const foo *' parameters to C functions _cannot_
+reliably be declared as `const' in Pascal. However, Extended Pascal's
+`protected var' can be used since this guarantees passing by reference.
+
+   Some libraries provide a `main' function and require your program's
+"main" to be named differently. To achive this with GPC, invoke it with
+an option `--gpc-main="GPCmain"' (where `GPCmain' is an example how you
+might want to name the program). You can also write it into your source
+as a directive `{$gpc-main="GPCmain"}'.
+
+
+File: gpc.info,  Node: Exporting GPC Libraries to Other Languages,  Prev: Importing Libraries from Other Languages,  Up: Other Languages
+
+Exporting GPC Libraries to Other Languages
+------------------------------------------
+
+   The `.o' files produced by GPC are in the same format as those of all
+other GNU compilers, so there is no problem in writing libraries for
+other languages in Pascal. To use them, you will need to write kind of
+interface - a header file in C. However there are some things to take
+into account, especially if your Pascal unit exports objects:
+
+   * By default, GPC capitalizes the first letter (only) of each
+     identifier, so `procedure FooBAR' must be imported as `extern void
+     Foobar()' from C.
+
+   * If you want to specify the external name explicitly, use
+     `attribute':
+
+          procedure FooBAR; attribute (name = 'FooBAR');
+          begin
+            WriteLn ('FooBAR')
+          end;
+
+     This one can be imported from C with `extern void FooBar()'.
+
+   * Objects are "records" internally.  They have an implicit `vmt'
+     field which contains a pointer to the "virtual method table".
+     This table is another record of the following structure:
+
+          type
+            VMT = record
+              ObjectSize: PtrInt;     { Size of object in bytes }
+              NegObjectSize: PtrInt;  { Negated size }
+              Methods: array [1 .. n] of procedure;
+                { Pointers to the virtual methods. The entries are of the
+                   repective procedure or function types. }
+            end;
+
+     You can call a virtual method of an object from C if you explicitly
+     declare this `struct' and explicitly dereference the `Fun' array.
+     The VMT of an object `FooBAR' is an external (in C sense) variable
+     `vmt_Foobar' internally.
+
+   * Methods of objects are named `Myobject_Mymethod' (with exactly two
+     capital letters) internally.
+
+   * If you want to put a program in a library for some reason, and you
+     want to give the `main' program an internal name different from
+     `main', call GPC with the command-line option
+     `--gpc-main="GPCmain"' (see the previous subsection).
+
+
+
+File: gpc.info,  Node: Notes for Debugging,  Next: Run Time System,  Prev: Other Languages,  Up: Programming
+
+Notes for Debugging
+===================
+
+   * The GNU debugger, `gdb', does not yet understand Pascal sets,
+     files or subranges. Now `gdb' allows you to debug these things,
+     even though it does not yet understand some stabs.
+
+   * Forward referencing pointers generate debug info that appears as
+     generic pointers.
+
+   * No information of `with' statements is currently given to the
+     debugger.
+
+   * When debugging, please note that the Initial Letter In Each
+     Identifier Is In Upper Case And The Rest Are In Lower Case, unless
+     explicitly overriden with `name' (*note name::). This is to reduce
+     name clashes with libc and other possible libraries.
+
+   * All visible GPC Run Time System routines have linker names starting
+     with `_p_'.
+
+   * The linker name of the main program is `pascal_main_program'.
+     This is done because ISO Standard wants to have the program name in
+     a separate name space.
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@Import an alpha version of GNU Pascal Compiler into the tree
+(not to be connected to the build before the upgrade to gcc 3.3).
+
+We couldn't use gpc 2.1 because it's too old and doesn't support
+gcc 3.x at all.
+@
+text
+@@

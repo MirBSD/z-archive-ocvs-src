@@ -1,0 +1,2995 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.21.26.11;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.07.57;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.13;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.13;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.31.53;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.42.59;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.08.11;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* Instruction printing code for the ARC.
+   Copyright 1994, 1995, 1997, 1998, 2000, 2001, 2002
+   Free Software Foundation, Inc.
+   Contributed by Doug Evans (dje@@cygnus.com).
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "ansidecl.h"
+#include "libiberty.h"
+#include "dis-asm.h"
+#include "opcode/arc.h"
+#include "elf-bfd.h"
+#include "elf/arc.h"
+#include <string.h>
+#include "opintl.h"
+
+#include <stdarg.h>
+#include "arc-dis.h"
+#include "arc-ext.h"
+
+#ifndef dbg
+#define dbg (0)
+#endif
+
+#define BIT(word,n)	((word) & (1 << n))
+#define BITS(word,s,e)  (((word) << (31 - e)) >> (s + (31 - e)))
+#define OPCODE(word)	(BITS ((word), 27, 31))
+#define FIELDA(word)	(BITS ((word), 21, 26))
+#define FIELDB(word)	(BITS ((word), 15, 20))
+#define FIELDC(word)	(BITS ((word),  9, 14))
+
+/* FIELD D is signed in all of its uses, so we make sure argument is
+   treated as signed for bit shifting purposes:  */
+#define FIELDD(word)	(BITS (((signed int)word), 0, 8))
+
+#define PUT_NEXT_WORD_IN(a)						\
+  do									\
+    {									\
+      if (is_limm == 1 && !NEXT_WORD (1))				\
+        mwerror (state, _("Illegal limm reference in last instruction!\n")); \
+      a = state->words[1];						\
+    }									\
+  while (0)
+
+#define CHECK_FLAG_COND_NULLIFY()				\
+  do								\
+    {								\
+      if (is_shimm == 0)					\
+        {							\
+          flag = BIT (state->words[0], 8);			\
+          state->nullifyMode = BITS (state->words[0], 5, 6);	\
+          cond = BITS (state->words[0], 0, 4);			\
+        }							\
+    }								\
+  while (0)
+
+#define CHECK_COND()				\
+  do						\
+    {						\
+      if (is_shimm == 0)			\
+        cond = BITS (state->words[0], 0, 4);	\
+    }						\
+  while (0)
+
+#define CHECK_FIELD(field)			\
+  do						\
+    {						\
+      if (field == 62)				\
+        {					\
+          is_limm++;				\
+	  field##isReg = 0;			\
+	  PUT_NEXT_WORD_IN (field);		\
+	  limm_value = field;			\
+	}					\
+      else if (field > 60)			\
+        {					\
+	  field##isReg = 0;			\
+	  is_shimm++;				\
+	  flag = (field == 61);			\
+	  field = FIELDD (state->words[0]);	\
+	}					\
+    }						\
+  while (0)
+
+#define CHECK_FIELD_A()				\
+  do						\
+    {						\
+      fieldA = FIELDA (state->words[0]);	\
+      if (fieldA > 60)				\
+        {					\
+	  fieldAisReg = 0;			\
+	  fieldA = 0;				\
+	}					\
+    }						\
+  while (0)
+
+#define CHECK_FIELD_B()				\
+  do						\
+    {						\
+      fieldB = FIELDB (state->words[0]);	\
+      CHECK_FIELD (fieldB);			\
+    }						\
+  while (0)
+
+#define CHECK_FIELD_C()				\
+  do						\
+    {						\
+      fieldC = FIELDC (state->words[0]);	\
+      CHECK_FIELD (fieldC);			\
+    }						\
+  while (0)
+
+#define IS_SMALL(x) (((field##x) < 256) && ((field##x) > -257))
+#define IS_REG(x)   (field##x##isReg)
+#define WRITE_FORMAT_LB_Rx_RB(x)     WRITE_FORMAT(x,"[","]","","")
+#define WRITE_FORMAT_x_COMMA_LB(x)   WRITE_FORMAT(x,"",",[","",",[")
+#define WRITE_FORMAT_COMMA_x_RB(x)   WRITE_FORMAT(x,",","]",",","]")
+#define WRITE_FORMAT_x_RB(x)         WRITE_FORMAT(x,"","]","","]")
+#define WRITE_FORMAT_COMMA_x(x)      WRITE_FORMAT(x,",","",",","")
+#define WRITE_FORMAT_x_COMMA(x)      WRITE_FORMAT(x,"",",","",",")
+#define WRITE_FORMAT_x(x)            WRITE_FORMAT(x,"","","","")
+#define WRITE_FORMAT(x,cb1,ca1,cb,ca) strcat (formatString,		\
+				     (IS_REG (x) ? cb1"%r"ca1 :		\
+				      usesAuxReg ? cb"%a"ca :		\
+				      IS_SMALL (x) ? cb"%d"ca : cb"%h"ca))
+#define WRITE_FORMAT_RB()	strcat (formatString, "]")
+#define WRITE_COMMENT(str)	(state->comm[state->commNum++] = (str))
+#define WRITE_NOP_COMMENT()	if (!fieldAisReg && !flag) WRITE_COMMENT ("nop");
+
+#define NEXT_WORD(x)	(offset += 4, state->words[x])
+
+#define add_target(x)	(state->targets[state->tcnt++] = (x))
+
+static char comment_prefix[] = "\t; ";
+
+static const char *core_reg_name PARAMS ((struct arcDisState *, int));
+static const char *aux_reg_name PARAMS ((struct arcDisState *, int));
+static const char *cond_code_name PARAMS ((struct arcDisState *, int));
+static const char *instruction_name
+  PARAMS ((struct arcDisState *, int, int, int *));
+static void mwerror PARAMS ((struct arcDisState *, const char *));
+static const char *post_address PARAMS ((struct arcDisState *, int));
+static void write_comments_
+  PARAMS ((struct arcDisState *, int, int, long int));
+static void write_instr_name_
+  PARAMS ((struct arcDisState *, const char *, int, int, int, int, int, int));
+static int dsmOneArcInst PARAMS ((bfd_vma, struct arcDisState *));
+static const char *_coreRegName PARAMS ((void *, int));
+static int decodeInstr PARAMS ((bfd_vma, disassemble_info *));
+
+static const char *
+core_reg_name (state, val)
+     struct arcDisState * state;
+     int                  val;
+{
+  if (state->coreRegName)
+    return (*state->coreRegName)(state->_this, val);
+  return 0;
+}
+
+static const char *
+aux_reg_name (state, val)
+     struct arcDisState * state;
+     int                  val;
+{
+  if (state->auxRegName)
+    return (*state->auxRegName)(state->_this, val);
+  return 0;
+}
+
+static const char *
+cond_code_name (state, val)
+     struct arcDisState * state;
+     int                  val;
+{
+  if (state->condCodeName)
+    return (*state->condCodeName)(state->_this, val);
+  return 0;
+}
+
+static const char *
+instruction_name (state, op1, op2, flags)
+     struct arcDisState * state;
+     int    op1;
+     int    op2;
+     int *  flags;
+{
+  if (state->instName)
+    return (*state->instName)(state->_this, op1, op2, flags);
+  return 0;
+}
+
+static void
+mwerror (state, msg)
+     struct arcDisState * state;
+     const char * msg;
+{
+  if (state->err != 0)
+    (*state->err)(state->_this, (msg));
+}
+
+static const char *
+post_address (state, addr)
+     struct arcDisState * state;
+     int addr;
+{
+  static char id[3 * ARRAY_SIZE (state->addresses)];
+  int j, i = state->acnt;
+
+  if (i < ((int) ARRAY_SIZE (state->addresses)))
+    {
+      state->addresses[i] = addr;
+      ++state->acnt;
+      j = i*3;
+      id[j+0] = '@@';
+      id[j+1] = '0'+i;
+      id[j+2] = 0;
+
+      return id + j;
+    }
+  return "";
+}
+
+static void my_sprintf PARAMS ((struct arcDisState *, char *, const char *,
+				...));
+
+static void
+my_sprintf VPARAMS ((struct arcDisState *state, char *buf, const char *format,
+		     ...))
+{
+  char *bp;
+  const char *p;
+  int size, leading_zero, regMap[2];
+  long auxNum;
+
+  VA_OPEN (ap, format);
+  VA_FIXEDARG (ap, struct arcDisState *, state);
+  VA_FIXEDARG (ap, char *, buf);
+  VA_FIXEDARG (ap, const char *, format);
+
+  bp = buf;
+  *bp = 0;
+  p = format;
+  auxNum = -1;
+  regMap[0] = 0;
+  regMap[1] = 0;
+
+  while (1)
+    switch (*p++)
+      {
+      case 0:
+	goto DOCOMM; /* (return)  */
+      default:
+	*bp++ = p[-1];
+	break;
+      case '%':
+	size = 0;
+	leading_zero = 0;
+      RETRY: ;
+	switch (*p++)
+	  {
+	  case '0':
+	  case '1':
+	  case '2':
+	  case '3':
+	  case '4':
+	  case '5':
+	  case '6':
+	  case '7':
+	  case '8':
+	  case '9':
+	    {
+	      /* size.  */
+	      size = p[-1] - '0';
+	      if (size == 0)
+		leading_zero = 1; /* e.g. %08x  */
+	      while (*p >= '0' && *p <= '9')
+		{
+		  size = size * 10 + *p - '0';
+		  p++;
+		}
+	      goto RETRY;
+	    }
+#define inc_bp() bp = bp + strlen (bp)
+
+	  case 'h':
+	    {
+	      unsigned u = va_arg (ap, int);
+
+	      /* Hex.  We can change the format to 0x%08x in
+		 one place, here, if we wish.
+		 We add underscores for easy reading.  */
+	      if (u > 65536)
+		sprintf (bp, "0x%x_%04x", u >> 16, u & 0xffff);
+	      else
+		sprintf (bp, "0x%x", u);
+	      inc_bp ();
+	    }
+	    break;
+	  case 'X': case 'x':
+	    {
+	      int val = va_arg (ap, int);
+
+	      if (size != 0)
+		if (leading_zero)
+		  sprintf (bp, "%0*x", size, val);
+		else
+		  sprintf (bp, "%*x", size, val);
+	      else
+		sprintf (bp, "%x", val);
+	      inc_bp ();
+	    }
+	    break;
+	  case 'd':
+	    {
+	      int val = va_arg (ap, int);
+
+	      if (size != 0)
+		sprintf (bp, "%*d", size, val);
+	      else
+		sprintf (bp, "%d", val);
+	      inc_bp ();
+	    }
+	    break;
+	  case 'r':
+	    {
+	      /* Register.  */
+	      int val = va_arg (ap, int);
+
+#define REG2NAME(num, name) case num: sprintf (bp, ""name); \
+  regMap[(num < 32) ? 0 : 1] |= 1 << (num - ((num < 32) ? 0 : 32)); break;
+
+	      switch (val)
+		{
+		  REG2NAME (26, "gp");
+		  REG2NAME (27, "fp");
+		  REG2NAME (28, "sp");
+		  REG2NAME (29, "ilink1");
+		  REG2NAME (30, "ilink2");
+		  REG2NAME (31, "blink");
+		  REG2NAME (60, "lp_count");
+		default:
+		  {
+		    const char * ext;
+
+		    ext = core_reg_name (state, val);
+		    if (ext)
+		      sprintf (bp, "%s", ext);
+		    else
+		      sprintf (bp,"r%d",val);
+		  }
+		  break;
+		}
+	      inc_bp ();
+	    } break;
+
+	  case 'a':
+	    {
+	      /* Aux Register.  */
+	      int val = va_arg (ap, int);
+
+#define AUXREG2NAME(num, name) case num: sprintf (bp,name); break;
+
+	      switch (val)
+		{
+		  AUXREG2NAME (0x0, "status");
+		  AUXREG2NAME (0x1, "semaphore");
+		  AUXREG2NAME (0x2, "lp_start");
+		  AUXREG2NAME (0x3, "lp_end");
+		  AUXREG2NAME (0x4, "identity");
+		  AUXREG2NAME (0x5, "debug");
+		default:
+		  {
+		    const char *ext;
+
+		    ext = aux_reg_name (state, val);
+		    if (ext)
+		      sprintf (bp, "%s", ext);
+		    else
+		      my_sprintf (state, bp, "%h", val);
+		  }
+		  break;
+		}
+	      inc_bp ();
+	    }
+	    break;
+
+	  case 's':
+	    {
+	      sprintf (bp, "%s", va_arg (ap, char *));
+	      inc_bp ();
+	    }
+	    break;
+
+	  default:
+	    fprintf (stderr, "?? format %c\n", p[-1]);
+	    break;
+	  }
+      }
+
+ DOCOMM: *bp = 0;
+  VA_CLOSE (ap);
+}
+
+static void
+write_comments_(state, shimm, is_limm, limm_value)
+     struct arcDisState * state;
+     int shimm;
+     int is_limm;
+     long limm_value;
+{
+  if (state->commentBuffer != 0)
+    {
+      int i;
+
+      if (is_limm)
+	{
+	  const char *name = post_address (state, limm_value + shimm);
+
+	  if (*name != 0)
+	    WRITE_COMMENT (name);
+	}
+      for (i = 0; i < state->commNum; i++)
+	{
+	  if (i == 0)
+	    strcpy (state->commentBuffer, comment_prefix);
+	  else
+	    strcat (state->commentBuffer, ", ");
+	  strncat (state->commentBuffer, state->comm[i],
+		   sizeof (state->commentBuffer));
+	}
+    }
+}
+
+#define write_comments2(x) write_comments_(state, x, is_limm, limm_value)
+#define write_comments() write_comments2(0)
+
+static const char *condName[] = {
+  /* 0..15.  */
+  ""   , "z"  , "nz" , "p"  , "n"  , "c"  , "nc" , "v"  ,
+  "nv" , "gt" , "ge" , "lt" , "le" , "hi" , "ls" , "pnz"
+};
+
+static void
+write_instr_name_(state, instrName, cond, condCodeIsPartOfName, flag, signExtend, addrWriteBack, directMem)
+     struct arcDisState * state;
+     const char * instrName;
+     int cond;
+     int condCodeIsPartOfName;
+     int flag;
+     int signExtend;
+     int addrWriteBack;
+     int directMem;
+{
+  strcpy (state->instrBuffer, instrName);
+
+  if (cond > 0)
+    {
+      const char *cc = 0;
+
+      if (!condCodeIsPartOfName)
+	strcat (state->instrBuffer, ".");
+
+      if (cond < 16)
+	cc = condName[cond];
+      else
+	cc = cond_code_name (state, cond);
+
+      if (!cc)
+	cc = "???";
+
+      strcat (state->instrBuffer, cc);
+    }
+
+  if (flag)
+    strcat (state->instrBuffer, ".f");
+
+  switch (state->nullifyMode)
+    {
+    case BR_exec_always:
+      strcat (state->instrBuffer, ".d");
+      break;
+    case BR_exec_when_jump:
+      strcat (state->instrBuffer, ".jd");
+      break;
+    }
+
+  if (signExtend)
+    strcat (state->instrBuffer, ".x");
+
+  if (addrWriteBack)
+    strcat (state->instrBuffer, ".a");
+
+  if (directMem)
+    strcat (state->instrBuffer, ".di");
+}
+
+#define write_instr_name()						\
+  do									\
+    {									\
+      write_instr_name_(state, instrName,cond, condCodeIsPartOfName,	\
+			flag, signExtend, addrWriteBack, directMem);	\
+      formatString[0] = '\0';						\
+    }									\
+  while (0)
+
+enum {
+  op_LD0 = 0, op_LD1 = 1, op_ST  = 2, op_3   = 3,
+  op_BC  = 4, op_BLC = 5, op_LPC = 6, op_JC  = 7,
+  op_ADD = 8, op_ADC = 9, op_SUB = 10, op_SBC = 11,
+  op_AND = 12, op_OR  = 13, op_BIC = 14, op_XOR = 15
+};
+
+extern disassemble_info tm_print_insn_info;
+
+static int
+dsmOneArcInst (addr, state)
+     bfd_vma              addr;
+     struct arcDisState * state;
+{
+  int condCodeIsPartOfName = 0;
+  int decodingClass;
+  const char * instrName;
+  int repeatsOp = 0;
+  int fieldAisReg = 1;
+  int fieldBisReg = 1;
+  int fieldCisReg = 1;
+  int fieldA;
+  int fieldB;
+  int fieldC = 0;
+  int flag = 0;
+  int cond = 0;
+  int is_shimm = 0;
+  int is_limm = 0;
+  long limm_value = 0;
+  int signExtend = 0;
+  int addrWriteBack = 0;
+  int directMem = 0;
+  int is_linked = 0;
+  int offset = 0;
+  int usesAuxReg = 0;
+  int flags;
+  int ignoreFirstOpd;
+  char formatString[60];
+
+  state->instructionLen = 4;
+  state->nullifyMode = BR_exec_when_no_jump;
+  state->opWidth = 12;
+  state->isBranch = 0;
+
+  state->_mem_load = 0;
+  state->_ea_present = 0;
+  state->_load_len = 0;
+  state->ea_reg1 = no_reg;
+  state->ea_reg2 = no_reg;
+  state->_offset = 0;
+
+  if (! NEXT_WORD (0))
+    return 0;
+
+  state->_opcode = OPCODE (state->words[0]);
+  instrName = 0;
+  decodingClass = 0; /* default!  */
+  repeatsOp = 0;
+  condCodeIsPartOfName=0;
+  state->commNum = 0;
+  state->tcnt = 0;
+  state->acnt = 0;
+  state->flow = noflow;
+  ignoreFirstOpd = 0;
+
+  if (state->commentBuffer)
+    state->commentBuffer[0] = '\0';
+
+  switch (state->_opcode)
+    {
+    case op_LD0:
+      switch (BITS (state->words[0],1,2))
+	{
+	case 0:
+	  instrName = "ld";
+	  state->_load_len = 4;
+	  break;
+	case 1:
+	  instrName = "ldb";
+	  state->_load_len = 1;
+	  break;
+	case 2:
+	  instrName = "ldw";
+	  state->_load_len = 2;
+	  break;
+	default:
+	  instrName = "??? (0[3])";
+	  state->flow = invalid_instr;
+	  break;
+	}
+      decodingClass = 5;
+      break;
+
+    case op_LD1:
+      if (BIT (state->words[0],13))
+	{
+	  instrName = "lr";
+	  decodingClass = 10;
+	}
+      else
+	{
+	  switch (BITS (state->words[0],10,11))
+	    {
+	    case 0:
+	      instrName = "ld";
+	      state->_load_len = 4;
+	      break;
+	    case 1:
+	      instrName = "ldb";
+	      state->_load_len = 1;
+	      break;
+	    case 2:
+	      instrName = "ldw";
+	      state->_load_len = 2;
+	      break;
+	    default:
+	      instrName = "??? (1[3])";
+	      state->flow = invalid_instr;
+	      break;
+	    }
+	  decodingClass = 6;
+	}
+      break;
+
+    case op_ST:
+      if (BIT (state->words[0],25))
+	{
+	  instrName = "sr";
+	  decodingClass = 8;
+	}
+      else
+	{
+	  switch (BITS (state->words[0],22,23))
+	    {
+	    case 0:
+	      instrName = "st";
+	      break;
+	    case 1:
+	      instrName = "stb";
+	      break;
+	    case 2:
+	      instrName = "stw";
+	      break;
+	    default:
+	      instrName = "??? (2[3])";
+	      state->flow = invalid_instr;
+	      break;
+	    }
+	  decodingClass = 7;
+	}
+      break;
+
+    case op_3:
+      decodingClass = 1;  /* default for opcode 3...  */
+      switch (FIELDC (state->words[0]))
+	{
+	case  0:
+	  instrName = "flag";
+	  decodingClass = 2;
+	  break;
+	case  1:
+	  instrName = "asr";
+	  break;
+	case  2:
+	  instrName = "lsr";
+	  break;
+	case  3:
+	  instrName = "ror";
+	  break;
+	case  4:
+	  instrName = "rrc";
+	  break;
+	case  5:
+	  instrName = "sexb";
+	  break;
+	case  6:
+	  instrName = "sexw";
+	  break;
+	case  7:
+	  instrName = "extb";
+	  break;
+	case  8:
+	  instrName = "extw";
+	  break;
+	case  0x3f:
+	  {
+	    decodingClass = 9;
+	    switch( FIELDD (state->words[0]) )
+	      {
+	      case 0:
+		instrName = "brk";
+		break;
+	      case 1:
+		instrName = "sleep";
+		break;
+	      case 2:
+		instrName = "swi";
+		break;
+	      default:
+		instrName = "???";
+		state->flow=invalid_instr;
+		break;
+	      }
+	  }
+	  break;
+
+	  /* ARC Extension Library Instructions
+	     NOTE: We assume that extension codes are these instrs.  */
+	default:
+	  instrName = instruction_name (state,
+					state->_opcode,
+					FIELDC (state->words[0]),
+					&flags);
+	  if (!instrName)
+	    {
+	      instrName = "???";
+	      state->flow = invalid_instr;
+	    }
+	  if (flags & IGNORE_FIRST_OPD)
+	    ignoreFirstOpd = 1;
+	  break;
+	}
+      break;
+
+    case op_BC:
+      instrName = "b";
+    case op_BLC:
+      if (!instrName)
+	instrName = "bl";
+    case op_LPC:
+      if (!instrName)
+	instrName = "lp";
+    case op_JC:
+      if (!instrName)
+	{
+	  if (BITS (state->words[0],9,9))
+	    {
+	      instrName = "jl";
+	      is_linked = 1;
+	    }
+	  else
+	    {
+	      instrName = "j";
+	      is_linked = 0;
+	    }
+	}
+      condCodeIsPartOfName = 1;
+      decodingClass = ((state->_opcode == op_JC) ? 4 : 3);
+      state->isBranch = 1;
+      break;
+
+    case op_ADD:
+    case op_ADC:
+    case op_AND:
+      repeatsOp = (FIELDC (state->words[0]) == FIELDB (state->words[0]));
+      decodingClass = 0;
+
+      switch (state->_opcode)
+	{
+	case op_ADD:
+	  instrName = (repeatsOp ? "asl" : "add");
+	  break;
+	case op_ADC:
+	  instrName = (repeatsOp ? "rlc" : "adc");
+	  break;
+	case op_AND:
+	  instrName = (repeatsOp ? "mov" : "and");
+	  break;
+	}
+      break;
+
+    case op_SUB: instrName = "sub";
+      break;
+    case op_SBC: instrName = "sbc";
+      break;
+    case op_OR:  instrName = "or";
+      break;
+    case op_BIC: instrName = "bic";
+      break;
+
+    case op_XOR:
+      if (state->words[0] == 0x7fffffff)
+	{
+	  /* nop encoded as xor -1, -1, -1  */
+	  instrName = "nop";
+	  decodingClass = 9;
+	}
+      else
+	instrName = "xor";
+      break;
+
+    default:
+      instrName = instruction_name (state,state->_opcode,0,&flags);
+      /* if (instrName) printf("FLAGS=0x%x\n", flags);  */
+      if (!instrName)
+	{
+	  instrName = "???";
+	  state->flow=invalid_instr;
+	}
+      if (flags & IGNORE_FIRST_OPD)
+	ignoreFirstOpd = 1;
+      break;
+    }
+
+  fieldAisReg = fieldBisReg = fieldCisReg = 1; /* Assume regs for now.  */
+  flag = cond = is_shimm = is_limm = 0;
+  state->nullifyMode = BR_exec_when_no_jump;	/* 0  */
+  signExtend = addrWriteBack = directMem = 0;
+  usesAuxReg = 0;
+
+  switch (decodingClass)
+    {
+    case 0:
+      CHECK_FIELD_A ();
+      CHECK_FIELD_B ();
+      if (!repeatsOp)
+	CHECK_FIELD_C ();
+      CHECK_FLAG_COND_NULLIFY ();
+
+      write_instr_name ();
+      if (!ignoreFirstOpd)
+	{
+	  WRITE_FORMAT_x (A);
+	  WRITE_FORMAT_COMMA_x (B);
+	  if (!repeatsOp)
+	    WRITE_FORMAT_COMMA_x (C);
+	  WRITE_NOP_COMMENT ();
+	  my_sprintf (state, state->operandBuffer, formatString,
+		      fieldA, fieldB, fieldC);
+	}
+      else
+	{
+	  WRITE_FORMAT_x (B);
+	  if (!repeatsOp)
+	    WRITE_FORMAT_COMMA_x (C);
+	  my_sprintf (state, state->operandBuffer, formatString,
+		      fieldB, fieldC);
+	}
+      write_comments ();
+      break;
+
+    case 1:
+      CHECK_FIELD_A ();
+      CHECK_FIELD_B ();
+      CHECK_FLAG_COND_NULLIFY ();
+
+      write_instr_name ();
+      if (!ignoreFirstOpd)
+	{
+	  WRITE_FORMAT_x (A);
+	  WRITE_FORMAT_COMMA_x (B);
+	  WRITE_NOP_COMMENT ();
+	  my_sprintf (state, state->operandBuffer, formatString,
+		      fieldA, fieldB);
+	}
+      else
+	{
+	  WRITE_FORMAT_x (B);
+	  my_sprintf (state, state->operandBuffer, formatString, fieldB);
+	}
+      write_comments ();
+      break;
+
+    case 2:
+      CHECK_FIELD_B ();
+      CHECK_FLAG_COND_NULLIFY ();
+      flag = 0; /* this is the FLAG instruction -- it's redundant  */
+
+      write_instr_name ();
+      WRITE_FORMAT_x (B);
+      my_sprintf (state, state->operandBuffer, formatString, fieldB);
+      write_comments ();
+      break;
+
+    case 3:
+      fieldA = BITS (state->words[0],7,26) << 2;
+      fieldA = (fieldA << 10) >> 10; /* make it signed  */
+      fieldA += addr + 4;
+      CHECK_FLAG_COND_NULLIFY ();
+      flag = 0;
+
+      write_instr_name ();
+      /* This address could be a label we know. Convert it.  */
+      if (state->_opcode != op_LPC /* LP  */)
+	{
+	  add_target (fieldA); /* For debugger.  */
+	  state->flow = state->_opcode == op_BLC /* BL  */
+	    ? direct_call
+	    : direct_jump;
+	  /* indirect calls are achieved by "lr blink,[status];
+	     lr dest<- func addr; j [dest]"  */
+	}
+
+      strcat (formatString, "%s"); /* address/label name */
+      my_sprintf (state, state->operandBuffer, formatString,
+		  post_address (state, fieldA));
+      write_comments ();
+      break;
+
+    case 4:
+      /* For op_JC -- jump to address specified.
+	 Also covers jump and link--bit 9 of the instr. word
+	 selects whether linked, thus "is_linked" is set above.  */
+      fieldA = 0;
+      CHECK_FIELD_B ();
+      CHECK_FLAG_COND_NULLIFY ();
+
+      if (!fieldBisReg)
+	{
+	  fieldAisReg = 0;
+	  fieldA = (fieldB >> 25) & 0x7F; /* flags */
+	  fieldB = (fieldB & 0xFFFFFF) << 2;
+	  state->flow = is_linked ? direct_call : direct_jump;
+	  add_target (fieldB);
+	  /* screwy JLcc requires .jd mode to execute correctly
+	   * but we pretend it is .nd (no delay slot).  */
+	  if (is_linked && state->nullifyMode == BR_exec_when_jump)
+	    state->nullifyMode = BR_exec_when_no_jump;
+	}
+      else
+	{
+	  state->flow = is_linked ? indirect_call : indirect_jump;
+	  /* We should also treat this as indirect call if NOT linked
+	   * but the preceding instruction was a "lr blink,[status]"
+	   * and we have a delay slot with "add blink,blink,2".
+	   * For now we can't detect such.  */
+	  state->register_for_indirect_jump = fieldB;
+	}
+
+      write_instr_name ();
+      strcat (formatString,
+	      IS_REG (B) ? "[%r]" : "%s"); /* address/label name  */
+      if (fieldA != 0)
+	{
+	  fieldAisReg = 0;
+	  WRITE_FORMAT_COMMA_x (A);
+	}
+      if (IS_REG (B))
+	my_sprintf (state, state->operandBuffer, formatString, fieldB, fieldA);
+      else
+	my_sprintf (state, state->operandBuffer, formatString,
+		    post_address (state, fieldB), fieldA);
+      write_comments ();
+      break;
+
+    case 5:
+      /* LD instruction.
+	 B and C can be regs, or one (both?) can be limm.  */
+      CHECK_FIELD_A ();
+      CHECK_FIELD_B ();
+      CHECK_FIELD_C ();
+      if (dbg)
+	printf ("5:b reg %d %d c reg %d %d  \n",
+		fieldBisReg,fieldB,fieldCisReg,fieldC);
+      state->_offset = 0;
+      state->_ea_present = 1;
+      if (fieldBisReg)
+	state->ea_reg1 = fieldB;
+      else
+	state->_offset += fieldB;
+      if (fieldCisReg)
+	state->ea_reg2 = fieldC;
+      else
+	state->_offset += fieldC;
+      state->_mem_load = 1;
+
+      directMem     = BIT (state->words[0],5);
+      addrWriteBack = BIT (state->words[0],3);
+      signExtend    = BIT (state->words[0],0);
+
+      write_instr_name ();
+      WRITE_FORMAT_x_COMMA_LB(A);
+      if (fieldBisReg || fieldB != 0)
+	WRITE_FORMAT_x_COMMA (B);
+      else
+	fieldB = fieldC;
+
+      WRITE_FORMAT_x_RB (C);
+      my_sprintf (state, state->operandBuffer, formatString,
+		  fieldA, fieldB, fieldC);
+      write_comments ();
+      break;
+
+    case 6:
+      /* LD instruction.  */
+      CHECK_FIELD_B ();
+      CHECK_FIELD_A ();
+      fieldC = FIELDD (state->words[0]);
+
+      if (dbg)
+	printf ("6:b reg %d %d c 0x%x  \n",
+		fieldBisReg, fieldB, fieldC);
+      state->_ea_present = 1;
+      state->_offset = fieldC;
+      state->_mem_load = 1;
+      if (fieldBisReg)
+	state->ea_reg1 = fieldB;
+      /* field B is either a shimm (same as fieldC) or limm (different!)
+	 Say ea is not present, so only one of us will do the name lookup.  */
+      else
+	state->_offset += fieldB, state->_ea_present = 0;
+
+      directMem     = BIT (state->words[0],14);
+      addrWriteBack = BIT (state->words[0],12);
+      signExtend    = BIT (state->words[0],9);
+
+      write_instr_name ();
+      WRITE_FORMAT_x_COMMA_LB (A);
+      if (!fieldBisReg)
+	{
+	  fieldB = state->_offset;
+	  WRITE_FORMAT_x_RB (B);
+	}
+      else
+	{
+	  WRITE_FORMAT_x (B);
+	  if (fieldC != 0 && !BIT (state->words[0],13))
+	    {
+	      fieldCisReg = 0;
+	      WRITE_FORMAT_COMMA_x_RB (C);
+	    }
+	  else
+	    WRITE_FORMAT_RB ();
+	}
+      my_sprintf (state, state->operandBuffer, formatString,
+		  fieldA, fieldB, fieldC);
+      write_comments ();
+      break;
+
+    case 7:
+      /* ST instruction.  */
+      CHECK_FIELD_B();
+      CHECK_FIELD_C();
+      fieldA = FIELDD(state->words[0]); /* shimm  */
+
+      /* [B,A offset]  */
+      if (dbg) printf("7:b reg %d %x off %x\n",
+		      fieldBisReg,fieldB,fieldA);
+      state->_ea_present = 1;
+      state->_offset = fieldA;
+      if (fieldBisReg)
+	state->ea_reg1 = fieldB;
+      /* field B is either a shimm (same as fieldA) or limm (different!)
+	 Say ea is not present, so only one of us will do the name lookup.
+	 (for is_limm we do the name translation here).  */
+      else
+	state->_offset += fieldB, state->_ea_present = 0;
+
+      directMem     = BIT(state->words[0],26);
+      addrWriteBack = BIT(state->words[0],24);
+
+      write_instr_name();
+      WRITE_FORMAT_x_COMMA_LB(C);
+
+      if (!fieldBisReg)
+	{
+	  fieldB = state->_offset;
+	  WRITE_FORMAT_x_RB(B);
+	}
+      else
+	{
+	  WRITE_FORMAT_x(B);
+	  if (fieldBisReg && fieldA != 0)
+	    {
+	      fieldAisReg = 0;
+	      WRITE_FORMAT_COMMA_x_RB(A);
+	    }
+	  else
+	    WRITE_FORMAT_RB();
+	}
+      my_sprintf (state, state->operandBuffer, formatString,
+		  fieldC, fieldB, fieldA);
+      write_comments2(fieldA);
+      break;
+    case 8:
+      /* SR instruction  */
+      CHECK_FIELD_B();
+      CHECK_FIELD_C();
+
+      write_instr_name();
+      WRITE_FORMAT_x_COMMA_LB(C);
+      /* Try to print B as an aux reg if it is not a core reg.  */
+      usesAuxReg = 1;
+      WRITE_FORMAT_x(B);
+      WRITE_FORMAT_RB();
+      my_sprintf (state, state->operandBuffer, formatString, fieldC, fieldB);
+      write_comments();
+      break;
+
+    case 9:
+      write_instr_name();
+      state->operandBuffer[0] = '\0';
+      break;
+
+    case 10:
+      /* LR instruction */
+      CHECK_FIELD_A();
+      CHECK_FIELD_B();
+
+      write_instr_name();
+      WRITE_FORMAT_x_COMMA_LB(A);
+      /* Try to print B as an aux reg if it is not a core reg. */
+      usesAuxReg = 1;
+      WRITE_FORMAT_x(B);
+      WRITE_FORMAT_RB();
+      my_sprintf (state, state->operandBuffer, formatString, fieldA, fieldB);
+      write_comments();
+      break;
+
+    case 11:
+      CHECK_COND();
+      write_instr_name();
+      state->operandBuffer[0] = '\0';
+      break;
+
+    default:
+      mwerror (state, "Bad decoding class in ARC disassembler");
+      break;
+    }
+
+  state->_cond = cond;
+  return state->instructionLen = offset;
+}
+
+
+/* Returns the name the user specified core extension register.  */
+static const char *
+_coreRegName(arg, regval)
+     void * arg ATTRIBUTE_UNUSED;
+     int regval;
+{
+  return arcExtMap_coreRegName (regval);
+}
+
+/* Returns the name the user specified AUX extension register.  */
+static const char *
+_auxRegName(void *_this ATTRIBUTE_UNUSED, int regval)
+{
+  return arcExtMap_auxRegName(regval);
+}
+
+
+/* Returns the name the user specified condition code name.  */
+static const char *
+_condCodeName(void *_this ATTRIBUTE_UNUSED, int regval)
+{
+  return arcExtMap_condCodeName(regval);
+}
+
+/* Returns the name the user specified extension instruction.  */
+static const char *
+_instName (void *_this ATTRIBUTE_UNUSED, int majop, int minop, int *flags)
+{
+  return arcExtMap_instName(majop, minop, flags);
+}
+
+/* Decode an instruction returning the size of the instruction
+   in bytes or zero if unrecognized.  */
+static int
+decodeInstr (address, info)
+     bfd_vma            address; /* Address of this instruction.  */
+     disassemble_info * info;
+{
+  int status;
+  bfd_byte buffer[4];
+  struct arcDisState s;	/* ARC Disassembler state  */
+  void *stream = info->stream; /* output stream  */
+  fprintf_ftype func = info->fprintf_func;
+  int bytes;
+
+  memset (&s, 0, sizeof(struct arcDisState));
+
+  /* read first instruction  */
+  status = (*info->read_memory_func) (address, buffer, 4, info);
+  if (status != 0)
+    {
+      (*info->memory_error_func) (status, address, info);
+      return 0;
+    }
+  if (info->endian == BFD_ENDIAN_LITTLE)
+    s.words[0] = bfd_getl32(buffer);
+  else
+    s.words[0] = bfd_getb32(buffer);
+  /* always read second word in case of limm  */
+
+  /* we ignore the result since last insn may not have a limm  */
+  status = (*info->read_memory_func) (address + 4, buffer, 4, info);
+  if (info->endian == BFD_ENDIAN_LITTLE)
+    s.words[1] = bfd_getl32(buffer);
+  else
+    s.words[1] = bfd_getb32(buffer);
+
+  s._this = &s;
+  s.coreRegName = _coreRegName;
+  s.auxRegName = _auxRegName;
+  s.condCodeName = _condCodeName;
+  s.instName = _instName;
+
+  /* disassemble  */
+  bytes = dsmOneArcInst(address, (void *)&s);
+
+  /* display the disassembly instruction  */
+  (*func) (stream, "%08x ", s.words[0]);
+  (*func) (stream, "    ");
+
+  (*func) (stream, "%-10s ", s.instrBuffer);
+
+  if (__TRANSLATION_REQUIRED(s))
+    {
+      bfd_vma addr = s.addresses[s.operandBuffer[1] - '0'];
+      (*info->print_address_func) ((bfd_vma) addr, info);
+      (*func) (stream, "\n");
+    }
+  else
+    (*func) (stream, "%s",s.operandBuffer);
+  return s.instructionLen;
+}
+
+/* Return the print_insn function to use.
+   Side effect: load (possibly empty) extension section  */
+
+disassembler_ftype
+arc_get_disassembler (void *ptr)
+{
+  if (ptr)
+    build_ARC_extmap (ptr);
+  return decodeInstr;
+}
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1994, 1995, 1997, 1998, 2000, 2001
+d20 2
+a21 2
+#include <ansidecl.h>
+#include <libiberty.h>
+a28 1
+#include <ctype.h>
+d37 6
+a42 6
+#define BIT(word,n) 	((word) & (1 << n))
+#define BITS(word,s,e)  (((word) << (31 - e)) >> (s + (31 - e))) 
+#define OPCODE(word) 	(BITS ((word), 27, 31))
+#define FIELDA(word) 	(BITS ((word), 21, 26))
+#define FIELDB(word) 	(BITS ((word), 15, 20))
+#define FIELDC(word) 	(BITS ((word),  9, 14))
+d46 1
+a46 1
+#define FIELDD(word) 	(BITS (((signed int)word), 0, 8))
+d48 7
+a54 7
+#define PUT_NEXT_WORD_IN(a)							\
+  do										\
+    {										\
+      if (is_limm == 1 && !NEXT_WORD (1))					\
+        mwerror (state, _("Illegal limm reference in last instruction!\n"));	\
+        a = state->words[1];							\
+    }										\
+d100 1
+a100 1
+      fieldA = FIELDA(state->words[0]);		\
+d138 1
+a138 1
+#define WRITE_FORMAT_RB() 	strcat (formatString, "]")
+d140 1
+a140 1
+#define WRITE_NOP_COMMENT() 	if (!fieldAisReg && !flag) WRITE_COMMENT ("nop");
+d142 1
+a142 1
+#define NEXT_WORD(x) 	(offset += 4, state->words[x])
+d144 1
+a144 1
+#define add_target(x) 	(state->targets[state->tcnt++] = (x))
+d148 15
+d166 1
+a166 1
+     int                  val; 
+d176 1
+a176 1
+     int                  val; 
+d186 1
+a186 1
+     int                  val; 
+d198 1
+a198 1
+     int *  flags; 
+d208 1
+a208 1
+     const char * msg; 
+d217 1
+a217 1
+     int addr; 
+d230 1
+a230 1
+      
+d236 6
+a241 6
+static void 
+my_sprintf (
+	    struct arcDisState * state,
+	    char * buf,
+	    const char * format,
+	    ...)
+d243 1
+a243 1
+  char *bp; 
+d247 7
+a253 5
+  va_list ap;
+  
+  va_start (ap, format);
+  
+  bp = buf; 
+d259 2
+a260 2
+  
+  while (1) 
+d263 4
+a266 4
+    case 0:
+      goto DOCOMM; /* (return)  */
+      default: 
+	*bp++ = p[-1]; 
+d272 1
+a272 1
+	switch (*p++) 
+d298 1
+a298 1
+	  case 'h': 
+d305 1
+a305 1
+	      if (u > 65536) 
+d307 1
+a307 1
+	      else 
+d310 1
+a310 1
+	    } 
+d312 1
+a312 1
+	  case 'X': case 'x': 
+d316 1
+a316 1
+	      if (size != 0) 
+d326 1
+a326 1
+	  case 'd': 
+d329 1
+a329 1
+	    
+d337 1
+a337 1
+	  case 'r': 
+d341 1
+a341 1
+	    
+d344 2
+a345 2
+	      
+	      switch (val) 
+d368 2
+a369 2
+	  
+	  case 'a': 
+d376 1
+a376 1
+	      switch (val) 
+d399 2
+a400 2
+	    
+	  case 's': 
+d406 1
+a406 1
+	    
+d414 1
+d417 1
+a417 1
+static void 
+d424 1
+a424 1
+  if (state->commentBuffer != 0) 
+d428 1
+a428 1
+      if (is_limm) 
+d435 1
+a435 1
+      for (i = 0; i < state->commNum; i++) 
+d440 3
+a442 2
+	    strcat (state->commentBuffer, ", ");	
+	  strncat (state->commentBuffer, state->comm[i], sizeof (state->commentBuffer));
+d452 1
+a452 1
+  ""   , "z"  , "nz" , "p"  , "n"  , "c"  , "nc" , "v"  , 
+d456 1
+a456 1
+static void 
+d469 1
+a469 1
+  if (cond > 0) 
+d490 1
+a490 1
+  switch (state->nullifyMode) 
+d519 2
+a520 2
+enum { 
+  op_LD0 = 0, op_LD1 = 1, op_ST  = 2, op_3   = 3, 
+d522 1
+a522 1
+  op_ADD = 8, op_ADC = 9, op_SUB = 10, op_SBC = 11, 
+d528 1
+a528 1
+static int 
+d557 1
+a557 1
+  
+d562 1
+a562 1
+  
+d569 1
+a569 1
+  
+d572 1
+a572 1
+  
+d587 1
+a587 1
+  switch (state->_opcode) 
+d589 2
+a590 2
+    case op_LD0: 
+      switch (BITS (state->words[0],1,2)) 
+d605 1
+a605 1
+	  instrName = "??? (0[3])"; 
+d609 1
+a609 1
+      decodingClass = 5; 
+d611 3
+a613 3
+    
+    case op_LD1: 
+      if (BIT (state->words[0],13)) 
+d615 1
+a615 1
+	  instrName = "lr"; 
+d618 1
+a618 1
+      else 
+d620 1
+a620 1
+	  switch (BITS (state->words[0],10,11)) 
+d635 1
+a635 1
+	      instrName = "??? (1[3])"; 
+d642 1
+a642 1
+      
+d644 1
+a644 1
+      if (BIT (state->words[0],25)) 
+d649 1
+a649 1
+      else 
+d651 1
+a651 1
+	  switch (BITS (state->words[0],22,23)) 
+d663 1
+a663 1
+	      instrName = "??? (2[3])"; 
+d670 1
+a670 1
+      
+d673 1
+a673 1
+      switch (FIELDC (state->words[0])) 
+d676 1
+a676 1
+	  instrName = "flag"; 
+d703 1
+a703 1
+	case  0x3f: 
+d706 1
+a706 1
+	    switch( FIELDD (state->words[0]) ) 
+d724 1
+a724 1
+	  
+d731 1
+a731 1
+					& flags);
+d744 1
+a744 1
+      instrName = "b";  
+d747 1
+a747 1
+	instrName = "bl"; 
+d750 1
+a750 1
+	instrName = "lp"; 
+d754 1
+a754 1
+	  if (BITS (state->words[0],9,9)) 
+d756 1
+a756 1
+	      instrName = "jl";  
+d759 1
+a759 1
+	  else 
+d761 1
+a761 1
+	      instrName = "j";  
+d769 1
+a769 1
+    
+d776 1
+a776 1
+      switch (state->_opcode) 
+d789 1
+a789 1
+      
+d806 1
+a806 1
+      else 
+d809 1
+a809 1
+      
+d822 1
+a822 1
+  
+d828 2
+a829 2
+  
+  switch (decodingClass) 
+d837 1
+a837 1
+      
+d839 1
+a839 1
+      if (!ignoreFirstOpd) 
+d846 2
+a847 1
+	  my_sprintf (state, state->operandBuffer, formatString, fieldA, fieldB, fieldC);
+d849 1
+a849 1
+      else 
+d854 2
+a855 1
+	  my_sprintf (state, state->operandBuffer, formatString, fieldB, fieldC);
+d859 1
+a859 1
+      
+d864 1
+a864 1
+      
+d866 1
+a866 1
+      if (!ignoreFirstOpd) 
+d871 2
+a872 1
+	  my_sprintf (state, state->operandBuffer, formatString, fieldA, fieldB); 
+d874 1
+a874 1
+      else 
+d877 1
+a877 1
+	  my_sprintf (state, state->operandBuffer, formatString, fieldB); 
+d881 1
+a881 1
+      
+d886 1
+a886 1
+      
+d892 1
+a892 1
+      
+d899 1
+a899 1
+      
+d902 1
+a902 1
+      if (state->_opcode != op_LPC /* LP  */) 
+d904 8
+a911 8
+	add_target (fieldA); /* For debugger.  */
+	state->flow = state->_opcode == op_BLC /* BL  */
+	  ? direct_call
+	  : direct_jump;
+	/* indirect calls are achieved by "lr blink,[status];
+	   lr dest<- func addr; j [dest]"  */
+	}           		
+      
+d913 2
+a914 1
+      my_sprintf (state, state->operandBuffer, formatString, post_address (state, fieldA));
+d917 1
+a917 1
+      
+d925 2
+a926 2
+      
+      if (!fieldBisReg) 
+d938 1
+a938 1
+      else 
+d947 1
+a947 1
+      
+d949 1
+a949 1
+      strcat (formatString, 
+d951 1
+a951 1
+      if (fieldA != 0) 
+d959 1
+a959 1
+	my_sprintf (state, state->operandBuffer, formatString, 
+d963 1
+a963 1
+      
+d984 1
+a984 1
+      
+d988 1
+a988 1
+      
+d995 1
+a995 1
+      
+d997 2
+a998 1
+      my_sprintf (state, state->operandBuffer, formatString, fieldA, fieldB, fieldC);
+d1001 1
+a1001 1
+      
+d1007 1
+a1007 1
+      
+d1020 1
+a1020 1
+      
+d1024 1
+a1024 1
+      
+d1027 1
+a1027 1
+      if (!fieldBisReg) 
+d1032 1
+a1032 1
+      else 
+d1035 1
+a1035 1
+	  if (fieldC != 0 && !BIT (state->words[0],13)) 
+d1043 2
+a1044 1
+      my_sprintf (state, state->operandBuffer, formatString, fieldA, fieldB, fieldC);
+d1047 1
+a1047 1
+      
+d1053 1
+a1053 1
+      
+d1056 1
+a1056 1
+				 fieldBisReg,fieldB,fieldA);
+d1061 1
+a1061 1
+      /* field B is either a shimm (same as fieldA) or limm (different!) 
+d1064 1
+a1064 1
+      else 
+d1066 1
+a1066 1
+      
+d1069 1
+a1069 1
+      
+d1072 2
+a1073 2
+	    
+      if (!fieldBisReg) 
+d1078 1
+a1078 1
+      else 
+d1081 1
+a1081 1
+	  if (fieldBisReg && fieldA != 0) 
+d1089 2
+a1090 1
+      my_sprintf (state, state->operandBuffer, formatString, fieldC, fieldB, fieldA);
+d1097 1
+a1097 1
+      
+d1107 1
+a1107 1
+      
+d1112 1
+a1112 1
+      
+d1117 1
+a1117 1
+      
+d1127 1
+a1127 1
+      
+d1133 1
+a1133 1
+      
+d1138 1
+a1138 1
+  
+d1157 1
+a1157 1
+    return arcExtMap_auxRegName(regval);
+d1165 1
+a1165 1
+    return arcExtMap_condCodeName(regval);
+d1172 1
+a1172 1
+    return arcExtMap_instName(majop, minop, flags);
+d1186 1
+a1186 1
+  fprintf_ftype func = info->fprintf_func; 
+d1188 1
+a1188 1
+  
+d1190 1
+a1190 1
+  
+d1223 1
+a1223 1
+  
+d1225 1
+a1225 1
+  
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1994, 1995, 1997, 1998, 2000, 2001, 2002
+d20 2
+a21 2
+#include "ansidecl.h"
+#include "libiberty.h"
+d29 1
+d38 6
+a43 6
+#define BIT(word,n)	((word) & (1 << n))
+#define BITS(word,s,e)  (((word) << (31 - e)) >> (s + (31 - e)))
+#define OPCODE(word)	(BITS ((word), 27, 31))
+#define FIELDA(word)	(BITS ((word), 21, 26))
+#define FIELDB(word)	(BITS ((word), 15, 20))
+#define FIELDC(word)	(BITS ((word),  9, 14))
+d47 1
+a47 1
+#define FIELDD(word)	(BITS (((signed int)word), 0, 8))
+d49 7
+a55 7
+#define PUT_NEXT_WORD_IN(a)						\
+  do									\
+    {									\
+      if (is_limm == 1 && !NEXT_WORD (1))				\
+        mwerror (state, _("Illegal limm reference in last instruction!\n")); \
+      a = state->words[1];						\
+    }									\
+d101 1
+a101 1
+      fieldA = FIELDA (state->words[0]);	\
+d139 1
+a139 1
+#define WRITE_FORMAT_RB()	strcat (formatString, "]")
+d141 1
+a141 1
+#define WRITE_NOP_COMMENT()	if (!fieldAisReg && !flag) WRITE_COMMENT ("nop");
+d143 1
+a143 1
+#define NEXT_WORD(x)	(offset += 4, state->words[x])
+d145 1
+a145 1
+#define add_target(x)	(state->targets[state->tcnt++] = (x))
+a148 15
+static const char *core_reg_name PARAMS ((struct arcDisState *, int));
+static const char *aux_reg_name PARAMS ((struct arcDisState *, int));
+static const char *cond_code_name PARAMS ((struct arcDisState *, int));
+static const char *instruction_name
+  PARAMS ((struct arcDisState *, int, int, int *));
+static void mwerror PARAMS ((struct arcDisState *, const char *));
+static const char *post_address PARAMS ((struct arcDisState *, int));
+static void write_comments_
+  PARAMS ((struct arcDisState *, int, int, long int));
+static void write_instr_name_
+  PARAMS ((struct arcDisState *, const char *, int, int, int, int, int, int));
+static int dsmOneArcInst PARAMS ((bfd_vma, struct arcDisState *));
+static const char *_coreRegName PARAMS ((void *, int));
+static int decodeInstr PARAMS ((bfd_vma, disassemble_info *));
+
+d152 1
+a152 1
+     int                  val;
+d162 1
+a162 1
+     int                  val;
+d172 1
+a172 1
+     int                  val;
+d184 1
+a184 1
+     int *  flags;
+d194 1
+a194 1
+     const char * msg;
+d203 1
+a203 1
+     int addr;
+d216 1
+a216 1
+
+d222 6
+a227 6
+static void my_sprintf PARAMS ((struct arcDisState *, char *, const char *,
+				...));
+
+static void
+my_sprintf VPARAMS ((struct arcDisState *state, char *buf, const char *format,
+		     ...))
+d229 1
+a229 1
+  char *bp;
+d233 5
+a237 7
+
+  VA_OPEN (ap, format);
+  VA_FIXEDARG (ap, struct arcDisState *, state);
+  VA_FIXEDARG (ap, char *, buf);
+  VA_FIXEDARG (ap, const char *, format);
+
+  bp = buf;
+d243 2
+a244 2
+
+  while (1)
+d247 4
+a250 4
+      case 0:
+	goto DOCOMM; /* (return)  */
+      default:
+	*bp++ = p[-1];
+d256 1
+a256 1
+	switch (*p++)
+d282 1
+a282 1
+	  case 'h':
+d289 1
+a289 1
+	      if (u > 65536)
+d291 1
+a291 1
+	      else
+d294 1
+a294 1
+	    }
+d296 1
+a296 1
+	  case 'X': case 'x':
+d300 1
+a300 1
+	      if (size != 0)
+d310 1
+a310 1
+	  case 'd':
+d313 1
+a313 1
+
+d321 1
+a321 1
+	  case 'r':
+d325 1
+a325 1
+
+d328 2
+a329 2
+
+	      switch (val)
+d352 2
+a353 2
+
+	  case 'a':
+d360 1
+a360 1
+	      switch (val)
+d383 2
+a384 2
+
+	  case 's':
+d390 1
+a390 1
+
+a397 1
+  VA_CLOSE (ap);
+d400 1
+a400 1
+static void
+d407 1
+a407 1
+  if (state->commentBuffer != 0)
+d411 1
+a411 1
+      if (is_limm)
+d418 1
+a418 1
+      for (i = 0; i < state->commNum; i++)
+d423 2
+a424 3
+	    strcat (state->commentBuffer, ", ");
+	  strncat (state->commentBuffer, state->comm[i],
+		   sizeof (state->commentBuffer));
+d434 1
+a434 1
+  ""   , "z"  , "nz" , "p"  , "n"  , "c"  , "nc" , "v"  ,
+d438 1
+a438 1
+static void
+d451 1
+a451 1
+  if (cond > 0)
+d472 1
+a472 1
+  switch (state->nullifyMode)
+d501 2
+a502 2
+enum {
+  op_LD0 = 0, op_LD1 = 1, op_ST  = 2, op_3   = 3,
+d504 1
+a504 1
+  op_ADD = 8, op_ADC = 9, op_SUB = 10, op_SBC = 11,
+d510 1
+a510 1
+static int
+d539 1
+a539 1
+
+d544 1
+a544 1
+
+d551 1
+a551 1
+
+d554 1
+a554 1
+
+d569 1
+a569 1
+  switch (state->_opcode)
+d571 2
+a572 2
+    case op_LD0:
+      switch (BITS (state->words[0],1,2))
+d587 1
+a587 1
+	  instrName = "??? (0[3])";
+d591 1
+a591 1
+      decodingClass = 5;
+d593 3
+a595 3
+
+    case op_LD1:
+      if (BIT (state->words[0],13))
+d597 1
+a597 1
+	  instrName = "lr";
+d600 1
+a600 1
+      else
+d602 1
+a602 1
+	  switch (BITS (state->words[0],10,11))
+d617 1
+a617 1
+	      instrName = "??? (1[3])";
+d624 1
+a624 1
+
+d626 1
+a626 1
+      if (BIT (state->words[0],25))
+d631 1
+a631 1
+      else
+d633 1
+a633 1
+	  switch (BITS (state->words[0],22,23))
+d645 1
+a645 1
+	      instrName = "??? (2[3])";
+d652 1
+a652 1
+
+d655 1
+a655 1
+      switch (FIELDC (state->words[0]))
+d658 1
+a658 1
+	  instrName = "flag";
+d685 1
+a685 1
+	case  0x3f:
+d688 1
+a688 1
+	    switch( FIELDD (state->words[0]) )
+d706 1
+a706 1
+
+d713 1
+a713 1
+					&flags);
+d726 1
+a726 1
+      instrName = "b";
+d729 1
+a729 1
+	instrName = "bl";
+d732 1
+a732 1
+	instrName = "lp";
+d736 1
+a736 1
+	  if (BITS (state->words[0],9,9))
+d738 1
+a738 1
+	      instrName = "jl";
+d741 1
+a741 1
+	  else
+d743 1
+a743 1
+	      instrName = "j";
+d751 1
+a751 1
+
+d758 1
+a758 1
+      switch (state->_opcode)
+d771 1
+a771 1
+
+d788 1
+a788 1
+      else
+d791 1
+a791 1
+
+d804 1
+a804 1
+
+d810 2
+a811 2
+
+  switch (decodingClass)
+d819 1
+a819 1
+
+d821 1
+a821 1
+      if (!ignoreFirstOpd)
+d828 1
+a828 2
+	  my_sprintf (state, state->operandBuffer, formatString,
+		      fieldA, fieldB, fieldC);
+d830 1
+a830 1
+      else
+d835 1
+a835 2
+	  my_sprintf (state, state->operandBuffer, formatString,
+		      fieldB, fieldC);
+d839 1
+a839 1
+
+d844 1
+a844 1
+
+d846 1
+a846 1
+      if (!ignoreFirstOpd)
+d851 1
+a851 2
+	  my_sprintf (state, state->operandBuffer, formatString,
+		      fieldA, fieldB);
+d853 1
+a853 1
+      else
+d856 1
+a856 1
+	  my_sprintf (state, state->operandBuffer, formatString, fieldB);
+d860 1
+a860 1
+
+d865 1
+a865 1
+
+d871 1
+a871 1
+
+d878 1
+a878 1
+
+d881 1
+a881 1
+      if (state->_opcode != op_LPC /* LP  */)
+d883 8
+a890 8
+	  add_target (fieldA); /* For debugger.  */
+	  state->flow = state->_opcode == op_BLC /* BL  */
+	    ? direct_call
+	    : direct_jump;
+	  /* indirect calls are achieved by "lr blink,[status];
+	     lr dest<- func addr; j [dest]"  */
+	}
+
+d892 1
+a892 2
+      my_sprintf (state, state->operandBuffer, formatString,
+		  post_address (state, fieldA));
+d895 1
+a895 1
+
+d903 2
+a904 2
+
+      if (!fieldBisReg)
+d916 1
+a916 1
+      else
+d925 1
+a925 1
+
+d927 1
+a927 1
+      strcat (formatString,
+d929 1
+a929 1
+      if (fieldA != 0)
+d937 1
+a937 1
+	my_sprintf (state, state->operandBuffer, formatString,
+d941 1
+a941 1
+
+d962 1
+a962 1
+
+d966 1
+a966 1
+
+d973 1
+a973 1
+
+d975 1
+a975 2
+      my_sprintf (state, state->operandBuffer, formatString,
+		  fieldA, fieldB, fieldC);
+d978 1
+a978 1
+
+d984 1
+a984 1
+
+d997 1
+a997 1
+
+d1001 1
+a1001 1
+
+d1004 1
+a1004 1
+      if (!fieldBisReg)
+d1009 1
+a1009 1
+      else
+d1012 1
+a1012 1
+	  if (fieldC != 0 && !BIT (state->words[0],13))
+d1020 1
+a1020 2
+      my_sprintf (state, state->operandBuffer, formatString,
+		  fieldA, fieldB, fieldC);
+d1023 1
+a1023 1
+
+d1029 1
+a1029 1
+
+d1032 1
+a1032 1
+		      fieldBisReg,fieldB,fieldA);
+d1037 1
+a1037 1
+      /* field B is either a shimm (same as fieldA) or limm (different!)
+d1040 1
+a1040 1
+      else
+d1042 1
+a1042 1
+
+d1045 1
+a1045 1
+
+d1048 2
+a1049 2
+
+      if (!fieldBisReg)
+d1054 1
+a1054 1
+      else
+d1057 1
+a1057 1
+	  if (fieldBisReg && fieldA != 0)
+d1065 1
+a1065 2
+      my_sprintf (state, state->operandBuffer, formatString,
+		  fieldC, fieldB, fieldA);
+d1072 1
+a1072 1
+
+d1082 1
+a1082 1
+
+d1087 1
+a1087 1
+
+d1092 1
+a1092 1
+
+d1102 1
+a1102 1
+
+d1108 1
+a1108 1
+
+d1113 1
+a1113 1
+
+d1132 1
+a1132 1
+  return arcExtMap_auxRegName(regval);
+d1140 1
+a1140 1
+  return arcExtMap_condCodeName(regval);
+d1147 1
+a1147 1
+  return arcExtMap_instName(majop, minop, flags);
+d1161 1
+a1161 1
+  fprintf_ftype func = info->fprintf_func;
+d1163 1
+a1163 1
+
+d1165 1
+a1165 1
+
+d1198 1
+a1198 1
+
+d1200 1
+a1200 1
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1994, 1995, 1997, 1998, 2000, 2001, 2002
+d20 2
+a21 2
+#include "ansidecl.h"
+#include "libiberty.h"
+d29 1
+d38 6
+a43 6
+#define BIT(word,n)	((word) & (1 << n))
+#define BITS(word,s,e)  (((word) << (31 - e)) >> (s + (31 - e)))
+#define OPCODE(word)	(BITS ((word), 27, 31))
+#define FIELDA(word)	(BITS ((word), 21, 26))
+#define FIELDB(word)	(BITS ((word), 15, 20))
+#define FIELDC(word)	(BITS ((word),  9, 14))
+d47 1
+a47 1
+#define FIELDD(word)	(BITS (((signed int)word), 0, 8))
+d49 7
+a55 7
+#define PUT_NEXT_WORD_IN(a)						\
+  do									\
+    {									\
+      if (is_limm == 1 && !NEXT_WORD (1))				\
+        mwerror (state, _("Illegal limm reference in last instruction!\n")); \
+      a = state->words[1];						\
+    }									\
+d101 1
+a101 1
+      fieldA = FIELDA (state->words[0]);	\
+d139 1
+a139 1
+#define WRITE_FORMAT_RB()	strcat (formatString, "]")
+d141 1
+a141 1
+#define WRITE_NOP_COMMENT()	if (!fieldAisReg && !flag) WRITE_COMMENT ("nop");
+d143 1
+a143 1
+#define NEXT_WORD(x)	(offset += 4, state->words[x])
+d145 1
+a145 1
+#define add_target(x)	(state->targets[state->tcnt++] = (x))
+a148 15
+static const char *core_reg_name PARAMS ((struct arcDisState *, int));
+static const char *aux_reg_name PARAMS ((struct arcDisState *, int));
+static const char *cond_code_name PARAMS ((struct arcDisState *, int));
+static const char *instruction_name
+  PARAMS ((struct arcDisState *, int, int, int *));
+static void mwerror PARAMS ((struct arcDisState *, const char *));
+static const char *post_address PARAMS ((struct arcDisState *, int));
+static void write_comments_
+  PARAMS ((struct arcDisState *, int, int, long int));
+static void write_instr_name_
+  PARAMS ((struct arcDisState *, const char *, int, int, int, int, int, int));
+static int dsmOneArcInst PARAMS ((bfd_vma, struct arcDisState *));
+static const char *_coreRegName PARAMS ((void *, int));
+static int decodeInstr PARAMS ((bfd_vma, disassemble_info *));
+
+d152 1
+a152 1
+     int                  val;
+d162 1
+a162 1
+     int                  val;
+d172 1
+a172 1
+     int                  val;
+d184 1
+a184 1
+     int *  flags;
+d194 1
+a194 1
+     const char * msg;
+d203 1
+a203 1
+     int addr;
+d216 1
+a216 1
+
+d222 6
+a227 6
+static void my_sprintf PARAMS ((struct arcDisState *, char *, const char *,
+				...));
+
+static void
+my_sprintf VPARAMS ((struct arcDisState *state, char *buf, const char *format,
+		     ...))
+d229 1
+a229 1
+  char *bp;
+d233 5
+a237 7
+
+  VA_OPEN (ap, format);
+  VA_FIXEDARG (ap, struct arcDisState *, state);
+  VA_FIXEDARG (ap, char *, buf);
+  VA_FIXEDARG (ap, const char *, format);
+
+  bp = buf;
+d243 2
+a244 2
+
+  while (1)
+d247 4
+a250 4
+      case 0:
+	goto DOCOMM; /* (return)  */
+      default:
+	*bp++ = p[-1];
+d256 1
+a256 1
+	switch (*p++)
+d282 1
+a282 1
+	  case 'h':
+d289 1
+a289 1
+	      if (u > 65536)
+d291 1
+a291 1
+	      else
+d294 1
+a294 1
+	    }
+d296 1
+a296 1
+	  case 'X': case 'x':
+d300 1
+a300 1
+	      if (size != 0)
+d310 1
+a310 1
+	  case 'd':
+d313 1
+a313 1
+
+d321 1
+a321 1
+	  case 'r':
+d325 1
+a325 1
+
+d328 2
+a329 2
+
+	      switch (val)
+d352 2
+a353 2
+
+	  case 'a':
+d360 1
+a360 1
+	      switch (val)
+d383 2
+a384 2
+
+	  case 's':
+d390 1
+a390 1
+
+a397 1
+  VA_CLOSE (ap);
+d400 1
+a400 1
+static void
+d407 1
+a407 1
+  if (state->commentBuffer != 0)
+d411 1
+a411 1
+      if (is_limm)
+d418 1
+a418 1
+      for (i = 0; i < state->commNum; i++)
+d423 2
+a424 3
+	    strcat (state->commentBuffer, ", ");
+	  strncat (state->commentBuffer, state->comm[i],
+		   sizeof (state->commentBuffer));
+d434 1
+a434 1
+  ""   , "z"  , "nz" , "p"  , "n"  , "c"  , "nc" , "v"  ,
+d438 1
+a438 1
+static void
+d451 1
+a451 1
+  if (cond > 0)
+d472 1
+a472 1
+  switch (state->nullifyMode)
+d501 2
+a502 2
+enum {
+  op_LD0 = 0, op_LD1 = 1, op_ST  = 2, op_3   = 3,
+d504 1
+a504 1
+  op_ADD = 8, op_ADC = 9, op_SUB = 10, op_SBC = 11,
+d510 1
+a510 1
+static int
+d539 1
+a539 1
+
+d544 1
+a544 1
+
+d551 1
+a551 1
+
+d554 1
+a554 1
+
+d569 1
+a569 1
+  switch (state->_opcode)
+d571 2
+a572 2
+    case op_LD0:
+      switch (BITS (state->words[0],1,2))
+d587 1
+a587 1
+	  instrName = "??? (0[3])";
+d591 1
+a591 1
+      decodingClass = 5;
+d593 3
+a595 3
+
+    case op_LD1:
+      if (BIT (state->words[0],13))
+d597 1
+a597 1
+	  instrName = "lr";
+d600 1
+a600 1
+      else
+d602 1
+a602 1
+	  switch (BITS (state->words[0],10,11))
+d617 1
+a617 1
+	      instrName = "??? (1[3])";
+d624 1
+a624 1
+
+d626 1
+a626 1
+      if (BIT (state->words[0],25))
+d631 1
+a631 1
+      else
+d633 1
+a633 1
+	  switch (BITS (state->words[0],22,23))
+d645 1
+a645 1
+	      instrName = "??? (2[3])";
+d652 1
+a652 1
+
+d655 1
+a655 1
+      switch (FIELDC (state->words[0]))
+d658 1
+a658 1
+	  instrName = "flag";
+d685 1
+a685 1
+	case  0x3f:
+d688 1
+a688 1
+	    switch( FIELDD (state->words[0]) )
+d706 1
+a706 1
+
+d713 1
+a713 1
+					&flags);
+d726 1
+a726 1
+      instrName = "b";
+d729 1
+a729 1
+	instrName = "bl";
+d732 1
+a732 1
+	instrName = "lp";
+d736 1
+a736 1
+	  if (BITS (state->words[0],9,9))
+d738 1
+a738 1
+	      instrName = "jl";
+d741 1
+a741 1
+	  else
+d743 1
+a743 1
+	      instrName = "j";
+d751 1
+a751 1
+
+d758 1
+a758 1
+      switch (state->_opcode)
+d771 1
+a771 1
+
+d788 1
+a788 1
+      else
+d791 1
+a791 1
+
+d804 1
+a804 1
+
+d810 2
+a811 2
+
+  switch (decodingClass)
+d819 1
+a819 1
+
+d821 1
+a821 1
+      if (!ignoreFirstOpd)
+d828 1
+a828 2
+	  my_sprintf (state, state->operandBuffer, formatString,
+		      fieldA, fieldB, fieldC);
+d830 1
+a830 1
+      else
+d835 1
+a835 2
+	  my_sprintf (state, state->operandBuffer, formatString,
+		      fieldB, fieldC);
+d839 1
+a839 1
+
+d844 1
+a844 1
+
+d846 1
+a846 1
+      if (!ignoreFirstOpd)
+d851 1
+a851 2
+	  my_sprintf (state, state->operandBuffer, formatString,
+		      fieldA, fieldB);
+d853 1
+a853 1
+      else
+d856 1
+a856 1
+	  my_sprintf (state, state->operandBuffer, formatString, fieldB);
+d860 1
+a860 1
+
+d865 1
+a865 1
+
+d871 1
+a871 1
+
+d878 1
+a878 1
+
+d881 1
+a881 1
+      if (state->_opcode != op_LPC /* LP  */)
+d883 8
+a890 8
+	  add_target (fieldA); /* For debugger.  */
+	  state->flow = state->_opcode == op_BLC /* BL  */
+	    ? direct_call
+	    : direct_jump;
+	  /* indirect calls are achieved by "lr blink,[status];
+	     lr dest<- func addr; j [dest]"  */
+	}
+
+d892 1
+a892 2
+      my_sprintf (state, state->operandBuffer, formatString,
+		  post_address (state, fieldA));
+d895 1
+a895 1
+
+d903 2
+a904 2
+
+      if (!fieldBisReg)
+d916 1
+a916 1
+      else
+d925 1
+a925 1
+
+d927 1
+a927 1
+      strcat (formatString,
+d929 1
+a929 1
+      if (fieldA != 0)
+d937 1
+a937 1
+	my_sprintf (state, state->operandBuffer, formatString,
+d941 1
+a941 1
+
+d962 1
+a962 1
+
+d966 1
+a966 1
+
+d973 1
+a973 1
+
+d975 1
+a975 2
+      my_sprintf (state, state->operandBuffer, formatString,
+		  fieldA, fieldB, fieldC);
+d978 1
+a978 1
+
+d984 1
+a984 1
+
+d997 1
+a997 1
+
+d1001 1
+a1001 1
+
+d1004 1
+a1004 1
+      if (!fieldBisReg)
+d1009 1
+a1009 1
+      else
+d1012 1
+a1012 1
+	  if (fieldC != 0 && !BIT (state->words[0],13))
+d1020 1
+a1020 2
+      my_sprintf (state, state->operandBuffer, formatString,
+		  fieldA, fieldB, fieldC);
+d1023 1
+a1023 1
+
+d1029 1
+a1029 1
+
+d1032 1
+a1032 1
+		      fieldBisReg,fieldB,fieldA);
+d1037 1
+a1037 1
+      /* field B is either a shimm (same as fieldA) or limm (different!)
+d1040 1
+a1040 1
+      else
+d1042 1
+a1042 1
+
+d1045 1
+a1045 1
+
+d1048 2
+a1049 2
+
+      if (!fieldBisReg)
+d1054 1
+a1054 1
+      else
+d1057 1
+a1057 1
+	  if (fieldBisReg && fieldA != 0)
+d1065 1
+a1065 2
+      my_sprintf (state, state->operandBuffer, formatString,
+		  fieldC, fieldB, fieldA);
+d1072 1
+a1072 1
+
+d1082 1
+a1082 1
+
+d1087 1
+a1087 1
+
+d1092 1
+a1092 1
+
+d1102 1
+a1102 1
+
+d1108 1
+a1108 1
+
+d1113 1
+a1113 1
+
+d1132 1
+a1132 1
+  return arcExtMap_auxRegName(regval);
+d1140 1
+a1140 1
+  return arcExtMap_condCodeName(regval);
+d1147 1
+a1147 1
+  return arcExtMap_instName(majop, minop, flags);
+d1161 1
+a1161 1
+  fprintf_ftype func = info->fprintf_func;
+d1163 1
+a1163 1
+
+d1165 1
+a1165 1
+
+d1198 1
+a1198 1
+
+d1200 1
+a1200 1
+
+@
+

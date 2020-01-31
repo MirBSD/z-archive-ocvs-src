@@ -1,0 +1,361 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.28.56;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.50;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.50;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.21.19.05.39;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: pram.c,v 1.6 1997/04/14 18:48:06 gene Exp $	*/
+/*	$NetBSD: pram.c,v 1.11 1996/10/21 05:42:29 scottr Exp $	*/
+
+/*-
+ * Copyright (C) 1993	Allen K. Briggs, Chris P. Caputo,
+ *			Michael L. Finch, Bradley A. Grantham, and
+ *			Lawrence A. Kesteloot
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the Alice Group.
+ * 4. The names of the Alice Group or any of its members may not be used
+ *    to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE ALICE GROUP ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE ALICE GROUP BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+/* #include "stand.h"  */
+#include <sys/types.h>
+#ifdef DEBUG
+#include <sys/systm.h>
+#endif
+#include <sys/param.h>
+
+#include <machine/viareg.h>
+
+#include <arch/mac68k/mac68k/pram.h>
+#include <arch/mac68k/mac68k/macrom.h>
+#ifndef MRG_ADB
+#include <arch/mac68k/dev/adbvar.h>
+#endif
+
+#if DEBUG
+static char *convtime(unsigned long t)
+{
+  static long daypmon[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+  static char *monstr[] = {"January","February","March","April","May","June",
+    "July","August","September","October","November","December" };
+  static char s[200];
+  long year,month,day,hour,minute,seconds,i,dayperyear;
+
+  year=1904;
+  month=0;  /* Jan */
+  day=1;
+  hour=0;
+  minute=0;
+  seconds=0;
+
+  if(t == 0xffffffff)
+     return("<time value is -1>");
+
+  while (t > 0)
+  {
+    if (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))
+    {
+      dayperyear=366;
+      daypmon[1]=29;
+    }
+    else
+    {
+      dayperyear=365;
+      daypmon[1]=28;
+    }
+    i=dayperyear*60*60*24;
+    if (t >= i)
+    {
+      t-=i;
+      year++;
+      continue;
+    }
+    i=daypmon[month]*60*60*24;
+    if (t >= i)
+    {
+      t-=i;
+      month++;
+      continue;
+    }
+    i=60*60*24;
+    if (t >= i)
+    {
+      t-=i;
+      day++;
+      continue;
+    }
+    i=60*60;
+    if (t >= i)
+    {
+      t-=i;
+      hour++;
+      continue;
+    }
+    i=60;
+    if (t >= i)
+    {
+      t-=i;
+      minute++;
+      continue;
+    }
+    seconds=t;
+    t=0;
+  }
+
+  sprintf(s,"%s %ld, %ld   %ld:%ld:%ld",monstr[month],day,year,hour,minute,seconds);
+
+  return s;
+}
+#endif
+
+unsigned long
+pram_readtime(void)
+{
+   unsigned long	timedata;
+
+   if (0 == jClkNoMem)
+	timedata = 0;	/* cause comparision of MacOS boottime */
+			/* and PRAM time to fail */
+   else
+	timedata = getPramTime();
+#if DEBUG
+   printf("time read from PRAM: 0x%lx\n", timedata);
+   printf("Date and time: %s\n",convtime(timedata));
+#endif
+
+   return(timedata);
+}
+
+void
+pram_settime(unsigned long time)
+{
+   if (0 == jClkNoMem)
+	return;
+   else
+	return setPramTime(time);
+}
+
+#ifndef MRG_ADB         /* These routines are defined here only
+                         * when the MRG_ADB method for accessing
+                         * the ADB/PRAM/RTC isn't enabled. */
+
+extern int adbHardware;         /* from newadb.c */
+
+/*
+ * getPramTime
+ * This function can be called regrardless of the machine
+ * type. It calls the correct hardware-specific code.
+ * (It's sort of redundant with the above, but it was
+ * added later.)
+ */
+unsigned long
+getPramTime(void)
+{
+        unsigned long time;
+
+        switch (adbHardware) {
+        case ADB_HW_II:         /* access PRAM via VIA interface */
+                time=(long)getPramTimeII();
+                return time;
+
+        case ADB_HW_IISI:       /* access PRAM via pseudo-adb functions */
+                if (0 != adb_read_date_time(&time))
+                        return 0;
+                else
+                        return time;
+
+        case ADB_HW_PB:         /* don't know how to access this yet */
+                return 0;
+
+        case ADB_HW_UNKNOWN:
+        default:
+                return 0;
+        }
+}
+
+/*
+ * setPramTime
+ * This function can be called regrardless of the machine
+ * type. It calls the correct hardware-specific code.
+ * (It's sort of redundant with the above, but it was
+ * added later.)
+ */
+void
+setPramTime(unsigned long time)
+{
+        switch (adbHardware) {
+        case ADB_HW_II:         /* access PRAM via ADB interface */
+                setPramTimeII(time);
+                return;
+
+        case ADB_HW_IISI:       /* access PRAM via pseudo-adb functions */
+                adb_set_date_time(time);
+                return;
+
+        case ADB_HW_PB:         /* don't know how to access this yet */
+                return;
+
+        case ADB_HW_UNKNOWN:
+                return;
+        }
+
+}
+
+#endif  /* ifndef MRG_ADB */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync MirBSD main source tree against OpenBSD-current,
+which should be fairly stable after the Hackathon now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: pram.c,v 1.7 2003/05/11 19:41:10 deraadt Exp $	*/
+d123 1
+a123 2
+  snprintf(s, sizeof s, "%s %ld, %ld   %ld:%ld:%ld",
+    monstr[month],day,year,hour,minute,seconds);
+@
+

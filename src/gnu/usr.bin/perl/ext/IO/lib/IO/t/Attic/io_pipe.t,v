@@ -1,0 +1,227 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.12.03.21.55.17;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.42.58;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.58;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@merge cvs import, etc.
+@
+text
+@#!./perl
+
+BEGIN {
+    unless(grep /blib/, @@INC) {
+	chdir 't' if -d 't';
+	@@INC = '../lib';
+    }
+}
+
+use Config;
+
+BEGIN {
+    if(-d "lib" && -f "TEST") {
+	my $reason;
+	if (! $Config{'d_fork'}) {
+	    $reason = 'no fork';
+	}
+	elsif ($Config{'extensions'} !~ /\bIO\b/) {
+	    $reason = 'IO extension unavailable';
+	}
+	if ($reason) {
+	    print "1..0 # Skip: $reason\n";
+	    exit 0;
+        }
+    }
+}
+
+use IO::Pipe;
+
+my $perl = './perl';
+
+$| = 1;
+print "1..10\n";
+
+$pipe = new IO::Pipe->reader($perl, '-e', 'print "not ok 1\n"');
+while (<$pipe>) {
+  s/^not //;
+  print;
+}
+$pipe->close or print "# \$!=$!\nnot ";
+print "ok 2\n";
+
+$cmd = 'BEGIN{$SIG{ALRM} = sub {print "not ok 4\n"; exit}; alarm 10} s/not //';
+$pipe = new IO::Pipe->writer($perl, '-pe', $cmd);
+print $pipe "not ok 3\n" ;
+$pipe->close or print "# \$!=$!\nnot ";
+print "ok 4\n";
+
+# Check if can fork with dynamic extensions (bug in CRT):
+if ($^O eq 'os2' and
+    system "$^X -I../lib -MOpcode -e 'defined fork or die'  > /dev/null 2>&1") {
+    print "ok $_ # skipped: broken fork\n" for 5..10;
+    exit 0;
+}
+
+$pipe = new IO::Pipe;
+
+$pid = fork();
+
+if($pid)
+ {
+  $pipe->writer;
+  print $pipe "Xk 5\n";
+  print $pipe "oY 6\n";
+  $pipe->close;
+  wait;
+ }
+elsif(defined $pid)
+ {
+  $pipe->reader;
+  $stdin = bless \*STDIN, "IO::Handle";
+  $stdin->fdopen($pipe,"r");
+  exec 'tr', 'YX', 'ko';
+ }
+else
+ {
+  die "# error = $!";
+ }
+
+$pipe = new IO::Pipe;
+$pid = fork();
+
+if($pid)
+ {
+  $pipe->reader;
+  while(<$pipe>) {
+      s/^not //;
+      print;
+  }
+  $pipe->close;
+  wait;
+ }
+elsif(defined $pid)
+ {
+  $pipe->writer;
+
+  $stdout = bless \*STDOUT, "IO::Handle";
+  $stdout->fdopen($pipe,"w");
+  print STDOUT "not ok 7\n";
+  exec 'echo', 'not ok 8';
+ }
+else
+ {
+  die;
+ }
+
+$pipe = new IO::Pipe;
+$pipe->writer;
+
+$SIG{'PIPE'} = 'broken_pipe';
+
+sub broken_pipe {
+    print "ok 9\n";
+}
+
+print $pipe "not ok 9\n";
+$pipe->close;
+
+sleep 1;
+
+print "ok 10\n";
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,498 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.57.08;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.01.18;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.19;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.19;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.27.55;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.08;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.03.06;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.04.15;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* rename.c -- rename a file, preserving symlinks.
+   Copyright 1999, 2002 Free Software Foundation, Inc.
+
+   This file is part of GNU Binutils.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+   02111-1307, USA.  */
+
+#include "bfd.h"
+#include "bucomm.h"
+
+#include <sys/stat.h>
+
+#ifdef HAVE_GOOD_UTIME_H
+#include <utime.h>
+#else /* ! HAVE_GOOD_UTIME_H */
+#ifdef HAVE_UTIMES
+#include <sys/time.h>
+#endif /* HAVE_UTIMES */
+#endif /* ! HAVE_GOOD_UTIME_H */
+
+/* We need to open the file in binary modes on system where that makes
+   a difference.  */
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+
+static int simple_copy
+  PARAMS ((const char *, const char *));
+
+/* The number of bytes to copy at once.  */
+#define COPY_BUF 8192
+
+/* Copy file FROM to file TO, performing no translations.
+   Return 0 if ok, -1 if error.  */
+
+static int
+simple_copy (from, to)
+     const char *from;
+     const char *to;
+{
+  int fromfd, tofd, nread;
+  int saved;
+  char buf[COPY_BUF];
+
+  fromfd = open (from, O_RDONLY | O_BINARY);
+  if (fromfd < 0)
+    return -1;
+#ifdef O_CREAT
+  tofd = open (to, O_CREAT | O_WRONLY | O_TRUNC | O_BINARY, 0777);
+#else
+  tofd = creat (to, 0777);
+#endif
+  if (tofd < 0)
+    {
+      saved = errno;
+      close (fromfd);
+      errno = saved;
+      return -1;
+    }
+  while ((nread = read (fromfd, buf, sizeof buf)) > 0)
+    {
+      if (write (tofd, buf, nread) != nread)
+	{
+	  saved = errno;
+	  close (fromfd);
+	  close (tofd);
+	  errno = saved;
+	  return -1;
+	}
+    }
+  saved = errno;
+  close (fromfd);
+  close (tofd);
+  if (nread < 0)
+    {
+      errno = saved;
+      return -1;
+    }
+  return 0;
+}
+
+/* Set the times of the file DESTINATION to be the same as those in
+   STATBUF.  */
+
+void
+set_times (destination, statbuf)
+     const char *destination;
+     const struct stat *statbuf;
+{
+  int result;
+
+  {
+#ifdef HAVE_GOOD_UTIME_H
+    struct utimbuf tb;
+
+    tb.actime = statbuf->st_atime;
+    tb.modtime = statbuf->st_mtime;
+    result = utime (destination, &tb);
+#else /* ! HAVE_GOOD_UTIME_H */
+#ifndef HAVE_UTIMES
+    long tb[2];
+
+    tb[0] = statbuf->st_atime;
+    tb[1] = statbuf->st_mtime;
+    result = utime (destination, tb);
+#else /* HAVE_UTIMES */
+    struct timeval tv[2];
+
+    tv[0].tv_sec = statbuf->st_atime;
+    tv[0].tv_usec = 0;
+    tv[1].tv_sec = statbuf->st_mtime;
+    tv[1].tv_usec = 0;
+    result = utimes (destination, tv);
+#endif /* HAVE_UTIMES */
+#endif /* ! HAVE_GOOD_UTIME_H */
+  }
+
+  if (result != 0)
+    non_fatal (_("%s: cannot set time: %s"), destination, strerror (errno));
+}
+
+#ifndef S_ISLNK
+#ifdef S_IFLNK
+#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)
+#else
+#define S_ISLNK(m) 0
+#define lstat stat
+#endif
+#endif
+
+/* Rename FROM to TO, copying if TO is a link.
+   Return 0 if ok, -1 if error.  */
+
+int
+smart_rename (from, to, preserve_dates)
+     const char *from;
+     const char *to;
+     int preserve_dates;
+{
+  bfd_boolean exists;
+  struct stat s;
+  int ret = 0;
+
+  exists = lstat (to, &s) == 0;
+
+#if defined (_WIN32) && !defined (__CYGWIN32__)
+  /* Win32, unlike unix, will not erase `to' in `rename(from, to)' but
+     fail instead.  Also, chown is not present.  */
+
+  if (exists)
+    remove (to);
+
+  ret = rename (from, to);
+  if (ret != 0)
+    {
+      /* We have to clean up here.  */
+
+      non_fatal (_("%s: rename: %s"), to, strerror (errno));
+      unlink (from);
+    }
+#else
+  /* Use rename only if TO is not a symbolic link and has
+     only one hard link.  */
+  if (! exists || (!S_ISLNK (s.st_mode) && s.st_nlink == 1))
+    {
+      ret = rename (from, to);
+      if (ret == 0)
+	{
+	  if (exists)
+	    {
+	      /* Try to preserve the permission bits and ownership of
+		 TO.  First get the mode right except for the setuid
+		 bit.  Then change the ownership.  Then fix the setuid
+		 bit.  We do the chmod before the chown because if the
+		 chown succeeds, and we are a normal user, we won't be
+		 able to do the chmod afterward.  We don't bother to
+		 fix the setuid bit first because that might introduce
+		 a fleeting security problem, and because the chown
+		 will clear the setuid bit anyhow.  We only fix the
+		 setuid bit if the chown succeeds, because we don't
+		 want to introduce an unexpected setuid file owned by
+		 the user running objcopy.  */
+	      chmod (to, s.st_mode & 0777);
+	      if (chown (to, s.st_uid, s.st_gid) >= 0)
+		chmod (to, s.st_mode & 07777);
+	    }
+	}
+      else
+	{
+	  /* We have to clean up here.  */
+	  non_fatal (_("%s: rename: %s"), to, strerror (errno));
+	  unlink (from);
+	}
+    }
+  else
+    {
+      ret = simple_copy (from, to);
+      if (ret != 0)
+	non_fatal (_("%s: simple_copy: %s"), to, strerror (errno));
+
+      if (preserve_dates)
+	set_times (to, &s);
+      unlink (from);
+    }
+#endif /* _WIN32 && !__CYGWIN32__ */
+
+  return ret;
+}
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1999 Free Software Foundation, Inc.
+d40 2
+a41 1
+static int simple_copy PARAMS ((const char *, const char *));
+d153 1
+a153 1
+  boolean exists;
+d169 2
+a170 2
+      /* We have to clean up here. */
+      
+d203 1
+a203 1
+	  /* We have to clean up here. */
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1999, 2002 Free Software Foundation, Inc.
+d40 1
+a40 2
+static int simple_copy
+  PARAMS ((const char *, const char *));
+d152 1
+a152 1
+  bfd_boolean exists;
+d168 2
+a169 2
+      /* We have to clean up here.  */
+
+d202 1
+a202 1
+	  /* We have to clean up here.  */
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d2 1
+a2 1
+   Copyright 1999, 2002, 2003 Free Software Foundation, Inc.
+d40 2
+a41 1
+static int simple_copy (const char *, const char *);
+d50 3
+a52 1
+simple_copy (const char *from, const char *to)
+d99 3
+a101 1
+set_times (const char *destination, const struct stat *statbuf)
+d148 4
+a151 1
+smart_rename (const char *from, const char *to, int preserve_dates)
+d170 2
+a171 1
+      non_fatal (_("unable to rename '%s' reason: %s"), to, strerror (errno));
+d176 2
+a177 7
+     only one hard link, and we have permission to write to it.  */
+  if (! exists
+      || (!S_ISLNK (s.st_mode)
+	  && S_ISREG (s.st_mode)
+	  && (s.st_mode & S_IWUSR)
+	  && s.st_nlink == 1)
+      )
+d204 1
+a204 1
+	  non_fatal (_("unable to rename '%s' reason: %s"), to, strerror (errno));
+d212 1
+a212 1
+	non_fatal (_("unable to copy file '%s' reason: %s"), to, strerror (errno));
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1999, 2002 Free Software Foundation, Inc.
+d40 1
+a40 2
+static int simple_copy
+  PARAMS ((const char *, const char *));
+d152 1
+a152 1
+  bfd_boolean exists;
+d168 2
+a169 2
+      /* We have to clean up here.  */
+
+d202 1
+a202 1
+	  /* We have to clean up here.  */
+@
+

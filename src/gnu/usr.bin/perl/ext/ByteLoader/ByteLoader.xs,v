@@ -1,0 +1,279 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.42;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.42;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.53.55;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#define PERL_NO_GET_CONTEXT
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+#include "byterun.h"
+
+/* Something arbitary for a buffer size */
+#define BYTELOADER_BUFFER 8096
+
+int
+bl_getc(struct byteloader_fdata *data)
+{
+    dTHX;
+    if (SvCUR(data->datasv) <= (STRLEN)data->next_out) {
+      int result;
+      /* Run out of buffered data, so attempt to read some more */
+      *(SvPV_nolen (data->datasv)) = '\0';
+      SvCUR_set (data->datasv, 0);
+      data->next_out = 0;
+      result = FILTER_READ (data->idx + 1, data->datasv, BYTELOADER_BUFFER);
+
+      /* Filter returned error, or we got EOF and no data, then return EOF.
+	 Not sure if filter is allowed to return EOF and add data simultaneously
+	 Think not, but will bullet proof against it. */
+      if (result < 0 || SvCUR(data->datasv) == 0)
+	return EOF;
+      /* Else there must be at least one byte present, which is good enough */
+    }
+
+    return *((char *) SvPV_nolen (data->datasv) + data->next_out++);
+}
+
+int
+bl_read(struct byteloader_fdata *data, char *buf, size_t size, size_t n)
+{
+    dTHX;
+    char *start;
+    STRLEN len;
+    size_t wanted = size * n;
+
+    start = SvPV (data->datasv, len);
+    if (len < (data->next_out + wanted)) {
+      int result;
+
+      /* Shuffle data to start of buffer */
+      len -= data->next_out;
+      if (len) {
+	memmove (start, start + data->next_out, len + 1);
+	SvCUR_set (data->datasv, len);
+      } else {
+	*start = '\0';	/* Avoid call to memmove. */
+	SvCUR_set (data->datasv, 0);
+      }
+      data->next_out = 0;
+
+      /* Attempt to read more data. */
+      do {
+	result = FILTER_READ (data->idx + 1, data->datasv, BYTELOADER_BUFFER);
+	
+	start = SvPV (data->datasv, len);
+      } while (result > 0 && len < wanted);
+      /* Loop while not (EOF || error) and short reads */
+
+      /* If not enough data read, truncate copy */
+      if (wanted > len)
+	wanted = len;
+    }
+
+    if (wanted > 0) {
+      memcpy (buf, start + data->next_out, wanted);
+	data->next_out += wanted;
+      wanted /= size;
+    }
+    return (int) wanted;
+}
+
+static I32
+byteloader_filter(pTHX_ int idx, SV *buf_sv, int maxlen)
+{
+    OP *saveroot = PL_main_root;
+    OP *savestart = PL_main_start;
+    struct byteloader_state bstate;
+    struct byteloader_fdata data;
+
+    data.next_out = 0;
+    data.datasv = FILTER_DATA(idx);
+    data.idx = idx;
+
+    bstate.bs_fdata = &data;
+    bstate.bs_obj_list = Null(void**);
+    bstate.bs_obj_list_fill = -1;
+    bstate.bs_sv = Nullsv;
+    bstate.bs_iv_overflows = 0;
+
+    byterun(aTHX_ &bstate);
+
+    if (PL_in_eval) {
+        OP *o;
+
+        PL_eval_start = PL_main_start;
+
+        o = newSVOP(OP_CONST, 0, newSViv(1));
+        PL_eval_root = newLISTOP(OP_LINESEQ, 0, PL_main_root, o);
+        PL_main_root->op_next = o;
+        PL_eval_root = newUNOP(OP_LEAVEEVAL, 0, PL_eval_root);
+        o->op_next = PL_eval_root;
+    
+        PL_main_root = saveroot;
+        PL_main_start = savestart;
+    }
+
+    return 0;
+}
+
+MODULE = ByteLoader		PACKAGE = ByteLoader
+
+PROTOTYPES:	ENABLE
+
+void
+import(package="ByteLoader", ...)
+  char *package
+  PREINIT:
+    SV *sv = newSVpvn ("", 0);
+  PPCODE:
+    if (!sv)
+      croak ("Could not allocate ByteLoader buffers");
+    filter_add(byteloader_filter, sv);
+
+void
+unimport(package="ByteLoader", ...)
+  char *package
+  PPCODE:
+    filter_del(byteloader_filter);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d1 1
+d30 1
+a30 1
+    return *((U8 *) SvPV_nolen (data->datasv) + data->next_out++);
+a83 1
+    int len;
+d95 1
+a95 8
+/* KLUDGE */
+    if (byterun(aTHX_ &bstate)
+	    && (len = SvCUR(data.datasv) - (STRLEN)data.next_out))
+    {
+	PerlIO_seek(PL_rsfp, -len, SEEK_CUR);
+	PL_rsfp = NULL;
+    }
+    filter_del(byteloader_filter);
+d128 6
+@
+

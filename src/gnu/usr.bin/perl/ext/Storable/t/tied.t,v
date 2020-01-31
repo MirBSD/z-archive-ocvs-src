@@ -1,0 +1,353 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.02;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.02;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.11;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+#
+#  Copyright (c) 1995-2000, Raphael Manfredi
+#  
+#  You may redistribute only under the same terms as Perl 5, as specified
+#  in the README file that comes with the distribution.
+#
+
+sub BEGIN {
+    if ($ENV{PERL_CORE}){
+	chdir('t') if -d 't';
+	@@INC = ('.', '../lib', '../ext/Storable/t');
+    } else {
+	unshift @@INC, 't';
+    }
+    require Config; import Config;
+    if ($ENV{PERL_CORE} and $Config{'extensions'} !~ /\bStorable\b/) {
+        print "1..0 # Skip: Storable was not built\n";
+        exit 0;
+    }
+    require 'st-dump.pl';
+}
+
+sub ok;
+
+use Storable qw(freeze thaw);
+
+print "1..22\n";
+
+($scalar_fetch, $array_fetch, $hash_fetch) = (0, 0, 0);
+
+package TIED_HASH;
+
+sub TIEHASH {
+	my $self = bless {}, shift;
+	return $self;
+}
+
+sub FETCH {
+	my $self = shift;
+	my ($key) = @@_;
+	$main::hash_fetch++;
+	return $self->{$key};
+}
+
+sub STORE {
+	my $self = shift;
+	my ($key, $value) = @@_;
+	$self->{$key} = $value;
+}
+
+sub FIRSTKEY {
+	my $self = shift;
+	scalar keys %{$self};
+	return each %{$self};
+}
+
+sub NEXTKEY {
+	my $self = shift;
+	return each %{$self};
+}
+
+package TIED_ARRAY;
+
+sub TIEARRAY {
+	my $self = bless [], shift;
+	return $self;
+}
+
+sub FETCH {
+	my $self = shift;
+	my ($idx) = @@_;
+	$main::array_fetch++;
+	return $self->[$idx];
+}
+
+sub STORE {
+	my $self = shift;
+	my ($idx, $value) = @@_;
+	$self->[$idx] = $value;
+}
+
+sub FETCHSIZE {
+	my $self = shift;
+	return @@{$self};
+}
+
+package TIED_SCALAR;
+
+sub TIESCALAR {
+	my $scalar;
+	my $self = bless \$scalar, shift;
+	return $self;
+}
+
+sub FETCH {
+	my $self = shift;
+	$main::scalar_fetch++;
+	return $$self;
+}
+
+sub STORE {
+	my $self = shift;
+	my ($value) = @@_;
+	$$self = $value;
+}
+
+package FAULT;
+
+$fault = 0;
+
+sub TIESCALAR {
+	my $pkg = shift;
+	return bless [@@_], $pkg;
+}
+
+sub FETCH {
+	my $self = shift;
+	my ($href, $key) = @@$self;
+	$fault++;
+	untie $href->{$key};
+	return $href->{$key} = 1;
+}
+
+package main;
+
+$a = 'toto';
+$b = \$a;
+
+$c = tie %hash, TIED_HASH;
+$d = tie @@array, TIED_ARRAY;
+tie $scalar, TIED_SCALAR;
+
+#$scalar = 'foo';
+#$hash{'attribute'} = \$d;
+#$array[0] = $c;
+#$array[1] = \$scalar;
+
+### If I say
+###   $hash{'attribute'} = $d;
+### below, then dump() incorectly dumps the hash value as a string the second
+### time it is reached. I have not investigated enough to tell whether it's
+### a bug in my dump() routine or in the Perl tieing mechanism.
+$scalar = 'foo';
+$hash{'attribute'} = 'plain value';
+$array[0] = \$scalar;
+$array[1] = $c;
+$array[2] = \@@array;
+
+@@tied = (\$scalar, \@@array, \%hash);
+%a = ('key', 'value', 1, 0, $a, $b, 'cvar', \$a, 'scalarref', \$scalar);
+@@a = ('first', 3, -4, -3.14159, 456, 4.5, $d, \$d,
+	$b, \$a, $a, $c, \$c, \%a, \@@array, \%hash, \@@tied);
+
+ok 1, defined($f = freeze(\@@a));
+
+$dumped = &dump(\@@a);
+ok 2, 1;
+
+$root = thaw($f);
+ok 3, defined $root;
+
+$got = &dump($root);
+ok 4, 1;
+
+### Used to see the manifestation of the bug documented above.
+### print "original: $dumped";
+### print "--------\n";
+### print "got: $got";
+### print "--------\n";
+
+ok 5, $got eq $dumped; 
+
+$g = freeze($root);
+ok 6, length($f) == length($g);
+
+# Ensure the tied items in the retrieved image work
+@@old = ($scalar_fetch, $array_fetch, $hash_fetch);
+@@tied = ($tscalar, $tarray, $thash) = @@{$root->[$#{$root}]};
+@@type = qw(SCALAR  ARRAY  HASH);
+
+ok 7, tied $$tscalar;
+ok 8, tied @@{$tarray};
+ok 9, tied %{$thash};
+
+@@new = ($$tscalar, $tarray->[0], $thash->{'attribute'});
+@@new = ($scalar_fetch, $array_fetch, $hash_fetch);
+
+# Tests 10..15
+for ($i = 0; $i < @@new; $i++) {
+	print "not " unless $new[$i] == $old[$i] + 1;
+	printf "ok %d\n", 10 + 2*$i;	# Tests 10,12,14
+	print "not " unless ref $tied[$i] eq $type[$i];
+	printf "ok %d\n", 11 + 2*$i;	# Tests 11,13,15
+}
+
+# Check undef ties
+my $h = {};
+tie $h->{'x'}, 'FAULT', $h, 'x';
+my $hf = freeze($h);
+ok 16, defined $hf;
+ok 17, $FAULT::fault == 0;
+ok 18, $h->{'x'} == 1;
+ok 19, $FAULT::fault == 1;
+
+my $ht = thaw($hf);
+ok 20, defined $ht;
+ok 21, $ht->{'x'} == 1;
+ok 22, $FAULT::fault == 2;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d28 1
+a28 1
+print "1..23\n";
+a209 11
+
+{
+    package P;
+    use Storable qw(freeze thaw);
+    use vars qw($a $b);
+    $b = "not ok ";
+    sub TIESCALAR { bless \$a } sub FETCH { "ok " }
+    tie $a, P; my $r = thaw freeze \$a; $b = $$r;
+    print $b , 23, "\n";
+}
+
+@
+

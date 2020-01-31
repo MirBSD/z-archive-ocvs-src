@@ -1,0 +1,311 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.14;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.14;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.42;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/usr/bin/perl
+
+BEGIN {
+    if( $ENV{PERL_CORE} ) {
+        chdir 't' if -d 't';
+        @@INC = '../lib';
+    }
+    else {
+        unshift @@INC, 't/lib';
+    }
+}
+chdir 't';
+
+use Test::More;
+
+BEGIN {
+	if ($^O =~ /cygwin/i) {
+		plan tests => 13;
+	} else {
+		plan skip_all => "This is not cygwin";
+	}
+}
+
+use Config;
+use File::Spec;
+use ExtUtils::MM;
+
+use_ok( 'ExtUtils::MM_Cygwin' );
+
+# test canonpath
+my $path = File::Spec->canonpath('/a/../../c');
+is( MM->canonpath('/a/../../c'), $path,
+	'canonpath() method should work just like the one in File::Spec' );
+
+# test cflags, with the fake package below
+my $args = bless({
+	CFLAGS	=> 'fakeflags',
+	CCFLAGS	=> '',
+}, MM);
+
+# with CFLAGS set, it should be returned
+is( $args->cflags(), 'fakeflags',
+	'cflags() should return CFLAGS member data, if set' );
+
+delete $args->{CFLAGS};
+
+# ExtUtils::MM_Cygwin::cflags() calls this, fake the output
+{
+    local $SIG{__WARN__} = sub { 
+        # no warnings 'redefine';
+        warn @@_ unless $_[0] =~ /^Subroutine .* redefined/;
+    };
+    sub ExtUtils::MM_Unix::cflags { return $_[1] };
+}
+
+# respects the config setting, should ignore whitespace around equal sign
+my $ccflags = $Config{useshrplib} eq 'true' ? ' -DUSEIMPORTLIB' : '';
+{
+    local $args->{NEEDS_LINKING} = 1;
+    $args->cflags(<<FLAGS);
+OPTIMIZE = opt
+PERLTYPE  =pt
+FLAGS
+}
+
+like( $args->{CFLAGS}, qr/OPTIMIZE = opt/, '... should set OPTIMIZE' );
+like( $args->{CFLAGS}, qr/PERLTYPE = pt/, '... should set PERLTYPE' );
+like( $args->{CFLAGS}, qr/CCFLAGS = $ccflags/, '... should set CCFLAGS' );
+
+# test manifypods
+$args = bless({
+	NOECHO => 'noecho',
+	MAN3PODS => {},
+	MAN1PODS => {},
+    MAKEFILE => 'Makefile',
+}, 'MM');
+like( $args->manifypods(), qr/pure_all\n\tnoecho/,
+	'manifypods() should return without PODS values set' );
+
+$args->{MAN3PODS} = { foo => 1 };
+my $out = tie *STDOUT, 'FakeOut';
+{
+    local $SIG{__WARN__} = sub {
+        # no warnings 'redefine';
+        warn @@_ unless $_[0] =~ /used only once/;
+    };
+    no warnings 'once';
+    local *MM::perl_script = sub { return };
+    my $res = $args->manifypods();
+    like( $$out, qr/could not locate your pod2man/,
+          '... should warn if pod2man cannot be located' );
+    like( $res, qr/POD2MAN_EXE = -S pod2man/,
+          '... should use default pod2man target' );
+    like( $res, qr/pure_all.+foo/, '... should add MAN3PODS targets' );
+}
+
+SKIP: {
+    skip "Only relevent in the core", 2 unless $ENV{PERL_CORE};
+    $args->{PERL_SRC} = File::Spec->updir;
+    $args->{MAN1PODS} = { bar => 1 };
+    $$out = '';
+    $res = $args->manifypods();
+    is( $$out, '', '... should not warn if PERL_SRC provided' );
+    like( $res, qr/bar \\\n\t1 \\\n\tfoo/,
+          '... should join MAN1PODS and MAN3PODS');
+}
+
+# test perl_archive
+my $libperl = $Config{libperl} || 'libperl.a';
+$libperl =~ s/\.a/.dll.a/;
+is( $args->perl_archive(), "\$(PERL_INC)/$libperl",
+	'perl_archive() should respect libperl setting' );
+
+
+package FakeOut;
+
+sub TIEHANDLE {
+	bless(\(my $scalar), $_[0]);
+}
+
+sub PRINT {
+	my $self = shift;
+	$$self .= shift;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@a13 1
+use strict;
+d18 1
+a18 1
+		plan tests => 11;
+d36 1
+a36 1
+my $MM = bless({
+d39 1
+a39 1
+}, 'MM');
+d42 1
+a42 1
+is( $MM->cflags(), 'fakeflags',
+d45 1
+a45 1
+delete $MM->{CFLAGS};
+d50 1
+d53 1
+a53 1
+    *ExtUtils::MM_Unix::cflags = sub { return $_[1] };
+d59 2
+a60 2
+    local $MM->{NEEDS_LINKING} = 1;
+    $MM->cflags(<<FLAGS);
+d66 3
+a68 3
+like( $MM->{CFLAGS}, qr/OPTIMIZE = opt/, '... should set OPTIMIZE' );
+like( $MM->{CFLAGS}, qr/PERLTYPE = pt/, '... should set PERLTYPE' );
+like( $MM->{CFLAGS}, qr/CCFLAGS = $ccflags/, '... should set CCFLAGS' );
+d71 1
+a71 1
+$MM = bless({
+d77 1
+a77 1
+unlike( $MM->manifypods(), qr/foo/,
+d80 16
+a95 4
+$MM->{MAN3PODS} = { foo => 'foo.1' };
+my $res = $MM->manifypods();
+like( $res, qr/pure_all.*foo.*foo.1/s, '... should add MAN3PODS targets' );
+
+d97 9
+a105 13
+# init_linker
+{
+    my $libperl = $Config{libperl} || 'libperl.a';
+    $libperl =~ s/\.a/.dll.a/ if $] >= 5.007;
+    $libperl = "\$(PERL_INC)/$libperl";
+
+    my $export  = '';
+    my $after   = '';
+    $MM->init_linker;
+
+    is( $MM->{PERL_ARCHIVE},        $libperl,   'PERL_ARCHIVE' );
+    is( $MM->{PERL_ARCHIVE_AFTER},  $after,     'PERL_ARCHIVE_AFTER' );
+    is( $MM->{EXPORT_LIST},         $export,    'EXPORT_LIST' );
+d108 5
+@
+

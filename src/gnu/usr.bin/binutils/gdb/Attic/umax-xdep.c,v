@@ -1,0 +1,246 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.06.10.19.01.07;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.22;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.22;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@/* umax host stuff.
+   Copyright (C) 1986, 1987, 1989, 1991 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "defs.h"
+#include "frame.h"
+#include "inferior.h"
+
+#include <sys/param.h>
+#include <sys/dir.h>
+#include <signal.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+
+#include "gdbcore.h"
+#include <sys/ptrace.h>
+#define PTRACE_ATTACH PT_ATTACH
+#define PTRACE_DETACH PT_FREEPROC
+
+#include <sys/file.h>
+#include "gdb_stat.h"
+
+/* Work with core dump and executable files, for GDB. 
+   This code would be in corefile.c if it weren't machine-dependent. */
+
+void
+core_file_command (filename, from_tty)
+     char *filename;
+     int from_tty;
+{
+  int val;
+  extern char registers[];
+
+  /* Discard all vestiges of any previous core file
+     and mark data and stack spaces as empty.  */
+
+  if (corefile)
+    free (corefile);
+  corefile = 0;
+
+  if (corechan >= 0)
+    close (corechan);
+  corechan = -1;
+
+  data_start = 0;
+  data_end = 0;
+  stack_start = STACK_END_ADDR;
+  stack_end = STACK_END_ADDR;
+
+  /* Now, if a new core file was specified, open it and digest it.  */
+
+  if (filename)
+    {
+      filename = tilde_expand (filename);
+      make_cleanup (free, filename);
+      
+      if (have_inferior_p ())
+	error ("To look at a core file, you must kill the program with \"kill\".");
+      corechan = open (filename, O_RDONLY, 0);
+      if (corechan < 0)
+	perror_with_name (filename);
+      /* 4.2-style (and perhaps also sysV-style) core dump file.  */
+      {
+	struct ptrace_user u;
+	int reg_offset;
+
+	val = myread (corechan, &u, sizeof u);
+	if (val < 0)
+	  perror_with_name (filename);
+	data_start = exec_data_start;
+
+	data_end = data_start + u.pt_dsize;
+	stack_start = stack_end - u.pt_ssize;
+	data_offset = sizeof u;
+	stack_offset = data_offset + u.pt_dsize;
+	reg_offset = 0;
+
+	memcpy (&core_aouthdr, &u.pt_aouthdr, sizeof (AOUTHDR));
+	printf_unfiltered ("Core file is from \"%s\".\n", u.pt_comm);
+	if (u.pt_signal > 0)
+	  printf_unfiltered ("Program terminated with signal %d, %s.\n",
+		  u.pt_signal, safe_strsignal (u.pt_signal));
+
+	/* Read the register values out of the core file and store
+	   them where `read_register' will find them.  */
+
+	{
+	  register int regno;
+
+	  for (regno = 0; regno < NUM_REGS; regno++)
+	    {
+	      char buf[MAX_REGISTER_RAW_SIZE];
+
+	      val = lseek (corechan, register_addr (regno, reg_offset), 0);
+	      if (val < 0)
+		perror_with_name (filename);
+
+ 	      val = myread (corechan, buf, sizeof buf);
+	      if (val < 0)
+		perror_with_name (filename);
+	      supply_register (regno, buf);
+	    }
+	}
+      }
+      if (filename[0] == '/')
+	corefile = savestring (filename, strlen (filename));
+      else
+	{
+	  corefile = concat (current_directory, "/", filename, NULL);
+	}
+
+      flush_cached_frames ();
+      select_frame (get_current_frame (), 0);
+      validate_files ();
+    }
+  else if (from_tty)
+    printf_unfiltered ("No core file now.\n");
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

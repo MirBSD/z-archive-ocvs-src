@@ -1,0 +1,310 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	cvs-200412111650:1.1.1.2
+	cvs-200412031430:1.1.1.2
+	cvs-200411261545:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200411131700:1.1.1.2
+	cvs-200410311900:1.1.1.2
+	cvs-200410222040:1.1.1.2
+	tg-mergetmp-1:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200410012000:1.1.1.2
+	cvs-200408281215:1.1.1.2
+	cvs-200408220030:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200403222025:1.1.1.2
+	cvs-200403101630:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310021412:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200309162245:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.19;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.19;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.01.26.19.00.53;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+ * Author: Tatu Ylonen <ylo@@cs.hut.fi>
+ * Copyright (c) 1995 Tatu Ylonen <ylo@@cs.hut.fi>, Espoo, Finland
+ *                    All rights reserved
+ * Interface to packet compression for ssh.
+ *
+ * As far as I am concerned, the code I have written for this software
+ * can be used freely for any purpose.  Any derived versions of this
+ * software must be clearly marked as such, and if the derived work is
+ * incompatible with the protocol description in the RFC file, it must be
+ * called by a name other than "ssh" or "Secure Shell".
+ */
+
+#include "includes.h"
+RCSID("$OpenBSD: compress.c,v 1.19 2002/03/18 17:31:54 provos Exp $");
+
+#include "log.h"
+#include "buffer.h"
+#include "zlib.h"
+#include "compress.h"
+
+z_stream incoming_stream;
+z_stream outgoing_stream;
+static int compress_init_send_called = 0;
+static int compress_init_recv_called = 0;
+static int inflate_failed = 0;
+static int deflate_failed = 0;
+
+/*
+ * Initializes compression; level is compression level from 1 to 9
+ * (as in gzip).
+ */
+
+void
+buffer_compress_init_send(int level)
+{
+	if (compress_init_send_called == 1)
+		deflateEnd(&outgoing_stream);
+	compress_init_send_called = 1;
+	debug("Enabling compression at level %d.", level);
+	if (level < 1 || level > 9)
+		fatal("Bad compression level %d.", level);
+	deflateInit(&outgoing_stream, level);
+}
+void
+buffer_compress_init_recv(void)
+{
+	if (compress_init_recv_called == 1)
+		inflateEnd(&incoming_stream);
+	compress_init_recv_called = 1;
+	inflateInit(&incoming_stream);
+}
+
+/* Frees any data structures allocated for compression. */
+
+void
+buffer_compress_uninit(void)
+{
+	debug("compress outgoing: raw data %lu, compressed %lu, factor %.2f",
+	    outgoing_stream.total_in, outgoing_stream.total_out,
+	    outgoing_stream.total_in == 0 ? 0.0 :
+	    (double) outgoing_stream.total_out / outgoing_stream.total_in);
+	debug("compress incoming: raw data %lu, compressed %lu, factor %.2f",
+	    incoming_stream.total_out, incoming_stream.total_in,
+	    incoming_stream.total_out == 0 ? 0.0 :
+	    (double) incoming_stream.total_in / incoming_stream.total_out);
+	if (compress_init_recv_called == 1 && inflate_failed == 0)
+		inflateEnd(&incoming_stream);
+	if (compress_init_send_called == 1 && deflate_failed == 0)
+		deflateEnd(&outgoing_stream);
+}
+
+/*
+ * Compresses the contents of input_buffer into output_buffer.  All packets
+ * compressed using this function will form a single compressed data stream;
+ * however, data will be flushed at the end of every call so that each
+ * output_buffer can be decompressed independently (but in the appropriate
+ * order since they together form a single compression stream) by the
+ * receiver.  This appends the compressed data to the output buffer.
+ */
+
+void
+buffer_compress(Buffer * input_buffer, Buffer * output_buffer)
+{
+	u_char buf[4096];
+	int status;
+
+	/* This case is not handled below. */
+	if (buffer_len(input_buffer) == 0)
+		return;
+
+	/* Input is the contents of the input buffer. */
+	outgoing_stream.next_in = buffer_ptr(input_buffer);
+	outgoing_stream.avail_in = buffer_len(input_buffer);
+
+	/* Loop compressing until deflate() returns with avail_out != 0. */
+	do {
+		/* Set up fixed-size output buffer. */
+		outgoing_stream.next_out = buf;
+		outgoing_stream.avail_out = sizeof(buf);
+
+		/* Compress as much data into the buffer as possible. */
+		status = deflate(&outgoing_stream, Z_PARTIAL_FLUSH);
+		switch (status) {
+		case Z_OK:
+			/* Append compressed data to output_buffer. */
+			buffer_append(output_buffer, buf,
+			    sizeof(buf) - outgoing_stream.avail_out);
+			break;
+		default:
+			deflate_failed = 1;
+			fatal("buffer_compress: deflate returned %d", status);
+			/* NOTREACHED */
+		}
+	} while (outgoing_stream.avail_out == 0);
+}
+
+/*
+ * Uncompresses the contents of input_buffer into output_buffer.  All packets
+ * uncompressed using this function will form a single compressed data
+ * stream; however, data will be flushed at the end of every call so that
+ * each output_buffer.  This must be called for the same size units that the
+ * buffer_compress was called, and in the same order that buffers compressed
+ * with that.  This appends the uncompressed data to the output buffer.
+ */
+
+void
+buffer_uncompress(Buffer * input_buffer, Buffer * output_buffer)
+{
+	u_char buf[4096];
+	int status;
+
+	incoming_stream.next_in = buffer_ptr(input_buffer);
+	incoming_stream.avail_in = buffer_len(input_buffer);
+
+	for (;;) {
+		/* Set up fixed-size output buffer. */
+		incoming_stream.next_out = buf;
+		incoming_stream.avail_out = sizeof(buf);
+
+		status = inflate(&incoming_stream, Z_PARTIAL_FLUSH);
+		switch (status) {
+		case Z_OK:
+			buffer_append(output_buffer, buf,
+			    sizeof(buf) - incoming_stream.avail_out);
+			break;
+		case Z_BUF_ERROR:
+			/*
+			 * Comments in zlib.h say that we should keep calling
+			 * inflate() until we get an error.  This appears to
+			 * be the error that we get.
+			 */
+			return;
+		default:
+			inflate_failed = 1;
+			fatal("buffer_uncompress: inflate returned %d", status);
+			/* NOTREACHED */
+		}
+	}
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d15 1
+a15 1
+RCSID("$OpenBSD: compress.c,v 1.21 2004/01/13 19:45:15 markus Exp $");
+d59 2
+a60 3
+	debug("compress outgoing: raw data %llu, compressed %llu, factor %.2f",
+	    (unsigned long long)outgoing_stream.total_in,
+	    (unsigned long long)outgoing_stream.total_out,
+d63 2
+a64 3
+	debug("compress incoming: raw data %llu, compressed %llu, factor %.2f",
+	    (unsigned long long)incoming_stream.total_out,
+	    (unsigned long long)incoming_stream.total_in,
+@
+

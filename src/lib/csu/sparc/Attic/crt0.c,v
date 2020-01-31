@@ -1,0 +1,517 @@
+head	1.2;
+access;
+symbols
+	cvs-200410141645:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310231600:1.1.5.1
+	netbsd:1.1.5
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.12.20.54.42;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.46.01;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.5.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.46.01;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.05.16.09.13.28;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.5.1
+date	2003.10.23.16.06.41;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove more non-x86-32 from src
+@
+text
+@/* $NetBSD: crt0.c,v 1.9 2000/06/14 22:52:50 cgd Exp $ */
+
+/*
+ * Copyright (c) 1998 Christos Zoulas
+ * Copyright (c) 1995 Christopher G. Demetriou
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *          This product includes software developed for the
+ *          NetBSD Project.  See http://www.netbsd.org/ for
+ *          information about NetBSD.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * 
+ * <<Id: LICENSE,v 1.2 2000/06/14 15:57:33 cgd Exp>>
+ */
+
+#include <stdlib.h>
+#include <limits.h>
+
+void ___start(int, char **, char **, void (*cleanup)(void), void *);
+
+__asm("
+	.text
+	.align	4
+	.global	__start
+	.global	_start
+__start:
+_start:
+	mov	0, %fp
+	ld	[%sp + 64], %o0		! get argc
+	add	%sp, 68, %o1		! get argv
+	sll	%o0, 2,	%o2		!
+	add	%o2, 4,	%o2		! envp = argv + (argc << 2) + 4
+	add	%o1, %o2, %o2		!
+	andn	%sp, 7,	%sp		! align
+	sub	%sp, 24, %sp		! expand to standard stack frame size
+	mov	%g3, %o3
+	mov	%g2, %o4
+	call	___start
+	 mov	%g1, %o5
+");
+
+char **environ;
+char *__progname = "";
+char __progname_storage[NAME_MAX+1];
+
+#ifdef MCRT0
+extern void     monstartup(u_long, u_long);
+extern void     _mcleanup(void);
+extern unsigned char _etext, _eprol;
+#endif /* MCRT0 */
+
+static char *_strrchr(const char *, char);
+
+void
+___start(int argc, char **argv, char **envp, void (*cleanup)(void),
+	void *obj)
+{
+	char *s;
+
+	environ = envp;
+
+	if ((__progname = argv[0]) != NULL) {	/* NULL ptr if argc = 0 */
+		if ((__progname = _strrchr(__progname, '/')) == NULL)
+			__progname = argv[0];
+		else
+			__progname++;
+		for (s = __progname_storage; *__progname &&
+		    s < &__progname_storage[sizeof __progname_storage - 1]; )
+			*s++ = *__progname++;
+		*s = '\0';
+		__progname = __progname_storage;
+	}
+
+#ifdef MCRT0
+	atexit(_mcleanup);
+	monstartup((u_long)&_eprol, (u_long)&_etext);
+#endif
+
+	__init();
+
+	exit(main(argc, argv, environ));
+}
+
+static char *
+_strrchr(const char *p, char ch)
+{
+	char *save;
+
+	for (save = NULL;; ++p) {
+		if (*p == ch)
+			save = (char *)p;
+		if (!*p)
+			return(save);
+	}
+}
+
+#ifdef MCRT0
+asm ("  .text");
+asm ("_eprol:");
+#endif
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.5.1
+log
+@Import NetBSD lib/csu into vendor branch to ease future updates
+@
+text
+@d1 1
+a1 1
+/*	$NetBSD: crt0.c,v 1.27 1999/01/22 11:29:17 mycroft Exp $	*/
+d3 3
+a5 2
+/*-
+ * Copyright (c) 1998 The NetBSD Foundation, Inc.
+d7 1
+a7 4
+ *
+ * This code is derived from software contributed to The NetBSD Foundation
+ * by Paul Kranenburg.
+ *
+d18 18
+a35 17
+ *        This product includes software developed by the NetBSD
+ *        Foundation, Inc. and its contributors.
+ * 4. Neither the name of The NetBSD Foundation nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+d39 1
+d41 1
+a41 15
+#include "common.h"
+
+extern void		start __P((void)) __asm__ ("start");
+
+#if defined(sun) && defined(sparc)
+static void		__call __P((void));
+#endif
+
+#ifdef __NetBSD__
+#undef mmap
+#define mmap(addr, len, prot, flags, fd, off)	\
+    __syscall2((quad_t)SYS_mmap, (addr), (len), (prot), (flags), \
+	(fd), 0, (off_t)(off))
+extern int		__syscall2 __P((quad_t, ...));
+#endif
+d43 1
+a43 1
+__asm__("
+d45 5
+a49 3
+	.align 4
+	.global start
+start:
+d51 5
+a55 24
+	ld	[%sp + 64], %l0		! get argc
+	add	%sp, 68, %l1		! get argv
+	sll	%l0, 2,	%l2		!
+	add	%l2, 4,	%l2		! envp = argv + (argc << 2) + 4
+	add	%l1, %l2, %l2		!
+	sethi	%hi(_environ), %l3
+	st	%l2, [%l3+%lo(_environ)]	! *environ = l2
+");
+
+/*
+ * We get a pointer to PSSTRINGS in %g1.
+ */
+__asm__("
+	cmp	%g1, 0
+	be	1f
+	sethi	%hi(___ps_strings), %l3
+	st	%g1, [%l3+%lo(___ps_strings)]
+1:
+");
+
+/*
+ * Finish diddling with stack.
+ */
+__asm__("
+d58 4
+d64 3
+a66 29
+/*
+ * Set __progname:
+ *	if (argv[0])
+ *		if ((__progname = _strrchr(argv[0], '/')) == NULL)
+ *			__progname = argv[0];
+ *		else
+ *			++__progname;
+ */
+__asm__("
+	ld	[%l1], %o0
+	cmp	%o0, 0
+	mov	%o0, %l6
+	be	1f
+	 sethi	%hi(___progname), %l7
+");
+#ifdef DYNAMIC
+__asm__("call	__strrchr");
+#else
+__asm__("call	_strrchr");
+#endif
+__asm__("
+	mov	47, %o1
+	cmp	%o0, 0
+	be,a	1f
+	 st	%l6, [%l7+%lo(___progname)]
+	add	%o0, 1, %o0
+	st	%o0, [%l7+%lo(___progname)]
+1:
+");
+a67 14
+#ifdef DYNAMIC
+/* Resolve symbols in dynamic libraries */
+__asm__("
+	sethi	%hi(__DYNAMIC), %o0
+	orcc	%o0, %lo(__DYNAMIC), %o0
+	be	1f
+	 nop
+	call	___load_rtld
+	 nop
+1:
+");
+#endif
+
+/* From here, all symbols should have been resolved, so we can use libc */
+d69 12
+a80 15
+/*
+ * atexit(_mcleanup);
+ * monstartup((u_long)&eprol, (u_long)&etext);
+ */
+__asm__("
+	sethi	%hi(__mcleanup), %o0
+	call	_atexit
+	 or	%o0, %lo(__mcleanup), %o0
+	sethi	%hi(_eprol), %o0
+	or	%o0, %lo(_eprol), %o0
+	sethi	%hi(_etext), %o1
+	call	_monstartup
+	 or	%o1, %lo(_etext), %o1
+");
+#endif
+d82 1
+a82 9
+#ifdef sun
+/*
+ * SunOS compatibility
+ */
+__asm__("
+	call	start_float
+	 nop
+");
+#endif
+d84 11
+a94 9
+/*
+ * Move `argc', `argv', and `envp' from locals to parameters for `main'.
+ */
+__asm__("
+	mov	%l0,%o0
+	mov	%l1,%o1
+__callmain:
+	call	_main
+	 mov	%l2,%o2
+d96 4
+a99 3
+	call	_exit
+	 nop
+");
+d101 1
+a101 22
+#ifdef DYNAMIC
+/*
+ * System call entry
+ */
+__asm__("
+	.set	SYSCALL_G2RFLAG, 0x400
+	.set	SYS___syscall, 198
+___syscall2:
+	sethi	%hi(SYS___syscall), %g1
+	ba	1f
+	 or	%g1, %lo(SYS___syscall), %g1
+___syscall:
+	clr	%g1
+1:
+	or	%g1, SYSCALL_G2RFLAG, %g1
+	add	%o7, 8, %g2
+	ta	%g0
+	mov	-0x1, %o0
+	jmp	%o7 + 0x8
+	 mov	-0x1, %o1
+");
+#endif
+d103 1
+a103 15
+#ifdef sun
+static
+__call()
+{
+	/*
+	 * adjust the C generated pointer to the crt struct to the
+	 * likings of ld.so, which is an offset relative to its %fp
+	 */
+	__asm__("
+		mov	%i0, %o0
+		mov	%i1, %o1
+		call	%i2
+		 sub	%o1, %sp, %o1
+	");
+	/*NOTREACHED, control is transferred directly to our caller */
+a104 1
+#endif
+d106 4
+a109 1
+#include "common.c"
+d111 7
+a117 3
+#if defined(LIBC_SCCS) && !defined(lint)
+__RCSID("$NetBSD: crt0.c,v 1.27 1999/01/22 11:29:17 mycroft Exp $");
+#endif /* LIBC_SCCS and not lint */
+d120 2
+a121 4
+__asm__ ("
+	.text
+	_eprol:
+");
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d43 20
+a62 20
+__asm(
+"	.text\n"
+"	.align 4\n"
+"	.global	__start\n"
+"	.global	_start\n"
+"__start:\n"
+"_start:\n"
+"	mov	0, %fp\n"
+"	ld	[%sp + 64], %o0		! get argc\n"
+"	add	%sp, 68, %o1		! get argv\n"
+"	sll	%o0, 2,	%o2\n"
+"	add	%o2, 4,	%o2		! envp = argv + (argc << 2) + 4\n"
+"	add	%o1, %o2, %o2\n"
+"	andn	%sp, 7,	%sp		! align\n"
+"	sub	%sp, 24, %sp		! expand to standard stack frame size\n"
+"	mov	%g3, %o3\n"
+"	mov	%g2, %o4\n"
+"	call	___start\n"
+"	 mov	%g1, %o5\n"
+);
+@
+

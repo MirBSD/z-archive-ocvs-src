@@ -1,0 +1,264 @@
+head	1.5;
+access;
+symbols
+	rpm2cpio-1_2:1.1.3.1 tg:1.1.3;
+locks; strict;
+comment	@# @;
+
+
+1.5
+date	2004.09.12.14.40.41;	author tg;	state dead;
+branches;
+next	1.4;
+
+1.4
+date	2004.08.28.15.43.33;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.06.04.14.16.28;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.06.03.16.40.06;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2004.06.03.16.30.46;	author tg;	state Exp;
+branches
+	1.1.3.1;
+next	;
+
+1.1.3.1
+date	2004.06.03.16.30.46;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@nuke rpm2cpio, put it back into MirPorts
+reason: portability of MirPorts
+@
+text
+@#!/usr/bin/perl
+# $MirBSD: src/usr.bin/rpm2cpio/rpm2cpio,v 1.4 2004/08/28 15:43:33 tg Exp $
+#
+# Copyright (C) 1997,1998,1999, Roger Espel Llima
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and any associated documentation files (the "Software"), to
+# deal in the Software without restriction, including without limitation the
+# rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+# SOFTWARE'S COPYRIGHT HOLDER(S) BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE
+
+sub printhelp {
+  print STDERR <<HERE;
+rpm2cpio, perl version by orabidoo <odar\@@pobox.com> +sw for MirOS
+dumps the contents to stdout as a cpio archive
+
+use: rpm2cpio [file.rpm] >file.cpio
+
+Here's how to use cpio:
+     list of contents:   tar tf file.cpio
+        extract files:   tar xp[hv]f file.cpio
+You could use "cpio -mid[v] <file.cpio" as well...
+HERE
+
+  exit 0;
+}
+
+if ($#ARGV == -1) {
+  printhelp if -t STDIN;
+  $f = "STDIN";
+} elsif ($#ARGV == 0) {
+  open(F, "< $ARGV[0]") or die "Can't read file $ARGV[0]\n";
+  $f = 'F';
+} else {
+  printhelp;
+}
+
+printhelp if -t STDOUT;
+
+read $f,$rpm,96;
+
+($magic, $major, $minor, $crap) = unpack("NCC C90", $rpm);
+
+die "Not an RPM\n" if $magic != 0xedabeedb;
+die "Not a version 3 or 4 RPM\n" if $major != 3 && $major != 4;
+
+while (!eof($f)) {
+  $pos = tell($f);
+  read $f,$rpm,16;
+  $smagic = unpack("n", $rpm);
+  last if $smagic eq 0x1f8b;
+  # Turns out that every header except the start of the gzip one is
+  # padded to an 8 bytes boundary.
+  if ($pos & 0x7) {
+    $pos += 7;
+    $pos &= ~0x7;	# Round to 8 byte boundary
+    seek $f, $pos, 0;
+    read $f,$rpm,16;
+  }
+  ($magic, $crap, $sections, $bytes) = unpack("N4", $rpm);
+  die "Error: header not recognized\n" if $magic != 0x8eade801;
+  $pos += 16;		# for header
+  $pos += 16 * $sections;
+  $pos += $bytes;
+  seek $f, $pos, 0;
+}
+
+if (eof($f)) {
+  die "bogus RPM\n";
+}
+
+open(ZCAT, "|/usr/bin/gzip -cd") || die "can't pipe to gzip\n";
+print STDERR "CPIO archive found!\n";
+
+print ZCAT $rpm;
+
+while (read($f, ($_=''), 16384) > 0) {
+  print ZCAT;
+}
+
+close ZCAT;
+@
+
+
+1.4
+log
+@remove some old comments, partially offensive
+add MirOS to help
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/usr.bin/rpm2cpio/rpm2cpio,v 1.3 2004/06/04 14:16:28 tg Exp $
+@
+
+
+1.3
+log
+@stop trying to be clever and not open "-h" or "--help"
+couldn't get it to work; as I said, perl sucks
+(kind of discovered by bsiegert@@)
+
+also, print help to stderr, as usual in Unix
+@
+text
+@d2 1
+a2 1
+# $MirBSD: src/usr.bin/rpm2cpio/rpm2cpio,v 1.2 2004/06/03 16:40:06 tg Exp $
+a23 9
+# (whew, that's done!)
+
+# why does the world need another rpm2cpio?  because the existing one
+# won't build unless you have half a ton of things that aren't really
+# required for it, since it uses the same library used to extract RPM's.
+# in particular, it won't build on the HPsUX box i'm on.
+
+# sw 2002-Mar-6 Don't slurp the whole file
+
+d26 1
+a26 1
+rpm2cpio, perl version by orabidoo <odar\@@pobox.com> +sw
+@
+
+
+1.2
+log
+@MirOSify
+@
+text
+@d2 1
+a2 1
+# $MirBSD$
+d34 1
+a34 1
+  print <<HERE;
+a52 1
+  printhelp if (($ARGV[0] == "-h") || ($ARGV[0] == "--help"));
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 2
+a3 1
+
+d5 1
+a5 1
+# 
+d7 4
+a10 4
+# of this software and any associated documentation files (the "Software"), to 
+# deal in the Software without restriction, including without limitation the 
+# rights to use, copy, modify, merge, publish, distribute, sublicense, 
+# and/or sell copies of the Software, and to permit persons to whom the 
+d12 1
+a12 1
+# 
+d15 1
+a15 1
+# 
+d19 1
+a19 1
+# SOFTWARE'S COPYRIGHT HOLDER(S) BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+a32 3
+# add a path if desired
+$gzip = "gzip";
+
+d38 1
+a38 1
+use: rpm2cpio [file.rpm] > file.cpio
+d41 3
+a43 2
+     list of contents:   cpio -t -i < /file/name
+        extract files:   cpio -d -i < /file/name
+d53 1
+a61 6
+# gobble the file up
+##undef $/;
+##$|=1;
+##$rpm = <$f>;
+##close ($f);
+
+a68 2
+##$rpm = substr($rpm, 96);
+
+d94 1
+a94 1
+open(ZCAT, "|gzip -cd") || die "can't pipe to gzip\n";
+a103 1
+
+@
+
+
+1.1.3.1
+log
+@rpm2cpio-1.2 by the sirc author
+@
+text
+@@

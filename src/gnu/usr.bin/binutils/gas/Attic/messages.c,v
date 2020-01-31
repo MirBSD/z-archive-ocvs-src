@@ -1,0 +1,812 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.1
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.59.26;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2004.07.04.17.01.01;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.25;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.25;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.41.17;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2004.07.15.17.09.52;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* $MirBSD: src/gnu/usr.bin/binutils/gas/messages.c,v 1.2 2004/07/04 17:01:01 tg Exp $ */
+
+/* messages.c - error reporter -
+   Copyright 1987, 1991, 1992, 1993, 1994, 1995, 1996, 1998, 2000, 2001
+   Free Software Foundation, Inc.
+   This file is part of GAS, the GNU Assembler.
+
+   GAS is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   GAS is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with GAS; see the file COPYING.  If not, write to the Free
+   Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+   02111-1307, USA.  */
+
+#include "as.h"
+
+#include <stdio.h>
+#ifdef HAVE_ERRNO_H
+#include <errno.h>
+#endif
+
+#ifdef USE_STDARG
+#include <stdarg.h>
+#endif
+
+#ifdef USE_VARARGS
+#include <varargs.h>
+#endif
+
+__RCSID("$MirBSD: src/gnu/usr.bin/binutils/gas/messages.c,v 1.2 2004/07/04 17:01:01 tg Exp $");
+
+#if !defined (USE_STDARG) && !defined (USE_VARARGS)
+/* Roll our own.  */
+#define va_alist REST
+#define va_dcl
+typedef int * va_list;
+#define va_start(ARGS)	ARGS = &REST
+#define va_end(ARGS)
+#endif
+
+static void identify PARAMS ((char *));
+static void as_show_where PARAMS ((void));
+static void as_warn_internal PARAMS ((char *, unsigned int, char *));
+static void as_bad_internal PARAMS ((char *, unsigned int, char *));
+
+/* Despite the rest of the comments in this file, (FIXME-SOON),
+ * here is the current scheme for error messages etc:
+ *
+ * as_fatal() is used when gas is quite confused and
+ * continuing the assembly is pointless.  In this case we
+ * exit immediately with error status.
+ *
+ * as_bad() is used to mark errors that result in what we
+ * presume to be a useless object file.  Say, we ignored
+ * something that might have been vital.  If we see any of
+ * these, assembly will continue to the end of the source,
+ * no object file will be produced, and we will terminate
+ * with error status.  The new option, -Z, tells us to
+ * produce an object file anyway but we still exit with
+ * error status.  The assumption here is that you don't want
+ * this object file but we could be wrong.
+ *
+ * as_warn() is used when we have an error from which we
+ * have a plausible error recovery.  eg, masking the top
+ * bits of a constant that is longer than will fit in the
+ * destination.  In this case we will continue to assemble
+ * the source, although we may have made a bad assumption,
+ * and we will produce an object file and return normal exit
+ * status (ie, no error).  The new option -X tells us to
+ * treat all as_warn() errors as as_bad() errors.  That is,
+ * no object file will be produced and we will exit with
+ * error status.  The idea here is that we don't kill an
+ * entire make because of an error that we knew how to
+ * correct.  On the other hand, sometimes you might want to
+ * stop the make at these points.
+ *
+ * as_tsktsk() is used when we see a minor error for which
+ * our error recovery action is almost certainly correct.
+ * In this case, we print a message and then assembly
+ * continues as though no error occurred.
+ */
+
+static void
+identify (file)
+     char *file;
+{
+  static int identified;
+  if (identified)
+    return;
+  identified++;
+
+  if (!file)
+    {
+      unsigned int x;
+      as_where (&file, &x);
+    }
+
+  if (file)
+    fprintf (stderr, "%s: ", file);
+  fprintf (stderr, _("Assembler messages:\n"));
+}
+
+/* The number of warnings issued.  */
+static int warning_count;
+
+int
+had_warnings ()
+{
+  return (warning_count);
+}
+
+/* Nonzero if we've hit a 'bad error', and should not write an obj file,
+   and exit with a nonzero error code.  */
+
+static int error_count;
+
+int
+had_errors ()
+{
+  return (error_count);
+}
+
+/* Print the current location to stderr.  */
+
+static void
+as_show_where ()
+{
+  char *file;
+  unsigned int line;
+
+  as_where (&file, &line);
+  identify (file);
+  if (file)
+    fprintf (stderr, "%s:%u: ", file, line);
+}
+
+/* Like perror(3), but with more info.  */
+
+void
+as_perror (gripe, filename)
+     const char *gripe;		/* Unpunctuated error theme.  */
+     const char *filename;
+{
+  const char *errtxt;
+
+  as_show_where ();
+  fprintf (stderr, gripe, filename);
+#ifdef BFD_ASSEMBLER
+  errtxt = bfd_errmsg (bfd_get_error ());
+#else
+  errtxt = xstrerror (errno);
+#endif
+  fprintf (stderr, ": %s\n", errtxt);
+  errno = 0;
+#ifdef BFD_ASSEMBLER
+  bfd_set_error (bfd_error_no_error);
+#endif
+}
+
+/* Send to stderr a string as a warning, and locate warning
+   in input file(s).
+   Please only use this for when we have some recovery action.
+   Please explain in string (which may have '\n's) what recovery was
+   done.  */
+
+#ifdef USE_STDARG
+void
+as_tsktsk (const char *format, ...)
+{
+  va_list args;
+
+  as_show_where ();
+  va_start (args, format);
+  vfprintf (stderr, format, args);
+  va_end (args);
+  (void) putc ('\n', stderr);
+}
+#else
+void
+as_tsktsk (format, va_alist)
+     const char *format;
+     va_dcl
+{
+  va_list args;
+
+  as_show_where ();
+  va_start (args);
+  vfprintf (stderr, format, args);
+  va_end (args);
+  (void) putc ('\n', stderr);
+}
+#endif /* not NO_STDARG */
+
+/* The common portion of as_warn and as_warn_where.  */
+
+static void
+as_warn_internal (file, line, buffer)
+     char *file;
+     unsigned int line;
+     char *buffer;
+{
+  ++warning_count;
+
+  if (file == NULL)
+    as_where (&file, &line);
+
+  identify (file);
+  if (file)
+    fprintf (stderr, "%s:%u: ", file, line);
+  fprintf (stderr, _("Warning: "));
+  fputs (buffer, stderr);
+  (void) putc ('\n', stderr);
+#ifndef NO_LISTING
+  listing_warning (buffer);
+#endif
+}
+
+/* Send to stderr a string as a warning, and locate warning
+   in input file(s).
+   Please only use this for when we have some recovery action.
+   Please explain in string (which may have '\n's) what recovery was
+   done.  */
+
+#ifdef USE_STDARG
+void
+as_warn (const char *format, ...)
+{
+  va_list args;
+  char buffer[2000];
+
+  if (!flag_no_warnings)
+    {
+      va_start (args, format);
+      vsnprintf (buffer, 2000, format, args);
+      va_end (args);
+      as_warn_internal ((char *) NULL, 0, buffer);
+    }
+}
+#else
+void
+as_warn (format, va_alist)
+     const char *format;
+     va_dcl
+{
+  va_list args;
+  char buffer[2000];
+
+  if (!flag_no_warnings)
+    {
+      va_start (args);
+      vsnprintf (buffer, 2000, format, args);
+      va_end (args);
+      as_warn_internal ((char *) NULL, 0, buffer);
+    }
+}
+#endif /* not NO_STDARG */
+
+/* Like as_bad but the file name and line number are passed in.
+   Unfortunately, we have to repeat the function in order to handle
+   the varargs correctly and portably.  */
+
+#ifdef USE_STDARG
+void
+as_warn_where (char *file, unsigned int line, const char *format, ...)
+{
+  va_list args;
+  char buffer[2000];
+
+  if (!flag_no_warnings)
+    {
+      va_start (args, format);
+      vsnprintf (buffer, 2000, format, args);
+      va_end (args);
+      as_warn_internal (file, line, buffer);
+    }
+}
+#else
+void
+as_warn_where (file, line, format, va_alist)
+     char *file;
+     unsigned int line;
+     const char *format;
+     va_dcl
+{
+  va_list args;
+  char buffer[2000];
+
+  if (!flag_no_warnings)
+    {
+      va_start (args);
+      vsnprintf (buffer, 2000, format, args);
+      va_end (args);
+      as_warn_internal (file, line, buffer);
+    }
+}
+#endif /* not NO_STDARG */
+
+/* The common portion of as_bad and as_bad_where.  */
+
+static void
+as_bad_internal (file, line, buffer)
+     char *file;
+     unsigned int line;
+     char *buffer;
+{
+  ++error_count;
+
+  if (file == NULL)
+    as_where (&file, &line);
+
+  identify (file);
+  if (file)
+    fprintf (stderr, "%s:%u: ", file, line);
+  fprintf (stderr, _("Error: "));
+  fputs (buffer, stderr);
+  (void) putc ('\n', stderr);
+#ifndef NO_LISTING
+  listing_error (buffer);
+#endif
+}
+
+/* Send to stderr a string as a warning, and locate warning in input
+   file(s).  Please us when there is no recovery, but we want to
+   continue processing but not produce an object file.
+   Please explain in string (which may have '\n's) what recovery was
+   done.  */
+
+#ifdef USE_STDARG
+void
+as_bad (const char *format, ...)
+{
+  va_list args;
+  char buffer[2000];
+
+  va_start (args, format);
+  vsnprintf (buffer, 2000, format, args);
+  va_end (args);
+
+  as_bad_internal ((char *) NULL, 0, buffer);
+}
+
+#else
+void
+as_bad (format, va_alist)
+     const char *format;
+     va_dcl
+{
+  va_list args;
+  char buffer[2000];
+
+  va_start (args);
+  vsnprintf (buffer, 2000, format, args);
+  va_end (args);
+
+  as_bad_internal ((char *) NULL, 0, buffer);
+}
+#endif /* not NO_STDARG */
+
+/* Like as_bad but the file name and line number are passed in.
+   Unfortunately, we have to repeat the function in order to handle
+   the varargs correctly and portably.  */
+
+#ifdef USE_STDARG
+void
+as_bad_where (char *file, unsigned int line, const char *format, ...)
+{
+  va_list args;
+  char buffer[2000];
+
+  va_start (args, format);
+  vsnprintf (buffer, 2000, format, args);
+  va_end (args);
+
+  as_bad_internal (file, line, buffer);
+}
+
+#else
+void
+as_bad_where (file, line, format, va_alist)
+     char *file;
+     unsigned int line;
+     const char *format;
+     va_dcl
+{
+  va_list args;
+  char buffer[2000];
+
+  va_start (args);
+  vsnprintf (buffer, 2000, format, args);
+  va_end (args);
+
+  as_bad_internal (file, line, buffer);
+}
+#endif /* not NO_STDARG */
+
+/* Send to stderr a string as a fatal message, and print location of
+   error in input file(s).
+   Please only use this for when we DON'T have some recovery action.
+   It xexit()s with a warning status.  */
+
+#ifdef USE_STDARG
+void
+as_fatal (const char *format, ...)
+{
+  va_list args;
+
+  as_show_where ();
+  va_start (args, format);
+  fprintf (stderr, _("Fatal error: "));
+  vfprintf (stderr, format, args);
+  (void) putc ('\n', stderr);
+  va_end (args);
+  /* Delete the output file, if it exists.  This will prevent make from
+     thinking that a file was created and hence does not need rebuilding.  */
+  if (out_file_name != NULL)
+    unlink (out_file_name);
+  xexit (EXIT_FAILURE);
+}
+#else
+void
+as_fatal (format, va_alist)
+     char *format;
+     va_dcl
+{
+  va_list args;
+
+  as_show_where ();
+  va_start (args);
+  fprintf (stderr, _("Fatal error: "));
+  vfprintf (stderr, format, args);
+  (void) putc ('\n', stderr);
+  va_end (args);
+  xexit (EXIT_FAILURE);
+}
+#endif /* not NO_STDARG */
+
+/* Indicate assertion failure.
+   Arguments: Filename, line number, optional function name.  */
+
+void
+as_assert (file, line, fn)
+     const char *file, *fn;
+     int line;
+{
+  as_show_where ();
+  fprintf (stderr, _("Internal error!\n"));
+  if (fn)
+    fprintf (stderr, _("Assertion failure in %s at %s line %d.\n"),
+	     fn, file, line);
+  else
+    fprintf (stderr, _("Assertion failure at %s line %d.\n"), file, line);
+  fprintf (stderr, _("Please report this bug.\n"));
+  xexit (EXIT_FAILURE);
+}
+
+/* as_abort: Print a friendly message saying how totally hosed we are,
+   and exit without producing a core file.  */
+
+void
+as_abort (file, line, fn)
+     const char *file, *fn;
+     int line;
+{
+  as_show_where ();
+  if (fn)
+    fprintf (stderr, _("Internal error, aborting at %s line %d in %s\n"),
+	     file, line, fn);
+  else
+    fprintf (stderr, _("Internal error, aborting at %s line %d\n"),
+	     file, line);
+  fprintf (stderr, _("Please report this bug.\n"));
+  xexit (EXIT_FAILURE);
+}
+
+/* Support routines.  */
+
+void
+fprint_value (file, val)
+     FILE *file;
+     valueT val;
+{
+  if (sizeof (val) <= sizeof (long))
+    {
+      fprintf (file, "%ld", (long) val);
+      return;
+    }
+#ifdef BFD_ASSEMBLER
+  if (sizeof (val) <= sizeof (bfd_vma))
+    {
+      fprintf_vma (file, val);
+      return;
+    }
+#endif
+  abort ();
+}
+
+void
+sprint_value (buf, val)
+     char *buf;
+     valueT val;
+{
+  if (sizeof (val) <= sizeof (long))
+    {
+      sprintf (buf, "%ld", (long) val);
+      return;
+    }
+#ifdef BFD_ASSEMBLER
+  if (sizeof (val) <= sizeof (bfd_vma))
+    {
+      sprintf_vma (buf, val);
+      return;
+    }
+#endif
+  abort ();
+}
+@
+
+
+1.2
+log
+@another round of warnings, etc.
+add RCS ID, KNF a bit while here
+
+some format string "errors" can't be resolved (2-digit year for example);
+here we might add a GCC option to not warn about them (although I'd
+rather like to see a
+		(void)strftime(buf, sizeof(buf) - 1, "%e%b%y", tp);
+changed into
+		(void)strftime(buf, sizeof(buf) - 1,
+		    "%e%b%y" __attribute__((safe_format)), tp);
+on a per-invocation basis; XXX any volunteers?)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD$ */
+d38 1
+a38 1
+__RCSID("$MirBSD$");
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+d38 2
+d242 1
+a242 1
+      vsprintf (buffer, format, args);
+d259 1
+a259 1
+      vsprintf (buffer, format, args);
+d280 1
+a280 1
+      vsprintf (buffer, format, args);
+d299 1
+a299 1
+      vsprintf (buffer, format, args);
+d344 1
+a344 1
+  vsprintf (buffer, format, args);
+d360 1
+a360 1
+  vsprintf (buffer, format, args);
+d379 1
+a379 1
+  vsprintf (buffer, format, args);
+d397 1
+a397 1
+  vsprintf (buffer, format, args);
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@GNU Binutils, version 2.15
+@
+text
+@d2 1
+a2 1
+   Copyright 1987, 1991, 1992, 1993, 1994, 1995, 1996, 1998, 2000, 2001, 2003
+d45 4
+a48 4
+static void identify (char *);
+static void as_show_where (void);
+static void as_warn_internal (char *, unsigned int, char *);
+static void as_bad_internal (char *, unsigned int, char *);
+d51 35
+a85 34
+   here is the current scheme for error messages etc:
+
+   as_fatal() is used when gas is quite confused and
+   continuing the assembly is pointless.  In this case we
+   exit immediately with error status.
+
+   as_bad() is used to mark errors that result in what we
+   presume to be a useless object file.  Say, we ignored
+   something that might have been vital.  If we see any of
+   these, assembly will continue to the end of the source,
+   no object file will be produced, and we will terminate
+   with error status.  The new option, -Z, tells us to
+   produce an object file anyway but we still exit with
+   error status.  The assumption here is that you don't want
+   this object file but we could be wrong.
+
+   as_warn() is used when we have an error from which we
+   have a plausible error recovery.  eg, masking the top
+   bits of a constant that is longer than will fit in the
+   destination.  In this case we will continue to assemble
+   the source, although we may have made a bad assumption,
+   and we will produce an object file and return normal exit
+   status (ie, no error).  The new option -X tells us to
+   treat all as_warn() errors as as_bad() errors.  That is,
+   no object file will be produced and we will exit with
+   error status.  The idea here is that we don't kill an
+   entire make because of an error that we knew how to
+   correct.  On the other hand, sometimes you might want to
+   stop the make at these points.
+
+   as_tsktsk() is used when we see a minor error for which
+   our error recovery action is almost certainly correct.
+   In this case, we print a message and then assembly
+   continues as though no error occurred.  */
+d88 2
+a89 1
+identify (char *file)
+a91 1
+
+d111 1
+a111 1
+had_warnings (void)
+d113 1
+a113 1
+  return warning_count;
+d122 1
+a122 1
+had_errors (void)
+d124 1
+a124 1
+  return error_count;
+d130 1
+a130 1
+as_show_where (void)
+d144 3
+a146 2
+as_perror (const char *gripe,		/* Unpunctuated error theme.  */
+	   const char *filename)
+a148 1
+  int saved_errno = errno;
+a151 1
+  errno = saved_errno;
+d201 4
+a204 1
+as_warn_internal (char *file, unsigned int line, char *buffer)
+d305 4
+a308 1
+as_bad_internal (char *file, unsigned int line, char *buffer)
+d445 3
+a447 1
+as_assert (const char *file, int line, const char *fn)
+d464 3
+a466 1
+as_abort (const char *file, int line, const char *fn)
+d482 3
+a484 1
+fprint_value (FILE *file, valueT val)
+d502 3
+a504 1
+sprint_value (char *buf, valueT val)
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

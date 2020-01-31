@@ -1,0 +1,321 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	MIRBSD_4:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.14;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.14;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.14.55.12;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: symbol.c,v 1.6 2002/07/24 14:06:27 vincent Exp $	*/
+/*
+ * Copyright (c) 2002 Artur Grabowski <art@@openbsd.org>
+ * All rights reserved. 
+ *
+ * Redistribution and use in source and binary forms, with or without 
+ * modification, are permitted provided that the following conditions 
+ * are met: 
+ *
+ * 1. Redistributions of source code must retain the above copyright 
+ *    notice, this list of conditions and the following disclaimer. 
+ * 2. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission. 
+ *
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+ * AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
+ * THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL  DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ */
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <err.h>
+#include <errno.h>
+
+#include "pmdb.h"
+#include "symbol.h"
+
+/*
+ * Initialize the executable and the symbol table.
+ */
+void
+sym_init_exec(struct pstate *ps, const char *name)
+{
+	ps->ps_sops = NULL;
+	ps->ps_sym_exe = NULL;
+	TAILQ_INIT(&ps->ps_syms);
+
+#ifdef PMDB_ELF
+	if (sym_check_elf(name, ps))
+#endif
+#ifdef PMDB_AOUT
+	if (sym_check_aout(name, ps))
+#endif
+		warnx("sym_init_exec: %s is not a supported file format", name);
+
+	if (ps->ps_sops) {
+		/* XXX - this 0 doesn't have to be correct.. */
+		ps->ps_sym_exe = st_open(ps, name, 0);
+		if (ps->ps_sym_exe)
+			ps->ps_sym_exe->st_flags |= ST_EXEC;
+	}
+}
+
+/*
+ * Destroy all symbol tables.
+ */
+void
+sym_destroy(struct pstate *ps)
+{
+	struct sym_table *st;
+
+	if (!(ps->ps_flags & PSF_SYMBOLS))
+		return;
+	while ((st = TAILQ_FIRST(&ps->ps_syms)) != NULL) {
+		TAILQ_REMOVE(&ps->ps_syms, st, st_list);
+		(*ps->ps_sops->sop_close)(st);
+	}
+	ps->ps_sym_exe = NULL;
+}
+
+/*
+ * We have reasons to believe that the symbol tables we have are not consistent
+ * with the running binary. Update.
+ */
+void
+sym_update(struct pstate *ps)
+{
+	(*ps->ps_sops->sop_update)(ps);
+}
+
+char *
+sym_name_and_offset(struct pstate *ps, reg pc, char *nam, size_t len, reg *off)
+{
+	struct sym_table *st;
+	int bestoffisset = 0;
+	reg bestoff, noff;
+	char *res;
+
+	TAILQ_FOREACH(st, &ps->ps_syms, st_list) {
+		res = (*ps->ps_sops->sop_name_and_off)(st, pc, &noff);
+		if (res == NULL)
+			continue;
+		if (noff < bestoff || !bestoffisset) {
+			bestoffisset = 1;
+			bestoff = noff;
+			strlcpy(nam, res, len);
+		}
+	}
+
+	if (!bestoffisset || !strcmp(nam, "_end"))
+		return (NULL);
+
+	*off = bestoff;
+	return (nam);
+}
+
+int
+sym_lookup(struct pstate *ps, const char *name, reg *res)
+{
+	/*
+	 * We let the sop do the table walking itself since it might have
+	 * preferences about what symbols to pick (weak and stuff).
+	 */
+	return ((*ps->ps_sops->sop_lookup)(ps, name, res));
+}
+
+char *
+sym_print(struct pstate *ps, reg pc, char *buf, size_t buflen)
+{
+	char namebuf[1024], *name;
+	reg offs;
+
+	name = sym_name_and_offset(ps, pc, namebuf, sizeof(namebuf), &offs);
+	if (name == NULL) {
+		snprintf(buf, buflen, "0x%lx", pc);
+	} else {
+		snprintf(buf, buflen, "%s+0x%lx(0x%lx)", name, offs, pc);
+	}
+
+	return (buf);
+}
+
+/*
+ * Open a symbol table and install it in the list. Don't do anything if
+ * it's already there.
+ */
+struct sym_table *
+st_open(struct pstate *ps, const char *name, reg offs)
+{
+	struct sym_table *st;
+
+	TAILQ_FOREACH(st, &ps->ps_syms, st_list) {
+		if (!strcmp(name, st->st_fname) && (st->st_offs == offs))
+			return (st);
+	}
+
+	warnx("Loading symbols from %s at 0x%lx", name, offs);
+
+	if ((st = (*ps->ps_sops->sop_open)(name)) != NULL) {
+		TAILQ_INSERT_TAIL(&ps->ps_syms, st, st_list);
+		strlcpy(st->st_fname, name, sizeof(st->st_fname));
+		st->st_offs = offs;
+	}
+
+	return (st);
+}
+
+/*
+ * Load a symbol table from file argv[1] at offset argv[2].
+ */
+int
+cmd_sym_load(int argc, char **argv, void *arg)
+{
+	struct pstate *ps = arg;
+	char *fname, *ep;
+	reg offs;
+
+	fname = argv[1];
+	errno = 0;
+	offs = strtol(argv[2], &ep, 0);
+	if (argv[2][0] == '\0' || *ep != '\0' || errno == ERANGE) {
+		fprintf(stderr, "%s is not a valid offset\n", argv[2]);
+		return (0);
+	}
+
+	if (st_open(ps, fname, offs) == NULL) {
+		warnx("symbol loading failed");
+	}
+
+	return (0);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: symbol.c,v 1.7 2003/03/28 23:33:27 mickey Exp $	*/
+d135 1
+a135 5
+		if (offs)
+			snprintf(buf, buflen, "%s+0x%lx(0x%lx)",
+			    name, offs, pc);
+		else
+			snprintf(buf, buflen, "%s(0x%lx)", name, pc);
+@
+

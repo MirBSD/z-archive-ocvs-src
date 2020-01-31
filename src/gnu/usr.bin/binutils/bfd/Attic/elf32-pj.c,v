@@ -1,0 +1,858 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.50.48;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.00.23;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.05;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.05;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.26.31;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.41;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.04.14;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* picoJava specific support for 32-bit ELF
+   Copyright 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+   Contributed by Steve Chamberlan of Transmeta (sac@@pobox.com).
+
+This file is part of BFD, the Binary File Descriptor library.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "bfd.h"
+#include "sysdep.h"
+#include "bfdlink.h"
+#include "libbfd.h"
+#include "elf-bfd.h"
+#include "elf/pj.h"
+
+static bfd_reloc_status_type pj_elf_reloc
+  PARAMS ((bfd *, arelent *, asymbol *, PTR, asection *, bfd *, char **));
+static reloc_howto_type *pj_elf_reloc_type_lookup
+  PARAMS ((bfd *, bfd_reloc_code_real_type));
+static void pj_elf_info_to_howto
+  PARAMS ((bfd *, arelent *, Elf_Internal_Rela *));
+static void pj_elf_final_write_processing
+  PARAMS ((bfd *, bfd_boolean));
+
+static reloc_howto_type pj_elf_howto_table[] =
+{
+  /* No relocation.  */
+  HOWTO (R_PJ_NONE,		/* type */
+	 0,			/* rightshift */
+	 0,			/* size (0 = byte, 1 = short, 2 = long) */
+	 0,			/* bitsize */
+	 FALSE,			/* pc_relative */
+	 0,			/* bitpos */
+	 complain_overflow_dont, /* complain_on_overflow */
+	 pj_elf_reloc,		/* special_function */
+	 "R_PJ_NONE",		/* name */
+	 FALSE,			/* partial_inplace */
+	 0,			/* src_mask */
+	 0,			/* dst_mask */
+	 FALSE),		/* pcrel_offset */
+
+  /* 32 bit absolute relocation.  Setting partial_inplace to TRUE and
+     src_mask to a non-zero value is similar to the COFF toolchain.  */
+  HOWTO (R_PJ_DATA_DIR32,		/* type */
+	 0,			/* rightshift */
+	 2,			/* size (0 = byte, 1 = short, 2 = long) */
+	 32,			/* bitsize */
+	 FALSE,			/* pc_relative */
+	 0,			/* bitpos */
+	 complain_overflow_bitfield, /* complain_on_overflow */
+	 pj_elf_reloc,		/* special_function */
+	 "R_PJ_DIR32",		/* name */
+	 TRUE,			/* partial_inplace */
+	 0xffffffff,		/* src_mask */
+	 0xffffffff,		/* dst_mask */
+	 FALSE),		/* pcrel_offset */
+
+  /* 32 bit PC relative relocation.  */
+  HOWTO (R_PJ_CODE_REL32,		/* type */
+	 0,			/* rightshift */
+	 2,			/* size (0 = byte, 1 = short, 2 = long) */
+	 32,			/* bitsize */
+	 TRUE,			/* pc_relative */
+	 0,			/* bitpos */
+	 complain_overflow_signed, /* complain_on_overflow */
+	 pj_elf_reloc,		/* special_function */
+	 "R_PJ_REL32",		/* name */
+	 FALSE,			/* partial_inplace */
+	 0,			/* src_mask */
+	 0xffffffff,		/* dst_mask */
+	 TRUE),			/* pcrel_offset */
+
+/* 16 bit PC relative relocation.  */
+  HOWTO (R_PJ_CODE_REL16,		/* type */
+	 0,			/* rightshift */
+	 1,			/* size (0 = byte, 1 = short, 2 = long) */
+	 16,			/* bitsize */
+	 TRUE,			/* pc_relative */
+	 0,			/* bitpos */
+	 complain_overflow_signed, /* complain_on_overf6w */
+	 pj_elf_reloc,		/* special_function */
+	 "R_PJ_REL16",		/* name */
+	 FALSE,			/* partial_inplace */
+	 0xffff,		/* src_mask */
+	 0xffff,		/* dst_mask */
+	 TRUE),			/* pcrel_offset */
+  EMPTY_HOWTO (4),
+  EMPTY_HOWTO (5),
+  HOWTO (R_PJ_CODE_DIR32,	/* type */
+	 0,			/* rightshift */
+	 2,			/* size (0 = byte, 1 = short, 2 = long) */
+	 32,			/* bitsize */
+	 FALSE,			/* pc_relative */
+	 0,			/* bitpos */
+	 complain_overflow_bitfield, /* complain_on_overflow */
+	 pj_elf_reloc,		/* special_function */
+	 "R_PJ_CODE_DIR32",	/* name */
+	 TRUE,			/* partial_inplace */
+	 0xffffffff,		/* src_mask */
+	 0xffffffff,		/* dst_mask */
+	 FALSE),		/* pcrel_offset */
+
+  EMPTY_HOWTO (7),
+  EMPTY_HOWTO (8),
+  EMPTY_HOWTO (9),
+  EMPTY_HOWTO (10),
+  EMPTY_HOWTO (11),
+  EMPTY_HOWTO (12),
+
+  HOWTO (R_PJ_CODE_LO16,	/* type */
+	 0,			/* rightshift */
+	 1,			/* size (0 = byte, 1 = short, 2 = long) */
+	 16,			/* bitsize */
+	 FALSE,			/* pc_relative */
+	 0,			/* bitpos */
+	 complain_overflow_unsigned, /* complain_on_overflow */
+	 pj_elf_reloc,		/* special_function */
+	 "R_PJ_LO16",		/* name */
+	 FALSE,			/* partial_inplace */
+	 0xffff,		/* src_mask */
+	 0xffff,		/* dst_mask */
+	 TRUE),			/* pcrel_offset */
+
+    HOWTO (R_PJ_CODE_HI16,	/* type */
+	 16,			/* rightshift */
+	 1,			/* size (0 = byte, 1 = short, 2 = long) */
+	 16,			/* bitsize */
+	 FALSE,			/* pc_relative */
+	 0,			/* bitpos */
+	 complain_overflow_unsigned, /* complain_on_overflow */
+	 pj_elf_reloc,		/* special_function */
+	 "R_PJ_HI16",		/* name */
+	 FALSE,			/* partial_inplace */
+	 0xffff,		/* src_mask */
+	 0xffff,		/* dst_mask */
+	 TRUE),			/* pcrel_offset */
+
+  /* GNU extension to record C++ vtable hierarchy */
+  HOWTO (R_PJ_GNU_VTINHERIT,    /* type */
+         0,                     /* rightshift */
+         2,                     /* size (0 = byte, 1 = short, 2 = long) */
+         0,                     /* bitsize */
+         FALSE,                 /* pc_relative */
+         0,                     /* bitpos */
+         complain_overflow_dont, /* complain_on_overflow */
+         NULL,                  /* special_function */
+         "R_PJ_GNU_VTINHERIT",  /* name */
+         FALSE,                 /* partial_inplace */
+         0,                     /* src_mask */
+         0,                     /* dst_mask */
+         FALSE),                /* pcrel_offset */
+
+  /* GNU extension to record C++ vtable member usage */
+  HOWTO (R_PJ_GNU_VTENTRY,     /* type */
+         0,                     /* rightshift */
+         2,                     /* size (0 = byte, 1 = short, 2 = long) */
+         0,                     /* bitsize */
+         FALSE,                 /* pc_relative */
+         0,                     /* bitpos */
+         complain_overflow_dont, /* complain_on_overflow */
+         _bfd_elf_rel_vtable_reloc_fn,  /* special_function */
+         "R_PJ_GNU_VTENTRY",   /* name */
+         FALSE,                 /* partial_inplace */
+         0,                     /* src_mask */
+         0,                     /* dst_mask */
+         FALSE),                /* pcrel_offset */
+};
+
+/* This function is used for normal relocs.  This is like the COFF
+   function, and is almost certainly incorrect for other ELF targets.  */
+
+static bfd_reloc_status_type
+pj_elf_reloc (abfd, reloc_entry, symbol_in, data, input_section, output_bfd,
+	  error_message)
+     bfd *abfd;
+     arelent *reloc_entry;
+     asymbol *symbol_in;
+     PTR data;
+     asection *input_section;
+     bfd *output_bfd;
+     char **error_message ATTRIBUTE_UNUSED;
+{
+  unsigned long insn;
+  bfd_vma sym_value;
+  enum elf_pj_reloc_type r_type;
+  bfd_vma addr = reloc_entry->address;
+  bfd_byte *hit_data = addr + (bfd_byte *) data;
+
+  r_type = (enum elf_pj_reloc_type) reloc_entry->howto->type;
+
+  if (output_bfd != NULL)
+    {
+      /* Partial linking--do nothing.  */
+      reloc_entry->address += input_section->output_offset;
+      return bfd_reloc_ok;
+    }
+
+  if (symbol_in != NULL
+      && bfd_is_und_section (symbol_in->section))
+    return bfd_reloc_undefined;
+
+  if (bfd_is_com_section (symbol_in->section))
+    sym_value = 0;
+  else
+    sym_value = (symbol_in->value +
+		 symbol_in->section->output_section->vma +
+		 symbol_in->section->output_offset);
+
+  switch (r_type)
+    {
+    case R_PJ_DATA_DIR32:
+      insn = bfd_get_32 (abfd, hit_data);
+      insn += sym_value + reloc_entry->addend;
+      bfd_put_32 (abfd, (bfd_vma) insn, hit_data);
+      break;
+
+      /* Relocations in code are always bigendian, no matter what the
+	 data endianness is.  */
+
+    case R_PJ_CODE_DIR32:
+      insn = bfd_getb32 (hit_data);
+      insn += sym_value + reloc_entry->addend;
+      bfd_putb32 ((bfd_vma) insn, hit_data);
+      break;
+
+    case R_PJ_CODE_REL16:
+      insn = bfd_getb16 (hit_data);
+      insn += sym_value + reloc_entry->addend
+        -  (input_section->output_section->vma
+            + input_section->output_offset);
+      bfd_putb16 ((bfd_vma) insn, hit_data);
+      break;
+    case R_PJ_CODE_LO16:
+      insn = bfd_getb16 (hit_data);
+      insn += sym_value + reloc_entry->addend;
+      bfd_putb16 ((bfd_vma) insn, hit_data);
+      break;
+
+    case R_PJ_CODE_HI16:
+      insn = bfd_getb16 (hit_data);
+      insn += (sym_value + reloc_entry->addend) >> 16;
+      bfd_putb16 ((bfd_vma) insn, hit_data);
+      break;
+
+    default:
+      abort ();
+      break;
+    }
+
+  return bfd_reloc_ok;
+}
+
+/* This structure is used to map BFD reloc codes to PJ ELF relocs.  */
+
+struct elf_reloc_map
+{
+  bfd_reloc_code_real_type bfd_reloc_val;
+  unsigned char elf_reloc_val;
+};
+
+/* An array mapping BFD reloc codes to PJ ELF relocs.  */
+
+static const struct elf_reloc_map pj_reloc_map[] =
+{
+    { BFD_RELOC_NONE, 		R_PJ_NONE          },
+    { BFD_RELOC_32, 		R_PJ_DATA_DIR32    },
+    { BFD_RELOC_PJ_CODE_DIR16, 	R_PJ_CODE_DIR16    },
+    { BFD_RELOC_PJ_CODE_DIR32, 	R_PJ_CODE_DIR32    },
+    { BFD_RELOC_PJ_CODE_LO16, 	R_PJ_CODE_LO16     },
+    { BFD_RELOC_PJ_CODE_HI16, 	R_PJ_CODE_HI16     },
+    { BFD_RELOC_PJ_CODE_REL32,  R_PJ_CODE_REL32    },
+    { BFD_RELOC_PJ_CODE_REL16,  R_PJ_CODE_REL16    },
+    { BFD_RELOC_VTABLE_INHERIT, R_PJ_GNU_VTINHERIT },
+    { BFD_RELOC_VTABLE_ENTRY,   R_PJ_GNU_VTENTRY   },
+};
+
+/* Given a BFD reloc code, return the howto structure for the
+   corresponding PJ ELf reloc.  */
+
+static reloc_howto_type *
+pj_elf_reloc_type_lookup (abfd, code)
+     bfd *abfd ATTRIBUTE_UNUSED;
+     bfd_reloc_code_real_type code;
+{
+  unsigned int i;
+
+  for (i = 0; i < sizeof (pj_reloc_map) / sizeof (struct elf_reloc_map); i++)
+    {
+      if (pj_reloc_map[i].bfd_reloc_val == code)
+	return &pj_elf_howto_table[(int) pj_reloc_map[i].elf_reloc_val];
+    }
+
+  return NULL;
+}
+
+/* Given an ELF reloc, fill in the howto field of a relent.  */
+
+static void
+pj_elf_info_to_howto (abfd, cache_ptr, dst)
+     bfd *abfd ATTRIBUTE_UNUSED;
+     arelent *cache_ptr;
+     Elf_Internal_Rela *dst;
+{
+  unsigned int r;
+
+  r = ELF32_R_TYPE (dst->r_info);
+
+  BFD_ASSERT (r < (unsigned int) R_PJ_max);
+
+  cache_ptr->howto = &pj_elf_howto_table[r];
+}
+
+/* Take this moment to fill in the special picoJava bits in the
+   e_flags field.  */
+
+static void
+pj_elf_final_write_processing (abfd, linker)
+     bfd *abfd;
+     bfd_boolean linker ATTRIBUTE_UNUSED;
+{
+    elf_elfheader (abfd)->e_flags |= EF_PICOJAVA_ARCH;
+    elf_elfheader (abfd)->e_flags |= EF_PICOJAVA_GNUCALLS;
+}
+
+#define TARGET_BIG_SYM		bfd_elf32_pj_vec
+#define TARGET_BIG_NAME		"elf32-pj"
+#define TARGET_LITTLE_SYM	bfd_elf32_pjl_vec
+#define TARGET_LITTLE_NAME	"elf32-pjl"
+#define ELF_ARCH		bfd_arch_pj
+#define ELF_MACHINE_CODE	EM_PJ
+#define ELF_MACHINE_ALT1	EM_PJ_OLD
+#define ELF_MAXPAGESIZE		0x1000
+#define bfd_elf32_bfd_get_relocated_section_contents bfd_generic_get_relocated_section_contents
+#define bfd_elf32_bfd_reloc_type_lookup	             pj_elf_reloc_type_lookup
+#define elf_backend_final_write_processing           pj_elf_final_write_processing
+#define elf_info_to_howto		             pj_elf_info_to_howto
+#include "elf32-target.h"
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1999, 2000 Free Software Foundation, Inc.
+d34 2
+d44 1
+a44 1
+	 false,			/* pc_relative */
+d49 1
+a49 1
+	 false,			/* partial_inplace */
+d52 1
+a52 1
+	 false),		/* pcrel_offset */
+d54 1
+a54 1
+  /* 32 bit absolute relocation.  Setting partial_inplace to true and
+d60 1
+a60 1
+	 false,			/* pc_relative */
+d65 1
+a65 1
+	 true,			/* partial_inplace */
+d68 1
+a68 1
+	 false),		/* pcrel_offset */
+d75 1
+a75 1
+	 true,			/* pc_relative */
+d80 1
+a80 1
+	 false,			/* partial_inplace */
+d83 1
+a83 1
+	 true),			/* pcrel_offset */
+d90 1
+a90 1
+	 true,			/* pc_relative */
+d95 1
+a95 1
+	 false,			/* partial_inplace */
+d98 1
+a98 1
+	 true),			/* pcrel_offset */
+d105 1
+a105 1
+	 false,			/* pc_relative */
+d110 1
+a110 1
+	 true,			/* partial_inplace */
+d113 1
+a113 1
+	 false),		/* pcrel_offset */
+d126 1
+a126 1
+	 false,			/* pc_relative */
+d131 1
+a131 1
+	 false,			/* partial_inplace */
+d134 1
+a134 1
+	 true),			/* pcrel_offset */
+d140 1
+a140 1
+	 false,			/* pc_relative */
+d145 1
+a145 1
+	 false,			/* partial_inplace */
+d148 1
+a148 1
+	 true),			/* pcrel_offset */
+d155 1
+a155 1
+         false,                 /* pc_relative */
+d160 1
+a160 1
+         false,                 /* partial_inplace */
+d163 1
+a163 1
+         false),                /* pcrel_offset */
+d170 1
+a170 1
+         false,                 /* pc_relative */
+d175 1
+a175 1
+         false,                 /* partial_inplace */
+d178 1
+a178 2
+         false),                /* pcrel_offset */
+
+d226 1
+a226 1
+      bfd_put_32 (abfd, insn, hit_data);
+d235 1
+a235 1
+      bfd_putb32 (insn, hit_data);
+d243 1
+a243 1
+      bfd_putb16 (insn, hit_data);
+d248 1
+a248 1
+      bfd_putb16 (insn, hit_data);
+d254 1
+a254 1
+      bfd_putb16 (insn, hit_data);
+d331 1
+a331 1
+     boolean linker ATTRIBUTE_UNUSED;
+d343 1
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+a33 2
+static void pj_elf_final_write_processing
+  PARAMS ((bfd *, bfd_boolean));
+d42 1
+a42 1
+	 FALSE,			/* pc_relative */
+d47 1
+a47 1
+	 FALSE,			/* partial_inplace */
+d50 1
+a50 1
+	 FALSE),		/* pcrel_offset */
+d52 1
+a52 1
+  /* 32 bit absolute relocation.  Setting partial_inplace to TRUE and
+d58 1
+a58 1
+	 FALSE,			/* pc_relative */
+d63 1
+a63 1
+	 TRUE,			/* partial_inplace */
+d66 1
+a66 1
+	 FALSE),		/* pcrel_offset */
+d73 1
+a73 1
+	 TRUE,			/* pc_relative */
+d78 1
+a78 1
+	 FALSE,			/* partial_inplace */
+d81 1
+a81 1
+	 TRUE),			/* pcrel_offset */
+d88 1
+a88 1
+	 TRUE,			/* pc_relative */
+d93 1
+a93 1
+	 FALSE,			/* partial_inplace */
+d96 1
+a96 1
+	 TRUE),			/* pcrel_offset */
+d103 1
+a103 1
+	 FALSE,			/* pc_relative */
+d108 1
+a108 1
+	 TRUE,			/* partial_inplace */
+d111 1
+a111 1
+	 FALSE),		/* pcrel_offset */
+d124 1
+a124 1
+	 FALSE,			/* pc_relative */
+d129 1
+a129 1
+	 FALSE,			/* partial_inplace */
+d132 1
+a132 1
+	 TRUE),			/* pcrel_offset */
+d138 1
+a138 1
+	 FALSE,			/* pc_relative */
+d143 1
+a143 1
+	 FALSE,			/* partial_inplace */
+d146 1
+a146 1
+	 TRUE),			/* pcrel_offset */
+d153 1
+a153 1
+         FALSE,                 /* pc_relative */
+d158 1
+a158 1
+         FALSE,                 /* partial_inplace */
+d161 1
+a161 1
+         FALSE),                /* pcrel_offset */
+d168 1
+a168 1
+         FALSE,                 /* pc_relative */
+d173 1
+a173 1
+         FALSE,                 /* partial_inplace */
+d176 2
+a177 1
+         FALSE),                /* pcrel_offset */
+d225 1
+a225 1
+      bfd_put_32 (abfd, (bfd_vma) insn, hit_data);
+d234 1
+a234 1
+      bfd_putb32 ((bfd_vma) insn, hit_data);
+d242 1
+a242 1
+      bfd_putb16 ((bfd_vma) insn, hit_data);
+d247 1
+a247 1
+      bfd_putb16 ((bfd_vma) insn, hit_data);
+d253 1
+a253 1
+      bfd_putb16 ((bfd_vma) insn, hit_data);
+d330 1
+a330 1
+     bfd_boolean linker ATTRIBUTE_UNUSED;
+a341 1
+#define ELF_MACHINE_ALT1	EM_PJ_OLD
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1999, 2000, 2001, 2002 Free Software Foundation, Inc.
+a33 2
+static void pj_elf_final_write_processing
+  PARAMS ((bfd *, bfd_boolean));
+d42 1
+a42 1
+	 FALSE,			/* pc_relative */
+d47 1
+a47 1
+	 FALSE,			/* partial_inplace */
+d50 1
+a50 1
+	 FALSE),		/* pcrel_offset */
+d52 1
+a52 1
+  /* 32 bit absolute relocation.  Setting partial_inplace to TRUE and
+d58 1
+a58 1
+	 FALSE,			/* pc_relative */
+d63 1
+a63 1
+	 TRUE,			/* partial_inplace */
+d66 1
+a66 1
+	 FALSE),		/* pcrel_offset */
+d73 1
+a73 1
+	 TRUE,			/* pc_relative */
+d78 1
+a78 1
+	 FALSE,			/* partial_inplace */
+d81 1
+a81 1
+	 TRUE),			/* pcrel_offset */
+d88 1
+a88 1
+	 TRUE,			/* pc_relative */
+d93 1
+a93 1
+	 FALSE,			/* partial_inplace */
+d96 1
+a96 1
+	 TRUE),			/* pcrel_offset */
+d103 1
+a103 1
+	 FALSE,			/* pc_relative */
+d108 1
+a108 1
+	 TRUE,			/* partial_inplace */
+d111 1
+a111 1
+	 FALSE),		/* pcrel_offset */
+d124 1
+a124 1
+	 FALSE,			/* pc_relative */
+d129 1
+a129 1
+	 FALSE,			/* partial_inplace */
+d132 1
+a132 1
+	 TRUE),			/* pcrel_offset */
+d138 1
+a138 1
+	 FALSE,			/* pc_relative */
+d143 1
+a143 1
+	 FALSE,			/* partial_inplace */
+d146 1
+a146 1
+	 TRUE),			/* pcrel_offset */
+d153 1
+a153 1
+         FALSE,                 /* pc_relative */
+d158 1
+a158 1
+         FALSE,                 /* partial_inplace */
+d161 1
+a161 1
+         FALSE),                /* pcrel_offset */
+d168 1
+a168 1
+         FALSE,                 /* pc_relative */
+d173 1
+a173 1
+         FALSE,                 /* partial_inplace */
+d176 2
+a177 1
+         FALSE),                /* pcrel_offset */
+d225 1
+a225 1
+      bfd_put_32 (abfd, (bfd_vma) insn, hit_data);
+d234 1
+a234 1
+      bfd_putb32 ((bfd_vma) insn, hit_data);
+d242 1
+a242 1
+      bfd_putb16 ((bfd_vma) insn, hit_data);
+d247 1
+a247 1
+      bfd_putb16 ((bfd_vma) insn, hit_data);
+d253 1
+a253 1
+      bfd_putb16 ((bfd_vma) insn, hit_data);
+d330 1
+a330 1
+     bfd_boolean linker ATTRIBUTE_UNUSED;
+a341 1
+#define ELF_MACHINE_ALT1	EM_PJ_OLD
+@
+

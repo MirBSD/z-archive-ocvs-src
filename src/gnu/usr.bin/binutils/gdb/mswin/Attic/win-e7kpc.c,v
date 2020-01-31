@@ -1,0 +1,273 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.06.10.19.02.03;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.39;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.39;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@
+/* This code is 32-bit code which calls 16-bit functions defined in 
+ * win-e7kpc16.c in order to interface with the memory mapped 
+ * physical memory for the Hitachi e7000-pc.
+ */
+
+#include <stdio.h>
+#include "win-e7kpc.h"
+typedef int (CALLBACK *PROC16_PFN)(int);
+
+// Prototype undocumented KERNEL32 functions
+HINSTANCE WINAPI LoadLibrary16( PSTR );
+void WINAPI FreeLibrary16( HINSTANCE );
+FARPROC WINAPI GetProcAddress16( HINSTANCE, PSTR );
+void __cdecl QT_Thunk(void);
+
+PROC16_PFN pfn_set_mem = 0;   // We don't want these as locals in
+PROC16_PFN pfn_get_mem = 0;   
+HINSTANCE hInstUser16;                  // main(), since QT_THUNK could
+static long save_sp;
+static WORD set_mem_rc;                 // trash them...
+static WORD mem;                 
+static long mem_offset;
+static long mem_parms;
+
+    static int i;
+//============= stand-alone test code ==================
+#ifdef STAND_ALONE
+    static int len=20;
+    static int offset=10;
+    static char buf[512];
+    static FILE *fout;
+#ifdef _WIN32
+main()
+
+#else
+ int PASCAL WinMain (HINSTANCE   hinst,
+			 HINSTANCE   hinstPrev,
+			 LPSTR       lpszCmdLine,
+			 int         cmdShow
+			 )
+#endif
+{
+    //============= trash space ==================
+    char buffer[0x40];
+    buffer[0] = 0;  // Make sure to use the local variable so that the
+                    // compiler sets up an EBP frame
+
+    fout=fopen("errs","w");
+    fprintf(fout,"Testing... i=%d, offset=%d\n", i,offset);
+    if (win_load_e7kpc() != 0)
+    {
+        fprintf(fout,"ERROR! unable to load e7kpc dll\n"); 
+        return 1;
+    }
+    
+    //============= do test ============================
+    for (i=0; i<len; i++) 
+	buf[i] = 0x50+offset+i;
+
+    // Should put garbage pixels on top left of screen
+    win_mem_put(buf,len,offset);
+    win_mem_get(buf,len,offset);
+
+    for (i=0; i<len; i++) 
+    {
+	if (0x50+offset+i != buf[i])
+	    fprintf(fout,"ERROR! i=%d, memexp=%d, memis=%d\n", 
+		    i,0x50+offset+i,buf[i]);
+    }
+    fclose(fout);
+
+    win_unload_e7kpc();
+
+    return 0;
+}
+#endif /* STAND_ALONE */
+
+//============= load dll and get proc addresses ==================
+int win_load_e7kpc(void)
+{
+    hInstUser16 = LoadLibrary16("wine7kpc.dll");
+    if ( hInstUser16 < (HINSTANCE)32 )
+    {
+        printf( "LoadLibrary16() failed!\n" );
+        return 1;
+    }
+
+    pfn_set_mem =
+        (PROC16_PFN) GetProcAddress16(hInstUser16, "set_mem");
+    if ( !pfn_set_mem )
+    {
+        printf( "GetProcAddress16() failed!\n" );
+        return 1;
+    }
+    pfn_get_mem =
+        (PROC16_PFN) GetProcAddress16(hInstUser16, "get_mem");
+    if ( !pfn_get_mem )
+    {
+        printf( "GetProcAddress16() failed!\n" );
+        return 1;
+    }
+    return 0;
+}
+
+//============= cleanup ============================
+void win_unload_e7kpc(void)
+{
+    FreeLibrary16( hInstUser16 );   
+}
+    
+void win_mem_put (char* buf, int len, int offset)
+{
+    //============= trash space ==================
+    char buffer[0x40];
+    buffer[0] = 0;  // Make sure to use the local variable so that the
+                    // compiler sets up an EBP frame
+    //============= write mem bytes from buf ==================
+    for (i=0,mem_offset=offset; i<len; i++, mem_offset++) 
+    {
+	mem=buf[i];
+	// push both 16-bit parms with one 32-bit push
+	mem_parms=(mem&0xffff)|(mem_offset<<16)&0xffff0000;
+	// thunk from 32 to 16-bit code in dll
+	__asm 
+	{
+	    mov	save_sp, esp
+	    mov     edx, [mem_parms]
+	    push    edx
+	    mov     edx, [pfn_set_mem]
+	    call    QT_Thunk
+	    mov	esp, save_sp
+	    mov     [set_mem_rc], ax
+        }
+    }
+}
+
+void win_mem_get (char* buf, int len, int offset)
+{
+    //============= trash space ==================
+    char buffer[0x40];
+    buffer[0] = 0;  // Make sure to use the local variable so that the
+                    // compiler sets up an EBP frame
+    //============= collect mem bytes into buf ==================
+    for (i=0,mem_offset=offset; i<len; i++, mem_offset++) 
+    {
+	// thunk from 32 to 16-bit code in dll
+	__asm 
+	{
+	    mov	save_sp, esp
+	    mov     edx, [mem_offset]
+	    push    edx
+	    mov     edx, [pfn_get_mem]
+	    call    QT_Thunk
+	    mov	esp, save_sp
+	    mov     [mem], ax
+        }
+	buf[i]=mem;
+    }
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,231 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.18;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@##
+## Generic data connection package
+##
+
+package Net::FTP::dataconn;
+
+use Carp;
+use vars qw(@@ISA $timeout $VERSION);
+use Net::Cmd;
+use Errno;
+
+$VERSION = '0.11';
+@@ISA = qw(IO::Socket::INET);
+
+sub reading
+{
+ my $data = shift;
+ ${*$data}{'net_ftp_bytesread'} = 0;
+}
+
+sub abort
+{
+ my $data = shift;
+ my $ftp  = ${*$data}{'net_ftp_cmd'};
+
+ # no need to abort if we have finished the xfer
+ return $data->close
+    if ${*$data}{'net_ftp_eof'};
+
+ # for some reason if we continously open RETR connections and not
+ # read a single byte, then abort them after a while the server will
+ # close our connection, this prevents the unexpected EOF on the
+ # command channel -- GMB
+ if(exists ${*$data}{'net_ftp_bytesread'}
+	&& (${*$data}{'net_ftp_bytesread'} == 0)) {
+   my $buf="";
+   my $timeout = $data->timeout;
+   $data->can_read($timeout) && sysread($data,$buf,1);
+ }
+
+ ${*$data}{'net_ftp_eof'} = 1; # fake
+
+ $ftp->abort; # this will close me
+}
+
+sub _close
+{
+ my $data = shift;
+ my $ftp  = ${*$data}{'net_ftp_cmd'};
+
+ $data->SUPER::close();
+
+ delete ${*$ftp}{'net_ftp_dataconn'}
+    if exists ${*$ftp}{'net_ftp_dataconn'} &&
+        $data == ${*$ftp}{'net_ftp_dataconn'};
+}
+
+sub close
+{
+ my $data = shift;
+ my $ftp  = ${*$data}{'net_ftp_cmd'};
+
+ if(exists ${*$data}{'net_ftp_bytesread'} && !${*$data}{'net_ftp_eof'}) {
+   my $junk;
+   $data->read($junk,1,0);
+   return $data->abort unless ${*$data}{'net_ftp_eof'};
+ }
+
+ $data->_close;
+
+ $ftp->response() == CMD_OK &&
+    $ftp->message =~ /unique file name:\s*(\S*)\s*\)/ &&
+    (${*$ftp}{'net_ftp_unique'} = $1);
+
+ $ftp->status == CMD_OK;
+}
+
+sub _select {
+ my ($data, $timeout, $do_read) = @@_;
+ my ($rin,$rout,$win,$wout,$tout,$nfound);
+
+ vec($rin='',fileno($data),1) = 1;
+
+ ($win, $rin) = ($rin, $win) unless $do_read;
+
+ while (1) {
+   $nfound = select($rout=$rin, $wout=$win, undef, $tout=$timeout);
+
+   last if $nfound >= 0;
+   
+   croak "select: $!"
+     unless $!{EINTR};
+ }
+
+ $nfound;
+}
+
+sub can_read
+{
+ _select(@@_[0,1],1);
+}
+
+sub can_write
+{
+ _select(@@_[0,1],0);
+}
+
+sub cmd
+{
+ my $ftp = shift;
+
+ ${*$ftp}{'net_ftp_cmd'};
+}
+
+sub bytes_read {
+ my $ftp = shift;
+
+ ${*$ftp}{'net_ftp_bytesread'} || 0;
+}
+
+1;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

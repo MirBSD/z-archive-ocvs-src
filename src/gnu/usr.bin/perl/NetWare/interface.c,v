@@ -1,0 +1,316 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.43.35;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.35;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@
+/*
+ * Copyright © 2001 Novell, Inc. All Rights Reserved.
+ *
+ * You may distribute under the terms of either the GNU General Public
+ * License or the Artistic License, as specified in the README file.
+ *
+ */
+
+/*
+ * FILENAME     :   interface.c
+ * DESCRIPTION  :   Calling Perl APIs.
+ * Author       :   SGP
+ * Date	Created :   January 2001.
+ * Date Modified:   July 2nd 2001.
+ */
+
+
+
+#include "interface.h"
+#include "nwtinfo.h"
+
+static void xs_init(pTHX);
+
+EXTERN_C int RunPerl(int argc, char **argv, char **env);
+EXTERN_C void Perl_nw5_init(int *argcp, char ***argvp);
+EXTERN_C void boot_DynaLoader (pTHX_ CV* cv);
+
+EXTERN_C BOOL Remove_Thread_Ctx(void);
+
+
+ClsPerlHost::ClsPerlHost()
+{
+
+}
+
+ClsPerlHost::~ClsPerlHost()
+{
+
+}
+
+ClsPerlHost::VersionNumber()
+{
+	return 0;
+}
+
+bool
+ClsPerlHost::RegisterWithThreadTable()
+{
+	return(fnRegisterWithThreadTable());
+}
+
+bool
+ClsPerlHost::UnregisterWithThreadTable()
+{
+	return(fnUnregisterWithThreadTable());
+}
+
+int
+ClsPerlHost::PerlCreate(PerlInterpreter *my_perl)
+{
+/*	if (!(my_perl = perl_alloc()))		// Allocate memory for Perl.
+		return (1);*/
+    perl_construct(my_perl);
+
+	return 1;
+}
+
+int
+ClsPerlHost::PerlParse(PerlInterpreter *my_perl, int argc, char** argv, char** env)
+{
+	return(perl_parse(my_perl, xs_init, argc, argv, env));		// Parse the command line.
+}
+
+int
+ClsPerlHost::PerlRun(PerlInterpreter *my_perl)
+{
+	return(perl_run(my_perl));	// Run Perl.
+}
+
+void
+ClsPerlHost::PerlDestroy(PerlInterpreter *my_perl)
+{
+	perl_destruct(my_perl);		// Destructor for Perl.
+}
+
+void
+ClsPerlHost::PerlFree(PerlInterpreter *my_perl)
+{
+	perl_free(my_perl);			// Free the memory allocated for Perl.
+
+	// Remove the thread context set during Perl_set_context
+	// This is added here since for web script there is no other place this gets executed
+	// and it cannot be included into cgi2perl.xs unless this symbol is exported.
+	Remove_Thread_Ctx();
+}
+
+/*============================================================================================
+
+ Function		:	xs_init
+
+ Description	:	
+
+ Parameters 	:	pTHX	(IN)	-	
+
+ Returns		:	Nothing.
+
+==============================================================================================*/
+
+static void xs_init(pTHX)
+{
+	char *file = __FILE__;
+
+	dXSUB_SYS;
+	newXS("DynaLoader::boot_DynaLoader", boot_DynaLoader, file);
+}
+
+
+EXTERN_C
+int RunPerl(int argc, char **argv, char **env)
+{
+	int exitstatus = 0;
+	ClsPerlHost nlm;
+
+	PerlInterpreter *my_perl = NULL;		// defined in Perl.h
+	PerlInterpreter *new_perl = NULL;		// defined in Perl.h
+
+	#ifdef PERL_GLOBAL_STRUCT
+		#define PERLVAR(var,type)
+		#define PERLVARA(var,type)
+		#define PERLVARI(var,type,init) PL_Vars.var = init;
+		#define PERLVARIC(var,type,init) PL_Vars.var = init;
+
+		#include "perlvars.h"
+
+		#undef PERLVAR
+		#undef PERLVARA
+		#undef PERLVARI
+		#undef PERLVARIC
+	#endif
+
+	PERL_SYS_INIT(&argc, &argv);
+
+	if (!(my_perl = perl_alloc()))		// Allocate memory for Perl.
+		return (1);
+
+	if(nlm.PerlCreate(my_perl))
+	{
+		PL_perl_destruct_level = 0;
+
+		exitstatus = nlm.PerlParse(my_perl, argc, argv, env);
+		if(exitstatus == 0)
+		{
+			#if defined(TOP_CLONE) && defined(USE_ITHREADS)		// XXXXXX testing
+				new_perl = perl_clone(my_perl, 1);
+
+				exitstatus = perl_run(new_perl);	// Run Perl.
+				PERL_SET_THX(my_perl);
+			#else
+				exitstatus = nlm.PerlRun(my_perl);
+			#endif
+		}
+		nlm.PerlDestroy(my_perl);
+	}
+	if(my_perl)
+		nlm.PerlFree(my_perl);
+
+	#ifdef USE_ITHREADS
+		if (new_perl)
+		{
+			PERL_SET_THX(new_perl);
+			nlm.PerlDestroy(new_perl);
+			nlm.PerlFree(my_perl);
+		}
+	#endif
+
+	PERL_SYS_TERM();
+	return exitstatus;
+}
+
+
+// FUNCTION: AllocStdPerl
+//
+// DESCRIPTION:
+//	Allocates a standard perl handler that other perl handlers
+//	may delegate to. You should call FreeStdPerl to free this
+//	instance when you are done with it.
+//
+IPerlHost* AllocStdPerl()
+{
+	return (IPerlHost*) new ClsPerlHost();
+}
+
+
+// FUNCTION: FreeStdPerl
+//
+// DESCRIPTION:
+//	Frees an instance of a standard perl handler allocated by
+//	AllocStdPerl.
+//
+void FreeStdPerl(IPerlHost* pPerlHost)
+{
+	if (pPerlHost)
+		delete (ClsPerlHost*) pPerlHost;
+}
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

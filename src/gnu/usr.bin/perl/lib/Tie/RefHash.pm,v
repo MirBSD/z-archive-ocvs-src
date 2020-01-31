@@ -1,0 +1,321 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.25;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.25;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.56.14;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package Tie::RefHash;
+
+our $VERSION = 1.30;
+
+=head1 NAME
+
+Tie::RefHash - use references as hash keys
+
+=head1 SYNOPSIS
+
+    require 5.004;
+    use Tie::RefHash;
+    tie HASHVARIABLE, 'Tie::RefHash', LIST;
+    tie HASHVARIABLE, 'Tie::RefHash::Nestable', LIST;
+
+    untie HASHVARIABLE;
+
+=head1 DESCRIPTION
+
+This module provides the ability to use references as hash keys if you
+first C<tie> the hash variable to this module.  Normally, only the
+keys of the tied hash itself are preserved as references; to use
+references as keys in hashes-of-hashes, use Tie::RefHash::Nestable,
+included as part of Tie::RefHash.
+
+It is implemented using the standard perl TIEHASH interface.  Please
+see the C<tie> entry in perlfunc(1) and perltie(1) for more information.
+
+The Nestable version works by looking for hash references being stored
+and converting them to tied hashes so that they too can have
+references as keys.  This will happen without warning whenever you
+store a reference to one of your own hashes in the tied hash.
+
+=head1 EXAMPLE
+
+    use Tie::RefHash;
+    tie %h, 'Tie::RefHash';
+    $a = [];
+    $b = {};
+    $c = \*main;
+    $d = \"gunk";
+    $e = sub { 'foo' };
+    %h = ($a => 1, $b => 2, $c => 3, $d => 4, $e => 5);
+    $a->[0] = 'foo';
+    $b->{foo} = 'bar';
+    for (keys %h) {
+       print ref($_), "\n";
+    }
+
+    tie %h, 'Tie::RefHash::Nestable';
+    $h{$a}->{$b} = 1;
+    for (keys %h, keys %{$h{$a}}) {
+       print ref($_), "\n";
+    }
+
+=head1 AUTHOR
+
+Gurusamy Sarathy        gsar@@activestate.com
+
+=head1 VERSION
+
+Version 1.30
+
+=head1 SEE ALSO
+
+perl(1), perlfunc(1), perltie(1)
+
+=cut
+
+use Tie::Hash;
+use vars '@@ISA';
+@@ISA = qw(Tie::Hash);
+use strict;
+
+sub TIEHASH {
+  my $c = shift;
+  my $s = [];
+  bless $s, $c;
+  while (@@_) {
+    $s->STORE(shift, shift);
+  }
+  return $s;
+}
+
+sub FETCH {
+  my($s, $k) = @@_;
+  if (ref $k) {
+      if (defined $s->[0]{"$k"}) {
+        $s->[0]{"$k"}[1];
+      }
+      else {
+        undef;
+      }
+  }
+  else {
+      $s->[1]{$k};
+  }
+}
+
+sub STORE {
+  my($s, $k, $v) = @@_;
+  if (ref $k) {
+    $s->[0]{"$k"} = [$k, $v];
+  }
+  else {
+    $s->[1]{$k} = $v;
+  }
+  $v;
+}
+
+sub DELETE {
+  my($s, $k) = @@_;
+  (ref $k) ? delete($s->[0]{"$k"}) : delete($s->[1]{$k});
+}
+
+sub EXISTS {
+  my($s, $k) = @@_;
+  (ref $k) ? exists($s->[0]{"$k"}) : exists($s->[1]{$k});
+}
+
+sub FIRSTKEY {
+  my $s = shift;
+  keys %{$s->[0]};	# reset iterator
+  keys %{$s->[1]};	# reset iterator
+  $s->[2] = 0;
+  $s->NEXTKEY;
+}
+
+sub NEXTKEY {
+  my $s = shift;
+  my ($k, $v);
+  if (!$s->[2]) {
+    if (($k, $v) = each %{$s->[0]}) {
+      return $s->[0]{"$k"}[0];
+    }
+    else {
+      $s->[2] = 1;
+    }
+  }
+  return each %{$s->[1]};
+}
+
+sub CLEAR {
+  my $s = shift;
+  $s->[2] = 0;
+  %{$s->[0]} = ();
+  %{$s->[1]} = ();
+}
+
+package Tie::RefHash::Nestable;
+use vars '@@ISA';
+@@ISA = 'Tie::RefHash';
+
+sub STORE {
+  my($s, $k, $v) = @@_;
+  if (ref($v) eq 'HASH' and not tied %$v) {
+      my @@elems = %$v;
+      tie %$v, ref($s), @@elems;
+  }
+  $s->SUPER::STORE($k, $v);
+}
+
+1;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d3 1
+a3 1
+our $VERSION = 1.31;
+a59 2
+'Nestable' by Ed Avis   ed@@membled.com
+
+a74 2
+require overload; # to support objects with overloaded ""
+
+d88 2
+a89 3
+      my $kstr = overload::StrVal($k);
+      if (defined $s->[0]{$kstr}) {
+        $s->[0]{$kstr}[1];
+d103 1
+a103 1
+    $s->[0]{overload::StrVal($k)} = [$k, $v];
+d113 1
+a113 1
+  (ref $k) ? delete($s->[0]{overload::StrVal($k)}) : delete($s->[1]{$k});
+d118 1
+a118 1
+  (ref $k) ? exists($s->[0]{overload::StrVal($k)}) : exists($s->[1]{$k});
+d125 1
+a125 1
+  $s->[2] = 0;      # flag for iteration, see NEXTKEY
+d134 1
+a134 1
+      return $v->[0];
+@
+

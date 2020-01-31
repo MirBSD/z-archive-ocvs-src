@@ -1,0 +1,883 @@
+head	1.3;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.4
+	cvs-200405160640:1.1.1.6
+	cvs-200401271800:1.1.1.5
+	cvs-200401261630:1.1.1.5
+	cvs-200401021645:1.1.1.5
+	MIRBSD_7_ALPHA:1.1.1.4.0.6
+	MIRBSD_7:1.1.1.4.0.4
+	cvs-200312222040:1.1.1.5
+	MIRBSD_7ter:1.1.1.4
+	MIRBSD_7_DEV:1.1.1.4.0.2
+	cvs-200310020700:1.1.1.4
+	cvs-200309271030:1.1.1.4
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.05.21.20.08.34;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2004.01.10.04.57.39;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.55.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.55.45;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.48.44;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.08.30.23.57.24;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.09.25.16.45.55;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2003.12.22.21.19.23;	author tg;	state Exp;
+branches;
+next	1.1.1.6;
+
+1.1.1.6
+date	2004.05.16.07.23.09;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@* merge OpenBSD 3.5-current
+* re-sort entries in Makefile
+  => not a bunch of adds any more; all alphabetic
+  => remove obsolete SUBDIRS_ONLY_BSD for now
+     (MirLinux won't come that soon due to a certain lawsuit,
+      licence issues with unwillingly GNU fanatics, and my
+      chronic unwillingness to do masochistic work)
+* spacing, RCS IDs, etc.
+* pkg gets folded into pkg_install, so we only have one dir
+  to worry about
+* pkg_add leaves the tree - nobody cared about this kind
+  of package tools anyways, and they're not part of MirBSD
+  (although still supported by MirPorts)
+* mopd leaves - we don't have VAX support anyways
+@
+text
+@/*	$OpenBSD: device.c,v 1.11 2003/12/01 00:56:51 avsm Exp $ */
+
+/*
+ * Copyright (c) 1993-95 Mats O Jansson.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifndef LINT
+static const char rcsid[] = "$OpenBSD: device.c,v 1.11 2003/12/01 00:56:51 avsm Exp $";
+#endif
+
+#include "os.h"
+#include "common/common.h"
+#include "common/mopdef.h"
+
+struct	if_info *iflist;		/* Interface List		*/
+
+void mopReadDL();
+void mopReadRC();
+int  mopOpenDL(struct if_info *, int);
+int  mopOpenRC(struct if_info *, int);
+int  pfTrans();
+int  pfInit();
+int  pfWrite();
+
+#ifdef	DEV_NEW_CONF
+/*
+ * Return ethernet address for interface
+ */
+
+void
+deviceEthAddr(ifname, eaddr)
+	char *ifname;
+        u_char *eaddr;
+{
+	struct sockaddr_dl *sdl;
+	struct ifaddrs *ifap, *ifa;
+
+	if (getifaddrs(&ifap) != 0) {
+		syslog(LOG_ERR, "deviceEthAddr: getifaddrs: %m");
+		exit(1);
+	}
+
+	for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+		sdl = (struct sockaddr_dl *)ifa->ifa_addr;
+		if (sdl->sdl_family != AF_LINK || sdl->sdl_type != IFT_ETHER ||
+		    sdl->sdl_alen != 6)
+			continue;
+		if (!strcmp(ifa->ifa_name, ifname)) {
+			memmove((caddr_t)eaddr, (caddr_t)LLADDR(sdl), 6);
+			freeifaddrs(ifap);
+			return;
+		}
+	}
+
+	syslog(LOG_ERR, "deviceEthAddr: Never saw interface `%s'!", ifname);
+	exit(1);
+}
+#endif	/* DEV_NEW_CONF */
+
+void
+deviceOpen(ifname, proto, trans)
+	char	*ifname;
+	u_short	 proto;
+	int	 trans;
+{
+	struct if_info *p, tmp;
+
+	strncpy(tmp.if_name,ifname,sizeof(tmp.if_name) - 1);
+	tmp.if_name[sizeof(tmp.if_name)-1] = 0;
+	tmp.iopen   = pfInit;
+	
+	switch (proto) {
+	case MOP_K_PROTO_RC:
+		tmp.read = mopReadRC;
+		tmp.fd   = mopOpenRC(&tmp, trans);
+		break;
+	case MOP_K_PROTO_DL:
+		tmp.read = mopReadDL;
+		tmp.fd   = mopOpenDL(&tmp, trans);
+		break;
+	default:
+		break;
+	}
+	
+	if (tmp.fd != -1) {
+		
+		p = (struct if_info *)malloc(sizeof(*p));
+		if (p == 0) {
+		syslog(LOG_ERR, "deviceOpen: malloc: %m");
+		exit(1);
+		}
+	
+		p->next = iflist;
+		iflist = p;
+
+		strncpy(p->if_name,tmp.if_name, IFNAME_SIZE -1);
+		p->if_name[IFNAME_SIZE -1] = 0;
+		p->iopen   = tmp.iopen;
+		p->write   = pfWrite;
+		p->read    = tmp.read;
+		bzero((char *)p->eaddr,sizeof(p->eaddr));
+		p->fd      = tmp.fd;
+
+#ifdef	DEV_NEW_CONF
+		deviceEthAddr(p->if_name,&p->eaddr[0]);
+#else
+		p->eaddr[0]= tmp.eaddr[0];
+		p->eaddr[1]= tmp.eaddr[1];
+		p->eaddr[2]= tmp.eaddr[2];
+		p->eaddr[3]= tmp.eaddr[3];
+		p->eaddr[4]= tmp.eaddr[4];
+		p->eaddr[5]= tmp.eaddr[5];
+#endif	/* DEV_NEW_CONF */
+	
+#ifdef LINUX2_PF
+		{
+			int s;
+
+			s = socket(AF_INET,SOCK_DGRAM,0);
+			pfEthAddr(s,p->if_name,&p->eaddr[0]);
+			(void) close(s);
+			
+		}	
+#endif
+	}
+}
+
+void
+deviceInitOne(ifname)
+	char	*ifname;
+{
+	char	interface[IFNAME_SIZE];
+	struct if_info *p;
+	int	trans;
+#ifdef _AIX
+	char	dev[IFNAME_SIZE];
+	int	unit,j;
+	
+	unit = 0;
+	for (j = 0; j < strlen(ifname); j++) {
+		if (isalpha(ifname[j])) {
+			dev[j] = ifname[j];
+		} else {
+			if (isdigit(ifname[j])) {
+				unit = unit*10 + ifname[j] - '0';
+				dev[j] = '\0';
+			}
+		}
+	}
+	
+	if ((strlen(dev) == 2) &&
+	    (dev[0] == 'e') &&
+	    ((dev[1] == 'n') || (dev[1] == 't'))) {
+		snprintf(interface,sizeof(interface),"ent%d\0",unit);
+	} else {
+		snprintf(interface,sizeof(interface),"%s%d\0",dev,unit);
+	}
+#else
+	snprintf(interface,sizeof(interface),"%s",ifname);
+#endif /* _AIX */
+
+	/* Ok, init it just once */
+	
+	p = iflist;
+	for (p = iflist; p; p = p->next)  {
+		if (strcmp(p->if_name,interface) == 0) {
+			return;
+		}
+	}
+
+	syslog(LOG_INFO, "Initialized %s", interface);
+
+	/* Ok, get transport information */
+	
+	trans = pfTrans(interface);
+
+#ifndef NORC
+	/* Start with MOP Remote Console */
+
+	switch (trans) {
+	case TRANS_ETHER:
+		deviceOpen(interface,MOP_K_PROTO_RC,TRANS_ETHER);
+		break;
+	case TRANS_8023:
+		deviceOpen(interface,MOP_K_PROTO_RC,TRANS_8023);
+		break;
+	case TRANS_ETHER+TRANS_8023:
+		deviceOpen(interface,MOP_K_PROTO_RC,TRANS_ETHER);
+		deviceOpen(interface,MOP_K_PROTO_RC,TRANS_8023);
+		break;
+	case TRANS_ETHER+TRANS_8023+TRANS_AND:
+		deviceOpen(interface,MOP_K_PROTO_RC,TRANS_ETHER+TRANS_8023);
+		break;
+	}
+#endif
+
+#ifndef NODL
+	/* and next MOP Dump/Load */
+
+	switch (trans) {
+	case TRANS_ETHER:
+		deviceOpen(interface,MOP_K_PROTO_DL,TRANS_ETHER);
+		break;
+	case TRANS_8023:
+		deviceOpen(interface,MOP_K_PROTO_DL,TRANS_8023);
+		break;
+	case TRANS_ETHER+TRANS_8023:
+		deviceOpen(interface,MOP_K_PROTO_DL,TRANS_ETHER);
+		deviceOpen(interface,MOP_K_PROTO_DL,TRANS_8023);
+		break;
+	case TRANS_ETHER+TRANS_8023+TRANS_AND:
+		deviceOpen(interface,MOP_K_PROTO_DL,TRANS_ETHER+TRANS_8023);
+		break;
+	}
+#endif
+
+}
+
+/*
+ * Initialize all "candidate" interfaces that are in the system
+ * configuration list.  A "candidate" is up, not loopback and not
+ * point to point.
+ */
+void
+deviceInitAll()
+{
+#ifdef DEV_NEW_CONF
+	struct sockaddr_dl *sdl;
+	struct ifaddrs *ifap, *ifa;
+
+	if (getifaddrs(&ifap) != 0) {
+		syslog(LOG_ERR, "deviceInitAll: getifaddrs: %m");
+		exit(1);
+	}
+
+	for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+		sdl = (struct sockaddr_dl *)ifa->ifa_addr;
+		if (sdl->sdl_family != AF_LINK || sdl->sdl_type != IFT_ETHER ||
+		    sdl->sdl_alen != 6)
+			continue;
+		if ((ifa->ifa_flags &
+		    (IFF_UP | IFF_LOOPBACK | IFF_POINTOPOINT)) != IFF_UP)
+			continue;
+		deviceInitOne(ifa->ifa_name);
+	}
+	freeifaddrs(ifap);
+#else
+	struct ifaddrs *ifap, *ifa;
+
+	if (getifaddrs(&ifap) != 0) {
+		syslog(LOG_ERR, "deviceInitAll: getifaddrs: %m");
+		exit(1);
+	}
+
+	for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+		if (/*(ifa->ifa_flags & IFF_UP) == 0 ||*/
+		    ifa->ifa_flags & IFF_LOOPBACK ||
+		    ifa->ifa_flags & IFF_POINTOPOINT)
+			continue;
+		deviceInitOne(ifa->ifa_name);
+	}
+	freeifaddrs(ifap);
+#endif
+}
+@
+
+
+1.2
+log
+@Jumbo patch from wbx@@ to replace the
+bcopy(3), bcmp(3) and bzero(3) func-
+tions, having been deprecated earli-
+er, by their ISO counterparts, name-
+ly memmove(3) and the gcc3-optimized
+memcmp(3) and memset(3) functions.
+
+I didn't read every single line (be-
+cause of the time of day), but looks
+fine and builds through. I just nee-
+ded to nuke three cases of whitespa-
+ce at EOL. Good work wbx@@.
+
+I've also sprinkled in a few patches
+of mine addressing the issue that in
+some kernel header files, bcopy() is
+used as well... also there have been
+quite some string cleaning fixes and
+a missing header.
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: device.c,v 1.6 2002/09/07 08:09:49 maja Exp $ */
+a13 5
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Mats O Jansson.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+d28 1
+a28 1
+static char rcsid[] = "$OpenBSD: device.c,v 1.6 2002/09/07 08:09:49 maja Exp $";
+d47 1
+a47 1
+ * Return ethernet adress for interface
+a54 3
+	char inbuf[8192];
+	struct ifconf ifc;
+	struct ifreq *ifr;
+d56 1
+a56 2
+	int fd;
+	int i, len;
+d58 2
+a59 7
+	/* We cannot use SIOCGIFADDR on the BPF descriptor.
+	   We must instead get all the interfaces with SIOCGIFCONF
+	   and find the right one.  */
+
+	/* Use datagram socket to get Ethernet address. */
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+		syslog(LOG_ERR, "deviceEthAddr: socket: %m");
+d63 2
+a64 12
+	ifc.ifc_len = sizeof(inbuf);
+	ifc.ifc_buf = inbuf;
+	if (ioctl(fd, SIOCGIFCONF, (caddr_t)&ifc) < 0 ||
+	    ifc.ifc_len < sizeof(struct ifreq)) {
+		syslog(LOG_ERR, "deviceEthAddr: SIOGIFCONF: %m");
+		exit(1);
+	}
+	ifr = ifc.ifc_req;
+	for (i = 0; i < ifc.ifc_len;
+	     i += len, ifr = (struct ifreq *)((caddr_t)ifr + len)) {
+		len = sizeof(ifr->ifr_name) + ifr->ifr_addr.sa_len;
+		sdl = (struct sockaddr_dl *)&ifr->ifr_addr;
+d68 3
+a70 2
+		if (!strncmp(ifr->ifr_name, ifname, sizeof(ifr->ifr_name))) {
+			bcopy((caddr_t)LLADDR(sdl), (caddr_t)eaddr, 6);
+d247 1
+a247 4
+#ifdef	DEV_NEW_CONF
+	char inbuf[8192];
+	struct ifconf ifc;
+	struct ifreq *ifr;
+d249 1
+a249 2
+	int fd;
+	int i, len;
+d251 2
+a252 2
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+		syslog(LOG_ERR, "deviceInitAll: socket: %m");
+d256 2
+a257 12
+	ifc.ifc_len = sizeof(inbuf);
+	ifc.ifc_buf = inbuf;
+	if (ioctl(fd, SIOCGIFCONF, (caddr_t)&ifc) < 0 ||
+	    ifc.ifc_len < sizeof(struct ifreq)) {
+		syslog(LOG_ERR, "deviceInitAll: SIOCGIFCONF: %m");
+		exit(1);
+	}
+	ifr = ifc.ifc_req;
+	for (i = 0; i < ifc.ifc_len;
+	     i += len, ifr = (struct ifreq *)((caddr_t)ifr + len)) {
+		len = sizeof(ifr->ifr_name) + ifr->ifr_addr.sa_len;
+		sdl = (struct sockaddr_dl *)&ifr->ifr_addr;
+d261 1
+a261 5
+		if (ioctl(fd, SIOCGIFFLAGS, (caddr_t)ifr) < 0) {
+			syslog(LOG_ERR, "deviceInitAll: SIOCGIFFLAGS: %m");
+			continue;
+		}
+		if ((ifr->ifr_flags &
+d264 1
+a264 1
+		deviceInitOne(ifr->ifr_name);
+d266 1
+a266 1
+	(void) close(fd);
+d268 1
+a268 4
+	int fd;
+	int n;
+	struct ifreq ibuf[8], *ifrp;
+	struct ifconf ifc;
+d270 2
+a271 2
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+		syslog(LOG_ERR, "deviceInitAll: old socket: %m");
+d274 5
+a278 11
+	ifc.ifc_len = sizeof ibuf;
+	ifc.ifc_buf = (caddr_t)ibuf;
+	if (ioctl(fd, SIOCGIFCONF, (char *)&ifc) < 0 ||
+	    ifc.ifc_len < sizeof(struct ifreq)) {
+		syslog(LOG_ERR, "deviceInitAll: old SIOCGIFCONF: %m");
+		exit(1);
+	}
+	ifrp = ibuf;
+	n = ifc.ifc_len / sizeof(*ifrp);
+	for (; --n >= 0; ++ifrp) {
+		if (ioctl(fd, SIOCGIFFLAGS, (char *)ifrp) < 0) {
+d280 1
+a280 6
+		}
+		if (/*(ifrp->ifr_flags & IFF_UP) == 0 ||*/
+		    ifrp->ifr_flags & IFF_LOOPBACK ||
+		    ifrp->ifr_flags & IFF_POINTOPOINT)
+			continue;
+		deviceInitOne(ifrp->ifr_name);
+d282 2
+a283 3
+	
+	(void) close(fd);
+#endif /* DEV_NEW_CONF */
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: device.c,v 1.7 2003/06/02 21:38:39 maja Exp $ */
+d14 5
+d33 1
+a33 1
+static char rcsid[] = "$OpenBSD: device.c,v 1.7 2003/06/02 21:38:39 maja Exp $";
+@
+
+
+1.1.1.3
+log
+@Synchronize with OpenBSD 3.4-beta
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: device.c,v 1.8 2003/08/19 22:19:08 itojun Exp $ */
+d28 1
+a28 1
+static char rcsid[] = "$OpenBSD: device.c,v 1.8 2003/08/19 22:19:08 itojun Exp $";
+a60 1
+	struct ifaddrs *ifap, *ifa;
+d62 7
+a68 2
+	if (getifaddrs(&ifap) != 0) {
+		syslog(LOG_ERR, "deviceEthAddr: getifaddrs: %m");
+d72 12
+a83 2
+	for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+		sdl = (struct sockaddr_dl *)ifa->ifa_addr;
+d87 1
+a87 1
+		if (!strcmp(ifa->ifa_name, ifname)) {
+a88 1
+			freeifaddrs(ifap);
+d265 4
+a268 1
+#ifdef DEV_NEW_CONF
+d270 2
+a271 1
+	struct ifaddrs *ifap, *ifa;
+d273 2
+a274 2
+	if (getifaddrs(&ifap) != 0) {
+		syslog(LOG_ERR, "deviceInitAll: getifaddrs: %m");
+d278 12
+a289 2
+	for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+		sdl = (struct sockaddr_dl *)ifa->ifa_next;
+d293 5
+a297 1
+		if ((ifa->ifa_flags &
+d300 1
+a300 1
+		deviceInitOne(ifa->ifa_name);
+d302 1
+a302 1
+	freeifaddrs(ifap);
+d304 4
+a307 1
+	struct ifaddrs *ifap, *ifa;
+d309 9
+a317 2
+	if (getifaddrs(&ifap) != 0) {
+		syslog(LOG_ERR, "deviceInitAll: getifaddrs: %m");
+d320 9
+a328 5
+
+	for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+		if (/*(ifa->ifa_flags & IFF_UP) == 0 ||*/
+		    ifa->ifa_flags & IFF_LOOPBACK ||
+		    ifa->ifa_flags & IFF_POINTOPOINT)
+d330 1
+a330 1
+		deviceInitOne(ifa->ifa_name);
+d332 3
+a334 2
+	freeifaddrs(ifap);
+#endif
+@
+
+
+1.1.1.4
+log
+@Release Time. Synchronize with OpenBSD 3.4-current (base system).
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: device.c,v 1.9 2003/08/31 09:06:46 maja Exp $ */
+d28 1
+a28 1
+static char rcsid[] = "$OpenBSD: device.c,v 1.9 2003/08/31 09:06:46 maja Exp $";
+d262 1
+a262 1
+		sdl = (struct sockaddr_dl *)ifa->ifa_addr;
+@
+
+
+1.1.1.5
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: device.c,v 1.11 2003/12/01 00:56:51 avsm Exp $ */
+d28 1
+a28 1
+static const char rcsid[] = "$OpenBSD: device.c,v 1.11 2003/12/01 00:56:51 avsm Exp $";
+d47 1
+a47 1
+ * Return ethernet address for interface
+d55 3
+d59 2
+@
+
+
+1.1.1.6
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: device.c,v 1.12 2004/04/14 20:37:28 henning Exp $ */
+d28 1
+a28 2
+static const char rcsid[] =
+    "$OpenBSD: device.c,v 1.12 2004/04/14 20:37:28 henning Exp $";
+d35 1
+a35 1
+struct if_info	*iflist;		/* Interface List		*/
+d37 2
+a38 2
+void mopReadDL(void);
+void mopReadRC(void);
+d51 3
+a53 1
+deviceEthAddr(char *ifname, u_char *eaddr)
+d55 2
+a56 2
+	struct sockaddr_dl	*sdl;
+	struct ifaddrs		*ifap, *ifa;
+d69 1
+a69 1
+			bcopy(LLADDR(sdl), eaddr, 6);
+d81 4
+a84 1
+deviceOpen(char *ifname, u_short proto, int trans)
+d86 1
+a86 5
+	struct if_info	*p, tmp;
+
+	strncpy(tmp.if_name, ifname, sizeof(tmp.if_name) - 1);
+	tmp.if_name[sizeof(tmp.if_name) - 1] = 0;
+	tmp.iopen = pfInit;
+d88 4
+d104 1
+a104 1
+
+d106 2
+a107 1
+		p = malloc(sizeof(*p));
+d109 2
+a110 2
+			syslog(LOG_ERR, "deviceOpen: malloc: %m");
+			exit(1);
+d112 1
+a112 1
+
+d116 2
+a117 1
+		strlcpy(p->if_name, tmp.if_name, IFNAME_SIZE);
+d121 1
+a121 1
+		bzero(p->eaddr, sizeof(p->eaddr));
+d125 1
+a125 1
+		deviceEthAddr(p->if_name, &p->eaddr[0]);
+d127 6
+a132 6
+		p->eaddr[0] = tmp.eaddr[0];
+		p->eaddr[1] = tmp.eaddr[1];
+		p->eaddr[2] = tmp.eaddr[2];
+		p->eaddr[3] = tmp.eaddr[3];
+		p->eaddr[4] = tmp.eaddr[4];
+		p->eaddr[5] = tmp.eaddr[5];
+d134 1
+a134 1
+
+d139 5
+a143 4
+			s = socket(AF_INET, SOCK_DGRAM, 0);
+			pfEthAddr(s, p->if_name, &p->eaddr[0]);
+			close(s);
+		}
+d149 2
+a150 1
+deviceInitOne(char *ifname)
+d158 1
+a158 1
+
+d161 1
+a161 1
+		if (isalpha(ifname[j]))
+d163 1
+a163 1
+		else
+d165 1
+a165 1
+				unit = unit * 10 + ifname[j] - '0';
+d168 9
+a177 6
+
+	if ((strlen(dev) == 2) && (dev[0] == 'e') &&
+	    ((dev[1] == 'n') || (dev[1] == 't')))
+		snprintf(interface, sizeof(interface), "ent%d\0", unit);
+	else
+		snprintf(interface, sizeof(interface), "%s%d\0", dev, unit);
+d179 1
+a179 1
+	snprintf(interface, sizeof(interface), "%s", ifname);
+d182 2
+a183 1
+	/* Ok, init it just once */	
+d185 2
+a186 2
+	for (p = iflist; p; p = p->next)
+		if (strcmp(p->if_name, interface) == 0)
+d188 2
+d194 1
+d199 1
+d202 1
+a202 1
+		deviceOpen(interface, MOP_K_PROTO_RC, TRANS_ETHER);
+d205 1
+a205 1
+		deviceOpen(interface, MOP_K_PROTO_RC, TRANS_8023);
+d207 3
+a209 3
+	case TRANS_ETHER + TRANS_8023:
+		deviceOpen(interface, MOP_K_PROTO_RC, TRANS_ETHER);
+		deviceOpen(interface, MOP_K_PROTO_RC, TRANS_8023);
+d211 2
+a212 2
+	case TRANS_ETHER + TRANS_8023 + TRANS_AND:
+		deviceOpen(interface, MOP_K_PROTO_RC, TRANS_ETHER + TRANS_8023);
+d219 1
+d222 1
+a222 1
+		deviceOpen(interface, MOP_K_PROTO_DL, TRANS_ETHER);
+d225 1
+a225 1
+		deviceOpen(interface, MOP_K_PROTO_DL, TRANS_8023);
+d227 3
+a229 3
+	case TRANS_ETHER + TRANS_8023:
+		deviceOpen(interface, MOP_K_PROTO_DL, TRANS_ETHER);
+		deviceOpen(interface, MOP_K_PROTO_DL, TRANS_8023);
+d231 2
+a232 2
+	case TRANS_ETHER + TRANS_8023 + TRANS_AND:
+		deviceOpen(interface, MOP_K_PROTO_DL, TRANS_ETHER + TRANS_8023);
+d248 2
+a249 2
+	struct sockaddr_dl	*sdl;
+	struct ifaddrs		*ifap, *ifa;
+d268 1
+a268 1
+	struct ifaddrs	*ifap, *ifa;
+@
+
+

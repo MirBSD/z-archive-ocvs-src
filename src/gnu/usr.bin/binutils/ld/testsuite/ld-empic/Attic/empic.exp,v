@@ -1,0 +1,404 @@
+head	1.2;
+access;
+symbols
+	binutils-2_15:1.1.2.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.05.16.17.43.23;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.08;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.08;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.43.28;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.09.00;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@# Expect script for ld-empic tests
+#   Copyright 1994, 1995, 1996 Free Software Foundation, Inc.
+#
+# This file is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+#
+# Written by Ian Lance Taylor (ian@@cygnus.com)
+#
+
+# Test the handling of MIPS embedded PIC code.  This test essentially
+# tests the compiler and assembler as well as the linker, since MIPS
+# embedded PIC is a GNU enhancement to standard MIPS tools.
+
+# Embedded PIC is only supported for MIPS ECOFF targets.
+if ![istarget mips*-*-ecoff*] {
+    return
+}
+
+set testname relax
+
+if { [which $CC] == 0 } {
+    untested $testname
+    return
+}
+
+# Test that relaxation works correctly.  This testsuite was composed
+# (by experimentation) to force the linker to relax twice--that is,
+# the first relaxation pass will force another call to be out of
+# range, requiring a second relaxation pass.
+if { ![ld_compile "$CC $CFLAGS -membedded-pic" $srcdir/$subdir/relax1.c tmpdir/relax1.o]
+     || ![ld_compile "$CC $CFLAGS -membedded-pic" $srcdir/$subdir/relax2.c tmpdir/relax2.o]
+     || ![ld_compile "$CC $CFLAGS -membedded-pic" $srcdir/$subdir/relax3.c tmpdir/relax3.o]
+     || ![ld_compile "$CC $CFLAGS -membedded-pic" $srcdir/$subdir/relax4.c tmpdir/relax4.o] } {
+    unresolved $testname
+    return
+}
+
+if ![ld_simple_link $ld tmpdir/relax "--relax -T $srcdir/$subdir/relax.t tmpdir/relax1.o tmpdir/relax2.o tmpdir/relax3.o tmpdir/relax4.o"] {
+    fail $testname
+} else {
+    # Check that the relaxation produced the correct result.  Check
+    # each bal instruction.  Some will go directly to the start of a
+    # function, which is OK.  Some will form part of the five
+    # instruction expanded call sequence, in which case we compute the
+    # real destination and make sure it is the start of a function.
+    # Some bal instructions are used to locate the start of the
+    # function in order to do position independent addressing into the
+    # text section, in which case we just check that it correctly
+    # computes the start of the function.
+
+    # Get the symbol table.
+    if ![ld_nm $nm tmpdir/relax] {
+	unresolved $testname
+	return
+    }
+
+    # Get a disassembly.
+    send_log "$objdump -d tmpdir/relax >tmpdir/relax.dis\n"
+    verbose "$objdump -d tmpdir/relax >tmpdir/relax.dis"
+    catch "exec $objdump -d tmpdir/relax >tmpdir/relax.dis" exec_output
+    if ![string match "" $exec_output] {
+	send_log "$exec_output\n"
+	verbose $exec_output
+	unresolved $testname
+	return
+    }
+
+    set balcnt 0
+    set file [open tmpdir/relax.dis r]
+    while { [gets $file line] != -1 } {
+	verbose "$line" 2
+
+	if ![string match "*bal*" $line] {
+	    continue
+	}
+
+	verbose "$line"
+
+	incr balcnt
+
+	if ![regexp "^(\[0-9a-fA-F\]+) (<\[a-z+0-9A-Z.\]+>)? bal (\[0-9a-fA-F\]+)" $line whole addr label dest] {
+	    perror "unrecognized format for $line"
+	    unresolved $testname
+	    return
+	}
+
+	if "0x$addr + 8 != 0x$dest" {
+	    # This is a straight function call.  All function calls in
+	    # this example are to either foo or bar.
+	    if "0x$dest != $nm_output(foo) && 0x$dest != $nm_output(bar)" {
+		send_log "fail 1\n"
+		send_log "$line\n"
+		fail $testname
+		return
+	    }
+	} else {
+	    # Pick up the next line.  If it is sll, this is a switch
+	    # prologue, and there is not much we can do to test it.
+	    # Otherwise, it should be lui, and the next instruction
+	    # should be an addiu, followed by an addu to $31.
+	    if { [gets $file l] == -1 } {
+		send_log "fail 2\n"
+		send_log "$line\n"
+		fail $testname
+		return
+	    }
+	    verbose $l
+
+	    if [string match "*sll*" $l] {
+		continue
+	    }
+	    if ![regexp "lui (\[\$a-z0-9\]+),(\[0-9a-fA-Fx\]+)" $l whole reg upper] {
+		send_log "fail 3\n"
+		send_log "$line\n"
+		send_log "$l\n"
+		fail $testname
+		return
+	    }
+
+	    if { [gets $file l] == -1 } {
+		send_log "fail 4\n"
+		send_log "$line\n"
+		fail $testname
+		return
+	    }
+	    verbose "$l"
+	    if ![regexp "addiu \\$reg,\\$reg,(\[-0-9\]+)" $l whole lower] {
+		send_log "fail 5\n"
+		send_log "$line\n"
+		send_log "$l\n"
+		send_log "addiu \\$reg,\\$reg,(\[-0-9\]+)\n"
+		fail $testname
+		return
+	    }
+
+	    if { [gets $file l] == -1 } {
+		send_log "fail 6\n"
+		send_log "$line\n"
+		fail $testname
+		return
+	    }
+	    verbose "$l"
+	    if ![regexp "addu \\$reg,\\$reg,\\\$ra" $l] {
+		send_log "fail 7\n"
+		send_log "$line\n"
+		send_log "$l\n"
+		fail $testname
+		return
+	    }
+
+	    # The next line will be jalr in the case of an expanded
+	    # call.  Otherwise, the code is getting the start of the
+	    # function, and the next line can be anything.
+
+	    if { [gets $file l] == -1 } {
+		send_log "fail 8\n"
+		send_log "$line\n"
+		fail $testname
+		return
+	    }
+	    verbose "$l"	
+	    if [string match "*jalr*" $l] {
+		set dest [expr 0x$addr + 8 + ($upper << 16) + $lower]
+		if { $dest != $nm_output(foo) && $dest != $nm_output(bar) } {
+		    send_log "fail 9\n"
+		    send_log "$line\n"
+		    fail $testname
+		    return
+		}
+	    } else {
+		set dest [expr ($upper << 16) + $lower]
+		if ![regexp "<(\[.a-z\]+)\\+(\[0-9a-fA-F\]+)>" $label whole base offset] {
+		    send_log "fail 10\n"
+		    send_log "$line\n"
+		    fail $testname
+		    return
+		}
+		set offset 0x$offset
+		if { $base == ".foo" } {
+		    set offset [expr $offset - ($nm_output(foo) - 0x30)]
+		}
+		if { $offset + 8 != - $dest } {
+		    send_log "fail 11\n"
+		    send_log "$line\n"
+		    fail $testname
+		    return
+		}
+	    }
+	}
+    }
+
+    close $file
+
+    if {$balcnt < 10} {
+	send_log "fail 12\n"
+	fail $testname
+    } else {
+	verbose "$balcnt bal instructions"
+	pass $testname
+    }
+}
+
+# We now test actually running embedded MIPS PIC code.  This can only
+# be done on a MIPS host with the same endianness as our target.
+if [istarget mipsel-*-*] {
+    if ![ishost mips*-*-ultrix*] {
+	return
+    }
+} else {
+    if ![ishost mips*-*-irix*] {
+	return
+    }
+}
+
+set testname "run embedded PIC code"
+
+# Compile the program which will run the test.  This code must be
+# compiled for the host, not the target.
+send_log "$CC_FOR_HOST $CFLAGS_FOR_HOST -o tmpdir/run $srcdir/$subdir/run.c\n"
+verbose "$CC_FOR_HOST $CFLAGS_FOR_HOST -o tmpdir/run $srcdir/$subdir/run.c"
+catch "exec $CC_FOR_HOST $CFLAGS_FOR_HOST -o tmpdir/run $srcdir/$subdir/run.c" exec_output
+if ![string match "" $exec_output] {
+    send_log "$exec_output\n"
+    verbose "$exec_output"
+    unresolved $testname
+    return
+}
+
+# Compile and link the test.
+if { ![ld_compile "$CC $CFLAGS -membedded-pic" $srcdir/$subdir/runtesti.s tmpdir/runtesti.o]
+     || ![ld_compile "$CC $CFLAGS -membedded-pic" $srcdir/$subdir/runtest1.c tmpdir/runtest1.o]
+     || ![ld_compile "$CC $CFLAGS -membedded-pic" $srcdir/$subdir/runtest2.c tmpdir/runtest2.o] } {
+    unresolved $testname
+    return
+}
+if ![ld_simple_link $ld tmpdir/runtest "--embedded-relocs tmpdir/runtesti.o tmpdir/runtest1.o tmpdir/runtest2.o"] {
+    fail $testname
+} else {
+    # Now run the test.
+    send_log "tmpdir/run tmpdir/runtest\n"
+    verbose "tmpdir/run tmpdir/runtest"
+    catch "exec tmpdir/run tmpdir/runtest" exec_output
+    if [string match "*ran and returned 0*" $exec_output] {
+	send_log "$exec_output\n"
+	verbose "$exec_output"
+	pass $testname
+    } else {
+	send_log "$exec_output\n"
+	verbose "$exec_output"
+	fail $testname
+    }
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d63 1
+a63 1
+    if ![ld_nm $nm "" tmpdir/relax] {
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

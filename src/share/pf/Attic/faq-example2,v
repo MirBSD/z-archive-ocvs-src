@@ -1,0 +1,171 @@
+head	1.2;
+access;
+symbols
+	cvs-200411231430:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308221505:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.12.07.22.17.25;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.08.11.18.32.41;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.08.11.18.32.41;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove pf features which are broken:
+ ($interface) -> did never work correctly
+ antispoof -> dangerous, false sense of security, side impacts, only for lazies
+
+remove kernel stuff accordingly, but don't change ABI
+
+update documentation
+remove orphaned documentation nobody maintains
+@
+text
+@# $OpenBSD: faq-example2,v 1.2 2003/08/06 16:04:45 henning Exp $
+
+#
+# Small, Home Network
+# http://www.openbsd.org/faq/pf/queueing.html#example1
+#
+
+
+# enable queueing on the external interface to control traffic going to
+# the Internet. use the priq scheduler to control only priorities. set
+# the bandwidth to 610Kbps to get the best performance out of the TCP
+# ACK queue.
+
+altq on fxp0 priq bandwidth 610Kb queue { std_out, ssh_im_out, dns_out, \
+        tcp_ack_out }
+
+# define the parameters for the child queues.
+# std_out      - the standard queue. any filter rule below that does not
+#                explicitly specify a queue will have its traffic added
+#                to this queue.
+# ssh_im_out   - interactive SSH and various instant message traffic.
+# dns_out      - DNS queries.
+# tcp_ack_out  - TCP ACK packets with no data payload.
+
+queue std_out     priq(default)
+queue ssh_im_out  priority 4 priq(red)
+queue dns_out     priority 5
+queue tcp_ack_out priority 6
+
+# enable queueing on the internal interface to control traffic coming in
+# from the Internet. use the cbq scheduler to control bandwidth. max
+# bandwidth is 2Mbps.
+
+altq on dc0 cbq bandwidth 2Mb queue { std_in, ssh_im_in, dns_in, bob_in }
+
+# define the parameters for the child queues.
+# std_in      - the standard queue. any filter rule below that does not
+#               explicitly specify a queue will have its traffic added
+#               to this queue.
+# ssh_im_in   - interactive SSH and various instant message traffic.
+# dns_in      - DNS replies.
+# bob_in      - bandwidth reserved for Bob's workstation. allow him to
+#               borrow.
+
+queue std_in    cbq(default)
+queue ssh_im_in priority 4
+queue dns_in    priority 5
+queue bob_in    bandwidth 80Kb cbq(borrow)
+
+
+# ... in the filtering section of pf.conf ...
+
+alice         = "192.168.0.2"
+bob           = "192.168.0.3"
+charlie       = "192.168.0.4"
+local_net     = "192.168.0.0/24"
+ssh_ports     = "{ 22 2022 }"
+im_ports      = "{ 1863 5190 5222 }"
+
+# filter rules for fxp0 inbound
+block in on fxp0 all
+
+# filter rules for fxp0 outbound
+block out on fxp0 all
+pass  out on fxp0 inet proto tcp from (fxp0) to any flags S/SA \
+        keep state queue(std_out, tcp_ack_out)
+pass  out on fxp0 inet proto { udp icmp } from (fxp0) to any keep state
+pass  out on fxp0 inet proto { tcp udp } from (fxp0) to any port domain \
+        keep state queue dns_out
+pass  out on fxp0 inet proto tcp from (fxp0) to any port $ssh_ports \
+        flags S/SA keep state queue(std_out, ssh_im_out)
+pass  out on fxp0 inet proto tcp from (fxp0) to any port $im_ports \
+        flags S/SA keep state queue(ssh_im_out, tcp_ack_out)
+
+# filter rules for dc0 inbound
+block in on dc0 all
+pass  in on dc0 from $local_net
+
+# filter rules for dc0 outbound
+block out on dc0 all
+pass  out on dc0 from any to $local_net
+pass  out on dc0 proto { tcp udp } from any port domain to $local_net \
+        queue dns_in
+pass  out on dc0 proto tcp from any port $ssh_ports to $local_net \
+        queue(std_in, ssh_im_in)
+pass  out on dc0 proto tcp from any port $im_ports to $local_net \
+        queue ssh_im_in
+pass  out on dc0 from any to $bob queue bob_in
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import the complete OpenBSD source tree (base system)
+as of CTM delta 3496 (roughly 1200 UTC today) into the
+vendor branch.
+Attention: this is a big update. Don't even try to
+build this system, OpenBSD 3.4-beta, yet on your own.
+@
+text
+@@

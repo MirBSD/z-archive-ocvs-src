@@ -1,0 +1,471 @@
+head	1.9;
+access;
+symbols
+	MIRBSD_7quater:1.8
+	MIRBSD_7_ALPHA:1.8.0.6
+	MIRBSD_7:1.8.0.4
+	MIRBSD_7ter:1.8
+	MIRBSD_7_DEV:1.8.0.2
+	MIRBSD_5:1.3;
+locks; strict;
+comment	@# @;
+
+
+1.9
+date	2003.10.30.12.49.37;	author tg;	state dead;
+branches;
+next	1.8;
+
+1.8
+date	2003.09.20.04.27.53;	author tg;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2003.09.19.21.57.06;	author tg;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2003.09.19.20.49.07;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2003.07.08.14.40.04;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2003.07.06.20.22.28;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2003.06.05.14.22.50;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.06.02.16.19.13;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.05.23.14.21.48;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.9
+log
+@move the files around a bit, for a cleaner infrastructure
+(XXX why doesn't
+ XXX	make show=PROG
+ XXX or	make show=CPPFLAGS
+ XXX work in these subdirs? it works in bin/cat e.g.)
+@
+text
+@/* $MirBSD: mbr.S,v 1.8 2003/09/20 04:27:53 tg Exp $
+ *-
+ * Copyright (c) 2003 Thorsten Glaser <x86@@ePost.de>
+ *
+ * Subject to these terms, everybody who obtained a copy of this work
+ * is hereby permitted to deal in the work without restriction inclu-
+ * ding without limitation the rights to use, distribute, sell, modi-
+ * fy, publically perform, give away, merge or sublicense it provided
+ * this notice is kept and the authors and contributors are given due
+ * credit in derivates or accompanying documents.
+ * This work is provided "as is" with no explicit or implicit warran-
+ * ties whatsoever to the maximum extend permitted by applicable law;
+ * in no event may an author or contributor be held liable for damage
+ * that is, directly or indirectly, caused by the work, even if advi-
+ * sed of the possibility of such damage.
+ *-
+ * Fully LBA and CHS capable Master Boot Record with enough space for
+ * the partition table and the Microsoft NT® disc ID; including boot-
+ * manager capable of booting the four primary partitions or from the
+ * first floppy device, with a 10 second time-out going off on a key.
+ */
+
+	.file	"mbr.S"
+	.intel_syntax noprefix
+
+	.text
+	.code16
+	.globl	_start
+_start:	xor	eax,eax
+	push	eax		/* assume a sane stack of 4 bytes */
+	popfd			/* clear eflags and interrupts */
+	mov	ax,0x07A0
+	mov	ss,ax		/* set up stack and other segments */
+	mov	sp,0x1000
+	mov	ds,ax
+	mov	es,ax
+	mov	si,0x0200	/* 7A0:0200 = 0:7C00 */
+	xor	di,di		/* 7A0:0000 = 0:7A00 */
+	mov	cx,0x0100
+	rep	movsw		/* relocate ourselfes */
+	jmp	0x07A0,offset Lrun
+	/* we are relocated now */
+Lrun:	/*
+	 * a) Output "Hello" Text
+	 * b) if BOOTMANAGER
+	 *	Output "Choose" Text
+	 *	Handle input (0,1,2,3,RET,ESC)
+	 *    else
+	 *	Fake input RET
+	 *    endif
+	 * c) load sector (RET = 0x80-Partition ("active"),
+	 *	ESC = Floppy, 0-3 = Partition)
+	 * d) jump to sector
+	 */
+	mov	si,offset LtHelo
+	call	Lotxt
+#ifdef	BOOTMANAGER
+	xor	ax,ax		/* read CMOS clock ticks since midnight */
+	int	0x1A
+	mov	edi,183		/* 10 seconds rounded up one tick */
+	add	di,dx
+	adc	cl,0		/* carry over */
+	shl	ecx,16
+	add	edi,ecx
+Liloop:	mov	ah,1		/* check if key pressed */
+	int	0x16
+	jnz	Lkeyp		/* key was pressed */
+	xor	ax,ax
+	int	0x1A
+	shl	ecx,16
+	mov	cx,dx		/* current clock tick */
+	or	al,al		/* past midnight? */
+	jz	Lnwrap
+	add	ecx,1573040	/* according to Ralf Brown Interrupt List */
+Lnwrap:	cmp	ecx,edi		/* time is over? */
+	jbe	Liloop		/* not yet */
+	mov	al,13		/* assume user pressed RETURN (default) */
+	jmp	Lchose
+Lkeyp:	xor	ah,ah		/* get pressed key */
+	int	0x16
+	cmp	al,13		/* RETURN? */
+	je	Lchose
+	cmp	al,27		/* ESCAPE? */
+	je	Lchose
+	sub	al,0x30
+	cmp	al,3		/* '0' .. '3' ? */
+	ja	Lkeyp		/* if invalid key, stop 10-second timeout */
+Lchose:	/* al=13,27,0,1,2,3 */
+#else
+	mov	al,13		/* fake a RETURN keypress */
+#endif
+	cmp	al,27
+	je	Lflopp		/* ESC -> floppy */
+	cmp	al,13
+	jne	Lpart		/* 0..3 -> partition chosen */
+	xor	al,al
+	mov	bx,offset ptbl
+Lcklp:	cmp	byte ptr [bx],0x80
+	je	Lpart		/* loop over partition table, search */
+	inc	ax		/*              for active partition */
+	add	bl,0x10		/* sizeof ptbl-ent */
+	cmp	al,4
+	jb	Lcklp		/* if none found, fail */
+Lbootf:	mov	si,offset LtFail
+	call	Lotxt
+	xor	ah,ah		/* wait for keypress */
+	int	0x16
+	jmp	0xF000,0xFFF0	/* reboot */
+Lotxt:	lodsb
+	or	al,al		/* '\0' is end of string */
+	je	Ltxout
+	mov	ah,0x0E		/* tty a character */
+	mov	bx,7		/* light grey on black; page 0 */
+	int	0x10
+	jmp	Lotxt
+Ltxout:	ret
+Lpart:	mov	bx,offset ptbl
+	shl	al,4		/* log_2 sizeof ptbl-ent */
+	add	bl,al		/* can't overflow */
+	push	bx
+	/* Test for LBA support */
+	mov	ah,0x41
+	mov	bx,0x55AA
+	mov	dl,0x80
+	int	0x13
+	jc	L_chs		/* carry -> error */
+	cmp	bx,0xAA55
+	jne	L_chs		/* magic -> command known? */
+	and	cl,1
+	je	L_chs		/* bitmask: supports LBA? */
+L_lba:	pop	bx
+	/* Load the boot structure (LBA) */
+	mov	si,offset lbapbl
+	mov	eax,[bx+8]	/* offset on disc */
+	mov	[blknum],eax
+	mov	ax,[bx+2]	/* save CHS values, in case */
+	mov	[savecx],ax	/* the LBA boot fails twice */
+	mov	dx,[bx]
+	mov	dl,0x80
+	mov	[savedx],dx
+	mov	ah,0x42
+	jmp	Lboot_loop
+L_chs:	pop	bx
+	/* Load the boot structure (CHS) */
+	mov	cx,[bx+2]
+	mov	dx,[bx]
+	mov	dl,0x80
+	jmp	Lboot_chs
+Lflopp:	mov	cx,1
+	xor	dx,dx
+Lboot_chs:
+	mov	bx,offset bsec
+	mov	ax,0x0201
+	jmp	Lboot_loop
+LtHelo:	.ascii	"MirOS boot 2.22\r\n"
+#ifdef	BOOTMANAGER
+LtBmgr:	.ascii	"ESC boots floppy; RETURN default partition\r\n"
+	.asciz	"0..3 choose pri.partition\r\n"
+#else
+	.byte	0		/* terminate the tHelo string */
+#endif
+LtFail:	.ascii	"Failed!"
+	/* fall through */
+LtCRLF:	.asciz	"\r\n"
+Lboot_loop:
+	xor	bp,bp
+Lblp1:	pusha
+	mov	ax,0x0E2E	/* print a dot */
+	mov	bx,7
+	int	0x10
+	popa
+	pusha
+	int	0x13		/* try to read the PBR/bootsector */
+	popa
+	jc	Lblp2
+	mov	si,offset LtCRLF
+	call	Lotxt		/* print '\n' and jump into PBR */
+	jmp	0,0x7C00	/* offset flat bsec */
+Lblp2:	pusha
+	xor	ax,ax		/* reset the drive */
+	int	0x13
+	popa
+	inc	bp
+	cmp	bp,2		/* second time it failed? */
+	jne	Lblp3
+	xor	di,di
+	cmp	[savedx],di	/* if so, check if we were LBA */
+	je	Lblp3
+	mov	cx,[savecx]	/* if so, fall back to CHS */
+	mov	dx,[savedx]
+	mov	bx,offset bsec
+	mov	ax,0x0201
+Lblp3:	cmp	bp,16		/* 16 retries should be enough for everyone :) */
+	jb	Lblp1
+	jmp	Lbootf		/* failed */
+lbapbl:	/* Parameter block for LBA */
+	.word	0x0010		/* length, reserved */
+	.word	0x0001		/* num. of sectors */
+	.long	0x00007C00	/* transfer buffer */
+blknum:	.long	0,0		/* LBA block number */
+savecx:	.word	0
+savedx:	.word	0
+
+	/* Trailer: partition table, signature */
+#if 0
+	. = 0x01B8
+	.long	0		/* device ID/magic */
+	.word	0		/* free/reserved */
+#else
+	/* In fact, we have 6 bytes of '00h' before
+	 * (on the disc), and ignore/overwrite what
+	 * Microsoft NT® writes here (on the disc),
+	 * so we can safely skip till here:
+	 */
+	. = 0x01BE
+#endif
+ptbl:	.long	0,0,0,0
+	.long	0,0,0,0
+	.long	0,0,0,0
+	.long	0,0,0,0
+	.word	0xAA55		/* signature */
+bsec:	/* 0x0200 is where the new boot sector is loaded */
+@
+
+
+1.8
+log
+@now, if _that_ doesn't render a usable boot loader, it's FUBAR
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: mbr.S,v 1.7 2003/09/19 21:57:06 tg Exp $
+@
+
+
+1.7
+log
+@back out some changes which failed regression:
+a generated floppy or CD was not even bootable in my machine.
+
+This is now the version MirOS BSD #7 will ship with.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: mbr.S,v 1.6 2003/09/19 20:49:07 tg Exp $
+d60 1
+a60 1
+	mov	edi,183		/* 10 seconds plus one tick */
+d157 2
+a158 2
+LtBmgr:	.ascii	"Press 0..3 to boot Partition, ESC Floppy\r\n"
+	.asciz	"RETURN/wait 10 sec: default\r\n"
+@
+
+
+1.6
+log
+@wording, sync version numbers, ...
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: mbr.S,v 1.5 2003/07/08 14:40:04 tg Exp $
+d157 1
+a157 1
+LtBmgr:	.ascii	"Press 0..3 to boot partition, ESC floppy\r\n"
+@
+
+
+1.5
+log
+@o document purpose of this file
+o don't clobber the default MBR space with ancient data any more;
+  the partition table is handled by fdisk(8) well enough.
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.4 2003/07/07 19:03:08 tg Exp $
+d41 1
+a41 1
+	jmp	0x07A0,offset Ldoit
+d43 1
+a43 1
+Ldoit:	/*
+d51 2
+a52 1
+	 * c) load sector (RET=0x80-Partition, ESC=Floppy, 0-3=Partition)
+d155 1
+a155 1
+LtHelo:	.ascii	"MirBSD mbr 1.03\r\n"
+d210 1
+a210 1
+	/* In fact, we have 6 bytes of 0x00 before
+d212 1
+a212 1
+	 * Microsoft NT writes here (on the disc),
+@
+
+
+1.4
+log
+@mop up
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: licence.template,v 1.3 2003/07/04 20:03:27 tg Exp $
+d8 3
+a10 3
+ * fy, give away, merge or sublicense it provided this notice is kept
+ * and the authors and contributors are given due credit in derivates
+ * or accompanying documents.
+d16 5
+d219 1
+a219 1
+	.long	0x00010080,0xFFFFFF27,0,0x7FFFFFFF
+@
+
+
+1.3
+log
+@licence
+@
+text
+@d1 2
+a2 2
+/*	$MirBSD: mbr.S,v 1.2 2003/06/02 16:19:13 tg Exp $	*/
+/*-
+d5 6
+a10 5
+ * Everybody who obtained a copy of this work is hereby permitted to,
+ * without further restrictions as long as due credit is given to the
+ * authors and the notice below is retained, use, distribute, modify,
+ * sell, give away, merge or sublicense it.
+ *
+d12 4
+a15 5
+ * ty whatsoever. Use it only at your own risk. In no event an author
+ * or contributor may be held liable for any damage that, directly or
+ * indirectly, originated through or is caused by this work, creation
+ * or any event connected with it, to the maximum extend permitted by
+ * applicable law.
+@
+
+
+1.2
+log
+@comment improvements
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD: mbr.S,v 1.1 2003/05/23 14:21:48 tg Exp $	*/
+d3 1
+a3 1
+ * Copyright (c) 1982-2003 Thorsten Glaser <x86@@ePost.de>
+d13 3
+a15 1
+ * indirectly, originated through or is caused by this work.
+@
+
+
+1.1
+log
+@oops... cvs hates me
+@
+text
+@d1 1
+a1 1
+/*	$MirBSD: mbr.S,v 1.2 2003/05/23 13:56:52 tg Exp $	*/
+d3 1
+a3 1
+ * Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+d5 4
+a8 3
+ * Anyone who obtained a copy of this work is hereby permitted to freely use,
+ * distribute, modify, merge, sublicence, give away or sell it as long as the
+ * authors are given due credit and the following notice is retained:
+d10 4
+a13 4
+ * This work is provided "as is", with no explicit or implicit warranty what-
+ * soever. Use it only at your own risk. In no event may an author or contri-
+ * butor be held liable for any damage, directly or indirectly, that origina-
+ * ted through or is caused by creation or modification of this work.
+d199 2
+a200 2
+	.long	0		/* some NT OS/2 stuff */
+	.word	0		/* free/reserved space */
+d202 3
+a204 1
+	/* In fact, we have 6 bytes of 0x00 before,
+d212 1
+a212 1
+	.long	0x00010080,0xFFFFFFA6,0,0x7FFFFFFF
+@
+

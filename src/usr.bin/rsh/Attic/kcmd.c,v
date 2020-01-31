@@ -1,0 +1,528 @@
+head	1.3;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	MIRBSD_7_ALPHA:1.1.1.3.0.6
+	MIRBSD_7:1.1.1.3.0.4
+	cvs-200312222040:1.1.1.3
+	MIRBSD_7ter:1.1.1.3
+	MIRBSD_7_DEV:1.1.1.3.0.2
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.3
+	cvs-200309251530:1.1.1.3
+	cvs-200308302005:1.1.1.3
+	cvs-200308171200:1.1.1.3
+	ctm-3496:1.1.1.3
+	ctm-3449:1.1.1.3
+	ctm-3437:1.1.1.3
+	cvs-200307191805:1.1.1.3
+	ctm-3425:1.1.1.3
+	cvs-200307091500:1.1.1.3
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.3
+	cvs-200306082100:1.1.1.3
+	ctm-3316:1.1.1.3
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	MIRBSD_4:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.01.27.17.42.49;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2004.01.10.04.57.23;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.53.15;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.15;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.15.17.47.46;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.05.17.44.11;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@first part of mergeing OpenBSD and fixing whitespace and RCS IDs
+@
+text
+@/*	$OpenBSD: kcmd.c,v 1.7 2003/06/03 02:56:15 millert Exp $	*/
+/*	$NetBSD: kcmd.c,v 1.2 1995/03/21 07:58:32 cgd Exp $	*/
+
+/*
+ * Copyright (c) 1983, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#ifndef lint
+#if 0
+static char Xsccsid[] = "derived from @@(#)rcmd.c 5.17 (Berkeley) 6/27/88";
+static char sccsid[] = "@@(#)kcmd.c	8.2 (Berkeley) 8/19/93";
+#else
+static char rcsid[] = "$OpenBSD: kcmd.c,v 1.7 2003/06/03 02:56:15 millert Exp $";
+#endif
+#endif /* not lint */
+
+#include <sys/param.h>
+#include <sys/file.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include <des.h>
+#include <kerberosIV/krb.h>
+
+#include <ctype.h>
+#include <errno.h>
+#include <netdb.h>
+#include <pwd.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <err.h>
+
+#ifndef MAXHOSTNAMELEN
+#define MAXHOSTNAMELEN 64
+#endif
+
+#define	START_PORT	5120	 /* arbitrary */
+
+int	getport(int *);
+int	kcmd(int *, char **, u_short, char *, char *, char *,
+	    int *, KTEXT, char *, char *, CREDENTIALS *,
+	    Key_schedule, MSG_DAT *, struct sockaddr_in *,
+	    struct sockaddr_in *, long);
+
+int
+kcmd(int *sock, char **ahost, u_short rport, char *locuser, char *remuser,
+    char *cmd, int *fd2p, KTEXT ticket, char *service, char *realm,
+    CREDENTIALS *cred, Key_schedule schedule, MSG_DAT *msg_data,
+    struct sockaddr_in *laddr, struct sockaddr_in *faddr, long authopts)
+{
+	int s, timo = 1;
+	sigset_t mask, oldmask;
+	struct sockaddr_in sin, from;
+	char c;
+	int lport = IPPORT_RESERVED - 1;
+	struct hostent *hp;
+	int rc;
+	char *host_save;
+	int status;
+	pid_t pid;
+
+	pid = getpid();
+	hp = gethostbyname(*ahost);
+	if (hp == NULL) {
+		herror(*ahost);
+		return (-1);
+	}
+	if ((host_save = strdup(hp->h_name)) == NULL) {
+		warn("can't allocate memory");
+		return (-1);
+	}
+	*ahost = host_save;
+
+	/* If realm is null, look up from table */
+	if (realm == NULL || realm[0] == '\0')
+		realm = krb_realmofhost(host_save);
+
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGURG);
+	sigprocmask(SIG_BLOCK, &mask, &oldmask);
+	for (;;) {
+		s = getport(&lport);
+		if (s < 0) {
+			if (errno == EAGAIN)
+				fprintf(stderr,
+					"kcmd(socket): All ports in use\n");
+			else
+				perror("kcmd: socket");
+			sigprocmask(SIG_SETMASK, &oldmask, NULL);
+			return (-1);
+		}
+		fcntl(s, F_SETOWN, pid);
+		bzero(&sin, sizeof sin);
+		sin.sin_len = sizeof(struct sockaddr_in);
+		sin.sin_family = hp->h_addrtype;
+		sin.sin_port = rport;
+		memmove(&sin.sin_addr, hp->h_addr_list[0], hp->h_length);
+		if (connect(s, (struct sockaddr *)&sin, sizeof(sin)) >= 0)
+			break;
+		(void) close(s);
+		if (errno == EADDRINUSE) {
+			lport--;
+			continue;
+		}
+		/*
+		 * don't wait very long for Kerberos rcmd.
+		 */
+		if (errno == ECONNREFUSED && timo <= 4) {
+			/* sleep(timo); don't wait at all here */
+			timo *= 2;
+			continue;
+		}
+		if (hp->h_addr_list[1] != NULL) {
+			int oerrno = errno;
+
+			fprintf(stderr,
+			    "kcmd: connect to address %s: ",
+			    inet_ntoa(sin.sin_addr));
+			errno = oerrno;
+			perror(NULL);
+			hp->h_addr_list++;
+			memmove(&sin.sin_addr, hp->h_addr_list[0], hp->h_length);
+			fprintf(stderr, "Trying %s...\n",
+				inet_ntoa(sin.sin_addr));
+			continue;
+		}
+		if (errno != ECONNREFUSED)
+			perror(hp->h_name);
+		sigprocmask(SIG_SETMASK, &oldmask, NULL);
+		return (-1);
+	}
+	if (fd2p == 0) {
+		write(s, "", 1);
+		lport = 0;
+	} else {
+		char num[12];
+		int s2 = getport(&lport), s3;
+		socklen_t len = sizeof(from);
+
+		if (s2 < 0) {
+			status = -1;
+			goto bad;
+		}
+		listen(s2, 1);
+		(void) snprintf(num, sizeof(num), "%d", lport);
+		if (write(s, num, strlen(num) + 1) != strlen(num) + 1) {
+			perror("kcmd(write): setting up stderr");
+			(void) close(s2);
+			status = -1;
+			goto bad;
+		}
+again:
+                s3 = accept(s2, (struct sockaddr *)&from, &len);
+		/*
+		 * XXX careful for ftp bounce attacks. If discovered, shut them
+		 * down and check for the real auxiliary channel to connect.
+		 */
+		if (from.sin_family == AF_INET && from.sin_port == htons(20)) {
+			(void) close(s3);
+			goto again;
+		}
+		(void) close(s2);
+		if (s3 < 0) {
+			perror("kcmd:accept");
+			lport = 0;
+			status = -1;
+			goto bad;
+		}
+		*fd2p = s3;
+		from.sin_port = ntohs(from.sin_port);
+		if (from.sin_family != AF_INET ||
+		    from.sin_port >= IPPORT_RESERVED ||
+		    from.sin_port < IPPORT_RESERVED / 2) {
+			fprintf(stderr,
+			 "kcmd(socket): protocol failure in circuit setup.\n");
+			status = -1;
+			goto bad2;
+		}
+	}
+	/*
+	 * Kerberos-authenticated service.  Don't have to send locuser,
+	 * since its already in the ticket, and we'll extract it on
+	 * the other side.
+	 */
+	/* (void) write(s, locuser, strlen(locuser)+1); */
+
+	/* set up the needed stuff for mutual auth, but only if necessary */
+	if (authopts & KOPT_DO_MUTUAL) {
+		socklen_t sin_len;
+		*faddr = sin;
+
+		sin_len = sizeof(struct sockaddr_in);
+		if (getsockname(s, (struct sockaddr *)laddr, &sin_len) < 0) {
+			perror("kcmd(getsockname)");
+			status = -1;
+			goto bad2;
+		}
+	}
+	if ((status = krb_sendauth(authopts, s, ticket, service, *ahost,
+			       realm, (unsigned long) getpid(), msg_data,
+			       cred, schedule,
+			       laddr,
+			       faddr,
+			       "KCMDV0.1")) != KSUCCESS)
+		goto bad2;
+
+	(void) write(s, remuser, strlen(remuser)+1);
+	(void) write(s, cmd, strlen(cmd)+1);
+
+	if ((rc = read(s, &c, 1)) != 1) {
+		if (rc == -1)
+			perror(*ahost);
+		else
+			fprintf(stderr,"kcmd: bad connection with remote host\n");
+		status = -1;
+		goto bad2;
+	}
+	if (c != '\0') {
+		while (read(s, &c, 1) == 1) {
+			(void) write(2, &c, 1);
+			if (c == '\n')
+				break;
+		}
+		status = -1;
+		goto bad2;
+	}
+	sigprocmask(SIG_SETMASK, &oldmask, NULL);
+	*sock = s;
+	return (KSUCCESS);
+bad2:
+	if (lport)
+		(void) close(*fd2p);
+bad:
+	(void) close(s);
+	sigprocmask(SIG_SETMASK, &oldmask, NULL);
+	return (status);
+}
+
+int
+getport(int *alport)
+{
+	struct sockaddr_in sin;
+	int s;
+
+	/* First try to get a "reserved" [sic] port, for interoperability with
+	   broken klogind (aix, e.g.) */
+
+	s = rresvport(alport);
+	if (s >= 0)
+		return s;
+
+	/* Failed; if EACCES, we're not root, so just get an unreserved port
+	   and hope that's good enough */
+
+	if (errno != EACCES)
+		return -1;
+
+	if (*alport < IPPORT_RESERVED)
+		*alport = START_PORT;
+	memset(&sin, 0, sizeof sin);
+	sin.sin_family = AF_INET;
+	sin.sin_addr.s_addr = INADDR_ANY;
+	s = socket(AF_INET, SOCK_STREAM, 0);
+	if (s < 0)
+		return (-1);
+	for (;;) {
+		sin.sin_port = htons((u_short)*alport);
+		if (bind(s, (struct sockaddr *)&sin, sizeof(sin)) >= 0)
+			return (s);
+		if (errno != EADDRINUSE) {
+			(void) close(s);
+			return (-1);
+		}
+		(*alport)--;
+		if (*alport == IPPORT_RESERVED) {
+			(void) close(s);
+			errno = EAGAIN;		/* close */
+			return (-1);
+		}
+	}
+}
+@
+
+
+1.2
+log
+@Jumbo patch from wbx@@ to replace the
+bcopy(3), bcmp(3) and bzero(3) func-
+tions, having been deprecated earli-
+er, by their ISO counterparts, name-
+ly memmove(3) and the gcc3-optimized
+memcmp(3) and memset(3) functions.
+
+I didn't read every single line (be-
+cause of the time of day), but looks
+fine and builds through. I just nee-
+ded to nuke three cases of whitespa-
+ce at EOL. Good work wbx@@.
+
+I've also sprinkled in a few patches
+of mine addressing the issue that in
+some kernel header files, bcopy() is
+used as well... also there have been
+quite some string cleaning fixes and
+a missing header.
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: kcmd.c,v 1.5 2002/09/06 18:55:04 deraadt Exp $	*/
+d16 1
+a16 5
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+d38 1
+a38 1
+static char rcsid[] = "$OpenBSD: kcmd.c,v 1.5 2002/09/06 18:55:04 deraadt Exp $";
+d129 1
+a129 1
+		bcopy(hp->h_addr_list[0], &sin.sin_addr, hp->h_length);
+d154 1
+a154 1
+			bcopy(hp->h_addr_list[0], &sin.sin_addr, hp->h_length);
+d168 1
+a168 1
+		char num[8];
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD source with the "new" command line as well,
+in order to be able to provide a MirBSD release which bases
+upon a fairly current OpenBSD base source code tree deemed
+stable enough.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: kcmd.c,v 1.6 2003/04/15 08:05:33 deraadt Exp $	*/
+d42 1
+a42 1
+static char rcsid[] = "$OpenBSD: kcmd.c,v 1.6 2003/04/15 08:05:33 deraadt Exp $";
+d172 1
+a172 1
+		char num[12];
+@
+
+
+1.1.1.3
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: kcmd.c,v 1.7 2003/06/03 02:56:15 millert Exp $	*/
+d16 5
+a20 1
+ * 3. Neither the name of the University nor the names of its contributors
+d42 1
+a42 1
+static char rcsid[] = "$OpenBSD: kcmd.c,v 1.7 2003/06/03 02:56:15 millert Exp $";
+@
+
+

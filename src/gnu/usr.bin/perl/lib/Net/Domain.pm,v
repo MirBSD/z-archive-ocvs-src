@@ -1,0 +1,482 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.18;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.59;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@# Net::Domain.pm
+#
+# Copyright (c) 1995-1998 Graham Barr <gbarr@@pobox.com>. All rights reserved.
+# This program is free software; you can redistribute it and/or
+# modify it under the same terms as Perl itself.
+
+package Net::Domain;
+
+require Exporter;
+
+use Carp;
+use strict;
+use vars qw($VERSION @@ISA @@EXPORT_OK);
+use Net::Config;
+
+@@ISA = qw(Exporter);
+@@EXPORT_OK = qw(hostname hostdomain hostfqdn domainname);
+
+$VERSION = "2.17"; # $Id: //depot/libnet/Net/Domain.pm#19 $
+
+my($host,$domain,$fqdn) = (undef,undef,undef);
+
+# Try every conceivable way to get hostname.
+
+sub _hostname {
+
+    # we already know it
+    return $host
+    	if(defined $host);
+
+    if ($^O eq 'MSWin32') {
+        require Socket;
+        my ($name,$alias,$type,$len,@@addr) =  gethostbyname($ENV{'COMPUTERNAME'}||'localhost');
+        while (@@addr)
+         {
+          my $a = shift(@@addr);
+          $host = gethostbyaddr($a,Socket::AF_INET());
+          last if defined $host;
+         }
+        if (defined($host) && index($host,'.') > 0) {
+           $fqdn = $host;
+           ($host,$domain) = $fqdn =~ /^([^\.]+)\.(.*)$/;
+         }
+        return $host;
+    }
+    elsif ($^O eq 'MacOS') {
+	chomp ($host = `hostname`);
+    }
+    elsif ($^O eq 'VMS') {   ## multiple varieties of net s/w makes this hard
+        $host = $ENV{'UCX$INET_HOST'} if defined($ENV{'UCX$INET_HOST'});
+        $host = $ENV{'MULTINET_HOST_NAME'} if defined($ENV{'MULTINET_HOST_NAME'});
+        if (index($host,'.') > 0) {
+           $fqdn = $host;
+           ($host,$domain) = $fqdn =~ /^([^\.]+)\.(.*)$/;
+        }
+        return $host;
+    }
+    else {
+	local $SIG{'__DIE__'};
+
+	# syscall is preferred since it avoids tainting problems
+	eval {
+    	    my $tmp = "\0" x 256; ## preload scalar
+    	    eval {
+    		package main;
+     		require "syscall.ph";
+		defined(&main::SYS_gethostname);
+    	    }
+    	    || eval {
+    		package main;
+     		require "sys/syscall.ph";
+		defined(&main::SYS_gethostname);
+    	    }
+            and $host = (syscall(&main::SYS_gethostname, $tmp, 256) == 0)
+		    ? $tmp
+		    : undef;
+	}
+
+	# POSIX
+	|| eval {
+	    require POSIX;
+	    $host = (POSIX::uname())[1];
+	}
+
+	# trusty old hostname command
+	|| eval {
+    	    chop($host = `(hostname) 2>/dev/null`); # BSD'ish
+	}
+
+	# sysV/POSIX uname command (may truncate)
+	|| eval {
+    	    chop($host = `uname -n 2>/dev/null`); ## SYSV'ish && POSIX'ish
+	}
+
+	# Apollo pre-SR10
+	|| eval {
+    	    $host = (split(/[:\. ]/,`/com/host`,6))[0];
+	}
+
+	|| eval {
+    	    $host = "";
+	};
+    }
+
+    # remove garbage
+    $host =~ s/[\0\r\n]+//go;
+    $host =~ s/(\A\.+|\.+\Z)//go;
+    $host =~ s/\.\.+/\./go;
+
+    $host;
+}
+
+sub _hostdomain {
+
+    # we already know it
+    return $domain
+    	if(defined $domain);
+
+    local $SIG{'__DIE__'};
+
+    return $domain = $NetConfig{'inet_domain'}
+	if defined $NetConfig{'inet_domain'};
+
+    # try looking in /etc/resolv.conf
+    # putting this here and assuming that it is correct, eliminates
+    # calls to gethostbyname, and therefore DNS lookups. This helps
+    # those on dialup systems.
+
+    local *RES;
+    local($_);
+
+    if(open(RES,"/etc/resolv.conf")) {
+    	while(<RES>) {
+    	    $domain = $1
+    	    	if(/\A\s*(?:domain|search)\s+(\S+)/);
+    	}
+    	close(RES);
+
+    	return $domain
+    	    if(defined $domain);
+    }
+
+    # just try hostname and system calls
+
+    my $host = _hostname();
+    my(@@hosts);
+
+    @@hosts = ($host,"localhost");
+
+    unless (defined($host) && $host =~ /\./) {
+	my $dom = undef;
+        eval {
+    	    my $tmp = "\0" x 256; ## preload scalar
+    	    eval {
+    	        package main;
+     	        require "syscall.ph";
+    	    }
+    	    || eval {
+    	        package main;
+     	        require "sys/syscall.ph";
+    	    }
+            and $dom = (syscall(&main::SYS_getdomainname, $tmp, 256) == 0)
+		    ? $tmp
+		    : undef;
+        };
+
+	chop($dom = `domainname 2>/dev/null`)
+		unless(defined $dom || $^O =~ /^(?:cygwin|MSWin32)/);
+
+	if(defined $dom) {
+	    my @@h = ();
+	    while(length($dom)) {
+		push(@@h, "$host.$dom");
+		$dom =~ s/^[^.]+.//;
+	    }
+	    unshift(@@hosts,@@h);
+    	}
+    }
+
+    # Attempt to locate FQDN
+
+    foreach (grep {defined $_} @@hosts) {
+    	my @@info = gethostbyname($_);
+
+    	next unless @@info;
+
+    	# look at real name & aliases
+    	my $site;
+    	foreach $site ($info[0], split(/ /,$info[1])) {
+    	    if(rindex($site,".") > 0) {
+
+    	    	# Extract domain from FQDN
+
+     	    	($domain = $site) =~ s/\A[^\.]+\.//;
+     	        return $domain;
+    	    }
+    	}
+    }
+
+    # Look for environment variable
+
+    $domain ||= $ENV{LOCALDOMAIN} || $ENV{DOMAIN};
+
+    if(defined $domain) {
+    	$domain =~ s/[\r\n\0]+//g;
+    	$domain =~ s/(\A\.+|\.+\Z)//g;
+    	$domain =~ s/\.\.+/\./g;
+    }
+
+    $domain;
+}
+
+sub domainname {
+
+    return $fqdn
+    	if(defined $fqdn);
+
+    _hostname();
+    _hostdomain();
+
+    # Assumption: If the host name does not contain a period
+    # and the domain name does, then assume that they are correct
+    # this helps to eliminate calls to gethostbyname, and therefore
+    # eleminate DNS lookups
+
+    return $fqdn = $host . "." . $domain
+	if(defined $host and defined $domain
+		and $host !~ /\./ and $domain =~ /\./);
+
+    # For hosts that have no name, just an IP address
+    return $fqdn = $host if defined $host and $host =~ /^\d+(\.\d+){3}$/;
+
+    my @@host   = defined $host   ? split(/\./, $host)   : ('localhost');
+    my @@domain = defined $domain ? split(/\./, $domain) : ();
+    my @@fqdn   = ();
+
+    # Determine from @@host & @@domain the FQDN
+
+    my @@d = @@domain;
+
+LOOP:
+    while(1) {
+    	my @@h = @@host;
+    	while(@@h) {
+    	    my $tmp = join(".",@@h,@@d);
+    	    if((gethostbyname($tmp))[0]) {
+     	        @@fqdn = (@@h,@@d);
+     	        $fqdn = $tmp;
+     	      last LOOP;
+    	    }
+    	    pop @@h;
+    	}
+    	last unless shift @@d;
+    }
+
+    if(@@fqdn) {
+    	$host = shift @@fqdn;
+    	until((gethostbyname($host))[0]) {
+    	    $host .= "." . shift @@fqdn;
+    	}
+    	$domain = join(".", @@fqdn);
+    }
+    else {
+    	undef $host;
+    	undef $domain;
+    	undef $fqdn;
+    }
+
+    $fqdn;
+}
+
+sub hostfqdn { domainname() }
+
+sub hostname {
+    domainname()
+    	unless(defined $host);
+    return $host;
+}
+
+sub hostdomain {
+    domainname()
+    	unless(defined $domain);
+    return $domain;
+}
+
+1; # Keep require happy
+
+__END__
+
+=head1 NAME
+
+Net::Domain - Attempt to evaluate the current host's internet name and domain
+
+=head1 SYNOPSIS
+
+    use Net::Domain qw(hostname hostfqdn hostdomain);
+
+=head1 DESCRIPTION
+
+Using various methods B<attempt> to find the Fully Qualified Domain Name (FQDN)
+of the current host. From this determine the host-name and the host-domain.
+
+Each of the functions will return I<undef> if the FQDN cannot be determined.
+
+=over 4
+
+=item hostfqdn ()
+
+Identify and return the FQDN of the current host.
+
+=item hostname ()
+
+Returns the smallest part of the FQDN which can be used to identify the host.
+
+=item hostdomain ()
+
+Returns the remainder of the FQDN after the I<hostname> has been removed.
+
+=back
+
+=head1 AUTHOR
+
+Graham Barr <gbarr@@pobox.com>.
+Adapted from Sys::Hostname by David Sundstrom <sunds@@asictest.sc.ti.com>
+
+=head1 COPYRIGHT
+
+Copyright (c) 1995-1998 Graham Barr. All rights reserved.
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=for html <hr>
+
+I<$Id: //depot/libnet/Net/Domain.pm#19 $>
+
+=cut
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d19 1
+a19 1
+$VERSION = "2.19"; # $Id: //depot/libnet/Net/Domain.pm#21 $
+a166 5
+	if ( $^O eq 'VMS' ) {
+	    $dom ||= $ENV{'TCPIP$INET_DOMAIN'}
+		 || $ENV{'UCX$INET_DOMAIN'};
+	}
+
+a171 1
+	    $dom =~ s/^\.+//;
+d174 1
+a174 1
+		$dom =~ s/^[^.]+.+// or last;
+d334 1
+a334 1
+I<$Id: //depot/libnet/Net/Domain.pm#21 $>
+@
+

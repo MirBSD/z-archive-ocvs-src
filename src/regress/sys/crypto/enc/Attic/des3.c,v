@@ -1,0 +1,361 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.07.18.12.29.45;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.48.13;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.48.13;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.08.11.18.28.57;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke regression tests
+
+noone actually uses them (I've run them about half a dozen times only),
+some of the tests (eg. everything PF) are broken, some of the code is
+broken... and the adventurous are invited to use CVS and fix them,
+maybe on a tagged branch.
+@
+text
+@/*      $OpenBSD: des3.c,v 1.5 2002/06/23 21:46:10 wcobb Exp $  */
+
+/*
+ * Copyright (c) 2002 Markus Friedl.  All rights reserverd.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/ioctl.h>
+#include <sys/sysctl.h>
+#include <crypto/cryptodev.h>
+#include <des.h>
+#include <err.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+int
+syscrypt(const unsigned char *key, size_t klen, const unsigned char *iv,
+    const unsigned char *in, unsigned char *out, size_t len, int encrypt)
+{
+	struct session_op session;
+	struct crypt_op cryp;
+	int cryptodev_fd = -1, fd = -1;
+
+	if ((cryptodev_fd = open("/dev/crypto", O_RDWR, 0)) < 0) {
+		warn("/dev/crypto");
+		goto err;
+	}
+	if (ioctl(cryptodev_fd, CRIOGET, &fd) == -1) {
+		warn("CRIOGET failed");
+		goto err;
+	}
+	memset(&session, 0, sizeof(session));
+	session.cipher = CRYPTO_3DES_CBC;
+	session.key = (caddr_t) key;
+	session.keylen = klen;
+	if (ioctl(fd, CIOCGSESSION, &session) == -1) {
+		warn("CIOCGSESSION");
+		goto err;
+	}
+	memset(&cryp, 0, sizeof(cryp));
+	cryp.ses = session.ses;
+	cryp.op = encrypt ? COP_ENCRYPT : COP_DECRYPT;
+	cryp.flags = 0;
+	cryp.len = len;
+	cryp.src = (caddr_t) in;
+	cryp.dst = (caddr_t) out;
+	cryp.iv = (caddr_t) iv;
+	cryp.mac = 0;
+	if (ioctl(fd, CIOCCRYPT, &cryp) == -1) {
+		warn("CIOCCRYPT");
+		goto err;
+	}
+	if (ioctl(fd, CIOCFSESSION, &session.ses) == -1) {
+		warn("CIOCFSESSION");
+		goto err;
+	}
+	close(fd);
+	close(cryptodev_fd);
+	return (0);
+
+err:
+	if (fd != -1)
+		close(fd);
+	if (cryptodev_fd != -1)
+		close(cryptodev_fd);
+	return (-1);
+}
+
+int
+getallowsoft(void)
+{
+	int mib[2], old;
+	size_t olen;
+
+	olen = sizeof(old);
+
+	mib[0] = CTL_KERN;
+	mib[1] = KERN_CRYPTODEVALLOWSOFT;
+	if (sysctl(mib, 2, &old, &olen, NULL, 0) < 0)
+		err(1, "sysctl failed");
+
+	return old;
+}
+
+void
+setallowsoft(int new)
+{
+	int mib[2], old;
+	size_t olen, nlen;
+
+	olen = nlen = sizeof(new);
+
+	mib[0] = CTL_KERN;
+	mib[1] = KERN_CRYPTODEVALLOWSOFT;
+
+	if (sysctl(mib, 2, &old, &olen, &new, nlen) < 0)
+		err(1, "sysctl failed");
+}
+
+int
+match(unsigned char *a, unsigned char *b, size_t len)
+{
+	int i;
+
+	if (memcmp(a, b, len) == 0)
+		return (1);
+
+	warnx("decrypt/plaintext mismatch");
+
+	for (i = 0; i < len; i++)
+		printf("%2.2x", a[i]);
+	printf("\n");
+	for (i = 0; i < len; i++)
+		printf("%2.2x", b[i]);
+	printf("\n");
+
+	return (0);
+}
+
+#define SZ 16
+
+int
+main(int argc, char **argv)
+{
+	des_key_schedule ks1, ks2, ks3;
+	unsigned char iv0[8], iv[8], key[24] = "012345670123456701234567";
+	unsigned char b1[SZ], b2[SZ];
+	int allowed = 0, i, fail = 0;
+	u_int32_t rand = 0;
+
+	if (geteuid() == 0) {
+		allowed = getallowsoft();
+		if (allowed == 0)
+			setallowsoft(1);
+	}
+
+	/* setup data and iv */
+	for (i = 0; i < sizeof(b1); i++ ) {
+		if (i % 4 == 0)
+                        rand = arc4random();
+		b1[i] = rand;
+		rand >>= 8;
+	}
+	for (i = 0; i < sizeof(iv0); i++ ) {
+		if (i % 4 == 0)
+                        rand = arc4random();
+		iv0[i] = rand;
+		rand >>= 8;
+	}
+	memset(b2, 0, sizeof(b2));
+
+	/* keysetup for software */
+        des_set_key((void *) key, ks1);
+        des_set_key((void *) (key+8), ks2);
+        des_set_key((void *) (key+16), ks3);
+
+	/* encrypt with software, decrypt with /dev/crypto */
+	memcpy(iv, iv0, sizeof(iv0));
+        des_ede3_cbc_encrypt((void *)b1, (void*)b2, sizeof(b1), ks1, ks2, ks3,
+	    (void*)iv, DES_ENCRYPT);
+	memcpy(iv, iv0, sizeof(iv0));
+	if (syscrypt(key, sizeof(key), iv, b2, b2, sizeof(b1), 0) < 0) {
+		warnx("decrypt with /dev/crypto failed");
+		fail++;
+	}
+	if (!match(b1, b2, sizeof(b1)))
+		fail++;
+	else
+		printf("ok, encrypt with software, decrypt with /dev/crypto\n");
+
+	/* encrypt with /dev/crypto, decrypt with software */
+	memset(b2, 0, sizeof(b2));
+	memcpy(iv, iv0, sizeof(iv0));
+	if (syscrypt(key, sizeof(key), iv, b1, b2, sizeof(b1), 1) < 0) {
+		warnx("encrypt with /dev/crypto failed");
+		fail++;
+	}
+	memcpy(iv, iv0, sizeof(iv0));
+        des_ede3_cbc_encrypt((void *)b2, (void*)b2, sizeof(b1), ks1, ks2, ks3,
+	    (void*)iv, DES_DECRYPT);
+	if (!match(b1, b2, sizeof(b1)))
+		fail++;
+	else
+		printf("ok, encrypt with /dev/crypto, decrypt with software\n");
+
+	if (geteuid() == 0 && allowed == 0)
+		setallowsoft(0);
+	exit((fail > 0) ? 1 : 0);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import the complete OpenBSD source tree (base system)
+as of CTM delta 3496 (roughly 1200 UTC today) into the
+vendor branch.
+Attention: this is a big update. Don't even try to
+build this system, OpenBSD 3.4-beta, yet on your own.
+@
+text
+@d1 1
+a1 1
+/*      $OpenBSD: des3.c,v 1.6 2003/07/31 21:48:07 deraadt Exp $  */
+d40 1
+a40 1
+static int
+d93 1
+a93 1
+static int
+d109 1
+a109 1
+static void
+d124 1
+a124 1
+static int
+@
+

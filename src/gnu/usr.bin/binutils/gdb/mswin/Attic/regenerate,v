@@ -1,0 +1,313 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.06.10.19.01.59;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.34;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.34;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@first foolish attempt to merge the last piece
+won't probably work, but I want it backed up,
+since there's a lot of work and time in it
+@
+text
+@#!/bin/sh
+
+# gdb/mswin/regenerate
+# author: Geoffrey Noer, noer@@cygnus.com
+
+# This script regenerates some files in gdb/mswin for WinGDB releases
+# (mostly in the prebuilt subdirectory).  Normally this should be run in
+# gdb/mswin but you can also provide a -m mswin-location and it
+# will do its work there.
+
+# It appears to work on at least the following triples:
+# sparc-sun-sunos4.1, i486-linux, and mips-sgi-irix5.3
+
+# Things left to add at some point:
+#  -- change quarter, version numbers in gui.rc
+
+USAGE="regenerate [-m mswin-location] [-h]"
+
+# ---------------------------- Subroutines --------------------------------
+
+# do a compare, if the file changed, copy over a new one
+
+update()
+{
+  if [ -f $FOO ]; then
+     cmp $FOO $BAR >/dev/null 2>1
+     if [ $? != 0 ]; then
+       echo "updating $BAR"
+       cp $FOO $BAR
+     fi
+  else
+     echo Error: unix build file $FOO not found!!!
+  fi
+  return
+}
+
+# do a unix configure in /tmp
+
+unix_config()
+{
+   BUILD="/tmp/wingdb-config"
+
+   if [ -d "$BUILD" ]; then
+     echo "ERROR: $BUILD already exists!  Exiting..."
+     exit 1
+   fi
+
+   mkdir $BUILD
+   cd $BUILD
+
+   echo Configuring a unix tree in $BUILD.  This takes a while...
+   $MSWIN/../../configure --target=sh-hms >/dev/null 2>1
+   return
+}
+
+# fixes the version numbers in a prebuilt/<target>/version.c file
+
+fix_version()
+{
+  echo "    $TARGET"
+  cp $MSWIN/prebuilt/$TARGET/version.c $MSWIN/prebuilt/$TARGET/version.c-bak
+  grep -v version "$MSWIN/prebuilt/$TARGET/version.c-bak" > $MSWIN/prebuilt/$TARGET/version.c
+  echo "char *version = \"$VERS\";" >> $MSWIN/prebuilt/$TARGET/version.c
+  rm -f $MSWIN/prebuilt/$TARGET/version.c-bak
+  return
+}
+
+# ------------------------------ Setup -------------------------------
+
+DIR=`pwd`
+
+# parse command line args
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|-he*|--he*)
+	echo $USAGE ; exit 0
+	;;
+    -m*|--m*)
+	MSWIN=$2
+	;;
+  esac
+  shift
+done
+
+# sanity check MSWIN var
+
+if [ $MSWIN ]; then
+  if [ ! -d $MSWIN ]; then
+    echo "Error: $MSWIN directory does not exist!"
+    exit 1
+  fi
+  cd $MSWIN
+fi
+
+MSWIN=`pwd`   # we don't want a relative pathname
+
+# check for mswin/prebuilt directory
+
+if [ ! -d "$MSWIN/prebuilt" ]; then
+  echo "Error: $MSWIN/prebuilt does not exist!"
+  exit 1
+fi
+
+# do a unix configure so the right files can be generated
+
+unix_config
+
+# --------------------- Regenerate gdb/mswin ----------------------------
+
+# Make; copy files over if they've changed:
+
+# bfd.h
+
+cd $BUILD/bfd
+FOO="bfd.h"
+BAR="$MSWIN/prebuilt/bfd.h"
+make $FOO >/dev/null 2>1
+update
+
+# libiberty config files
+
+cd $BUILD/libiberty
+FOO="config.h"
+BAR="$MSWIN/prebuilt/libiberty/config.h"
+make $FOO >/dev/null 2>1
+update
+
+FOO="alloca-conf.h"
+BAR="$MSWIN/prebuilt/libiberty/alloca-conf.h"
+update
+
+# gdb exp.tab files
+
+cd $BUILD/gdb
+FOO="c-exp.tab.c"
+BAR="$MSWIN/prebuilt/gdb/cexptab.c"
+make $FOO >/dev/null 2>1
+update
+
+FOO="f-exp.tab.c"
+BAR="$MSWIN/prebuilt/gdb/fexptab.c"
+make $FOO >/dev/null 2>1
+update
+
+FOO="m2-exp.tab.c"
+BAR="$MSWIN/prebuilt/gdb/m2exptab.c"
+make $FOO >/dev/null 2>1
+update
+
+# Hitachi simulator code
+
+cd $BUILD/sim/sh
+make >/dev/null 2>1
+
+FOO="code.c"
+BAR="$MSWIN/prebuilt/sh/code.c"
+update
+
+FOO="table.c"
+BAR="$MSWIN/prebuilt/sh/table.c"
+update
+
+# mips/elf32-target.h
+
+sed -e s/NN/32/g < $MSWIN/../../bfd/elfxx-target.h > $MSWIN/prebuilt/mips/elf32-target.h-tmp
+FOO="$MSWIN/prebuilt/mips/elf32-target.h-tmp"
+BAR="$MSWIN/prebuilt/mips/elf32-target.h"
+update
+rm -f $MSWIN/prebuilt/mips/elf32-target.h-tmp
+
+
+# <target>/version.c files
+
+VERS=`grep "VERSION\ =\ " $MSWIN/../Makefile.in | awk -F' ' '{print $3}'`
+
+if [ -z "$VERS" ]; then
+  VERS=`grep "VERSION=" $MSWIN/../Makefile.in | awk -F'=' '{print $2}'`
+fi
+
+if [ -z "$VERS" ]; then
+   echo Warning: could not figure out version number 
+   echo Leaving prebuilt/<target>/version.c files alone 
+else
+   echo Updating GDB version in version.c to $VERS for
+   for TARGET in a29k i386 h8300 m68k mips sh sparclite; do
+      fix_version
+   done
+fi
+
+
+# and we're done...
+
+echo Deleting $BUILD
+
+rm -rf $BUILD
+
+echo Done updating $MSWIN
+
+exit 0
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

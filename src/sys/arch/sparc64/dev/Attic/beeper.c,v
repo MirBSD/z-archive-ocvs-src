@@ -1,0 +1,342 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.3
+	cvs-200312222040:1.1.1.3
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.30.07;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.22;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.22;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.36.30;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.12.22.21.00.32;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: beeper.c,v 1.7 2003/02/17 01:29:19 henric Exp $	*/
+
+/*
+ * Copyright (c) 2001 Jason L. Wright (jason@@thought.net)
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Jason L. Wright
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Effort sponsored in part by the Defense Advanced Research Projects
+ * Agency (DARPA) and Air Force Research Laboratory, Air Force
+ * Materiel Command, USAF, under agreement number F30602-01-2-0537.
+ *
+ */
+
+/*
+ * Driver for beeper device on SUNW,Ultra-1-Engine.
+ */
+
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/device.h>
+#include <sys/conf.h>
+#include <sys/timeout.h>
+
+#include <machine/bus.h>
+#include <machine/autoconf.h>
+#include <machine/openfirm.h>
+
+#include <sparc64/dev/ebusreg.h>
+#include <sparc64/dev/ebusvar.h>
+
+#include "pckbd.h"
+#if NPCKBD > 0
+#include <dev/ic/pckbcvar.h>
+#include <dev/pckbc/pckbdvar.h>
+#endif
+
+struct beeper_softc {
+	struct device		sc_dev;
+	bus_space_tag_t		sc_iot;
+	bus_space_handle_t	sc_ioh;
+	struct timeout		sc_to;
+	int 			sc_belltimeout, sc_bellactive;
+};
+
+#define	BEEP_REG	0
+
+int	beeper_match(struct device *, void *, void *);
+void	beeper_attach(struct device *, struct device *, void *);
+
+struct cfattach beeper_ca = {
+	sizeof(struct beeper_softc), beeper_match, beeper_attach
+};
+
+struct cfdriver beeper_cd = {
+	NULL, "beeper", DV_DULL
+};
+
+#if NPCKBD > 0
+void beeper_stop(void *);
+void beeper_bell(void *, u_int, u_int, u_int, int);
+#endif
+
+int
+beeper_match(parent, match, aux)
+	struct device *parent;
+	void *match;
+	void *aux;
+{
+	struct ebus_attach_args *ea = aux;
+
+	if (strcmp(ea->ea_name, "beeper") == 0)
+		return (1);
+	return (0);
+}
+
+void
+beeper_attach(parent, self, aux)
+	struct device *parent, *self;
+	void *aux;
+{
+	struct beeper_softc *sc = (void *)self;
+	struct ebus_attach_args *ea = aux;
+
+	sc->sc_iot = ea->ea_iotag;
+
+	/* Use prom address if available, otherwise map it. */
+	if (ea->ea_nvaddrs) {
+		if (bus_space_map(sc->sc_iot, ea->ea_vaddrs[0], 0,
+		    BUS_SPACE_MAP_PROMADDRESS, &sc->sc_ioh)) {
+			printf(": can't map PROM register space\n");
+			return;
+		}
+	} else if (ebus_bus_map(sc->sc_iot, 0,
+	    EBUS_PADDR_FROM_REG(&ea->ea_regs[0]), ea->ea_regs[0].size,
+	    BUS_SPACE_MAP_LINEAR, 0, &sc->sc_ioh) != 0) {
+		printf(": can't map register space\n");
+                return;
+	}
+
+#if NPCKBD > 0
+	timeout_set(&sc->sc_to, beeper_stop, sc);
+	pckbd_hookup_bell(beeper_bell, sc);
+#endif
+	printf("\n");
+}
+
+#if NPCKBD > 0
+void
+beeper_stop(vsc)
+	void *vsc;
+{
+	struct beeper_softc *sc = vsc;
+	int s;
+
+	s = spltty();
+	bus_space_write_4(sc->sc_iot, sc->sc_ioh, BEEP_REG, 0);
+	sc->sc_bellactive = 0;
+	sc->sc_belltimeout = 0;
+	splx(s);
+}
+
+void
+beeper_bell(vsc, pitch, period, volume, poll)
+	void *vsc;
+	u_int pitch, period, volume;
+	int poll;
+{
+	struct beeper_softc *sc = vsc;
+	int s, ticks;
+
+	ticks = (period * hz) / 1000;
+	if (ticks <= 0)
+		ticks = 1;
+
+	s = spltty();
+	if (sc->sc_bellactive) {
+		if (sc->sc_belltimeout == 0)
+			timeout_del(&sc->sc_to);
+	}
+	if (pitch == 0 || period == 0) {
+		beeper_stop(sc);
+		splx(s);
+		return;
+	}
+	if (!sc->sc_bellactive) {
+		sc->sc_bellactive = 1;
+		sc->sc_belltimeout = 1;
+		bus_space_write_4(sc->sc_iot, sc->sc_ioh, BEEP_REG, 1);
+		timeout_add(&sc->sc_to, ticks);
+	}
+	splx(s);
+}
+#endif /* NPCKBD > 0 */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: beeper.c,v 1.8 2003/06/02 20:02:49 jason Exp $	*/
+d15 5
+@
+
+
+1.1.1.3
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: beeper.c,v 1.9 2003/12/16 15:08:50 jason Exp $	*/
+d116 2
+a117 2
+	    EBUS_PADDR_FROM_REG(&ea->ea_regs[0]), ea->ea_regs[0].size, 0, 0,
+	    &sc->sc_ioh) != 0) {
+@
+
+

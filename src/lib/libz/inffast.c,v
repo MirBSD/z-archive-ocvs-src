@@ -1,0 +1,654 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	cvs-200412071730:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200408271505:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.47.59;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.59;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.21.09.23;	author tg;	state Stab;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.12.07.17.32.58;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: inffast.c,v 1.3 2002/03/12 00:25:57 millert Exp $	*/
+/* inffast.c -- process literals and length/distance pairs fast
+ * Copyright (C) 1995-2002 Mark Adler
+ * For conditions of distribution and use, see copyright notice in zlib.h 
+ */
+
+#include "zutil.h"
+#include "inftrees.h"
+#include "infblock.h"
+#include "infcodes.h"
+#include "infutil.h"
+#include "inffast.h"
+
+struct inflate_codes_state {int dummy;}; /* for buggy compilers */
+
+/* simplify the use of the inflate_huft type with some defines */
+#define exop word.what.Exop
+#define bits word.what.Bits
+
+/* macros for bit input with no checking and for returning unused bytes */
+#define GRABBITS(j) {while(k<(j)){b|=((uLong)NEXTBYTE)<<k;k+=8;}}
+#define UNGRAB {c=z->avail_in-n;c=(k>>3)<c?k>>3:c;n+=c;p-=c;k-=c<<3;}
+
+/* Called with number of bytes left to write in window at least 258
+   (the maximum string length) and number of input bytes available
+   at least ten.  The ten bytes are six bytes for the longest length/
+   distance pair plus four bytes for overloading the bit buffer. */
+
+int inflate_fast(bl, bd, tl, td, s, z)
+uInt bl, bd;
+inflate_huft *tl;
+inflate_huft *td; /* need separate declaration for Borland C++ */
+inflate_blocks_statef *s;
+z_streamp z;
+{
+  inflate_huft *t;      /* temporary pointer */
+  uInt e;               /* extra bits or operation */
+  uLong b;              /* bit buffer */
+  uInt k;               /* bits in bit buffer */
+  Bytef *p;             /* input data pointer */
+  uInt n;               /* bytes available there */
+  Bytef *q;             /* output window write pointer */
+  uInt m;               /* bytes to end of window or read pointer */
+  uInt ml;              /* mask for literal/length tree */
+  uInt md;              /* mask for distance tree */
+  uInt c;               /* bytes to copy */
+  uInt d;               /* distance back to copy from */
+  Bytef *r;             /* copy source pointer */
+
+  /* load input, output, bit values */
+  LOAD
+
+  /* initialize masks */
+  ml = inflate_mask[bl];
+  md = inflate_mask[bd];
+
+  /* do until not enough input or output space for fast loop */
+  do {                          /* assume called with m >= 258 && n >= 10 */
+    /* get literal/length code */
+    GRABBITS(20)                /* max bits for literal/length code */
+    if ((e = (t = tl + ((uInt)b & ml))->exop) == 0)
+    {
+      DUMPBITS(t->bits)
+      Tracevv((stderr, t->base >= 0x20 && t->base < 0x7f ?
+                "inflate:         * literal '%c'\n" :
+                "inflate:         * literal 0x%02x\n", t->base));
+      *q++ = (Byte)t->base;
+      m--;
+      continue;
+    }
+    do {
+      DUMPBITS(t->bits)
+      if (e & 16)
+      {
+        /* get extra bits for length */
+        e &= 15;
+        c = t->base + ((uInt)b & inflate_mask[e]);
+        DUMPBITS(e)
+        Tracevv((stderr, "inflate:         * length %u\n", c));
+
+        /* decode distance base of block to copy */
+        GRABBITS(15);           /* max bits for distance code */
+        e = (t = td + ((uInt)b & md))->exop;
+        do {
+          DUMPBITS(t->bits)
+          if (e & 16)
+          {
+            /* get extra bits to add to distance base */
+            e &= 15;
+            GRABBITS(e)         /* get extra bits (up to 13) */
+            d = t->base + ((uInt)b & inflate_mask[e]);
+            DUMPBITS(e)
+            Tracevv((stderr, "inflate:         * distance %u\n", d));
+
+            /* do the copy */
+            m -= c;
+            r = q - d;
+            if (r < s->window)                  /* wrap if needed */
+            {
+              do {
+                r += s->end - s->window;        /* force pointer in window */
+              } while (r < s->window);          /* covers invalid distances */
+              e = s->end - r;
+              if (c > e)
+              {
+                c -= e;                         /* wrapped copy */
+                do {
+                    *q++ = *r++;
+                } while (--e);
+                r = s->window;
+                do {
+                    *q++ = *r++;
+                } while (--c);
+              }
+              else                              /* normal copy */
+              {
+                *q++ = *r++;  c--;
+                *q++ = *r++;  c--;
+                do {
+                    *q++ = *r++;
+                } while (--c);
+              }
+            }
+            else                                /* normal copy */
+            {
+              *q++ = *r++;  c--;
+              *q++ = *r++;  c--;
+              do {
+                *q++ = *r++;
+              } while (--c);
+            }
+            break;
+          }
+          else if ((e & 64) == 0)
+          {
+            t += t->base;
+            e = (t += ((uInt)b & inflate_mask[e]))->exop;
+          }
+          else
+          {
+            z->msg = (char*)"invalid distance code";
+            UNGRAB
+            UPDATE
+            return Z_DATA_ERROR;
+          }
+        } while (1);
+        break;
+      }
+      if ((e & 64) == 0)
+      {
+        t += t->base;
+        if ((e = (t += ((uInt)b & inflate_mask[e]))->exop) == 0)
+        {
+          DUMPBITS(t->bits)
+          Tracevv((stderr, t->base >= 0x20 && t->base < 0x7f ?
+                    "inflate:         * literal '%c'\n" :
+                    "inflate:         * literal 0x%02x\n", t->base));
+          *q++ = (Byte)t->base;
+          m--;
+          break;
+        }
+      }
+      else if (e & 32)
+      {
+        Tracevv((stderr, "inflate:         * end of block\n"));
+        UNGRAB
+        UPDATE
+        return Z_STREAM_END;
+      }
+      else
+      {
+        z->msg = (char*)"invalid literal/length code";
+        UNGRAB
+        UPDATE
+        return Z_DATA_ERROR;
+      }
+    } while (1);
+  } while (m >= 258 && n >= 10);
+
+  /* not enough input or output--restore pointers and return */
+  UNGRAB
+  UPDATE
+  return Z_OK;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 4
+a4 4
+/*	$OpenBSD: inffast.c,v 1.5 2003/12/17 00:28:19 millert Exp $	*/
+/* inffast.c -- fast decoding
+ * Copyright (C) 1995-2003 Mark Adler
+ * For conditions of distribution and use, see copyright notice in zlib.h
+d9 3
+a11 1
+#include "inflate.h"
+d14 1
+a14 1
+#ifndef ASMINF
+d16 19
+a34 57
+/* Allow machine dependent optimization for post-increment or pre-increment.
+   Based on testing to date,
+   Pre-increment preferred for:
+   - PowerPC G3 (Adler)
+   - MIPS R5000 (Randers-Pehrson)
+   Post-increment preferred for:
+   - none
+   No measurable difference:
+   - Pentium III (Anderson)
+   - 68060 (Nikl)
+ */
+#ifdef POSTINC
+#  define OFF 0
+#  define PUP(a) *(a)++
+#else
+#  define OFF 1
+#  define PUP(a) *++(a)
+#endif
+
+/*
+   Decode literal, length, and distance codes and write out the resulting
+   literal and match bytes until either not enough input or output is
+   available, an end-of-block is encountered, or a data error is encountered.
+   When large enough input and output buffers are supplied to inflate(), for
+   example, a 16K input buffer and a 64K output buffer, more than 95% of the
+   inflate execution time is spent in this routine.
+
+   Entry assumptions:
+
+        state->mode == LEN
+        strm->avail_in >= 6
+        strm->avail_out >= 258
+        start >= strm->avail_out
+        state->bits < 8
+
+   On return, state->mode is one of:
+
+        LEN -- ran out of enough output space or enough available input
+        TYPE -- reached end of block code, inflate() to interpret next block
+        BAD -- error in block data
+
+   Notes:
+
+    - The maximum input bits used by a length/distance pair is 15 bits for the
+      length code, 5 bits for the length extra, 15 bits for the distance code,
+      and 13 bits for the distance extra.  This totals 48 bits, or six bytes.
+      Therefore if strm->avail_in >= 6, then there is enough input to avoid
+      checking for available input while decoding.
+
+    - The maximum bytes that a single length/distance pair can output is 258
+      bytes, which is the maximum length that can be coded.  inflate_fast()
+      requires strm->avail_out >= 258 for each loop to avoid checking for
+      output space.
+ */
+void inflate_fast(strm, start)
+z_streamp strm;
+unsigned start;         /* inflate()'s starting value for strm->avail_out */
+d36 35
+a70 43
+    struct inflate_state FAR *state;
+    unsigned char FAR *in;      /* local strm->next_in */
+    unsigned char FAR *last;    /* while in < last, enough input available */
+    unsigned char FAR *out;     /* local strm->next_out */
+    unsigned char FAR *beg;     /* inflate()'s initial strm->next_out */
+    unsigned char FAR *end;     /* while out < end, enough space available */
+    unsigned wsize;             /* window size or zero if not using window */
+    unsigned whave;             /* valid bytes in the window */
+    unsigned write;             /* window write index */
+    unsigned char FAR *window;  /* allocated sliding window, if wsize != 0 */
+    unsigned long hold;         /* local strm->hold */
+    unsigned bits;              /* local strm->bits */
+    code const FAR *lcode;      /* local strm->lencode */
+    code const FAR *dcode;      /* local strm->distcode */
+    unsigned lmask;             /* mask for first level of length codes */
+    unsigned dmask;             /* mask for first level of distance codes */
+    code this;                  /* retrieved table entry */
+    unsigned op;                /* code bits, operation, extra bits, or */
+                                /*  window position, window bytes to copy */
+    unsigned len;               /* match length, unused bytes */
+    unsigned dist;              /* match distance */
+    unsigned char FAR *from;    /* where to copy match from */
+
+    /* copy state to local variables */
+    state = (struct inflate_state FAR *)strm->state;
+    in = strm->next_in - OFF;
+    last = in + (strm->avail_in - 5);
+    out = strm->next_out - OFF;
+    beg = out - (start - strm->avail_out);
+    end = out + (strm->avail_out - 257);
+    wsize = state->wsize;
+    whave = state->whave;
+    write = state->write;
+    window = state->window;
+    hold = state->hold;
+    bits = state->bits;
+    lcode = state->lencode;
+    dcode = state->distcode;
+    lmask = (1U << state->lenbits) - 1;
+    dmask = (1U << state->distbits) - 1;
+
+    /* decode literals and length/distances until end-of-block or not enough
+       input data or output space */
+d72 51
+a122 29
+        if (bits < 15) {
+            hold += (unsigned long)(PUP(in)) << bits;
+            bits += 8;
+            hold += (unsigned long)(PUP(in)) << bits;
+            bits += 8;
+        }
+        this = lcode[hold & lmask];
+      dolen:
+        op = (unsigned)(this.bits);
+        hold >>= op;
+        bits -= op;
+        op = (unsigned)(this.op);
+        if (op == 0) {                          /* literal */
+            Tracevv((stderr, this.val >= 0x20 && this.val < 0x7f ?
+                    "inflate:         literal '%c'\n" :
+                    "inflate:         literal 0x%02x\n", this.val));
+            PUP(out) = (unsigned char)(this.val);
+        }
+        else if (op & 16) {                     /* length base */
+            len = (unsigned)(this.val);
+            op &= 15;                           /* number of extra bits */
+            if (op) {
+                if (bits < op) {
+                    hold += (unsigned long)(PUP(in)) << bits;
+                    bits += 8;
+                }
+                len += (unsigned)hold & ((1U << op) - 1);
+                hold >>= op;
+                bits -= op;
+d124 7
+a130 6
+            Tracevv((stderr, "inflate:         length %u\n", len));
+            if (bits < 15) {
+                hold += (unsigned long)(PUP(in)) << bits;
+                bits += 8;
+                hold += (unsigned long)(PUP(in)) << bits;
+                bits += 8;
+a131 130
+            this = dcode[hold & dmask];
+          dodist:
+            op = (unsigned)(this.bits);
+            hold >>= op;
+            bits -= op;
+            op = (unsigned)(this.op);
+            if (op & 16) {                      /* distance base */
+                dist = (unsigned)(this.val);
+                op &= 15;                       /* number of extra bits */
+                if (bits < op) {
+                    hold += (unsigned long)(PUP(in)) << bits;
+                    bits += 8;
+                    if (bits < op) {
+                        hold += (unsigned long)(PUP(in)) << bits;
+                        bits += 8;
+                    }
+                }
+                dist += (unsigned)hold & ((1U << op) - 1);
+                hold >>= op;
+                bits -= op;
+                Tracevv((stderr, "inflate:         distance %u\n", dist));
+                op = (unsigned)(out - beg);     /* max distance in output */
+                if (dist > op) {                /* see if copy from window */
+                    op = dist - op;             /* distance back in window */
+                    if (op > whave) {
+#ifdef SMALL  
+			strm->msg = "error";
+#else
+                        strm->msg = (char *)"invalid distance too far back";
+#endif
+                        state->mode = BAD;
+                        break;
+                    }
+                    from = window - OFF;
+                    if (write == 0) {           /* very common case */
+                        from += wsize - op;
+                        if (op < len) {         /* some from window */
+                            len -= op;
+                            do {
+                                PUP(out) = PUP(from);
+                            } while (--op);
+                            from = out - dist;  /* rest from output */
+                        }
+                    }
+                    else if (write < op) {      /* wrap around window */
+                        from += wsize + write - op;
+                        op -= write;
+                        if (op < len) {         /* some from end of window */
+                            len -= op;
+                            do {
+                                PUP(out) = PUP(from);
+                            } while (--op);
+                            from = window - OFF;
+                            if (write < len) {  /* some from start of window */
+                                op = write;
+                                len -= op;
+                                do {
+                                    PUP(out) = PUP(from);
+                                } while (--op);
+                                from = out - dist;      /* rest from output */
+                            }
+                        }
+                    }
+                    else {                      /* contiguous in window */
+                        from += write - op;
+                        if (op < len) {         /* some from window */
+                            len -= op;
+                            do {
+                                PUP(out) = PUP(from);
+                            } while (--op);
+                            from = out - dist;  /* rest from output */
+                        }
+                    }
+                    while (len > 2) {
+                        PUP(out) = PUP(from);
+                        PUP(out) = PUP(from);
+                        PUP(out) = PUP(from);
+                        len -= 3;
+                    }
+                    if (len) {
+                        PUP(out) = PUP(from);
+                        if (len > 1)
+                            PUP(out) = PUP(from);
+                    }
+                }
+                else {
+                    from = out - dist;          /* copy direct from output */
+                    do {                        /* minimum length is three */
+                        PUP(out) = PUP(from);
+                        PUP(out) = PUP(from);
+                        PUP(out) = PUP(from);
+                        len -= 3;
+                    } while (len > 2);
+                    if (len) {
+                        PUP(out) = PUP(from);
+                        if (len > 1)
+                            PUP(out) = PUP(from);
+                    }
+                }
+            }
+            else if ((op & 64) == 0) {          /* 2nd level distance code */
+                this = dcode[this.val + (hold & ((1U << op) - 1))];
+                goto dodist;
+            }
+            else {
+#ifdef SMALL  
+		strm->msg = "error";
+#else
+                strm->msg = (char *)"invalid distance code";
+#endif
+                state->mode = BAD;
+                break;
+            }
+        }
+        else if ((op & 64) == 0) {              /* 2nd level length code */
+            this = lcode[this.val + (hold & ((1U << op) - 1))];
+            goto dolen;
+        }
+        else if (op & 32) {                     /* end-of-block */
+            Tracevv((stderr, "inflate:         end of block\n"));
+            state->mode = TYPE;
+            break;
+        }
+        else {
+#ifdef SMALL  
+	    strm->msg = "error";
+#else
+            strm->msg = (char *)"invalid literal/length code";
+#endif
+            state->mode = BAD;
+d133 51
+a183 18
+        }
+    } while (in < last && out < end);
+
+    /* return unused bytes (on entry, bits < 8, so in won't go too far back) */
+    len = bits >> 3;
+    in -= len;
+    bits -= len << 3;
+    hold &= (1U << bits) - 1;
+
+    /* update state and return */
+    strm->next_in = in + OFF;
+    strm->next_out = out + OFF;
+    strm->avail_in = (unsigned)(in < last ? 5 + (last - in) : 5 - (in - last));
+    strm->avail_out = (unsigned)(out < end ?
+                                 257 + (end - out) : 257 - (out - end));
+    state->hold = hold;
+    state->bits = bits;
+    return;
+a184 16
+
+/*
+   inflate_fast() speedups that turned out slower (on a PowerPC G3 750CXe):
+   - Using bit fields for code structure
+   - Different op definition to avoid & for extra bits (do & for table bits)
+   - Three separate decoding do-loops for direct, window, and write == 0
+   - Special case for distance > 1 copies to do overlapped load and store copy
+   - Explicit branch predictions (based on measured branch probabilities)
+   - Deferring match copy and interspersed it with decoding subsequent codes
+   - Swapping literal/length else
+   - Swapping window/direct else
+   - Larger unrolled copy loops (three is about right)
+   - Moving len -= 3 statement into middle of loop
+ */
+
+#endif /* !ASMINF */
+@
+
+
+1.1.1.3
+log
+@and an updated libz
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: inffast.c,v 1.6 2004/12/03 03:06:36 djm Exp $	*/
+d3 1
+a3 1
+ * Copyright (C) 1995-2004 Mark Adler
+d23 1
+a23 1
+   - M68060 (Nikl)
+@
+
+

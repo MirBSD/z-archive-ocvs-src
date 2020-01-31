@@ -1,0 +1,500 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.4
+	tg-mergefixes-1-branch:1.1.1.4.0.4
+	tg-mergefixes-1-base:1.1.1.4
+	MIROS_X:1.1.1.4.0.2
+	MIROS_X_BASE:1.1.1.4
+	tg-mergetmp-3:1.1.1.4
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.4
+	cvs-200410231830:1.1.1.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.2
+	cvs-200406091940:1.1.1.3
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.45;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.54.02;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.08.00.41;	author tg;	state Stab;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.10.23.18.38.17;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+ $Id: Unicode.xs,v 1.5 2002/05/20 15:25:44 dankogai Exp $
+ */
+
+#define PERL_NO_GET_CONTEXT
+#include "EXTERN.h"
+#include "perl.h"
+#include "XSUB.h"
+#define U8 U8
+#include "../Encode/encode.h"
+
+#define FBCHAR			0xFFFd
+#define BOM_BE			0xFeFF
+#define BOM16LE			0xFFFe
+#define BOM32LE			0xFFFe0000
+#define issurrogate(x)		(0xD800 <= (x)  && (x) <= 0xDFFF )
+#define isHiSurrogate(x)	(0xD800 <= (x)  && (x) <  0xDC00 )
+#define isLoSurrogate(x)	(0xDC00 <= (x)  && (x) <= 0xDFFF )
+#define invalid_ucs2(x)         ( issurrogate(x) || 0xFFFF < (x) )
+
+static UV
+enc_unpack(pTHX_ U8 **sp,U8 *e,STRLEN size,U8 endian)
+{
+    U8 *s = *sp;
+    UV v = 0;
+    if (s+size > e) {
+	croak("Partial character %c",(char) endian);
+    }
+    switch(endian) {
+    case 'N':
+	v = *s++;
+	v = (v << 8) | *s++;
+    case 'n':
+	v = (v << 8) | *s++;
+	v = (v << 8) | *s++;
+	break;
+    case 'V':
+    case 'v':
+	v |= *s++;
+	v |= (*s++ << 8);
+	if (endian == 'v')
+	    break;
+	v |= (*s++ << 16);
+	v |= (*s++ << 24);
+	break;
+    default:
+	croak("Unknown endian %c",(char) endian);
+	break;
+    }
+    *sp = s;
+    return v;
+}
+
+void
+enc_pack(pTHX_ SV *result,STRLEN size,U8 endian,UV value)
+{
+    U8 *d = (U8 *)SvGROW(result,SvCUR(result)+size);
+    switch(endian) {
+    case 'v':
+    case 'V':
+	d += SvCUR(result);
+	SvCUR_set(result,SvCUR(result)+size);
+	while (size--) {
+	    *d++ = (U8)(value & 0xFF);
+	    value >>= 8;
+	}
+	break;
+    case 'n':
+    case 'N':
+	SvCUR_set(result,SvCUR(result)+size);
+	d += SvCUR(result);
+	while (size--) {
+	    *--d = (U8)(value & 0xFF);
+	    value >>= 8;
+	}
+	break;
+    default:
+	croak("Unknown endian %c",(char) endian);
+	break;
+    }
+}
+
+MODULE = Encode::Unicode PACKAGE = Encode::Unicode
+
+PROTOTYPES: DISABLE
+
+void
+decode_xs(obj, str, check = 0)
+SV *	obj
+SV *	str
+IV	check
+CODE:
+{
+    int size    = SvIV(*hv_fetch((HV *)SvRV(obj),"size",4,0));
+    U8 endian   = *((U8 *)SvPV_nolen(*hv_fetch((HV *)SvRV(obj),"endian",6,0)));
+    int ucs2    = SvTRUE(*hv_fetch((HV *)SvRV(obj),"ucs2",4,0));
+    SV *result = newSVpvn("",0);
+    STRLEN ulen;
+    U8 *s = (U8 *)SvPVbyte(str,ulen);
+    U8 *e = (U8 *)SvEND(str);
+    ST(0) = sv_2mortal(result);
+    SvUTF8_on(result);
+
+    if (!endian && s+size <= e) {
+	UV bom;
+	endian = (size == 4) ? 'N' : 'n';
+	bom = enc_unpack(aTHX_ &s,e,size,endian);
+        if (bom != BOM_BE) {
+	    if (bom == BOM16LE) {
+		endian = 'v';
+	    }
+	    else if (bom == BOM32LE) {
+		endian = 'V';
+	    }
+	    else {
+		croak("%s:Unregognised BOM %"UVxf,
+                      SvPV_nolen(*hv_fetch((HV *)SvRV(obj),"Name",4,0)),
+		      bom);
+	    }
+	}
+#if 0
+	/* Update endian for this sequence */
+	hv_store((HV *)SvRV(obj),"endian",6,newSVpv((char *)&endian,1),0);
+#endif
+    }
+    while (s < e && s+size <= e) {
+	UV ord = enc_unpack(aTHX_ &s,e,size,endian);
+	U8 *d;
+	if (size != 4 && invalid_ucs2(ord)) {
+	    if (ucs2) {
+		if (check) {
+		    croak("%s:no surrogates allowed %"UVxf,
+			  SvPV_nolen(*hv_fetch((HV *)SvRV(obj),"Name",4,0)),
+			  ord);
+		}
+		if (s+size <= e) {
+                    /* skip the next one as well */
+		    enc_unpack(aTHX_ &s,e,size,endian);
+		}
+		ord = FBCHAR;
+	    }
+	    else {
+		UV lo;
+		if (!isHiSurrogate(ord)) {
+		    croak("%s:Malformed HI surrogate %"UVxf,
+			  SvPV_nolen(*hv_fetch((HV *)SvRV(obj),"Name",4,0)),
+			  ord);
+		}
+		if (s+size > e) {
+		    /* Partial character */
+		    s -= size;   /* back up to 1st half */
+		    break;       /* And exit loop */
+		}
+		lo = enc_unpack(aTHX_ &s,e,size,endian);
+		if (!isLoSurrogate(lo)){
+		    croak("%s:Malformed LO surrogate %"UVxf,
+			  SvPV_nolen(*hv_fetch((HV *)SvRV(obj),"Name",4,0)),
+			  ord);
+		}
+		ord = 0x10000 + ((ord - 0xD800) << 10) + (lo - 0xDC00);
+	    }
+	}
+	d = (U8 *) SvGROW(result,SvCUR(result)+UTF8_MAXLEN+1);
+	d = uvuni_to_utf8_flags(d+SvCUR(result), ord, 0);
+	SvCUR_set(result,d - (U8 *)SvPVX(result));
+    }
+    if (s < e) {
+	    Perl_warner(aTHX_ packWARN(WARN_UTF8),"%s:Partial character",
+			SvPV_nolen(*hv_fetch((HV *)SvRV(obj),"Name",4,0)));
+    }
+    if (check && !(check & ENCODE_LEAVE_SRC)){
+	if (s < e) {
+	    Move(s,SvPVX(str),e-s,U8);
+	    SvCUR_set(str,(e-s));
+	}
+	else {
+	    SvCUR_set(str,0);
+	}
+	*SvEND(str) = '\0';
+    }
+    XSRETURN(1);
+}
+
+void
+encode_xs(obj, utf8, check = 0)
+SV *	obj
+SV *	utf8
+IV	check
+CODE:
+{
+    int size   = SvIV(*hv_fetch((HV *)SvRV(obj),"size",4,0));
+    U8 endian = *((U8 *)SvPV_nolen(*hv_fetch((HV *)SvRV(obj),"endian",6,0)));
+    int ucs2   = SvTRUE(*hv_fetch((HV *)SvRV(obj),"ucs2",4,0));
+    SV *result = newSVpvn("",0);
+    STRLEN ulen;
+    U8 *s = (U8 *)SvPVutf8(utf8,ulen);
+    U8 *e = (U8 *)SvEND(utf8);
+    ST(0) = sv_2mortal(result);
+    if (!endian) {
+	endian = (size == 4) ? 'N' : 'n';
+	enc_pack(aTHX_ result,size,endian,BOM_BE);
+#if 0
+	/* Update endian for this sequence */
+	hv_store((HV *)SvRV(obj),"endian",6,newSVpv((char *)&endian,1),0);
+#endif
+    }
+    while (s < e && s+UTF8SKIP(s) <= e) {
+	STRLEN len;
+	UV ord = utf8n_to_uvuni(s, e-s, &len, 0);
+        s += len;
+	if (size != 4 && invalid_ucs2(ord)) {
+	    if (!issurrogate(ord)){
+		if (ucs2) {
+		    if (check) {
+			croak("%s:code point \"\\x{%"UVxf"}\" too high",
+			      SvPV_nolen(
+				  *hv_fetch((HV *)SvRV(obj),"Name",4,0))
+			      ,ord);
+		    }
+		    enc_pack(aTHX_ result,size,endian,FBCHAR);
+		}else{
+		    UV hi = ((ord - 0x10000) >> 10)   + 0xD800;
+		    UV lo = ((ord - 0x10000) & 0x3FF) + 0xDC00;
+		    enc_pack(aTHX_ result,size,endian,hi);
+		    enc_pack(aTHX_ result,size,endian,lo);
+		}
+	    }
+	    else {
+		/* not supposed to happen */
+		enc_pack(aTHX_ result,size,endian,FBCHAR);
+	    }
+	}
+	else {
+	    enc_pack(aTHX_ result,size,endian,ord);
+	}
+    }
+    if (s < e) {
+	Perl_warner(aTHX_ packWARN(WARN_UTF8),"%s:Partial character",
+		    SvPV_nolen(*hv_fetch((HV *)SvRV(obj),"Name",4,0)));
+    }
+    if (check && !(check & ENCODE_LEAVE_SRC)){
+	if (s < e) {
+	    Move(s,SvPVX(utf8),e-s,U8);
+	    SvCUR_set(utf8,(e-s));
+	}
+	else {
+	    SvCUR_set(utf8,0);
+	}
+	*SvEND(utf8) = '\0';
+    }
+    XSRETURN(1);
+}
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d2 1
+a2 1
+ $Id: Unicode.xs,v 1.8 2003/06/18 09:29:02 dankogai Exp $
+a86 3
+#define attr(k, l)  (hv_exists((HV *)SvRV(obj),k,l) ? \
+    *hv_fetch((HV *)SvRV(obj),k,l,0) : &PL_sv_undef)
+
+d94 4
+a97 5
+    U8 endian   = *((U8 *)SvPV_nolen(attr("endian", 6)));
+    int size    =   SvIV(attr("size",   4));
+    int ucs2    = SvTRUE(attr("ucs2",   4));
+    int clone   = SvTRUE(attr("clone",  5));
+    SV *result  = newSVpvn("",0);
+d116 2
+a117 2
+		croak("%"SVf":Unrecognised BOM %"UVxf,
+                      *hv_fetch((HV *)SvRV(obj),"Name",4,0),
+d121 3
+a123 5
+#if 1
+	/* Update endian for next sequence */
+	if (clone) {
+	    hv_store((HV *)SvRV(obj),"endian",6,newSVpv((char *)&endian,1),0);
+	}
+d132 2
+a133 2
+		    croak("%"SVf":no surrogates allowed %"UVxf,
+			  *hv_fetch((HV *)SvRV(obj),"Name",4,0),
+d145 2
+a146 2
+		    croak("%"SVf":Malformed HI surrogate %"UVxf,
+			  *hv_fetch((HV *)SvRV(obj),"Name",4,0),
+d156 2
+a157 2
+		    croak("%"SVf":Malformed LO surrogate %"UVxf,
+			  *hv_fetch((HV *)SvRV(obj),"Name",4,0),
+d168 2
+a169 5
+	/* unlikely to happen because it's fixed-length -- dankogai */
+	if (check & ENCODE_WARN_ON_ERR){
+	    Perl_warner(aTHX_ packWARN(WARN_UTF8),"%"SVf":Partial character",
+			*hv_fetch((HV *)SvRV(obj),"Name",4,0));
+	}
+d191 4
+a194 5
+    U8 endian   = *((U8 *)SvPV_nolen(attr("endian", 6)));
+    int size    =   SvIV(attr("size",   4));
+    int ucs2    = SvTRUE(attr("ucs2",   4));
+    int clone   = SvTRUE(attr("clone",  5));
+    SV *result  = newSVpvn("",0);
+d202 3
+a204 5
+#if 1
+	/* Update endian for next sequence */
+	if (clone){
+	    hv_store((HV *)SvRV(obj),"endian",6,newSVpv((char *)&endian,1),0);
+	}
+d215 4
+a218 2
+			croak("%"SVf":code point \"\\x{%"UVxf"}\" too high",
+				  *hv_fetch((HV *)SvRV(obj),"Name",4,0),ord);
+d238 2
+a239 10
+	/* UTF-8 partial char happens often on PerlIO.
+	   Since this is okay and normal, we do not warn.
+	   But this is critical when you choose to LEAVE_SRC
+	   in which case we die */
+	if (check & (ENCODE_DIE_ON_ERR|ENCODE_LEAVE_SRC)){
+	    Perl_croak(aTHX_ "%"SVf":partial character is not allowed "
+		       "when CHECK = 0x%" UVuf,
+		       *hv_fetch((HV *)SvRV(obj),"Name",4,0), check);
+	}
+	
+d250 1
+a250 1
+    } 
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d2 1
+a2 1
+ $Id: Unicode.xs,v 1.9 2003/12/29 02:47:16 dankogai Exp dankogai $
+d57 1
+a57 1
+    U8 *d = (U8 *)SvGROW(result,SvCUR(result)+size+1);
+@
+
+
+1.1.1.4
+log
+@5.8.5
+@
+text
+@d2 1
+a2 1
+ $Id: Unicode.xs,v 2.0 2004/05/16 20:55:16 dankogai Exp $
+@
+
+

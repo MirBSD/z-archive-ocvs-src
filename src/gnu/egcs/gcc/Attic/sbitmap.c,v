@@ -1,0 +1,629 @@
+head	1.3;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.07.18.13.30.03;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2004.07.04.17.00.54;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.36.10;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.36.10;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@nuke egcs (pgcc, gcc2) and simplify the system a bit
+also fix placement of GNUSYSTEM_AUX_DIR equation in <bsd.own.mk> while here
+remove some sparc and xc-old/xc-mit remnants
+for now, all distribution lists are mi, since we only have 1 arch
+
+XXX comp is second-largest now (after xfont), need ideas, come to IRC
+
+agreed: <benz|lernen> joa, warum nicht
+@
+text
+@/* $MirBSD: src/gnu/egcs/gcc/sbitmap.c,v 1.2 2004/07/04 17:00:54 tg Exp $ */
+
+/* Simple bitmaps.
+   Copyright (C) 1999 Free Software Foundation, Inc.
+
+This file is part of GNU CC.
+
+GNU CC is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2, or (at your option)
+any later version.
+
+GNU CC is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GNU CC; see the file COPYING.  If not, write to
+the Free Software Foundation, 59 Temple Place - Suite 330,
+Boston, MA 02111-1307, USA.  */
+
+#include "config.h"
+#include "system.h"
+#include "rtl.h"
+#include "flags.h"
+#include "basic-block.h"
+
+__RCSID("$MirBSD: src/gnu/egcs/gcc/sbitmap.c,v 1.2 2004/07/04 17:00:54 tg Exp $");
+
+/* Bitmap manipulation routines.  */
+
+/* Allocate a simple bitmap of N_ELMS bits.  */
+
+sbitmap
+sbitmap_alloc (n_elms)
+     int n_elms;
+{
+  int bytes, size, amt;
+  sbitmap bmap;
+
+  size = SBITMAP_SET_SIZE (n_elms);
+  bytes = size * sizeof (SBITMAP_ELT_TYPE);
+  amt = (sizeof (struct simple_bitmap_def)
+	 + bytes - sizeof (SBITMAP_ELT_TYPE));
+  bmap = (sbitmap) xmalloc (amt);
+  bmap->n_bits = n_elms;
+  bmap->size = size;
+  bmap->bytes = bytes;
+  return bmap;
+}
+
+/* Allocate a vector of N_VECS bitmaps of N_ELMS bits.  */
+
+sbitmap *
+sbitmap_vector_alloc (n_vecs, n_elms)
+     int n_vecs, n_elms;
+{
+  int i, bytes, offset, elm_bytes, size, amt, vector_bytes;
+  sbitmap *bitmap_vector;
+
+  size = SBITMAP_SET_SIZE (n_elms);
+  bytes = size * sizeof (SBITMAP_ELT_TYPE);
+  elm_bytes = (sizeof (struct simple_bitmap_def)
+	       + bytes - sizeof (SBITMAP_ELT_TYPE));
+  vector_bytes = n_vecs * sizeof (sbitmap *);
+
+  /* Round up `vector_bytes' to account for the alignment requirements
+     of an sbitmap.  One could allocate the vector-table and set of sbitmaps
+     separately, but that requires maintaining two pointers or creating
+     a cover struct to hold both pointers (so our result is still just
+     one pointer).  Neither is a bad idea, but this is simpler for now.  */
+  {
+    /* Based on DEFAULT_ALIGNMENT computation in obstack.c.  */
+    struct { char x; SBITMAP_ELT_TYPE y; } align;
+    int alignment = (char *) & align.y - & align.x;
+    vector_bytes = (vector_bytes + alignment - 1) & ~ (alignment - 1);
+  }
+
+  amt = vector_bytes + (n_vecs * elm_bytes);
+  bitmap_vector = (sbitmap *) xmalloc (amt);
+
+  for (i = 0, offset = vector_bytes;
+       i < n_vecs;
+       i++, offset += elm_bytes)
+    {
+      sbitmap b = (sbitmap) ((char *) bitmap_vector + offset);
+      bitmap_vector[i] = b;
+      b->n_bits = n_elms;
+      b->size = size;
+      b->bytes = bytes;
+    }
+
+  return bitmap_vector;
+}
+
+/* Copy sbitmap SRC to DST.  */
+
+void
+sbitmap_copy (dst, src)
+     sbitmap dst, src;
+{
+  memmove ((PTR) dst->elms, (PTR) src->elms,
+	 sizeof (SBITMAP_ELT_TYPE) * dst->size);
+}
+
+/* Zero all elements in a bitmap.  */
+
+void
+sbitmap_zero (bmap)
+     sbitmap bmap;
+{
+  memset ((char *) bmap->elms, 0, bmap->bytes);
+}
+
+/* Set to ones all elements in a bitmap.  */
+
+void
+sbitmap_ones (bmap)
+     sbitmap bmap;
+{
+  memset (bmap->elms, -1, bmap->bytes);
+}
+
+/* Zero a vector of N_VECS bitmaps.  */
+
+void
+sbitmap_vector_zero (bmap, n_vecs)
+     sbitmap *bmap;
+     int n_vecs;
+{
+  int i;
+
+  for (i = 0; i < n_vecs; i++)
+    sbitmap_zero (bmap[i]);
+}
+
+/* Set to ones a vector of N_VECS bitmaps.  */
+
+void
+sbitmap_vector_ones (bmap, n_vecs)
+     sbitmap *bmap;
+     int n_vecs;
+{
+  int i;
+
+  for (i = 0; i < n_vecs; i++)
+    sbitmap_ones (bmap[i]);
+}
+
+/* Set DST to be A union (B - C).
+   DST = A | (B & ~C).
+   Return non-zero if any change is made.  */
+
+int
+sbitmap_union_of_diff (dst, a, b, c)
+     sbitmap dst, a, b, c;
+{
+  int i,changed;
+  sbitmap_ptr dstp, ap, bp, cp;
+
+  changed = 0;
+  dstp = dst->elms;
+  ap = a->elms;
+  bp = b->elms;
+  cp = c->elms;
+  for (i = 0; i < dst->size; i++)
+    {
+      SBITMAP_ELT_TYPE tmp = *ap | (*bp & ~*cp);
+      if (*dstp != tmp)
+	changed = 1;
+      *dstp = tmp;
+      dstp++; ap++; bp++; cp++;
+    }
+  return changed;
+}
+
+/* Set bitmap DST to the bitwise negation of the bitmap SRC.  */
+
+void
+sbitmap_not (dst, src)
+     sbitmap dst, src;
+{
+  int i;
+  sbitmap_ptr dstp, ap;
+
+  dstp = dst->elms;
+  ap = src->elms;
+  for (i = 0; i < dst->size; i++)
+    {
+      SBITMAP_ELT_TYPE tmp = ~(*ap);
+      *dstp = tmp;
+      dstp++; ap++;
+    }
+}
+
+/* Set the bits in DST to be the difference between the bits
+   in A and the bits in B. i.e. dst = a - b.
+   The - operator is implemented as a & (~b).  */
+
+void
+sbitmap_difference (dst, a, b)
+     sbitmap dst, a, b;
+{
+  int i;
+  sbitmap_ptr dstp, ap, bp;
+
+  dstp = dst->elms;
+  ap = a->elms;
+  bp = b->elms;
+  for (i = 0; i < dst->size; i++)
+    *dstp++ = *ap++ & (~*bp++);
+}
+
+/* Set DST to be (A and B)).
+   Return non-zero if any change is made.  */
+
+int
+sbitmap_a_and_b (dst, a, b)
+     sbitmap dst, a, b;
+{
+  int i,changed;
+  sbitmap_ptr dstp, ap, bp;
+
+  changed = 0;
+  dstp = dst->elms;
+  ap = a->elms;
+  bp = b->elms;
+  for (i = 0; i < dst->size; i++)
+    {
+      SBITMAP_ELT_TYPE tmp = *ap & *bp;
+      if (*dstp != tmp)
+	changed = 1;
+      *dstp = tmp;
+      dstp++; ap++; bp++;
+    }
+  return changed;
+}
+/* Set DST to be (A or B)).
+   Return non-zero if any change is made.  */
+
+int
+sbitmap_a_or_b (dst, a, b)
+     sbitmap dst, a, b;
+{
+  int i,changed;
+  sbitmap_ptr dstp, ap, bp;
+
+  changed = 0;
+  dstp = dst->elms;
+  ap = a->elms;
+  bp = b->elms;
+  for (i = 0; i < dst->size; i++)
+    {
+      SBITMAP_ELT_TYPE tmp = *ap | *bp;
+      if (*dstp != tmp)
+	changed = 1;
+      *dstp = tmp;
+      dstp++; ap++; bp++;
+    }
+  return changed;
+}
+
+/* Set DST to be (A or (B and C)).
+   Return non-zero if any change is made.  */
+
+int
+sbitmap_a_or_b_and_c (dst, a, b, c)
+     sbitmap dst, a, b, c;
+{
+  int i,changed;
+  sbitmap_ptr dstp, ap, bp, cp;
+
+  changed = 0;
+  dstp = dst->elms;
+  ap = a->elms;
+  bp = b->elms;
+  cp = c->elms;
+  for (i = 0; i < dst->size; i++)
+    {
+      SBITMAP_ELT_TYPE tmp = *ap | (*bp & *cp);
+      if (*dstp != tmp)
+	changed = 1;
+      *dstp = tmp;
+      dstp++; ap++; bp++; cp++;
+    }
+  return changed;
+}
+
+/* Set DST to be (A ann (B or C)).
+   Return non-zero if any change is made.  */
+
+int
+sbitmap_a_and_b_or_c (dst, a, b, c)
+     sbitmap dst, a, b, c;
+{
+  int i,changed;
+  sbitmap_ptr dstp, ap, bp, cp;
+
+  changed = 0;
+  dstp = dst->elms;
+  ap = a->elms;
+  bp = b->elms;
+  cp = c->elms;
+  for (i = 0; i < dst->size; i++)
+    {
+      SBITMAP_ELT_TYPE tmp = *ap & (*bp | *cp);
+      if (*dstp != tmp)
+	changed = 1;
+      *dstp = tmp;
+      dstp++; ap++; bp++; cp++;
+    }
+  return changed;
+}
+
+/* Set the bitmap DST to the intersection of SRC of all predecessors or
+   successors of block number BB (PRED_SUCC says which).  */
+
+void
+sbitmap_intersect_of_predsucc (dst, src, bb, pred_succ)
+     sbitmap dst;
+     sbitmap *src;
+     int bb;
+     int_list_ptr *pred_succ;
+{
+  int_list_ptr ps;
+  int ps_bb;
+  int set_size = dst->size;
+
+  ps = pred_succ[bb];
+
+  /* It is possible that there are no predecessors(/successors).
+     This can happen for example in unreachable code.  */
+
+  if (ps == NULL)
+    {
+      /* In APL-speak this is the `and' reduction of the empty set and thus
+	 the result is the identity for `and'.  */
+      sbitmap_ones (dst);
+      return;
+    }
+
+  /* Set result to first predecessor/successor.  */
+
+  for ( ; ps != NULL; ps = ps->next)
+    {
+      ps_bb = INT_LIST_VAL (ps);
+      if (ps_bb == ENTRY_BLOCK || ps_bb == EXIT_BLOCK)
+	continue;
+      sbitmap_copy (dst, src[ps_bb]);
+      /* Break out since we're only doing first predecessor.  */
+      break;
+    }
+  if (ps == NULL)
+    return;
+
+  /* Now do the remaining predecessors/successors.  */
+
+  for (ps = ps->next; ps != NULL; ps = ps->next)
+    {
+      int i;
+      sbitmap_ptr p,r;
+
+      ps_bb = INT_LIST_VAL (ps);
+      if (ps_bb == ENTRY_BLOCK || ps_bb == EXIT_BLOCK)
+	continue;
+
+      p = src[ps_bb]->elms;
+      r = dst->elms;
+
+      for (i = 0; i < set_size; i++)
+	*r++ &= *p++;
+    }
+}
+
+/* Set the bitmap DST to the union of SRC of all predecessors/successors of
+   block number BB.  */
+
+void
+sbitmap_union_of_predsucc (dst, src, bb, pred_succ)
+     sbitmap dst;
+     sbitmap *src;
+     int bb;
+     int_list_ptr *pred_succ;
+{
+  int_list_ptr ps;
+  int ps_bb;
+  int set_size = dst->size;
+
+  ps = pred_succ[bb];
+
+  /* It is possible that there are no predecessors(/successors).
+     This can happen for example in unreachable code.  */
+
+  if (ps == NULL)
+    {
+      /* In APL-speak this is the `or' reduction of the empty set and thus
+	 the result is the identity for `or'.  */
+      sbitmap_zero (dst);
+      return;
+    }
+
+  /* Set result to first predecessor/successor.  */
+
+  for ( ; ps != NULL; ps = ps->next)
+    {
+      ps_bb = INT_LIST_VAL (ps);
+      if (ps_bb == ENTRY_BLOCK || ps_bb == EXIT_BLOCK)
+	continue;
+      sbitmap_copy (dst, src[ps_bb]);
+      /* Break out since we're only doing first predecessor.  */
+      break;
+    }
+  if (ps == NULL)
+    return;
+
+  /* Now do the remaining predecessors/successors.  */
+
+  for (ps = ps->next; ps != NULL; ps = ps->next)
+    {
+      int i;
+      sbitmap_ptr p,r;
+
+      ps_bb = INT_LIST_VAL (ps);
+      if (ps_bb == ENTRY_BLOCK || ps_bb == EXIT_BLOCK)
+	continue;
+
+      p = src[ps_bb]->elms;
+      r = dst->elms;
+
+      for (i = 0; i < set_size; i++)
+	*r++ |= *p++;
+    }
+}
+
+void
+dump_sbitmap (file, bmap)
+     FILE *file;
+     sbitmap bmap;
+{
+  int i,j,n;
+  int set_size = bmap->size;
+  int total_bits = bmap->n_bits;
+
+  fprintf (file, "  ");
+  for (i = n = 0; i < set_size && n < total_bits; i++)
+    {
+      for (j = 0; j < SBITMAP_ELT_BITS && n < total_bits; j++, n++)
+	{
+	  if (n != 0 && n % 10 == 0)
+	    fprintf (file, " ");
+	  fprintf (file, "%d", (bmap->elms[i] & (1L << j)) != 0);
+	}
+    }
+  fprintf (file, "\n");
+}
+
+void
+dump_sbitmap_vector (file, title, subtitle, bmaps, n_maps)
+     FILE *file;
+     const char *title, *subtitle;
+     sbitmap *bmaps;
+     int n_maps;
+{
+  int bb;
+
+  fprintf (file, "%s\n", title);
+  for (bb = 0; bb < n_maps; bb++)
+    {
+      fprintf (file, "%s %d\n", subtitle, bb);
+      dump_sbitmap (file, bmaps[bb]);
+    }
+  fprintf (file, "\n");
+}
+@
+
+
+1.2
+log
+@another round of warnings, etc.
+add RCS ID, KNF a bit while here
+
+some format string "errors" can't be resolved (2-digit year for example);
+here we might add a GCC option to not warn about them (although I'd
+rather like to see a
+		(void)strftime(buf, sizeof(buf) - 1, "%e%b%y", tp);
+changed into
+		(void)strftime(buf, sizeof(buf) - 1,
+		    "%e%b%y" __attribute__((safe_format)), tp);
+on a per-invocation basis; XXX any volunteers?)
+@
+text
+@d1 1
+a1 1
+/* $MirBSD$ */
+d29 1
+a29 1
+__RCSID("$MirBSD$");
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+d29 2
+d103 1
+a103 1
+  bcopy ((PTR) src->elms, (PTR) dst->elms,
+d113 1
+a113 1
+  bzero ((char *) bmap->elms, bmap->bytes);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

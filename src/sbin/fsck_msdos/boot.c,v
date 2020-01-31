@@ -1,0 +1,403 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.48.24;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.48.24;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.08.11.18.29.36;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: boot.c,v 1.8 2003/03/11 04:42:25 david Exp $	*/
+/*	$NetBSD: boot.c,v 1.5 1997/10/17 11:19:23 ws Exp $	*/
+
+/*
+ * Copyright (C) 1995, 1997 Wolfgang Solfrank
+ * Copyright (c) 1995 Martin Husemann
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Martin Husemann
+ *	and Wolfgang Solfrank.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+#ifndef lint
+static char rcsid[] = "$OpenBSD: boot.c,v 1.8 2003/03/11 04:42:25 david Exp $";
+#endif /* not lint */
+
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <unistd.h>
+
+#include "ext.h"
+
+int
+readboot(dosfs, boot)
+	int dosfs;
+	struct bootblock *boot;
+{
+	u_char block[DOSBOOTBLOCKSIZE];
+	u_char fsinfo[2 * DOSBOOTBLOCKSIZE];
+	u_char backup[DOSBOOTBLOCKSIZE];
+	int ret = FSOK;
+
+	if (read(dosfs, block, sizeof block) < sizeof block) {
+		perror("could not read boot block"); 		
+		return (FSFATAL);
+	}
+
+	if (block[510] != 0x55 || block[511] != 0xaa) {
+		pfatal("Invalid signature in boot block: %02x%02x\n", block[511], block[510]);
+		return FSFATAL;
+	}
+
+	memset(boot, 0, sizeof *boot);
+	boot->ValidFat = -1;
+
+	/* decode bios parameter block */
+	boot->BytesPerSec = block[11] + (block[12] << 8);
+	boot->SecPerClust = block[13];
+	boot->ResSectors = block[14] + (block[15] << 8);
+	boot->FATs = block[16];
+	boot->RootDirEnts = block[17] + (block[18] << 8);
+	boot->Sectors = block[19] + (block[20] << 8);
+	boot->Media = block[21];
+	boot->FATsmall = block[22] + (block[23] << 8);
+	boot->SecPerTrack = block[24] + (block[25] << 8);
+	boot->Heads = block[26] + (block[27] << 8);
+	boot->HiddenSecs = block[28] + (block[29] << 8) + (block[30] << 16) + (block[31] << 24);
+	boot->HugeSectors = block[32] + (block[33] << 8) + (block[34] << 16) + (block[35] << 24);
+
+	boot->FATsecs = boot->FATsmall;
+
+	if (!boot->RootDirEnts)
+		boot->flags |= FAT32;
+	if (boot->flags & FAT32) {
+		boot->FATsecs = block[36] + (block[37] << 8)
+				+ (block[38] << 16) + (block[39] << 24);
+		if (block[40] & 0x80)
+			boot->ValidFat = block[40] & 0x0f;
+
+		/* check version number: */
+		if (block[42] || block[43]) {
+			/* Correct?				XXX */
+			pfatal("Unknown filesystem version: %x.%x\n",
+			       block[43], block[42]);
+			return FSFATAL;
+		}
+		boot->RootCl = block[44] + (block[45] << 8)
+			       + (block[46] << 16) + (block[47] << 24);
+		boot->FSInfo = block[48] + (block[49] << 8);
+		boot->Backup = block[50] + (block[51] << 8);
+
+		if (lseek(dosfs, boot->FSInfo * boot->BytesPerSec, SEEK_SET)
+		    != boot->FSInfo * boot->BytesPerSec
+		    || read(dosfs, fsinfo, sizeof fsinfo)
+		    != sizeof fsinfo) {
+			perror("could not read fsinfo block");
+			return FSFATAL;
+		}
+		if (memcmp(fsinfo, "RRaA", 4)
+		    || memcmp(fsinfo + 0x1e4, "rrAa", 4)
+		    || fsinfo[0x1fc]
+		    || fsinfo[0x1fd]
+		    || fsinfo[0x1fe] != 0x55
+		    || fsinfo[0x1ff] != 0xaa
+		    || fsinfo[0x3fc]
+		    || fsinfo[0x3fd]
+		    || fsinfo[0x3fe] != 0x55
+		    || fsinfo[0x3ff] != 0xaa) {
+			pwarn("Invalid signature in fsinfo block");
+			if (ask(0, "fix")) {
+				memcpy(fsinfo, "RRaA", 4);
+				memcpy(fsinfo + 0x1e4, "rrAa", 4);
+				fsinfo[0x1fc] = fsinfo[0x1fd] = 0;
+				fsinfo[0x1fe] = 0x55;
+				fsinfo[0x1ff] = 0xaa;
+				fsinfo[0x3fc] = fsinfo[0x3fd] = 0;
+				fsinfo[0x3fe] = 0x55;
+				fsinfo[0x3ff] = 0xaa;
+				if (lseek(dosfs, boot->FSInfo * boot->BytesPerSec, SEEK_SET)
+				    != boot->FSInfo * boot->BytesPerSec
+				    || write(dosfs, fsinfo, sizeof fsinfo)
+				    != sizeof fsinfo) {
+					perror("Unable to write FSInfo");
+					return FSFATAL;
+				}
+				ret = FSBOOTMOD;
+			} else
+				boot->FSInfo = 0;
+		}
+		if (boot->FSInfo) {
+			boot->FSFree = fsinfo[0x1e8] + (fsinfo[0x1e9] << 8)
+				       + (fsinfo[0x1ea] << 16)
+				       + (fsinfo[0x1eb] << 24);
+			boot->FSNext = fsinfo[0x1ec] + (fsinfo[0x1ed] << 8)
+				       + (fsinfo[0x1ee] << 16)
+				       + (fsinfo[0x1ef] << 24);
+		}
+
+		if (lseek(dosfs, boot->Backup * boot->BytesPerSec, SEEK_SET)
+		    != boot->Backup * boot->BytesPerSec
+		    || read(dosfs, backup, sizeof backup) != sizeof  backup) {
+			perror("could not read backup bootblock");
+			return FSFATAL;
+		}
+		if (memcmp(block, backup, DOSBOOTBLOCKSIZE)) {
+			/* Correct?					XXX */
+			pfatal("backup doesn't compare to primary bootblock\n");
+			return FSFATAL;
+		}
+		/* Check backup FSInfo?					XXX */
+	}
+
+	if (boot->BytesPerSec == 0 || boot->BytesPerSec % DOSBOOTBLOCKSIZE
+	    != 0) {
+		pfatal("Invalid sector size: %u\n", boot->BytesPerSec);
+		return (FSFATAL);
+	}
+	if (boot->SecPerClust == 0) {
+		pfatal("Invalid cluster size: %u\n", boot->SecPerClust);
+		return (FSFATAL);
+	}
+
+	boot->ClusterOffset = (boot->RootDirEnts * 32 + boot->BytesPerSec - 1)
+	    / boot->BytesPerSec
+	    + boot->ResSectors
+	    + boot->FATs * boot->FATsecs
+	    - CLUST_FIRST * boot->SecPerClust;
+
+	if (boot->Sectors) {
+		boot->HugeSectors = 0;
+		boot->NumSectors = boot->Sectors;
+	} else
+		boot->NumSectors = boot->HugeSectors;
+	boot->NumClusters = (boot->NumSectors - boot->ClusterOffset) / boot->SecPerClust;
+
+	if (boot->flags&FAT32)
+		boot->ClustMask = CLUST32_MASK;
+	else if (boot->NumClusters < (CLUST_RSRVD&CLUST12_MASK))
+		boot->ClustMask = CLUST12_MASK;
+	else if (boot->NumClusters < (CLUST_RSRVD&CLUST16_MASK))
+		boot->ClustMask = CLUST16_MASK;
+	else {
+		pfatal("Filesystem too big (%u clusters) for non-FAT32 partition\n",
+		       boot->NumClusters);
+		return FSFATAL;
+	}
+
+	switch (boot->ClustMask) {
+	case CLUST32_MASK:
+		boot->NumFatEntries = (boot->FATsecs * boot->BytesPerSec) / 4;
+		break;
+	case CLUST16_MASK:
+		boot->NumFatEntries = (boot->FATsecs * boot->BytesPerSec) / 2;
+		break;
+	default:
+		boot->NumFatEntries = (boot->FATsecs * boot->BytesPerSec * 2) / 3;
+		break;
+	}
+
+	if (boot->NumFatEntries < boot->NumClusters) {
+		pfatal("FAT size too small, %u entries won't fit into %u sectors\n",
+		       boot->NumClusters, boot->FATsecs);
+		return (FSFATAL);
+	}
+	boot->ClusterSize = boot->BytesPerSec * boot->SecPerClust;
+
+	boot->NumFiles = 1;
+	boot->NumFree = 0;
+
+	return ret;
+}
+
+int
+writefsinfo(dosfs, boot)
+	int dosfs;
+	struct bootblock *boot;
+{
+	u_char fsinfo[2 * DOSBOOTBLOCKSIZE];
+
+	if (lseek(dosfs, boot->FSInfo * boot->BytesPerSec, SEEK_SET)
+	    != boot->FSInfo * boot->BytesPerSec
+	    || read(dosfs, fsinfo, sizeof fsinfo) != sizeof fsinfo) {
+		perror("could not read fsinfo block");
+		return FSFATAL;
+	}
+	fsinfo[0x1e8] = (u_char)boot->FSFree;
+	fsinfo[0x1e9] = (u_char)(boot->FSFree >> 8);
+	fsinfo[0x1ea] = (u_char)(boot->FSFree >> 16);
+	fsinfo[0x1eb] = (u_char)(boot->FSFree >> 24);
+	fsinfo[0x1ec] = (u_char)boot->FSNext;
+	fsinfo[0x1ed] = (u_char)(boot->FSNext >> 8);
+	fsinfo[0x1ee] = (u_char)(boot->FSNext >> 16);
+	fsinfo[0x1ef] = (u_char)(boot->FSNext >> 24);
+	if (lseek(dosfs, boot->FSInfo * boot->BytesPerSec, SEEK_SET)
+	    != boot->FSInfo * boot->BytesPerSec
+	    || write(dosfs, fsinfo, sizeof fsinfo)
+	    != sizeof fsinfo) {
+		perror("Unable to write FSInfo");
+		return FSFATAL;
+	}
+	/*
+	 * Technically, we should return FSBOOTMOD here.
+	 *
+	 * However, since Win95 OSR2 (the first M$ OS that has
+	 * support for FAT32) doesn't maintain the FSINFO block
+	 * correctly, it has to be fixed pretty often.
+	 *
+	 * Therefor, we handle the FSINFO block only informally,
+	 * fixing it if necessary, but otherwise ignoring the
+	 * fact that it was incorrect.
+	 */
+	return 0;
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import the complete OpenBSD source tree (base system)
+as of CTM delta 3496 (roughly 1200 UTC today) into the
+vendor branch.
+Attention: this is a big update. Don't even try to
+build this system, OpenBSD 3.4-beta, yet on your own.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: boot.c,v 1.9 2003/07/29 18:38:35 deraadt Exp $	*/
+d38 1
+a38 1
+static char rcsid[] = "$OpenBSD: boot.c,v 1.9 2003/07/29 18:38:35 deraadt Exp $";
+d60 1
+a60 1
+		perror("could not read boot block");
+@
+

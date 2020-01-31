@@ -1,0 +1,542 @@
+head	1.5;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.4
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.2
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_SPARC:1.3.0.2
+	MIRBSD_7quater:1.2.2.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.2.2.1.0.4
+	MIRBSD_7:1.2.2.1.0.2
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.2.2.1
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.5
+date	2004.11.13.02.25.15;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.07.15.19.31.40;	author tg;	state dead;
+branches;
+next	1.3;
+
+1.3
+date	2003.12.17.18.26.55;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2003.04.06.04.29.52;	author tg;	state dead;
+branches
+	1.2.2.1;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.13;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.13;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.36.05;	author tg;	state Exp;
+branches;
+next	;
+
+1.2.2.1
+date	2003.10.23.21.33.10;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@welcome back, sparc
+(usr.bin/pmdb was never deleted)
+@
+text
+@/*	$OpenBSD: bpp.c,v 1.4 2003/06/03 21:09:02 deraadt Exp $	*/
+
+/*
+ * Copyright (c) 1997, Jason Downs.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR(S) ``AS IS'' AND ANY EXPRESS
+ * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/buf.h>
+#include <sys/kernel.h>
+#include <sys/uio.h>
+#include <sys/device.h>
+#include <sys/conf.h>
+#include <sys/systm.h>
+
+#include <machine/autoconf.h>
+#include <machine/conf.h>
+
+#include <sparc/dev/bppreg.h>
+
+#define BPP_BSIZE	1024
+
+#define LONG_TIMEOUT	30		/* XXX */
+#define SHORT_TIMEOUT	3		/* XXX */
+
+struct bpp_softc {
+	struct device sc_dev;
+
+	size_t sc_count;
+	struct buf *sc_inbuf;
+	u_int8_t *sc_cp;
+
+	char sc_open;
+
+	volatile struct bppregs *sc_regs;
+};
+
+static int bppmatch(struct device *, void *, void *);
+static void bppattach(struct device *, struct device *, void *);
+
+#define BPPUNIT(s)	minor(s)
+
+struct cfattach bpp_ca = {
+	sizeof(struct bpp_softc), bppmatch, bppattach
+};
+
+struct cfdriver bpp_cd = {
+	NULL, "bpp", DV_DULL
+};
+
+static __inline__ void bpp_outb(struct bpp_softc *, u_int8_t);
+static __inline__ u_int8_t bpp_inb(struct bpp_softc *);
+static void bppreset(struct bpp_softc *, int);
+static void bppresetmode(struct bpp_softc *);
+static int bpppushbytes(struct bpp_softc *);
+
+static int
+bppmatch(parent, vcf, aux)
+	struct device *parent;
+	void *aux, *vcf;
+{
+	register struct confargs *ca = aux;
+
+	if (strcmp(ca->ca_ra.ra_name, "SUNW,bpp"))
+		return (0);
+
+	return (1);
+}
+
+static void
+bppattach(parent, self, aux)
+	struct device *parent, *self;
+	void *aux;
+{
+	struct confargs *ca = aux;
+	struct romaux *ra = &ca->ca_ra;
+	struct bpp_softc *bpp = (void *)self;
+
+	bpp->sc_regs = mapiodev(ra->ra_reg, 0, ra->ra_len);
+
+	bppreset(bpp, 0);
+
+	switch (bpp->sc_regs->bpp_csr & BPP_DEV_ID_MASK) {
+	case BPP_DEV_ID_ZEBRA:
+		printf(": Zebra\n");
+		break;
+	case BPP_DEV_ID_L64854:
+		printf(": DMA2\n");
+		break;
+	default:
+		printf(": Unknown type\n");
+		break;
+	}
+
+	bppresetmode(bpp);
+}
+
+static void
+bppreset(bpp, verbose)
+	struct bpp_softc *bpp;
+	int verbose;
+{
+	volatile u_int32_t bpp_csr;
+
+	/* Reset hardware. */
+	bpp_csr = bpp->sc_regs->bpp_csr;
+	if ((bpp_csr & BPP_DRAINING) && !(bpp_csr & BPP_ERR_PEND)) {
+		delay(20);
+
+		bpp_csr = bpp->sc_regs->bpp_csr;
+		if (verbose && (bpp_csr & BPP_DRAINING) &&
+		    !(bpp_csr & BPP_ERR_PEND))
+			printf("%s: draining still active (0x%08x)\n",
+			    bpp->sc_dev.dv_xname, bpp_csr);
+	}
+	bpp->sc_regs->bpp_csr = (bpp_csr | BPP_RESET) & ~BPP_INT_EN;
+	delay(500);
+	bpp->sc_regs->bpp_csr &= ~BPP_RESET;
+}
+
+static void
+bppresetmode(bpp)
+	struct bpp_softc *bpp;
+{
+	bpp->sc_regs->bpp_or = BPP_OR_AFXN|BPP_OR_SLCT_IN;
+	bpp->sc_regs->bpp_tcr = BPP_TCR_DS;
+}
+
+static __inline__ void
+bpp_outb(bpp, byte)
+	struct bpp_softc *bpp;
+	u_int8_t byte;
+{
+	bpp->sc_regs->bpp_dr = byte;
+}
+
+static __inline__ u_int8_t
+bpp_inb(bpp)
+	struct bpp_softc *bpp;
+{
+	return (bpp->sc_regs->bpp_dr);
+}
+
+int
+bppopen(dev, flag, mode, p)
+	dev_t dev;
+	int flag, mode;
+	struct proc *p;
+{
+	int unit = BPPUNIT(dev);
+	struct bpp_softc *bpp;
+
+	if (unit >= bpp_cd.cd_ndevs)
+		return (ENXIO);
+	bpp = bpp_cd.cd_devs[unit];
+	if (!bpp)
+		return (ENXIO);
+
+	if (bpp->sc_open)
+		return (EBUSY);
+
+	bpp->sc_inbuf = geteblk(BPP_BSIZE);
+	bpp->sc_count = 0;
+	bpp->sc_open = 1;
+
+	/* bppreset(bpp, 1); */
+	bppresetmode(bpp);
+
+	return (0);
+}
+
+int
+bppclose(dev, flag, mode, p)
+	dev_t dev;
+	int flag, mode;
+	struct proc *p;
+{
+	struct bpp_softc *bpp = bpp_cd.cd_devs[BPPUNIT(dev)];
+	int error = 0;
+
+	if (bpp->sc_count)
+		(void) bpppushbytes(bpp);
+
+	/* XXX */
+	bppresetmode(bpp);
+	delay(100);
+	bppreset(bpp, 1);
+	delay(100);
+	bppresetmode(bpp);
+
+	brelse(bpp->sc_inbuf);
+
+	bpp->sc_open = 0;
+	return (error);
+}
+
+int
+bpppushbytes(bpp)
+	struct bpp_softc *bpp;
+{
+	int spin, error;
+
+	while (bpp->sc_count > 0) {
+		error = 0;
+
+		/* Wait for BPP_TCR_ACK and BPP_TCR_BUSY to clear. */
+		spin = 0;
+		while ((bpp->sc_regs->bpp_tcr & BPP_TCR_ACK) ||
+		    (bpp->sc_regs->bpp_tcr & BPP_TCR_BUSY)) {
+			delay(1000);
+			if (++spin >= LONG_TIMEOUT)
+				break;
+		}
+		
+		if ((bpp->sc_regs->bpp_tcr & BPP_TCR_ACK) ||
+		    (bpp->sc_regs->bpp_tcr & BPP_TCR_BUSY))
+			return (EBUSY);
+
+		bpp_outb(bpp, *bpp->sc_cp++);
+
+		/* Clear BPP_TCR_DS. */
+		bpp->sc_regs->bpp_tcr &= ~BPP_TCR_DS;
+
+		/* Short wait for BPP_TCR_BUSY. */
+		spin = 0;
+		while (!(bpp->sc_regs->bpp_tcr & BPP_TCR_BUSY)) {
+			delay(1000);
+			if (++spin >= SHORT_TIMEOUT)
+				break;
+		}
+		if (!(bpp->sc_regs->bpp_tcr & BPP_TCR_BUSY))
+			error = EIO;
+
+		/* Set BPP_TCR_DS. */
+		bpp->sc_regs->bpp_tcr |= BPP_TCR_DS;
+
+		if (error)
+			return (error);
+
+		bpp->sc_count--;
+	}
+	return (error);
+}
+
+int
+bppwrite(dev, uio, flags)
+	dev_t dev;
+	struct uio *uio;
+	int flags;
+{
+	struct bpp_softc *bpp = bpp_cd.cd_devs[BPPUNIT(dev)];
+	size_t n;
+	int error = 0;
+
+	while ((n = min(BPP_BSIZE, uio->uio_resid)) != 0) {
+		uiomove(bpp->sc_cp = bpp->sc_inbuf->b_data, n, uio);
+		bpp->sc_count = n;
+		error = bpppushbytes(bpp);
+		if (error) {
+			/*
+			 * Return accurate residual if interrupted or timed
+			 * out.
+			 */
+			uio->uio_resid += bpp->sc_count;
+			bpp->sc_count = 0;
+			return (error);
+		}
+	}
+	return (0);
+}
+
+int
+bppioctl(dev, cmd, data, flag, p)
+	dev_t dev;
+	u_long cmd;
+	caddr_t data;
+	int flag;
+	struct proc *p;
+{
+	return (ENODEV);
+}
+@
+
+
+1.4
+log
+@sparc has to die :(
+
+it was nice while it lasted, but I couldn't even live up to
+my promise to provide XFree86 4.4.0 on sparc due to lack of
+time (and money and health).
+
+also, compat_freebsd dies, without prejudice.
+
+<mirabile> benz: sparc darf sterben?
+<mirabile> compat_freebsd darf sterben?
+<benz> na gut
+
+in addition, some set shuffling (it was a good idea originally
+to pull out gcc3 specifics to the egcs set, but with gcc3 being
+the only compiler that isn't it any more)
+@
+text
+@@
+
+
+1.3
+log
+@second (piecewise) attempt to merge MirBSD #7ter into HEAD
+@
+text
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bpp.c,v 1.3 2002/03/14 01:26:42 millert Exp $	*/
+a13 7
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed by Jason Downs for the
+ *      OpenBSD system.
+ * 4. Neither the name(s) of the author(s) nor the name OpenBSD
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+@
+
+
+1.2.2.1
+log
+@o move machine-dependent ATM and PLIP options out of mi space
+  in i386 GENERIC kernel
+o bring back in all of the sparc32 stuff I could find
+
+maintained by: wbx@@
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bpp.c,v 1.4 2003/06/03 21:09:02 deraadt Exp $	*/
+d14 7
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: bpp.c,v 1.4 2003/06/03 21:09:02 deraadt Exp $	*/
+d14 7
+@
+

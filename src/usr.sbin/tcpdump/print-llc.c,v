@@ -1,0 +1,429 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.8
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.6
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.4
+	cvs-200410222040:1.1.1.3
+	tg-mergetmp-1:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.2
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.3
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.56.04;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.56.04;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.08.11.18.56.20;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.01.26.19.14.10;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: print-llc.c,v 1.13 2001/06/25 19:56:11 itojun Exp $	*/
+
+/*
+ * Copyright (c) 1992, 1993, 1994, 1995, 1996, 1997
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that: (1) source code distributions
+ * retain the above copyright notice and this paragraph in its entirety, (2)
+ * distributions including binary code include the above copyright notice and
+ * this paragraph in its entirety in the documentation or other materials
+ * provided with the distribution, and (3) all advertising materials mentioning
+ * features or use of this software display the following acknowledgement:
+ * ``This product includes software developed by the University of California,
+ * Lawrence Berkeley Laboratory and its contributors.'' Neither the name of
+ * the University nor the names of its contributors may be used to endorse
+ * or promote products derived from this software without specific prior
+ * written permission.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ *
+ * Code by Matt Thomas, Digital Equipment Corporation
+ *	with an awful lot of hacking by Jeffrey Mogul, DECWRL
+ */
+
+#ifndef lint
+static const char rcsid[] =
+    "@@(#) $Header: /cvs/src/usr.sbin/tcpdump/print-llc.c,v 1.13 2001/06/25 19:56:11 itojun Exp $";
+#endif
+
+#include <sys/param.h>
+#include <sys/time.h>
+
+#include <netinet/in.h>
+
+#include <ctype.h>
+#include <netdb.h>
+#include <signal.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "interface.h"
+#include "addrtoname.h"
+#include "extract.h"			/* must come after interface.h */
+#include "ethertype.h"
+
+#include "llc.h"
+
+static struct tok cmd2str[] = {
+	{ LLC_UI,	"ui" },
+	{ LLC_TEST,	"test" },
+	{ LLC_XID,	"xid" },
+	{ LLC_UA,	"ua" },
+	{ LLC_DISC,	"disc" },
+	{ LLC_DM,	"dm" },
+	{ LLC_SABME,	"sabme" },
+	{ LLC_FRMR,	"frmr" },
+	{ 0,		NULL }
+};
+
+/*
+ * Returns non-zero IFF it succeeds in printing the header
+ */
+int
+llc_print(const u_char *p, u_int length, u_int caplen,
+	  const u_char *esrc, const u_char *edst)
+{
+	struct llc llc;
+	register u_short et;
+#if 0
+	u_short control;
+#endif
+	register int ret;
+
+	if (caplen < 3) {
+		(void)printf("[|llc]");
+		default_print((u_char *)p, caplen);
+		return(0);
+	}
+
+	/* Watch out for possible alignment problems */
+	memcpy((char *)&llc, (char *)p, min(caplen, sizeof(llc)));
+
+	if (llc.ssap == LLCSAP_GLOBAL && llc.dsap == LLCSAP_GLOBAL) {
+		ipx_print(p, length);
+		return (1);
+	}
+#ifdef notyet
+	else if (p[0] == 0xf0 && p[1] == 0xf0)
+		netbios_print(p, length);
+#endif
+
+	/* Cisco Discovery Protocol  - SNAP & ether type 0x2000 */
+	if(llc.ssap == LLCSAP_SNAP && llc.dsap == LLCSAP_SNAP &&
+		llc.llcui == LLC_UI && 
+		llc.ethertype[0] == 0x20 && llc.ethertype[1] == 0x00 ) {
+		    cdp_print( p, length, caplen, esrc, edst);
+		    return (1);
+	}
+
+	if (llc.ssap == LLCSAP_ISONS && llc.dsap == LLCSAP_ISONS
+	    && llc.llcui == LLC_UI) {
+		isoclns_print(p + 3, length - 3, caplen - 3, esrc, edst);
+		return (1);
+	}
+
+	if (llc.ssap == LLCSAP_SNAP && llc.dsap == LLCSAP_SNAP
+	    && llc.llcui == LLC_UI) {
+		if (caplen < sizeof(llc)) {
+		    (void)printf("[|llc-snap]");
+		    default_print((u_char *)p, caplen);
+		    return (0);
+		}
+		if (vflag)
+			(void)printf("snap %s ", protoid_string(llc.llcpi));
+
+		caplen -= sizeof(llc);
+		length -= sizeof(llc);
+		p += sizeof(llc);
+
+		/* This is an encapsulated Ethernet packet */
+		et = EXTRACT_16BITS(&llc.ethertype[0]);
+
+		/*
+		 * Some protocols have special handling if they are 802.3
+		 * SNAP encapsulated vs vers II encapsulated. Handle
+		 * those special protocols here, and hand the rest to
+		 * print-ether.c so we don't have to duplicate
+		 * all that code here.
+		 */
+		switch (et) {
+		case ETHERTYPE_ATALK:
+			atalk_print(p, length);
+			ret = 1;
+			break;
+		default:
+			ret = ether_encap_print(et, p, length, caplen);
+			break;
+		}
+
+		if (ret)
+			return (ret);
+	}
+
+	if (llc.ssap == LLCSAP_8021D && llc.dsap == LLCSAP_8021D) {
+		stp_print(p, length);
+		return (1);
+	}
+
+#if 0
+	if (llc.ssap == 0xf0 && llc.dsap == 0xf0) {
+		/*
+		 * we don't actually have a full netbeui parser yet, but the
+		 * smb parser can handle many smb-in-netbeui packets, which
+		 * is very useful, so we call that
+		 */
+
+		/*
+		 * Skip the DSAP and LSAP.
+		 */
+		p += 2;
+		length -= 2;
+		caplen -= 2;
+
+		/*
+		 * OK, what type of LLC frame is this?  The length
+		 * of the control field depends on that - S or I
+		 * frames have a two-byte control field, and U frames
+		 * have a one-byte control field.
+		 */
+		if ((llc.llcu & LLC_U_FMT) == LLC_U_FMT) {
+			control = llc.llcu;
+			p += 1;
+			length -= 1;
+			caplen -= 1;
+		} else {
+			control = llc.llcis;
+			p += 2;
+			length -= 2;
+			caplen -= 2;
+		}
+
+		netbeui_print(control, p, p + min(caplen, length));
+		return (1);
+	}
+#endif
+
+	if ((llc.ssap & ~LLC_GSAP) == llc.dsap) {
+		if (eflag)
+			(void)printf("%s ", llcsap_string(llc.dsap));
+		else
+			(void)printf("%s > %s %s ",
+					etheraddr_string(esrc),
+					etheraddr_string(edst),
+					llcsap_string(llc.dsap));
+	} else {
+		if (eflag)
+			(void)printf("%s > %s ",
+				llcsap_string(llc.ssap & ~LLC_GSAP),
+				llcsap_string(llc.dsap));
+		else
+			(void)printf("%s %s > %s %s ",
+				etheraddr_string(esrc),
+				llcsap_string(llc.ssap & ~LLC_GSAP),
+				etheraddr_string(edst),
+				llcsap_string(llc.dsap));
+	}
+
+	if ((llc.llcu & LLC_U_FMT) == LLC_U_FMT) {
+		const char *m;
+		char f;
+		m = tok2str(cmd2str, "%02x", LLC_U_CMD(llc.llcu));
+		switch ((llc.ssap & LLC_GSAP) | (llc.llcu & LLC_U_POLL)) {
+		    case 0:			f = 'C'; break;
+		    case LLC_GSAP:		f = 'R'; break;
+		    case LLC_U_POLL:		f = 'P'; break;
+		    case LLC_GSAP|LLC_U_POLL:	f = 'F'; break;
+		    default:			f = '?'; break;
+		}
+
+		printf("%s/%c", m, f);
+
+		if (caplen < 6) {
+			default_print_unaligned(p, caplen);
+			return (0);
+		}
+		p += 3;
+		length -= 3;
+		caplen -= 3;
+
+		if ((llc.llcu & ~LLC_U_POLL) == LLC_XID) {
+		    if (*p == LLC_XID_FI) {
+			printf(": %02x %02x", p[1], p[2]);
+			p += 3;
+			length -= 3;
+			caplen -= 3;
+		    }
+		}
+
+#if 0
+		if (!strcmp(m,"ui") && f=='C') {
+			/*
+			 * we don't have a proper ipx decoder yet, but there
+			 * is a partial one in the smb code
+			 */
+			ipx_netbios_print(p,p+min(caplen,length));
+		}
+#endif
+
+	} else {
+		char f;
+		llc.llcis = ntohs(llc.llcis);
+		switch ((llc.ssap & LLC_GSAP) | (llc.llcu & LLC_U_POLL)) {
+		    case 0:			f = 'C'; break;
+		    case LLC_GSAP:		f = 'R'; break;
+		    case LLC_U_POLL:		f = 'P'; break;
+		    case LLC_GSAP|LLC_U_POLL:	f = 'F'; break;
+		    default:			f = '?'; break;
+		}
+
+		if ((llc.llcu & LLC_S_FMT) == LLC_S_FMT) {
+			static char *llc_s[] = { "rr", "rej", "rnr", "03" };
+			(void)printf("%s (r=%d,%c)",
+				llc_s[LLC_S_CMD(llc.llcis)],
+				LLC_IS_NR(llc.llcis),
+				f);
+		} else {
+			(void)printf("I (s=%d,r=%d,%c)",
+				LLC_I_NS(llc.llcis),
+				LLC_IS_NR(llc.llcis),
+				f);
+		}
+		p += 4;
+		length -= 4;
+		caplen -= 4;
+	}
+	(void)printf(" len=%d", length);
+	return(1);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import the complete OpenBSD source tree (base system)
+as of CTM delta 3496 (roughly 1200 UTC today) into the
+vendor branch.
+Attention: this is a big update. Don't even try to
+build this system, OpenBSD 3.4-beta, yet on your own.
+@
+text
+@d29 1
+a29 1
+    "@@(#) $Header: /ocvs/src/usr.sbin/tcpdump/print-llc.c,v 1.13 2001/06/25 19:56:11 itojun Exp $";
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d29 1
+a29 1
+    "@@(#) $Header: /cvs/src/usr.sbin/tcpdump/print-llc.c,v 1.13 2001/06/25 19:56:11 itojun Exp $";
+@
+
+

@@ -1,0 +1,237 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.57;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.57;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+
+print "1..31\n";
+
+BEGIN {
+    chdir 't' if -d 't';
+    @@INC = '../lib';
+}
+
+sub expected {
+    my($object, $package, $type) = @@_;
+    return "" if (
+	ref($object) eq $package
+	&& "$object" =~ /^\Q$package\E=(\w+)\(0x([0-9a-f]+)\)$/
+	&& $1 eq $type
+	# in 64-bit platforms hex warns for 32+ -bit values
+	&& do { no warnings 'portable'; hex($2) == $object }
+    );
+    print "# $object $package $type\n";
+    return "not ";
+}
+
+# test blessing simple types
+
+$a1 = bless {}, "A";
+print expected($a1, "A", "HASH"), "ok 1\n";
+$b1 = bless [], "B";
+print expected($b1, "B", "ARRAY"), "ok 2\n";
+$c1 = bless \(map "$_", "test"), "C";
+print expected($c1, "C", "SCALAR"), "ok 3\n";
+our $test = "foo"; $d1 = bless \*test, "D";
+print expected($d1, "D", "GLOB"), "ok 4\n";
+$e1 = bless sub { 1 }, "E";
+print expected($e1, "E", "CODE"), "ok 5\n";
+$f1 = bless \[], "F";
+print expected($f1, "F", "REF"), "ok 6\n";
+$g1 = bless \substr("test", 1, 2), "G";
+print expected($g1, "G", "LVALUE"), "ok 7\n";
+
+# blessing ref to object doesn't modify object
+
+print expected(bless(\$a1, "F"), "F", "REF"), "ok 8\n";
+print expected($a1, "A", "HASH"), "ok 9\n";
+
+# reblessing does modify object
+
+bless $a1, "A2";
+print expected($a1, "A2", "HASH"), "ok 10\n";
+
+# local and my
+{
+    local $a1 = bless $a1, "A3";	# should rebless outer $a1
+    local $b1 = bless [], "B3";
+    my $c1 = bless $c1, "C3";		# should rebless outer $c1
+    our $test2 = ""; my $d1 = bless \*test2, "D3";
+    print expected($a1, "A3", "HASH"), "ok 11\n";
+    print expected($b1, "B3", "ARRAY"), "ok 12\n";
+    print expected($c1, "C3", "SCALAR"), "ok 13\n";
+    print expected($d1, "D3", "GLOB"), "ok 14\n";
+}
+print expected($a1, "A3", "HASH"), "ok 15\n";
+print expected($b1, "B", "ARRAY"), "ok 16\n";
+print expected($c1, "C3", "SCALAR"), "ok 17\n";
+print expected($d1, "D", "GLOB"), "ok 18\n";
+
+# class is magic
+"E" =~ /(.)/;
+print expected(bless({}, $1), "E", "HASH"), "ok 19\n";
+{
+    local $! = 1;
+    my $string = "$!";
+    $! = 2;	# attempt to avoid cached string
+    $! = 1;
+    print expected(bless({}, $!), $string, "HASH"), "ok 20\n";
+
+# ref is ref to magic
+    {
+	{
+	    package F;
+	    sub test { ${$_[0]} eq $string or print "not " }
+	}
+	$! = 2;
+	$f1 = bless \$!, "F";
+	$! = 1;
+	$f1->test;
+	print "ok 21\n";
+    }
+}
+
+# ref is magic
+### example of magic variable that is a reference??
+
+# no class, or empty string (with a warning), or undef (with two)
+print expected(bless([]), 'main', "ARRAY"), "ok 22\n";
+{
+    local $SIG{__WARN__} = sub { push @@w, join '', @@_ };
+    use warnings;
+
+    $m = bless [];
+    print expected($m, 'main', "ARRAY"), "ok 23\n";
+    print @@w ? "not ok 24\t# @@w\n" : "ok 24\n";
+
+    @@w = ();
+    $m = bless [], '';
+    print expected($m, 'main', "ARRAY"), "ok 25\n";
+    print @@w != 1 ? "not ok 26\t# @@w\n" : "ok 26\n";
+
+    @@w = ();
+    $m = bless [], undef;
+    print expected($m, 'main', "ARRAY"), "ok 27\n";
+    print @@w != 2 ? "not ok 28\t# @@w\n" : "ok 28\n";
+}
+
+# class is a ref
+$a1 = bless {}, "A4";
+$b1 = eval { bless {}, $a1 };
+print $@@ ? "ok 29\n" : "not ok 29\t# $b1\n";
+
+# class is an overloaded ref
+{
+    package H4;
+    use overload '""' => sub { "C4" };
+}
+$h1 = bless {}, "H4";
+$c4 = eval { bless \$test, $h1 };
+print expected($c4, 'C4', "SCALAR"), "ok 30\n";
+print $@@ ? "not ok 31\t# $@@" : "ok 31\n";
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,587 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.6
+	cvs-200401271800:1.1.1.5
+	cvs-200401261630:1.1.1.5
+	cvs-200401021645:1.1.1.4
+	cvs-200312222040:1.1.1.4
+	cvs-200310020700:1.1.1.3
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.29.25;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.50.01;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.50.01;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.35.36;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.10.02.07.39.35;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.12.22.20.59.55;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2004.01.26.18.42.20;	author tg;	state Exp;
+branches;
+next	1.1.1.6;
+
+1.1.1.6
+date	2004.05.16.08.38.34;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: syscon.c,v 1.10 2002/03/14 01:26:39 millert Exp $ */
+/*
+ * Copyright (c) 1999 Steve Murphree, Jr.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed under OpenBSD by
+ *	Theo de Raadt for Willowglen Singapore.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * VME188 SYSCON
+ */
+
+#include <sys/param.h>
+#include <sys/conf.h>
+#include <sys/ioctl.h>
+#include <sys/proc.h>
+#include <sys/user.h>
+#include <sys/tty.h>
+#include <sys/uio.h>
+#include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/syslog.h>
+#include <sys/fcntl.h>
+#include <sys/device.h>
+
+#include <machine/autoconf.h>
+#include <machine/cpu.h>
+#include <machine/board.h>
+#include <machine/frame.h>
+
+#include <dev/cons.h>
+
+#include <mvme88k/dev/sysconfunc.h>
+#include <mvme88k/dev/sysconreg.h>
+
+struct sysconreg syscon_reg = {
+   (unsigned int *volatile)IEN0_REG,	(unsigned int *volatile)IEN1_REG,
+   (unsigned int *volatile)IEN2_REG,	(unsigned int *volatile)IEN3_REG,
+   (unsigned int *volatile)IENALL_REG,	(unsigned int *volatile)IST_REG,
+   (unsigned int *volatile)SETSWI_REG,	(unsigned int *volatile)CLRSWI_REG,
+   (unsigned int *volatile)ISTATE_REG,	(unsigned int *volatile)CLRINT_REG,
+   (unsigned char *volatile)GLB0,	(unsigned char *volatile)GLB1,
+   (unsigned char *volatile)GLB2,	(unsigned char *volatile)GLB3,
+   (unsigned int *volatile)UCSR_REG,	(unsigned int *volatile)GLBRES_REG,
+   (unsigned int *volatile)CCSR_REG,	(unsigned int *volatile)ERROR_REG,
+   (unsigned int *volatile)PCNFA_REG,	(unsigned int *volatile)PCNFB_REG,
+   (unsigned int *volatile)EXTAD_REG,	(unsigned int *volatile)EXTAM_REG,
+   (unsigned int *volatile)WHOAMI_REG,	(unsigned int *volatile)WMAD_REG,
+   (unsigned int *volatile)RMAD_REG,	(unsigned int *volatile)WVAD_REG,
+   (unsigned int *volatile)RVAD_REG,	(unsigned int *volatile)CIO_PORTC,
+   (unsigned int *volatile)CIO_PORTB,	(unsigned int *volatile)CIO_PORTA,
+   (unsigned int *volatile)CIO_CTRL 
+   };
+  
+struct sysconsoftc {
+	struct device	sc_dev;
+	void		*sc_vaddr;	/* Utility I/O space */
+	void		*sc_paddr;
+	struct sysconreg *sc_syscon;	/* the actual registers */
+	struct intrhand sc_abih;	/* `abort' switch */
+	struct intrhand sc_acih;	/* `ac fial' */
+	struct intrhand sc_sfih;	/* `sys fial' */
+	struct intrhand sc_m188ih;	/* `m188 interrupt' */
+};
+
+void sysconattach(struct device *, struct device *, void *);
+int  sysconmatch(struct device *, void *, void *);
+void setupiackvectors(void);
+int  sysconabort(void *);
+int  sysconacfail(void *);
+int  sysconsysfail(void *);
+int  sysconm188(void *);
+
+struct cfattach syscon_ca = {
+	sizeof(struct sysconsoftc), sysconmatch, sysconattach
+};
+
+struct cfdriver syscon_cd = {
+	NULL, "syscon", DV_DULL, 0
+};
+
+struct sysconreg *sys_syscon = NULL;
+
+int syscon_print(void *args, const char *bus);
+int syscon_scan(struct device *parent, void *child, void *args);
+
+int
+sysconmatch(parent, vcf, args)
+	struct device *parent;
+	void *vcf, *args;
+{
+	struct confargs *ca = args;
+	struct sysconreg *syscon;
+
+	/* Don't match if wrong cpu */
+	if (brdtyp != BRD_188) return (0);  /* The only one... */
+	/* Uh, MVME188 better have on of these, so always match if it 
+	 * is a MVME188... */
+	syscon = (struct sysconreg *)(IIOV(ca->ca_paddr));
+	return (1);
+}
+
+int
+syscon_print(args, bus)
+	void *args;
+	const char *bus;
+{
+	struct confargs *ca = args;
+
+	if (ca->ca_offset != -1)
+		printf(" offset 0x%x", ca->ca_offset);
+	if (ca->ca_ipl > 0)
+		printf(" ipl %d", ca->ca_ipl);
+	return (UNCONF);
+}
+
+int
+syscon_scan(parent, child, args)
+	struct device *parent;
+	void *child, *args;
+{
+	struct cfdata *cf = child;
+	struct sysconsoftc *sc = (struct sysconsoftc *)parent;
+	struct confargs oca;
+
+	if (parent->dv_cfdata->cf_driver->cd_indirect) {
+		printf(" indirect devices not supported\n");
+		return 0;
+	}
+
+	bzero(&oca, sizeof oca);
+	oca.ca_offset = cf->cf_loc[0];
+	oca.ca_ipl = cf->cf_loc[1];
+	if (((int)oca.ca_offset != -1) && ISIIOVA(sc->sc_vaddr + oca.ca_offset)) {
+		oca.ca_vaddr = sc->sc_vaddr + oca.ca_offset;
+		oca.ca_paddr = sc->sc_paddr + oca.ca_offset;
+	} else {
+		oca.ca_vaddr = (void *)-1;
+		oca.ca_paddr = (void *)-1;
+	}
+	oca.ca_bustype = BUS_SYSCON;
+	oca.ca_master = (void *)sc->sc_syscon;
+	oca.ca_name = cf->cf_driver->cd_name;
+	if ((*cf->cf_attach->ca_match)(parent, cf, &oca) == 0)
+		return (0);
+	config_attach(parent, cf, &oca, syscon_print);
+	return (1);
+}
+
+void
+
+sysconattach(parent, self, args)
+	struct device *parent, *self;
+	void *args;
+{
+	struct confargs *ca = args;
+	struct sysconsoftc *sc = (struct sysconsoftc *)self;
+
+	if (sys_syscon)
+		panic("syscon already attached!");
+
+	/*
+	 * since we know ourself to land in intiobase land,
+	 * we must adjust our address
+	 */
+	sc->sc_paddr = ca->ca_paddr;
+	sc->sc_vaddr = (void *)IIOV(sc->sc_paddr);
+	sc->sc_syscon = &syscon_reg;
+	sys_syscon = sc->sc_syscon;
+
+	printf(": rev %d\n", 1);
+
+	/* 
+	 * pseudo driver, abort interrupt handler
+	 */
+	sc->sc_abih.ih_fn = sysconabort;
+	sc->sc_abih.ih_arg = 0;
+	sc->sc_abih.ih_wantframe = 1;
+	sc->sc_abih.ih_ipl = IPL_ABORT;
+	sc->sc_acih.ih_fn = sysconacfail;
+	sc->sc_acih.ih_arg = 0;
+	sc->sc_abih.ih_wantframe = 1;
+	sc->sc_acih.ih_ipl = IPL_ABORT;
+	sc->sc_sfih.ih_fn = sysconsysfail;
+	sc->sc_sfih.ih_arg = 0;
+	sc->sc_abih.ih_wantframe = 1;
+	sc->sc_sfih.ih_ipl = IPL_ABORT;
+	sc->sc_m188ih.ih_fn = sysconm188;
+	sc->sc_m188ih.ih_arg = 0;
+	sc->sc_abih.ih_wantframe = 1;
+	sc->sc_m188ih.ih_ipl = IPL_ABORT;
+
+	intr_establish(SYSCV_ABRT, &sc->sc_abih);
+	intr_establish(SYSCV_ACF, &sc->sc_acih);
+	intr_establish(SYSCV_SYSF, &sc->sc_sfih);
+	intr_establish(M188_IVEC, &sc->sc_m188ih);
+
+	config_search(syscon_scan, self, args);
+}
+
+int
+sysconintr_establish(vec, ih)
+	int vec;
+	struct intrhand *ih;
+{
+	return (intr_establish(vec, ih));
+}
+
+int
+sysconabort(eframe)
+	void *eframe;
+{
+	ISR_RESET_NMI;
+	nmihand((struct frame *)eframe);
+	return (1);
+}
+
+int
+sysconsysfail(eframe)
+	void *eframe;
+{
+	ISR_RESET_SYSFAIL;
+	nmihand((struct frame *)eframe);
+	return (1);
+}
+
+int
+sysconacfail(eframe)
+	void *eframe;
+{
+	ISR_RESET_ACFAIL;
+	nmihand((struct frame *)eframe);
+	return (1);
+}
+
+int
+sysconm188(eframe)
+	void *eframe;
+{
+	printf("MVME188 interrupting?\n");
+	return (1);
+}
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: syscon.c,v 1.11 2003/06/02 07:06:56 deraadt Exp $ */
+d14 6
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD source tree again, with critical bug fixes
+(OpenSSL, bc, dc, sensorsd, pf, ...)
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: syscon.c,v 1.12 2003/09/28 22:14:33 miod Exp $ */
+d79 2
+a80 2
+	struct intrhand sc_acih;	/* `ac fail' */
+	struct intrhand sc_sfih;	/* `sys fail' */
+d100 1
+a100 1
+struct sysconreg *sys_syscon;
+d114 3
+a116 11
+	if (brdtyp != BRD_188)
+		return (0);
+
+	/* Only allow one instance */
+	if (sys_syscon != NULL)
+		return (0);
+
+	/*
+	 * Uh, MVME188 better have on of these, so always match if it 
+	 * is a MVME188...
+	 */
+d176 3
+@
+
+
+1.1.1.4
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: syscon.c,v 1.13 2003/10/11 22:08:57 miod Exp $ */
+d70 1
+a70 1
+   (unsigned int *volatile)CIO_CTRL
+d72 1
+a72 1
+
+d122 1
+a122 1
+	 * Uh, MVME188 better have on of these, so always match if it
+d196 1
+a196 1
+	/*
+@
+
+
+1.1.1.5
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: syscon.c,v 1.15 2004/01/14 20:52:52 miod Exp $ */
+d97 1
+a97 1
+	NULL, "syscon", DV_DULL
+d151 5
+@
+
+
+1.1.1.6
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: syscon.c,v 1.20 2004/05/07 18:10:28 miod Exp $ */
+d33 5
+d40 2
+d49 3
+d54 19
+d75 3
+a77 1
+
+d84 7
+a90 9
+void	sysconattach(struct device *, struct device *, void *);
+int	sysconmatch(struct device *, void *, void *);
+
+int	syscon_print(void *, const char *);
+int	syscon_scan(struct device *, void *, void *);
+int	sysconabort(void *);
+int	sysconacfail(void *);
+int	sysconsysfail(void *);
+int	sysconm188(void *);
+d100 5
+d110 3
+d117 9
+d149 2
+a150 1
+	struct confargs oca, *ca = args;
+a152 2
+	oca.ca_iot = ca->ca_iot;
+	oca.ca_dmat = ca->ca_dmat;
+d155 3
+a157 2
+	if (oca.ca_offset != -1) {
+		oca.ca_paddr = ca->ca_paddr + oca.ca_offset;
+d159 2
+a160 1
+		oca.ca_paddr = -1;
+d163 1
+d172 1
+d177 1
+d180 10
+a189 1
+	printf("\n");
+a197 1
+
+d200 1
+a200 1
+	sc->sc_acih.ih_wantframe = 1;
+a201 1
+
+d204 1
+a204 1
+	sc->sc_sfih.ih_wantframe = 1;
+a205 1
+
+d208 1
+a208 1
+	sc->sc_m188ih.ih_wantframe = 1;
+d211 3
+a213 3
+	sysconintr_establish(SYSCV_ABRT, &sc->sc_abih);
+	sysconintr_establish(SYSCV_ACF, &sc->sc_acih);
+	sysconintr_establish(SYSCV_SYSF, &sc->sc_sfih);
+d224 1
+a224 6
+#ifdef DIAGNOSTIC
+	if (vec < 0 || vec >= SYSCON_NVEC)
+		panic("sysconintr_establish: illegal vector 0x%x\n", vec);
+#endif
+
+	return (intr_establish(SYSCON_VECT + vec, ih));
+d261 1
+@
+
+

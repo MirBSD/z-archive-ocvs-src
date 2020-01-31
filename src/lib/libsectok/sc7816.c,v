@@ -1,0 +1,360 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.2
+	MIRBSD_4:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.47.05;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.05;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.14.41.40;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/* $Id: sc7816.c,v 1.8 2001/08/02 17:02:05 rees Exp $ */
+
+/*
+copyright 2000
+the regents of the university of michigan
+all rights reserved
+
+permission is granted to use, copy, create derivative works
+and redistribute this software and such derivative works
+for any purpose, so long as the name of the university of
+michigan is not used in any advertising or publicity
+pertaining to the use or distribution of this software
+without specific, written prior authorization.  if the
+above copyright notice or any other identification of the
+university of michigan is included in any copy of any
+portion of this software, then the disclaimer below must
+also be included.
+
+this software is provided as is, without representation
+from the university of michigan as to its fitness for any
+purpose, and without warranty by the university of
+michigan of any kind, either express or implied, including
+without limitation the implied warranties of
+merchantability and fitness for a particular purpose. the
+regents of the university of michigan shall not be liable
+for any damages, including special, indirect, incidental, or
+consequential damages, with respect to any claim arising
+out of or in connection with the use of the software, even
+if it has been or is hereafter advised of the possibility of
+such damages.
+*/
+
+/*
+ * sc7816 library for use with pc/sc ifd drivers
+ *
+ * Jim Rees
+ * Mukesh Agrawal
+ * University of Michigan CITI, August 2000
+ */
+
+#ifdef __palmos__
+#include <Common.h>
+#include <System/SysAll.h>
+#include <System/Unix/unix_stdlib.h>
+#include <System/Unix/unix_string.h>
+#include <UI/UIAll.h>
+#include "field.h"
+#else
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#endif
+
+#ifdef SCPERF
+#define SCPERF_FIRST_APPEARANCE
+#endif /* SCPERF */
+
+#include "sectok.h"
+#include "sc7816.h"
+
+char *scerrtab[] = {
+    "ok",
+    "no such tty",
+    "out of memory",
+    "timeout",
+    "slag!",
+    "card type not supported",
+    "no card in reader",
+    "not implemented",
+    "error loading driver",
+    "communications error",
+    "reader not open",
+    "unknown error",
+};
+
+int
+scxopen(int rn, int flags, int *ep, char *config_path, char *driver_path)
+{
+    int r, sw;
+
+    flags ^= STONOWAIT;
+
+    r = sectok_xopen(rn, flags, config_path, driver_path, &sw);
+
+    if (ep) {
+	if (sectok_r1(sw) == 0x06)
+	    *ep = sectok_r2(sw);
+	else
+	    *ep = SCECOMM;
+    }
+
+    return r;
+}
+
+int
+scopen(int rn, int flags, int *ep)
+{
+    return scxopen(rn, flags, ep, NULL, NULL);
+}
+
+int
+scclose(int fd)
+{
+    return sectok_close(fd);
+}
+
+int
+sccardpresent(int fd)
+{
+    return sectok_cardpresent(fd);
+}
+
+int
+scxreset(int fd, int flags, unsigned char *atr, int *ep)
+{
+    int r, sw;
+
+    r = sectok_reset(fd, flags, atr, &sw);
+
+    if (ep) {
+	if (sectok_swOK(sw))
+	    *ep = SCEOK;
+	else if (sectok_r1(sw) == 0x06)
+	    *ep = sectok_r2(sw);
+	else
+	    *ep = SCESLAG;
+    }
+
+    return r;
+}
+
+int
+screset(int fd, unsigned char *atr, int *ep)
+{
+    return scxreset(fd, 0, atr, ep);
+}
+
+int
+scrw(int fd, int cla, int ins, int p1, int p2, int ilen, unsigned char *ibuf, int olen, unsigned char *obuf, int *sw1p, int *sw2p)
+{
+    int n, sw;
+
+    n = sectok_apdu(fd, cla, ins, p1, p2, ilen, ibuf, olen, obuf, &sw);
+    *sw1p = sectok_r1(sw);
+    *sw2p = sectok_r2(sw);
+    return n;
+}
+
+int
+scwrite(int fd, int cla, int ins, int p1, int p2, int p3, unsigned char *buf, int *sw1p, int *sw2p)
+{
+    int rv;
+#ifdef SCPERF
+    char *scperf_buf;
+
+    scperf_buf = malloc (64);
+
+    sprintf (scperf_buf, "scwrite (ins %02x, p3 %02x) start", ins, p3);
+    SetTime(scperf_buf);
+#endif /* SCPERF */
+    rv = scrw(fd, cla, ins, p1, p2, p3, buf, 0, NULL, sw1p, sw2p);
+
+#ifdef SCPERF
+    SetTime("scwrite() end");
+#endif /* SCPERF */
+    return (rv >= 0) ? p3 : -1;
+}
+
+int
+scread(int fd, int cla, int ins, int p1, int p2, int p3, unsigned char *buf, int *sw1p, int *sw2p)
+{
+    int rv;
+#ifdef SCPERF
+    char *scperf_buf;
+
+    scperf_buf = malloc (64);
+
+    sprintf (scperf_buf, "scread (ins %02x, p3 %02x) start", ins, p3);
+    SetTime(scperf_buf);
+#endif /* SCPERF */
+    rv = scrw(fd, cla, ins, p1, p2, 0, NULL, p3, buf, sw1p, sw2p);
+
+#ifdef SCPERF
+    SetTime("scread() end");
+#endif /* SCPERF */
+    return rv;
+}
+
+#ifndef __palmos__
+int
+parse_input(char *ibuf, unsigned char *obuf, int olen)
+{
+    return sectok_parse_input(ibuf, obuf, olen);
+}
+
+int
+get_input(FILE *f, unsigned char *obuf, int omin, int olen)
+{
+    return sectok_get_input(f, obuf, omin, olen);
+}
+#endif
+
+void
+print_r1r2(int r1, int r2)
+{
+    printf("%s\n", get_r1r2s(r1, r2));
+}
+
+char *
+get_r1r2s(int r1, int r2)
+{
+    return sectok_get_sw(sectok_mksw(r1, r2));
+}
+
+#ifndef __palmos__
+int
+fdump_reply(FILE *f, unsigned char *p, int n, int r1, int r2)
+{
+    return sectok_fdump_reply(f, p, n, sectok_mksw(r1, r2));
+}
+
+int
+dump_reply(unsigned char *p, int n, int r1, int r2)
+{
+    return sectok_fdump_reply(stdout, p, n, sectok_mksw(r1, r2));
+}
+#endif
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d1 1
+a1 1
+/* $Id: sc7816.c,v 1.9 2003/04/02 22:57:51 deraadt Exp $ */
+d159 1
+a159 1
+    snprintf (scperf_buf, 64, "scwrite (ins %02x, p3 %02x) start", ins, p3);
+d179 1
+a179 1
+    snprintf (scperf_buf, 64, "scread (ins %02x, p3 %02x) start", ins, p3);
+@
+

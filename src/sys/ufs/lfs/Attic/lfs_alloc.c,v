@@ -1,0 +1,425 @@
+head	1.2;
+access;
+symbols
+	cvs-200410261930:1.1.1.3
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.03.14.18.10.30;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.52.26;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.26;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.05.17.41.59;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.10.26.19.35.27;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke 4.4BSD LFS files - that would be nice to have, but noone ports it from netbsd, and it can't handle more than 80% full filesystems anyways
+@
+text
+@/*	$OpenBSD: lfs_alloc.c,v 1.9 2002/03/14 01:27:15 millert Exp $	*/
+/*	$NetBSD: lfs_alloc.c,v 1.4 1996/03/25 12:53:37 pk Exp $	*/
+
+/*
+ * Copyright (c) 1991, 1993, 1995
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by the University of
+ *	California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ *	@@(#)lfs_alloc.c	8.7 (Berkeley) 5/14/95
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/proc.h>
+#include <sys/buf.h>
+#include <sys/vnode.h>
+#include <sys/syslog.h>
+#include <sys/mount.h>
+#include <sys/malloc.h>
+
+#include <uvm/uvm_extern.h>
+
+#include <ufs/ufs/quota.h>
+#include <ufs/ufs/inode.h>
+#include <ufs/ufs/ufsmount.h>
+#include <ufs/ufs/ufs_extern.h>
+
+#include <ufs/lfs/lfs.h>
+#include <ufs/lfs/lfs_extern.h>
+
+extern u_long nextgennumber;
+
+/* Allocate a new inode. */
+/* ARGSUSED */
+int
+lfs_valloc(v)
+	void *v;
+{
+	struct vop_valloc_args /* {
+		struct vnode *a_pvp;
+		int a_mode;
+		struct ucred *a_cred;
+		struct vnode **a_vpp;
+	} */ *ap = v;
+	struct lfs *fs;
+	struct buf *bp;
+	struct ifile *ifp;
+	struct inode *ip;
+	struct vnode *vp;
+	ufs_daddr_t blkno;
+	ino_t new_ino;
+	u_long i, max;
+	int error;
+
+	/* Get the head of the freelist. */
+	fs = VTOI(ap->a_pvp)->i_lfs;
+	new_ino = fs->lfs_free;
+#ifdef ALLOCPRINT
+	printf("lfs_ialloc: allocate inode %d\n", new_ino);
+#endif
+
+	/*
+	 * Remove the inode from the free list and write the new start
+	 * of the free list into the superblock.
+	 */
+	LFS_IENTRY(ifp, fs, new_ino, bp);
+	if (ifp->if_daddr != LFS_UNUSED_DADDR)
+		panic("lfs_ialloc: inuse inode on the free list");
+	fs->lfs_free = ifp->if_nextfree;
+	brelse(bp);
+
+	/* Extend IFILE so that the next lfs_valloc will succeed. */
+	if (fs->lfs_free == LFS_UNUSED_INUM) {
+		vp = fs->lfs_ivnode;
+		ip = VTOI(vp);
+		blkno = lblkno(fs, ip->i_ffs_size);
+		lfs_balloc(vp, 0, fs->lfs_bsize, blkno, &bp);
+		ip->i_ffs_size += fs->lfs_bsize;
+		vnode_pager_setsize(vp, (u_long)ip->i_ffs_size);
+		vnode_pager_uncache(vp);
+
+		i = (blkno - fs->lfs_segtabsz - fs->lfs_cleansz) *
+		    fs->lfs_ifpb;
+		fs->lfs_free = i;
+		max = i + fs->lfs_ifpb;
+		for (ifp = (struct ifile *)bp->b_data; i < max; ++ifp) {
+			ifp->if_version = 1;
+			ifp->if_daddr = LFS_UNUSED_DADDR;
+			ifp->if_nextfree = ++i;
+		}
+		ifp--;
+		ifp->if_nextfree = LFS_UNUSED_INUM;
+		if ((error = VOP_BWRITE(bp)) != 0)
+			return (error);
+	}
+
+	/* Create a vnode to associate with the inode. */
+	if ((error = lfs_vcreate(ap->a_pvp->v_mount, new_ino, &vp)) != 0)
+		return (error);
+
+
+	ip = VTOI(vp);
+	/* Zero out the direct and indirect block addresses. */
+	bzero(&ip->i_din.ffs_din, sizeof(struct dinode));
+	ip->i_din.ffs_din.di_inumber = new_ino;
+
+	/* Set a new generation number for this inode. */
+	if (++nextgennumber < (u_long)time.tv_sec)
+		nextgennumber = time.tv_sec;
+	ip->i_ffs_gen = nextgennumber;
+
+	/* Insert into the inode hash table. */
+	ufs_ihashins(ip);
+
+	error = ufs_vinit(vp->v_mount, lfs_specop_p, LFS_FIFOOPS, &vp);
+	if (error) {
+		vput(vp);
+		*ap->a_vpp = NULL;
+		return (error);
+	}
+
+	*ap->a_vpp = vp;
+	vp->v_flag |= VDIROP;
+	VREF(ip->i_devvp);
+
+	/* Set superblock modified bit and increment file count. */
+	fs->lfs_fmod = 1;
+	++fs->lfs_nfiles;
+	return (0);
+}
+
+/* Create a new vnode/inode pair and initialize what fields we can. */
+int
+lfs_vcreate(mp, ino, vpp)
+	struct mount *mp;
+	ino_t ino;
+	struct vnode **vpp;
+{
+	extern int (**lfs_vnodeop_p)(void *);
+	struct inode *ip;
+	struct ufsmount *ump;
+	int error;
+#ifdef QUOTA
+	int i;
+#endif
+
+	/* Create the vnode. */
+	if ((error = getnewvnode(VT_LFS, mp, lfs_vnodeop_p, vpp)) != 0) {
+		*vpp = NULL;
+		return (error);
+	}
+
+	/* Get a pointer to the private mount structure. */
+	ump = VFSTOUFS(mp);
+
+	/* Initialize the inode. */
+	MALLOC(ip, struct inode *, sizeof(struct inode), M_LFSNODE, M_WAITOK);
+	(*vpp)->v_data = ip;
+	ip->i_vnode = *vpp;
+	ip->i_devvp = ump->um_devvp;
+	ip->i_flag = IN_MODIFIED;
+	ip->i_dev = ump->um_dev;
+	ip->i_number = ip->i_din.ffs_din.di_inumber = ino;
+	ip->i_lfs = ump->um_lfs;
+#ifdef QUOTA
+	for (i = 0; i < MAXQUOTAS; i++)
+		ip->i_dquot[i] = NODQUOT;
+#endif
+	ip->i_lockf = 0;
+	ip->i_diroff = 0;
+	ip->i_ffs_mode = 0;
+	ip->i_ffs_size = 0;
+	ip->i_ffs_blocks = 0;
+	++ump->um_lfs->lfs_uinodes;
+	return (0);
+}
+
+/* Free an inode. */
+/* ARGUSED */
+int
+lfs_vfree(v)
+	void *v;
+{
+	struct vop_vfree_args /* {
+		struct vnode *a_pvp;
+		ino_t a_ino;
+		int a_mode;
+	} */ *ap = v;
+	SEGUSE *sup;
+	struct buf *bp;
+	struct ifile *ifp;
+	struct inode *ip;
+	struct lfs *fs;
+	ufs_daddr_t old_iaddr;
+	ino_t ino;
+
+	/* Get the inode number and file system. */
+	ip = VTOI(ap->a_pvp);
+	fs = ip->i_lfs;
+	ino = ip->i_number;
+	if (ip->i_flag & IN_MODIFIED) {
+		--fs->lfs_uinodes;
+		ip->i_flag &=
+		    ~(IN_ACCESS | IN_CHANGE | IN_MODIFIED | IN_UPDATE);
+	}
+	/*
+	 * Set the ifile's inode entry to unused, increment its version number
+	 * and link it into the free chain.
+	 */
+	LFS_IENTRY(ifp, fs, ino, bp);
+	old_iaddr = ifp->if_daddr;
+	ifp->if_daddr = LFS_UNUSED_DADDR;
+	++ifp->if_version;
+	ifp->if_nextfree = fs->lfs_free;
+	fs->lfs_free = ino;
+	(void) VOP_BWRITE(bp);
+
+	if (old_iaddr != LFS_UNUSED_DADDR) {
+		LFS_SEGENTRY(sup, fs, datosn(fs, old_iaddr), bp);
+#ifdef DIAGNOSTIC
+		if (sup->su_nbytes < sizeof(struct dinode))
+			panic("lfs_vfree: negative byte count (segment %d)",
+			    datosn(fs, old_iaddr));
+#endif
+		sup->su_nbytes -= sizeof(struct dinode);
+		(void) VOP_BWRITE(bp);
+	}
+
+	/* Set superblock modified bit and decrement file count. */
+	fs->lfs_fmod = 1;
+	--fs->lfs_nfiles;
+	return (0);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import latest OpenBSD CVS tree by CTM in order
+to sync the base system and ports tree with Them.
+
+This includes the recent licence changes as well - by
+importing the changed base and re-applying the diffs
+(with cvs up -j -j) they are inherited, and we're not
+bound to the removed clauses any longer.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: lfs_alloc.c,v 1.10 2003/06/02 23:28:23 millert Exp $	*/
+d16 5
+a20 1
+ * 3. Neither the name of the University nor the names of its contributors
+@
+
+
+1.1.1.3
+log
+@* include, libc/net: openbsd borked on the initial get*_r api
+* sys/ufs: generic sync w/ openbsd, in the hope to fix stuff.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: lfs_alloc.c,v 1.11 2004/06/21 23:50:38 tholo Exp $	*/
+d132 2
+a133 2
+	if (++nextgennumber < (u_long)time_second)
+		nextgennumber = time_second;
+@
+
+

@@ -1,0 +1,417 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.08.11.21.10.48;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.14;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.14;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.28.35;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove old binutils
+@
+text
+@/* Native support for MIPS running SVR4, for GDB.
+   Copyright 1994, 1995 Free Software Foundation, Inc.
+
+This file is part of GDB.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "defs.h"
+#include "inferior.h"
+#include "gdbcore.h"
+#include "target.h"
+
+#include <sys/time.h>
+#include <sys/procfs.h>
+#include <setjmp.h>		/* For JB_XXX.  */
+
+/* Size of elements in jmpbuf */
+
+#define JB_ELEMENT_SIZE 4
+
+/*
+ * See the comment in m68k-tdep.c regarding the utility of these functions.
+ *
+ * These definitions are from the MIPS SVR4 ABI, so they may work for
+ * any MIPS SVR4 target.
+ */
+
+void 
+supply_gregset (gregsetp)
+     gregset_t *gregsetp;
+{
+  register int regi;
+  register greg_t *regp = &(*gregsetp)[0];
+  static char zerobuf[MAX_REGISTER_RAW_SIZE] = {0};
+
+  for (regi = 0; regi <= CXT_RA; regi++)
+    supply_register (regi, (char *)(regp + regi));
+
+  supply_register (PC_REGNUM, (char *)(regp + CXT_EPC));
+  supply_register (HI_REGNUM, (char *)(regp + CXT_MDHI));
+  supply_register (LO_REGNUM, (char *)(regp + CXT_MDLO));
+  supply_register (CAUSE_REGNUM, (char *)(regp + CXT_CAUSE));
+
+  /* Fill inaccessible registers with zero.  */
+  supply_register (PS_REGNUM, zerobuf);
+  supply_register (BADVADDR_REGNUM, zerobuf);
+  supply_register (FP_REGNUM, zerobuf);
+  supply_register (UNUSED_REGNUM, zerobuf);
+  for (regi = FIRST_EMBED_REGNUM; regi <= LAST_EMBED_REGNUM; regi++)
+    supply_register (regi, zerobuf);
+}
+
+void
+fill_gregset (gregsetp, regno)
+     gregset_t *gregsetp;
+     int regno;
+{
+  int regi;
+  register greg_t *regp = &(*gregsetp)[0];
+
+  for (regi = 0; regi <= 32; regi++)
+    if ((regno == -1) || (regno == regi))
+      *(regp + regi) = *(greg_t *) &registers[REGISTER_BYTE (regi)];
+
+  if ((regno == -1) || (regno == PC_REGNUM))
+    *(regp + CXT_EPC) = *(greg_t *) &registers[REGISTER_BYTE (PC_REGNUM)];
+
+  if ((regno == -1) || (regno == CAUSE_REGNUM))
+    *(regp + CXT_CAUSE) = *(greg_t *) &registers[REGISTER_BYTE (CAUSE_REGNUM)];
+
+  if ((regno == -1) || (regno == HI_REGNUM))
+    *(regp + CXT_MDHI) = *(greg_t *) &registers[REGISTER_BYTE (HI_REGNUM)];
+
+  if ((regno == -1) || (regno == LO_REGNUM))
+    *(regp + CXT_MDLO) = *(greg_t *) &registers[REGISTER_BYTE (LO_REGNUM)];
+}
+
+/*
+ * Now we do the same thing for floating-point registers.
+ * We don't bother to condition on FP0_REGNUM since any
+ * reasonable MIPS configuration has an R3010 in it.
+ *
+ * Again, see the comments in m68k-tdep.c.
+ */
+
+void
+supply_fpregset (fpregsetp)
+     fpregset_t *fpregsetp;
+{
+  register int regi;
+  static char zerobuf[MAX_REGISTER_RAW_SIZE] = {0};
+
+  for (regi = 0; regi < 32; regi++)
+    supply_register (FP0_REGNUM + regi,
+		     (char *)&fpregsetp->fp_r.fp_regs[regi]);
+
+  supply_register (FCRCS_REGNUM, (char *)&fpregsetp->fp_csr);
+
+  /* FIXME: how can we supply FCRIR_REGNUM?  The ABI doesn't tell us. */
+  supply_register (FCRIR_REGNUM, zerobuf);
+}
+
+void
+fill_fpregset (fpregsetp, regno)
+     fpregset_t *fpregsetp;
+     int regno;
+{
+  int regi;
+  char *from, *to;
+
+  for (regi = FP0_REGNUM; regi < FP0_REGNUM + 32; regi++)
+    {
+      if ((regno == -1) || (regno == regi))
+	{
+	  from = (char *) &registers[REGISTER_BYTE (regi)];
+	  to = (char *) &(fpregsetp->fp_r.fp_regs[regi - FP0_REGNUM]);
+	  memcpy(to, from, REGISTER_RAW_SIZE (regi));
+	}
+    }
+
+  if ((regno == -1) || (regno == FCRCS_REGNUM))
+    fpregsetp->fp_csr = *(unsigned *) &registers[REGISTER_BYTE(FCRCS_REGNUM)];
+}
+
+
+/* Figure out where the longjmp will land.
+   We expect the first arg to be a pointer to the jmp_buf structure from which
+   we extract the pc (_JB_PC) that we will land at.  The pc is copied into PC.
+   This routine returns true on success. */
+
+int
+get_longjmp_target (pc)
+     CORE_ADDR *pc;
+{
+  char buf[TARGET_PTR_BIT / TARGET_CHAR_BIT];
+  CORE_ADDR jb_addr;
+
+  jb_addr = read_register (A0_REGNUM);
+
+  if (target_read_memory (jb_addr + _JB_PC * JB_ELEMENT_SIZE, buf,
+			  TARGET_PTR_BIT / TARGET_CHAR_BIT))
+    return 0;
+
+  *pc = extract_address (buf, TARGET_PTR_BIT / TARGET_CHAR_BIT);
+
+  return 1;
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1994, 1995, 2000, 2001 Free Software Foundation, Inc.
+d4 1
+a4 1
+   This file is part of GDB.
+d6 13
+a18 14
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a23 1
+#include "regcache.h"
+a28 3
+/* Prototypes for supply_gregset etc. */
+#include "gregset.h"
+
+d40 3
+a42 2
+void
+supply_gregset (gregset_t *gregsetp)
+d44 3
+a46 4
+  int regi;
+  greg_t *regp = &(*gregsetp)[0];
+  char zerobuf[MAX_REGISTER_SIZE];
+  memset (zerobuf, 0, MAX_REGISTER_SIZE);
+d49 1
+a49 1
+    supply_register (regi, (char *) (regp + regi));
+d51 4
+a54 8
+  supply_register (mips_regnum (current_gdbarch)->pc,
+		   (char *) (regp + CXT_EPC));
+  supply_register (mips_regnum (current_gdbarch)->hi,
+		   (char *) (regp + CXT_MDHI));
+  supply_register (mips_regnum (current_gdbarch)->lo,
+		   (char *) (regp + CXT_MDLO));
+  supply_register (mips_regnum (current_gdbarch)->cause,
+		   (char *) (regp + CXT_CAUSE));
+d58 2
+a59 2
+  supply_register (mips_regnum (current_gdbarch)->badvaddr, zerobuf);
+  supply_register (DEPRECATED_FP_REGNUM, zerobuf);
+d66 3
+a68 1
+fill_gregset (gregset_t *gregsetp, int regno)
+d71 1
+a71 1
+  greg_t *regp = &(*gregsetp)[0];
+d75 1
+a75 1
+      *(regp + regi) = *(greg_t *) & deprecated_registers[DEPRECATED_REGISTER_BYTE (regi)];
+d77 2
+a78 2
+  if ((regno == -1) || (regno == mips_regnum (current_gdbarch)->pc))
+    *(regp + CXT_EPC) = *(greg_t *) & deprecated_registers[DEPRECATED_REGISTER_BYTE (mips_regnum (current_gdbarch)->pc)];
+d80 2
+a81 2
+  if ((regno == -1) || (regno == mips_regnum (current_gdbarch)->cause))
+    *(regp + CXT_CAUSE) = *(greg_t *) & deprecated_registers[DEPRECATED_REGISTER_BYTE (mips_regnum (current_gdbarch)->cause)];
+d83 2
+a84 2
+  if ((regno == -1) || (regno == mips_regnum (current_gdbarch)->hi))
+    *(regp + CXT_MDHI) = *(greg_t *) & deprecated_registers[DEPRECATED_REGISTER_BYTE (mips_regnum (current_gdbarch)->hi)];
+d86 2
+a87 2
+  if ((regno == -1) || (regno == mips_regnum (current_gdbarch)->lo))
+    *(regp + CXT_MDLO) = *(greg_t *) & deprecated_registers[DEPRECATED_REGISTER_BYTE (mips_regnum (current_gdbarch)->lo)];
+d92 1
+a92 1
+ * We don't bother to condition on FP0 regnum since any
+d99 2
+a100 1
+supply_fpregset (fpregset_t *fpregsetp)
+d102 2
+a103 3
+  int regi;
+  char zerobuf[MAX_REGISTER_SIZE];
+  memset (zerobuf, 0, MAX_REGISTER_SIZE);
+d106 2
+a107 2
+    supply_register (mips_regnum (current_gdbarch)->fp0 + regi,
+		     (char *) &fpregsetp->fp_r.fp_regs[regi]);
+d109 1
+a109 2
+  supply_register (mips_regnum (current_gdbarch)->fp_control_status,
+		   (char *) &fpregsetp->fp_csr);
+d111 2
+a112 3
+  /* FIXME: how can we supply FCRIR?  The ABI doesn't tell us. */
+  supply_register (mips_regnum (current_gdbarch)->fp_implementation_revision,
+		   zerobuf);
+d116 3
+a118 1
+fill_fpregset (fpregset_t *fpregsetp, int regno)
+d123 1
+a123 2
+  for (regi = mips_regnum (current_gdbarch)->fp0;
+       regi < mips_regnum (current_gdbarch)->fp0 + 32; regi++)
+d127 3
+a129 3
+	  from = (char *) &deprecated_registers[DEPRECATED_REGISTER_BYTE (regi)];
+	  to = (char *) &(fpregsetp->fp_r.fp_regs[regi - mips_regnum (current_gdbarch)->fp0]);
+	  memcpy (to, from, DEPRECATED_REGISTER_RAW_SIZE (regi));
+d133 2
+a134 3
+  if ((regno == -1)
+      || (regno == mips_regnum (current_gdbarch)->fp_control_status))
+    fpregsetp->fp_csr = *(unsigned *) &deprecated_registers[DEPRECATED_REGISTER_BYTE (mips_regnum (current_gdbarch)->fp_control_status)];
+d144 2
+a145 1
+get_longjmp_target (CORE_ADDR *pc)
+d147 1
+a147 1
+  char *buf;
+a149 1
+  buf = alloca (TARGET_PTR_BIT / TARGET_CHAR_BIT);
+d156 1
+a156 1
+  *pc = extract_unsigned_integer (buf, TARGET_PTR_BIT / TARGET_CHAR_BIT);
+@
+

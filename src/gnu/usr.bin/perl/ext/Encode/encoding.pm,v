@@ -1,0 +1,825 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.4
+	tg-mergefixes-1-branch:1.1.1.4.0.4
+	tg-mergefixes-1-base:1.1.1.4
+	MIROS_X:1.1.1.4.0.2
+	MIROS_X_BASE:1.1.1.4
+	tg-mergetmp-3:1.1.1.4
+	MIRBSD_XP_MIRPPC:1.1.1.3.0.4
+	cvs-200410231830:1.1.1.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.3
+	MIRBSD_XP_SPARC:1.1.1.3.0.2
+	cvs-200406091940:1.1.1.3
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.42.45;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.42.45;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.54.02;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.08.00.40;	author tg;	state Stab;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.10.23.18.38.14;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package encoding;
+our $VERSION = do { my @@r = (q$Revision: 1.35 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @@r };
+
+use Encode;
+use strict;
+
+BEGIN {
+    if (ord("A") == 193) {
+	require Carp;
+	Carp::croak("encoding pragma does not support EBCDIC platforms");
+    }
+}
+
+our $HAS_PERLIO = 0;
+eval { require PerlIO::encoding };
+unless ($@@){
+    $HAS_PERLIO = (PerlIO::encoding->VERSION >= 0.02);
+}
+
+sub import {
+    my $class = shift;
+    my $name  = shift;
+    my %arg = @@_;
+    $name ||= $ENV{PERL_ENCODING};
+
+    my $enc = find_encoding($name);
+    unless (defined $enc) {
+	require Carp;
+	Carp::croak("Unknown encoding '$name'");
+    }
+    unless ($arg{Filter}){
+	${^ENCODING} = $enc; # this is all you need, actually.
+	$HAS_PERLIO or return 1;
+	for my $h (qw(STDIN STDOUT)){
+	    if ($arg{$h}){
+		unless (defined find_encoding($arg{$h})) {
+		    require Carp;
+		    Carp::croak("Unknown encoding for $h, '$arg{$h}'");
+		}
+		eval { binmode($h, ":encoding($arg{$h})") };
+	    }else{
+		unless (exists $arg{$h}){
+		    eval { 
+			no warnings 'uninitialized';
+			binmode($h, ":encoding($name)");
+		    };
+		}
+	    }
+	    if ($@@){
+		require Carp;
+		Carp::croak($@@);
+	    }
+	}
+    }else{
+	defined(${^ENCODING}) and undef ${^ENCODING};
+	eval {
+	    require Filter::Util::Call ;
+	    Filter::Util::Call->import ;
+	    binmode(STDIN);
+	    binmode(STDOUT);
+	    filter_add(sub{
+			   my $status;
+                           if (($status = filter_read()) > 0){
+			       $_ = $enc->decode($_, 1);
+			       # warn $_;
+			   }
+			   $status ;
+		       });
+	};
+	# warn "Filter installed";
+    }
+    return 1; # I doubt if we need it, though
+}
+
+sub unimport{
+    no warnings;
+    undef ${^ENCODING};
+    if ($HAS_PERLIO){
+	binmode(STDIN,  ":raw");
+	binmode(STDOUT, ":raw");
+    }else{
+    binmode(STDIN);
+    binmode(STDOUT);
+    }
+    if ($INC{"Filter/Util/Call.pm"}){
+	eval { filter_del() };
+    }
+}
+
+1;
+__END__
+
+=pod
+
+=head1 NAME
+
+encoding - allows you to write your script in non-ascii or non-utf8
+
+=head1 SYNOPSIS
+
+  use encoding "greek";  # Perl like Greek to you?
+  use encoding "euc-jp"; # Jperl!
+
+  # or you can even do this if your shell supports your native encoding
+
+  perl -Mencoding=latin2 -e '...' # Feeling centrally European?
+  perl -Mencoding=euc-kr -e '...' # Or Korean?
+
+  # more control
+
+  # A simple euc-cn => utf-8 converter
+  use encoding "euc-cn", STDOUT => "utf8";  while(<>){print};
+
+  # "no encoding;" supported (but not scoped!)
+  no encoding;
+
+  # an alternate way, Filter
+  use encoding "euc-jp", Filter=>1;
+  use utf8;
+  # now you can use kanji identifiers -- in euc-jp!
+
+=head1 ABSTRACT
+
+Let's start with a bit of history: Perl 5.6.0 introduced Unicode
+support.  You could apply C<substr()> and regexes even to complex CJK
+characters -- so long as the script was written in UTF-8.  But back
+then, text editors that supported UTF-8 were still rare and many users
+instead chose to write scripts in legacy encodings, giving up a whole
+new feature of Perl 5.6.
+
+Rewind to the future: starting from perl 5.8.0 with the B<encoding>
+pragma, you can write your script in any encoding you like (so long
+as the C<Encode> module supports it) and still enjoy Unicode support.
+You can write code in EUC-JP as follows:
+
+  my $Rakuda = "\xF1\xD1\xF1\xCC"; # Camel in Kanji
+               #<-char-><-char->   # 4 octets
+  s/\bCamel\b/$Rakuda/;
+
+And with C<use encoding "euc-jp"> in effect, it is the same thing as
+the code in UTF-8:
+
+  my $Rakuda = "\x{99F1}\x{99DD}"; # two Unicode Characters
+  s/\bCamel\b/$Rakuda/;
+
+The B<encoding> pragma also modifies the filehandle disciplines of
+STDIN, STDOUT, and STDERR to the specified encoding.  Therefore,
+
+  use encoding "euc-jp";
+  my $message = "Camel is the symbol of perl.\n";
+  my $Rakuda = "\xF1\xD1\xF1\xCC"; # Camel in Kanji
+  $message =~ s/\bCamel\b/$Rakuda/;
+  print $message;
+
+Will print "\xF1\xD1\xF1\xCC is the symbol of perl.\n",
+not "\x{99F1}\x{99DD} is the symbol of perl.\n".
+
+You can override this by giving extra arguments; see below.
+
+=head1 USAGE
+
+=over 4
+
+=item use encoding [I<ENCNAME>] ;
+
+Sets the script encoding to I<ENCNAME>. Filehandle disciplines of
+STDIN and STDOUT are set to ":encoding(I<ENCNAME>)".  Note that STDERR
+will not be changed.
+
+If no encoding is specified, the environment variable L<PERL_ENCODING>
+is consulted.  If no encoding can be found, the error C<Unknown encoding
+'I<ENCNAME>'> will be thrown.
+
+Note that non-STD file handles remain unaffected.  Use C<use open> or
+C<binmode> to change disciplines of those.
+
+=item use encoding I<ENCNAME> [ STDIN =E<gt> I<ENCNAME_IN> ...] ;
+
+You can also individually set encodings of STDIN and STDOUT via the
+C<< STDIN => I<ENCNAME> >> form.  In this case, you cannot omit the
+first I<ENCNAME>.  C<< STDIN => undef >> turns the IO transcoding
+completely off.
+
+=item no encoding;
+
+Unsets the script encoding. The disciplines of STDIN, STDOUT are
+reset to ":raw" (the default unprocessed raw stream of bytes).
+
+=back
+
+=head1 CAVEATS
+
+=head2 NOT SCOPED
+
+The pragma is a per script, not a per block lexical.  Only the last
+C<use encoding> or C<no encoding> matters, and it affects 
+B<the whole script>.  However, the <no encoding> pragma is supported and 
+B<use encoding> can appear as many times as you want in a given script. 
+The multiple use of this pragma is discouraged.
+
+Because of this nature, the use of this pragma inside the module is
+strongly discouraged (because the influence of this pragma lasts not
+only for the module but the script that uses).  But if you have to,
+make sure you say C<no encoding> at the end of the module so you
+contain the influence of the pragma within the module.
+
+=head2 DO NOT MIX MULTIPLE ENCODINGS
+
+Notice that only literals (string or regular expression) having only
+legacy code points are affected: if you mix data like this
+
+	\xDF\x{100}
+
+the data is assumed to be in (Latin 1 and) Unicode, not in your native
+encoding.  In other words, this will match in "greek":
+
+	"\xDF" =~ /\x{3af}/
+
+but this will not
+
+	"\xDF\x{100}" =~ /\x{3af}\x{100}/
+
+since the C<\xDF> (ISO 8859-7 GREEK SMALL LETTER IOTA WITH TONOS) on
+the left will B<not> be upgraded to C<\x{3af}> (Unicode GREEK SMALL
+LETTER IOTA WITH TONOS) because of the C<\x{100}> on the left.  You
+should not be mixing your legacy data and Unicode in the same string.
+
+This pragma also affects encoding of the 0x80..0xFF code point range:
+normally characters in that range are left as eight-bit bytes (unless
+they are combined with characters with code points 0x100 or larger,
+in which case all characters need to become UTF-8 encoded), but if
+the C<encoding> pragma is present, even the 0x80..0xFF range always
+gets UTF-8 encoded.
+
+After all, the best thing about this pragma is that you don't have to
+resort to \x{....} just to spell your name in a native encoding.
+So feel free to put your strings in your encoding in quotes and
+regexes.
+
+=head1 Non-ASCII Identifiers and Filter option
+
+The magic of C<use encoding> is not applied to the names of
+identifiers.  In order to make C<${"\x{4eba}"}++> ($human++, where human
+is a single Han ideograph) work, you still need to write your script
+in UTF-8 or use a source filter.
+
+In other words, the same restriction as with Jperl applies.
+
+If you dare to experiment, however, you can try the Filter option.
+
+=over 4
+
+=item use encoding I<ENCNAME> Filter=E<gt>1;
+
+This turns the encoding pragma into a source filter.  While the default
+approach just decodes interpolated literals (in qq() and qr()), this
+will apply a source filter to the entire source code.  In this case,
+STDIN and STDOUT remain untouched.
+
+=back
+
+What does this mean?  Your source code behaves as if it is written in
+UTF-8.  So even if your editor only supports Shift_JIS, for example,
+you can still try examples in Chapter 15 of C<Programming Perl, 3rd
+Ed.>.  For instance, you can use UTF-8 identifiers.
+
+This option is significantly slower and (as of this writing) non-ASCII
+identifiers are not very stable WITHOUT this option and with the
+source code written in UTF-8.
+
+To make your script in legacy encoding work with minimum effort,
+do not use Filter=E<gt>1.
+
+=head1 EXAMPLE - Greekperl
+
+    use encoding "iso 8859-7";
+
+    # \xDF in ISO 8859-7 (Greek) is \x{3af} in Unicode.
+
+    $a = "\xDF";
+    $b = "\x{100}";
+
+    printf "%#x\n", ord($a); # will print 0x3af, not 0xdf
+
+    $c = $a . $b;
+
+    # $c will be "\x{3af}\x{100}", not "\x{df}\x{100}".
+
+    # chr() is affected, and ...
+
+    print "mega\n"  if ord(chr(0xdf)) == 0x3af;
+
+    # ... ord() is affected by the encoding pragma ...
+
+    print "tera\n" if ord(pack("C", 0xdf)) == 0x3af;
+
+    # ... as are eq and cmp ...
+
+    print "peta\n" if "\x{3af}" eq  pack("C", 0xdf);
+    print "exa\n"  if "\x{3af}" cmp pack("C", 0xdf) == 0;
+
+    # ... but pack/unpack C are not affected, in case you still
+    # want to go back to your native encoding
+
+    print "zetta\n" if unpack("C", (pack("C", 0xdf))) == 0xdf;
+
+=head1 KNOWN PROBLEMS
+
+For native multibyte encodings (either fixed or variable length),
+the current implementation of the regular expressions may introduce
+recoding errors for regular expression literals longer than 127 bytes.
+
+The encoding pragma is not supported on EBCDIC platforms.
+(Porters who are willing and able to remove this limitation are
+welcome.)
+
+=head1 SEE ALSO
+
+L<perlunicode>, L<Encode>, L<open>, L<Filter::Util::Call>,
+
+Ch. 15 of C<Programming Perl (3rd Edition)>
+by Larry Wall, Tom Christiansen, Jon Orwant;
+O'Reilly & Associates; ISBN 0-596-00027-8
+
+=cut
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@a0 1
+# $Id: encoding.pm,v 1.47 2003/08/20 11:15:31 dankogai Exp dankogai $
+d2 1
+a2 1
+our $VERSION = do { my @@r = (q$Revision: 1.47 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @@r };
+a5 1
+sub DEBUG () { 0 }
+a19 11
+sub _exception{
+    my $name = shift;
+    $] > 5.008 and return 0;               # 5.8.1 or higher then no
+    my %utfs = map {$_=>1}
+	qw(utf8 UCS-2BE UCS-2LE UTF-16 UTF-16BE UTF-16LE
+	   UTF-32 UTF-32BE UTF-32LE);
+    $utfs{$name} or return 0;               # UTFs or no
+    require Config; Config->import(); our %Config;
+    return $Config{perl_patchlevel} ? 0 : 1 # maintperl then no
+}
+
+d25 1
+d31 2
+a32 4
+    $name = $enc->name; # canonize
+    unless ($arg{Filter}) {
+	DEBUG and warn "_exception($name) = ", _exception($name);
+	_exception($name) or ${^ENCODING} = $enc;
+d34 20
+a55 3
+	# implicitly 'use utf8'
+	require utf8; # to fetch $utf8::hint_bits;
+	$^H |= $utf8::hint_bits;
+d59 2
+d62 2
+a63 2
+			   my $status = filter_read();
+                           if ($status > 0){
+d65 1
+a65 1
+			       DEBUG and warn $_;
+d70 1
+a70 21
+    }	DEBUG and warn "Filter installed";
+    defined ${^UNICODE} and ${^UNICODE} != 0 and return 1;
+    for my $h (qw(STDIN STDOUT)){
+	if ($arg{$h}){
+	    unless (defined find_encoding($arg{$h})) {
+		require Carp;
+		Carp::croak("Unknown encoding for $h, '$arg{$h}'");
+	    }
+	    eval { binmode($h, ":raw :encoding($arg{$h})") };
+	}else{
+	    unless (exists $arg{$h}){
+		eval { 
+		    no warnings 'uninitialized';
+		    binmode($h, ":raw :encoding($name)");
+		};
+	    }
+	}
+	if ($@@){
+	    require Carp;
+	    Carp::croak($@@);
+	}
+d82 2
+a83 2
+	binmode(STDIN);
+	binmode(STDOUT);
+d119 1
+a133 19
+This pragma achieves that by doing the following:
+
+=over
+
+=item *
+
+Internally converts all literals (C<q//,qq//,qr//,qw///, qx//>) from
+the encoding specified to utf8.  In Perl 5.8.1 and later, literals in
+C<tr///> and C<DATA> pseudo-filehandle are also converted.
+
+=item *
+
+Changing PerlIO layers of C<STDIN> and C<STDOUT> to the encoding
+ specified.
+
+=back
+
+=head2 Literal Conversions
+
+d146 2
+a147 4
+=head2 PerlIO layers for C<STD(IN|OUT)>
+
+The B<encoding> pragma also modifies the filehandle layers of
+STDIN and STDOUT to the specified encoding.  Therefore,
+a159 27
+=head1 FEATURES THAT REQUIRE 5.8.1
+
+Some of the features offered by this pragma requires perl 5.8.1.  Most
+of these are done by Inaba Hiroto.  Any other features and changes
+are good for 5.8.0.
+
+=over
+
+=item "NON-EUC" doublebyte encodings
+
+Because perl needs to parse script before applying this pragma, such
+encodings as Shift_JIS and Big-5 that may contain '\' (BACKSLASH;
+\x5c) in the second byte fails because the second byte may
+accidentally escape the quoting character that follows.  Perl 5.8.1
+or later fixes this problem.
+
+=item tr// 
+
+C<tr//> was overlooked by Perl 5 porters when they released perl 5.8.0
+See the section below for details.
+
+=item DATA pseudo-filehandle
+
+Another feature that was overlooked was C<DATA>. 
+
+=back
+
+d166 3
+a168 8
+Sets the script encoding to I<ENCNAME>.  And unless ${^UNICODE} 
+exists and non-zero, PerlIO layers of STDIN and STDOUT are set to
+":encoding(I<ENCNAME>)".
+
+Note that STDERR WILL NOT be changed.
+
+Also note that non-STD file handles remain unaffected.  Use C<use
+open> or C<binmode> to change layers of those.
+d174 3
+a183 12
+When ${^UNICODE} exists and non-zero, these options will completely
+ignored.  ${^UNICODE} is a variable introduced in perl 5.8.1.  See
+L<perlrun> see L<perlvar/"${^UNICODE}"> and L<perlrun/"-C"> for
+details (perl 5.8.1 and later).
+
+=item use encoding I<ENCNAME> Filter=E<gt>1;
+
+This turns the encoding pragma into a source filter.  While the
+default approach just decodes interpolated literals (in qq() and
+qr()), this will apply a source filter to the entire source code.  See
+L</"The Filter Option"> below for details.
+
+d186 1
+a186 1
+Unsets the script encoding. The layers of STDIN, STDOUT are
+a190 34
+=head1 The Filter Option
+
+The magic of C<use encoding> is not applied to the names of
+identifiers.  In order to make C<${"\x{4eba}"}++> ($human++, where human
+is a single Han ideograph) work, you still need to write your script
+in UTF-8 -- or use a source filter.  That's what 'Filter=>1' does.
+
+What does this mean?  Your source code behaves as if it is written in
+UTF-8 with 'use utf8' in effect.  So even if your editor only supports
+Shift_JIS, for example, you can still try examples in Chapter 15 of
+C<Programming Perl, 3rd Ed.>.  For instance, you can use UTF-8
+identifiers.
+
+This option is significantly slower and (as of this writing) non-ASCII
+identifiers are not very stable WITHOUT this option and with the
+source code written in UTF-8.
+
+=head2 Filter-related changes at Encode version 1.87
+
+=over
+
+=item *
+
+The Filter option now sets STDIN and STDOUT like non-filter options.
+And C<< STDIN=>I<ENCODING> >> and C<< STDOUT=>I<ENCODING> >> work like
+non-filter version.
+
+=item *
+
+C<use utf8> is implicitly declared so you no longer have to C<use
+utf8> to C<${"\x{4eba}"}++>.
+
+=back
+
+d201 5
+a205 23
+By the same reason, the use this pragma inside modules is also
+discouraged (though not as strongly discouranged as the case above.  
+See below).
+
+If you still have to write a module with this pragma, be very careful
+of the load order.  See the codes below;
+
+  # called module
+  package Module_IN_BAR;
+  use encoding "bar";
+  # stuff in "bar" encoding here
+  1;
+
+  # caller script
+  use encoding "foo"
+  use Module_IN_BAR;
+  # surprise! use encoding "bar" is in effect.
+
+The best way to avoid this oddity is to use this pragma RIGHT AFTER
+other modules are loaded.  i.e.
+
+  use Module_IN_BAR;
+  use encoding "foo";
+d240 1
+a240 1
+=head2 tr/// with ranges
+d242 4
+a245 3
+The B<encoding> pragma works by decoding string literals in
+C<q//,qq//,qr//,qw///, qx//> and so forth.  In perl 5.8.0, this
+does not apply to C<tr///>.  Therefore,
+d247 1
+a247 4
+  use encoding 'euc-jp';
+  #....
+  $kana =~ tr/\xA4\xA1-\xA4\xF3/\xA5\xA1-\xA5\xF3/;
+  #           -------- -------- -------- --------
+d249 1
+a249 1
+Does not work as
+d251 1
+a251 1
+  $kana =~ tr/\x{3041}-\x{3093}/\x{30a1}-\x{30f3}/;
+d253 1
+a253 1
+=over
+d255 4
+a258 8
+=item Legend of characters above
+
+  utf8     euc-jp   charnames::viacode()
+  -----------------------------------------
+  \x{3041} \xA4\xA1 HIRAGANA LETTER SMALL A
+  \x{3093} \xA4\xF3 HIRAGANA LETTER N
+  \x{30a1} \xA5\xA1 KATAKANA LETTER SMALL A
+  \x{30f3} \xA5\xF3 KATAKANA LETTER N
+d262 4
+a265 1
+This counterintuitive behavior has been fixed in perl 5.8.1.
+d267 3
+a269 10
+=head3 workaround to tr///;
+
+In perl 5.8.0, you can work around as follows;
+
+  use encoding 'euc-jp';
+  #  ....
+  eval qq{ \$kana =~ tr/\xA4\xA1-\xA4\xF3/\xA5\xA1-\xA5\xF3/ };
+
+Note the C<tr//> expression is surrounded by C<qq{}>.  The idea behind
+is the same as classic idiom that makes C<tr///> 'interpolate'.
+d271 2
+a272 6
+   tr/$from/$to/;            # wrong!
+   eval qq{ tr/$from/$to/ }; # workaround.
+
+Nevertheless, in case of B<encoding> pragma even C<q//> is affected so
+C<tr///> not being decoded was obviously against the will of Perl5
+Porters so it has been fixed in Perl 5.8.1 or later.
+a308 4
+=over
+
+=item literals in regex that are longer than 127 bytes
+
+a312 2
+=item EBCDIC
+
+a315 34
+
+=item format
+
+This pragma doesn't work well with format because PerlIO does not
+get along very well with it.  When format contains non-ascii
+characters it prints funny or gets "wide character warnings".
+To understand it, try the code below.
+
+  # Save this one in utf8
+  # replace *non-ascii* with a non-ascii string
+  my $camel;
+  format STDOUT =
+  *non-ascii*@@>>>>>>>
+  $camel
+  .
+  $camel = "*non-ascii*";
+  binmode(STDOUT=>':encoding(utf8)'); # bang!
+  write;              # funny 
+  print $camel, "\n"; # fine
+
+Without binmode this happens to work but without binmode, print()
+fails instead of write().
+
+At any rate, the very use of format is questionable when it comes to
+unicode characters since you have to consider such things as character
+width (i.e. double-width for ideographs) and directions (i.e. BIDI for
+Arabic and Hebrew).
+
+=back
+
+=head1 HISTORY
+
+This pragma first appeared in Perl 5.8.0.  For features that require 
+5.8.1 and better, see above.
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+# $Id: encoding.pm,v 1.48 2003/12/29 02:47:16 dankogai Exp dankogai $
+d3 1
+a3 1
+our $VERSION = do { my @@r = (q$Revision: 1.48 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @@r };
+a193 19
+
+=head2 Implicit upgrading for byte strings
+
+By default, if strings operating under byte semantics and strings
+with Unicode character data are concatenated, the new string will
+be created by decoding the byte strings as I<ISO 8859-1 (Latin-1)>.
+
+The B<encoding> pragma changes this to use the specified encoding
+instead.  For example:
+
+    use encoding 'utf8';
+    my $string = chr(20000); # a Unicode string
+    utf8::encode($string);   # now it's a UTF-8 encoded byte string
+    # concatenate with another Unicode string
+    print length($string . chr(20000));
+
+Will print C<2>, because C<$string> is upgraded as UTF-8.  Without
+C<use encoding 'utf8';>, it will print C<4> instead, since C<$string>
+is three octets when interpreted as Latin-1.
+@
+
+
+1.1.1.4
+log
+@5.8.5
+@
+text
+@d1 1
+a1 1
+# $Id: encoding.pm,v 2.0 2004/05/16 20:55:16 dankogai Exp $
+d3 1
+a3 1
+our $VERSION = do { my @@r = (q$Revision: 2.0 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @@r };
+@
+
+

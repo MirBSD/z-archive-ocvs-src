@@ -1,0 +1,257 @@
+head	1.2;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.07.18.12.29.00;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.48.09;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.48.09;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.09.25.16.31.37;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke regression tests
+
+noone actually uses them (I've run them about half a dozen times only),
+some of the tests (eg. everything PF) are broken, some of the code is
+broken... and the adventurous are invited to use CVS and fix them,
+maybe on a tagged branch.
+@
+text
+@/*	$OpenBSD: test.h,v 1.4 2002/02/17 19:42:27 millert Exp $	*/
+
+#ifndef _h_test_
+#define _h_test_
+
+#include <stdio.h>
+#include <signal.h>
+#include <errno.h>
+#include <string.h>
+#include <stdarg.h>
+
+int	_thread_sys_write(int, const char*, size_t);
+__dead void _thread_sys__exit(int) __attribute__((__noreturn__));
+
+static __dead void __vpanic(const char *, const char *, const char *, 
+	int, const char *, va_list) __attribute__((__noreturn__));
+static __dead void __panic(const char *, const char *, const char *,
+	int, const char *, ...) __attribute__((__noreturn__));
+
+#if defined(__OpenBSD__) || defined(__FreeBSD__)
+#include <pthread.h>
+#include <pthread_np.h>
+void	_thread_dump_info(void);
+#define SET_NAME(x)	pthread_set_name_np(pthread_self(), x)
+#define DUMP_INFO()	_thread_dump_info()
+#else
+#define SET_NAME(x)	/* nada */
+#define DUMP_INFO()	/* nada */
+#endif
+
+static void
+__vpanic(type, errstr, filenm, lineno, fmt, ap)
+	const char *type; 
+	const char *errstr;
+	const char *filenm;
+	int lineno; 
+	const char *fmt; 
+	va_list ap;
+{
+	char buf[1024];
+
+	/* "<type> at <filenm>:<lineno>: <fmt ap...>:<errstr>" */
+	snprintf(buf, sizeof buf, "%s at %s:%d\n", type, filenm, lineno);
+	_thread_sys_write(2, buf, strlen(buf));
+	vsnprintf(buf, sizeof buf, fmt, ap);
+	if (errstr != NULL) {
+		strlcat(buf, ": ", sizeof buf);
+		strlcat(buf, errstr, sizeof buf);
+	}
+	strlcat(buf, "\n", sizeof buf);
+	_thread_sys_write(2, buf, strlen(buf));
+
+	DUMP_INFO();
+	_thread_sys__exit(1);
+
+	_thread_sys_write(2, "[locking]\n", 10);
+	while(1);
+}
+
+static void
+__panic(type, errstr, filenm, lineno, fmt)
+	const char *type;
+	const char *errstr;
+	const char *filenm;
+	int lineno; 
+	const char *fmt;
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	__vpanic(type, errstr, filenm, lineno, fmt, ap);
+	va_end(ap);
+}
+
+#define DIE(e, m, args...) \
+	__panic("died", strerror(e), __FILE__, __LINE__, m , ## args)
+
+#define PANIC(m, args...)  \
+	__panic("panic", NULL, __FILE__, __LINE__, m, ## args)
+
+#define ASSERT(x) do { \
+	if (!(x)) \
+		__panic("assert failed", NULL, __FILE__, __LINE__, "%s", #x); \
+} while(0)
+
+#define ASSERTe(x,rhs) do { \
+	int _x; \
+	_x = (x); \
+	if (!(_x rhs)) { \
+	    if (_x > 0) \
+		__panic("assert failed", strerror(_x), __FILE__, __LINE__,  \
+		    "%s %s", #x, #rhs); \
+	    else \
+		__panic("assert failed", NULL, __FILE__, __LINE__, \
+		    "%s [=%d] %s", #x, _x, #rhs); \
+	} \
+} while(0)
+
+#define _T(x) __builtin_classify_type(x)
+
+#define _CHECK(x, rhs, efn) do { \
+	typeof(x) _x; \
+	_x = (x); \
+	if (!(_x rhs)) \
+		__panic("check failed", efn, __FILE__, __LINE__, \
+		   ((_T(0) == _T(_x)   )? "failed check %s (=%d) %s " : \
+		    (_T("") == _T(_x)  )? "failed check %s (=%s) %s " : \
+		    (_T('x') == _T(_x) )? "failed check %s (=%c) %s " : \
+		    (_T(0L) == _T(_x)  )? "failed check %s (=%ld) %s " : "?") \
+		    , #x, _x, #rhs); \
+} while(0)
+
+#define CHECKr(x) _CHECK(x, == 0, strerror(_x))
+#define CHECKe(x) _CHECK(x, != -1, strerror(errno))
+#define CHECKn(x) _CHECK(x, != 0, strerror(errno))
+#define CHECKhn(x) _CHECK(x, != 0, hstrerror(h_errno))
+
+#define SUCCEED 	exit(0)
+
+#define OK		(0)
+#define NOTOK		(-1)
+
+#endif /* _h_test_ */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Release Time. Synchronize with OpenBSD 3.4-current (base system).
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: test.h,v 1.5 2003/09/02 23:52:17 david Exp $	*/
+a6 1
+#include <stdlib.h>
+@
+

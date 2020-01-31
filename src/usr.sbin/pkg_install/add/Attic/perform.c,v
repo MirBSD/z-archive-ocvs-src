@@ -1,0 +1,1121 @@
+head	1.4;
+access;
+symbols
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.8
+	MIRBSD_7:1.2.0.2
+	cvs-200401271800:1.1.1.8
+	cvs-200401261630:1.1.1.8
+	cvs-200401021645:1.1.1.8
+	MIRBSD_7_ALPHA:1.1.1.8.0.6
+	cvs-200312222040:1.1.1.8
+	MIRBSD_7ter:1.1.1.8
+	MIRBSD_7_DEV:1.1.1.8.0.2
+	cvs-200310020700:1.1.1.8
+	cvs-200309271030:1.1.1.8
+	cvs-200309251530:1.1.1.8
+	cvs-200308302005:1.1.1.8
+	cvs-200308221505:1.1.1.8
+	cvs-200308171200:1.1.1.7
+	ctm-3496:1.1.1.6
+	ctm-3449:1.1.1.5
+	ctm-3437:1.1.1.5
+	cvs-200307191805:1.1.1.5
+	ctm-3425:1.1.1.5
+	cvs-200307091500:1.1.1.4
+	ctm-3389:1.1.1.4
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.3
+	MIRBSD_5:1.1.1.3
+	cvs-200306082100:1.1.1.3
+	ctm-3316:1.1.1.3
+	ctm-3272:1.1.1.3
+	ctm-3264:1.1.1.3
+	cvs-200305071630:1.1.1.3
+	MIRBSD_4:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.2
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2004.10.10.21.11.57;	author tg;	state dead;
+branches;
+next	1.3;
+
+1.3
+date	2004.07.21.10.24.31;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.25.13.28.11;	author tg;	state Exp;
+branches
+	1.2.2.1;
+next	1.1;
+
+1.1
+date	2003.03.22.17.55.49;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.55.49;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.10.15.01.00;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.05.07.17.57.34;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.07.06.15.56.42;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2003.07.18.13.59.38;	author tg;	state Exp;
+branches;
+next	1.1.1.6;
+
+1.1.1.6
+date	2003.08.11.18.55.27;	author tg;	state Exp;
+branches;
+next	1.1.1.7;
+
+1.1.1.7
+date	2003.08.17.15.01.02;	author tg;	state Exp;
+branches;
+next	1.1.1.8;
+
+1.1.1.8
+date	2003.08.22.15.36.20;	author tg;	state Exp;
+branches;
+next	;
+
+1.2.2.1
+date	2004.12.25.16.43.51;	author tg;	state dead;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@package tools in base is dead
+
+agreed bsiegert@@
+@
+text
+@/* $MirBSD: src/usr.sbin/pkg_install/add/perform.c,v 1.3 2004/07/21 10:24:31 tg Stab $ */
+/* $OpenBSD: perform.c,v 1.32 2003/08/21 20:24:56 espie Exp $	*/
+
+/*
+ * FreeBSD install - a package for the installation and maintainance
+ * of non-core utilities.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * Jordan K. Hubbard
+ * 18 July 1993
+ *
+ * This is the main body of the add module.
+ */
+
+#include <err.h>
+#include "lib.h"
+#include "add.h"
+
+#include <sys/wait.h>
+#include <ctype.h>
+#include <signal.h>
+#include <errno.h>
+
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/add/perform.c,v 1.3 2004/07/21 10:24:31 tg Stab $");
+
+static int pkg_do(char *);
+static int sanity_check(char *);
+static char LogDir[FILENAME_MAX];
+static int zapLogDir;          /* Should we delete LogDir? */
+
+int
+pkg_perform(char **pkgs)
+{
+    int i, err_cnt = 0;
+
+    signal(SIGINT, cleanup);
+    signal(SIGHUP, cleanup);
+
+    if (AddMode == SLAVE)
+	err_cnt = pkg_do(NULL);
+    else {
+	for (i = 0; pkgs[i]; i++)
+	    err_cnt += pkg_do(pkgs[i]);
+    }
+    return err_cnt;
+}
+
+static package_t Plist;
+static char *Home;
+
+/* called to see if pkg is already installed as some other version */
+/* note found version in "note" */
+static int
+check_if_installed(const char *found, char *note, int len)
+{
+    strlcpy(note, found, len);
+    return 0;
+}
+
+/*
+ * This is seriously ugly code following.  Written very fast!
+ * [And subsequently made even worse..  Sigh!  This code was just born
+ * to be hacked, I guess.. :) -jkh]
+ */
+static int
+pkg_do(char *pkg)
+{
+    char pkg_fullname[FILENAME_MAX];
+    char playpen[FILENAME_MAX];
+    char extract_contents[FILENAME_MAX];
+    char solve_deps[FILENAME_MAX+50];
+    char *where_to, *tmp, *extract;
+    char *dbdir;
+    FILE *cfile;
+    int code;
+    plist_t *p;
+    struct stat sb;
+
+    set_pkg(pkg);
+    code = 0;
+    zapLogDir = 0;
+    LogDir[0] = '\0';
+    strlcpy(playpen, FirstPen, sizeof(playpen));
+    dbdir = (tmp = getenv(PKG_DBDIR)) ? tmp : DEF_LOG_DIR;
+
+    snprintf(solve_deps, sizeof solve_deps, "pkg%s dependencies solve %s",
+	Verbose ? " -v": "", CONTENTS_FNAME);
+    if (Prefix)
+    	setenv("PKG_PREFIX", Prefix, 1);
+    else
+    	unsetenv("PKG_PREFIX");
+    /* Are we coming in for a second pass, everything already extracted? */
+    /* (Slave mode) */
+    if (!pkg) {
+	fgets(playpen, FILENAME_MAX, stdin);
+	playpen[strlen(playpen) - 1] = '\0'; /* pesky newline! */
+	if (chdir(playpen) == FAIL) {
+	    pwarnx("add in SLAVE mode can't chdir to `%s'", playpen);
+	    return 1;
+	}
+	read_plist(&Plist, stdin);
+	where_to = playpen;
+    }
+    /* Nope - do it now */
+    else {
+	/* Is it an ftp://foo.bar.baz/file.tgz specification? */
+	if (isURL(pkg)) {
+	    if (ispkgpattern(pkg)) {
+		pwarnx("patterns not allowed in URLs, "
+		     "please install manually!");
+		/* ... until we come up with a better solution :-/  - HF */
+		goto bomb;
+	    }
+
+	    if (!(Home = fileGetURL(NULL, pkg))) {
+		pwarnx("unable to fetch `%s' by URL", pkg);
+		return 1;
+	    }
+	    where_to = Home;
+	    strlcpy(pkg_fullname, pkg, sizeof(pkg_fullname));
+	    system(solve_deps);
+	    cfile = fopen(CONTENTS_FNAME, "r");
+	    if (!cfile) {
+		pwarnx(
+		"unable to open table of contents file `%s' - not a package?",
+		CONTENTS_FNAME);
+		goto bomb;
+	    }
+	    read_plist(&Plist, cfile);
+	    fclose(cfile);
+	} else {
+	    strlcpy(pkg_fullname, ensure_tgz(pkg), sizeof(pkg_fullname));
+	    if (strcmp(pkg, "-")) {
+		if (!ispkgpattern(pkg_fullname)
+		    && stat(pkg_fullname, &sb) == FAIL) {
+		    pwarnx("can't stat package file '%s'", pkg_fullname);
+		    goto bomb;
+		}
+		snprintf(extract_contents, sizeof( extract_contents ),
+			 "%s", CONTENTS_FNAME);
+		extract = extract_contents;
+	    }
+	    else {
+		extract = NULL;
+		sb.st_size = 100000;	/* Make up a plausible average size */
+	    }
+	    Home = make_playpen(playpen, sizeof(playpen), sb.st_size * 4);
+	    if (!Home)
+		pwarnx("unable to make playpen for %ld bytes",
+		    (long)(sb.st_size * 4));
+	    where_to = Home;
+	    if (unpack(pkg_fullname, extract)) {
+		pwarnx(
+	"unable to extract table of contents from `%s'\n"
+	"Is this a Package, or a simple .tgz archive ?  See tar(1).",
+		pkg_fullname);
+		goto bomb;
+	    }
+	    system(solve_deps);
+	    cfile = fopen(CONTENTS_FNAME, "r");
+	    if (!cfile) {
+		pwarnx(
+	"unable to open table of contents file `%s'\n"
+	"Is this a Package, or a simple .tgz archive ?  See tar(1).",
+		CONTENTS_FNAME);
+		goto bomb;
+	    }
+	    read_plist(&Plist, cfile);
+	    fclose(cfile);
+
+	    /*
+	     * Apply a crude heuristic to see how much space the package will
+	     * take up once it's unpacked.  I've noticed that most packages
+	     * compress an average of 75%, so multiply by 4 for good
+	     * measure.  Ignore if extract is null as we've already
+	     * extracted the full file, anyway.
+	     */
+
+	    if (!extract && min_free(playpen) < sb.st_size * 4) {
+		pwarnx("projected size of %ld exceeds available free space\n"
+		       "Please set your PKG_TMPDIR variable to point to a"
+		       "location with more\n"
+		       "free space and try again", (long)(sb.st_size * 4));
+		pwarnx("not extracting `%s'\ninto `%s', sorry!", pkg_fullname,
+		       where_to);
+		goto bomb;
+	    }
+
+	    /* Finally unpack the whole mess.  If extract is null we already
+	       did so so don't bother doing it again. */
+	    if (extract && unpack(pkg_fullname, NULL)) {
+		pwarnx("unable to extract `%s'!", pkg_fullname);
+		goto bomb;
+	    }
+	} /* isURL(pkg) */
+
+	/* Check for sanity and dependencies */
+	if (sanity_check(pkg))
+	    goto bomb;
+
+	/* If we're running in MASTER mode, just output the plist and return */
+	if (AddMode == MASTER) {
+	    printf("%s\n", where_playpen());
+	    write_plist(&Plist, stdout);
+	    return 0;
+	}
+    }
+
+    /*
+     * If we have a prefix, delete the first one we see and add this
+     * one in place of it.
+     */
+    if (Prefix) {
+	delete_plist(&Plist, FALSE, PLIST_CWD, NULL);
+	add_plist_top(&Plist, PLIST_CWD, Prefix);
+    }
+
+    setenv(PKG_PREFIX_VNAME, (p = find_plist(&Plist, PLIST_CWD)) ? p->name : ".", 1);
+    /* Protect against old packages with bogus @@name fields */
+    PkgName = (p = find_plist(&Plist, PLIST_NAME)) ? p->name : NULL;
+    if (PkgName == NULL) {
+	pwarnx("package name not set in package file");
+	goto bomb;
+    }
+
+    /* See if we're already registered */
+    (void) snprintf(LogDir, sizeof(LogDir), "%s/%s", dbdir, PkgName);
+    if ((isdir(LogDir) || islinktodir(LogDir)) && !Force) {
+	pwarnx("package already recorded as installed");
+	code = 1;
+	goto success;	/* close enough for government work */
+    }
+
+    /* See if some other version of us is already installed */
+    {
+	char buf[FILENAME_MAX];
+	char installed[FILENAME_MAX];
+	char *s;
+
+	if ((s=strrchr(PkgName, '-')) != NULL){
+	    strlcpy(buf, PkgName, sizeof(buf));
+	    /* try to find a better version number */
+	    if (!isdigit(s[1])) {
+	    	char *t;
+		for (t = s-1; t >= PkgName; t--)
+			if (*t == '-' && isdigit(t[1])) {
+				s = t;
+				break;
+			}
+	    }
+	    strlcpy(buf+(s-PkgName+1), isdigit(s[1]) ? "[0-9]*" : "*", sizeof(buf)-(s-PkgName+1));
+
+            if (findmatchingname(dbdir, buf, check_if_installed, installed, sizeof(installed))) {
+		pwarnx("other version '%s' already installed", installed);
+	    	if (find_plist_option(&Plist, "no-default-conflict") != NULL) {
+		    pwarnx("proceeding with installation anyway");
+		} else {
+		    code = 1;
+		    goto success;	/* close enough for government work */
+		}
+	    }
+	}
+    }
+
+    /* See if there are conflicting packages installed */
+    for (p = Plist.head; p ; p = p->next) {
+	char installed[FILENAME_MAX];
+
+	if (p->type != PLIST_PKGCFL)
+	    continue;
+	if (Verbose)
+	    printf("Package `%s' conflicts with `%s'\n", PkgName, p->name);
+
+	if(findmatchingname(dbdir, p->name, check_if_installed, installed, sizeof(installed))){
+	    pwarnx("Conflicting package installed, please use\n\t\"pkg_delete %s\" first to remove it!",  installed);
+	    ++code;
+	}
+    }
+
+    /* Now check the packing list for dependencies */
+    for (p = Plist.head; p ; p = p->next) {
+	char installed [FILENAME_MAX];
+
+	if (p->type != PLIST_PKGDEP)
+	    continue;
+	if (Verbose)
+	    printf("Package `%s' depends on `%s'\n", PkgName, p->name);
+	if (!findmatchingname(dbdir, p->name, check_if_installed, installed, sizeof(installed))) {
+	    char path[FILENAME_MAX], *cp = NULL;
+
+	    if (!Fake) {
+		if (!isURL(pkg) && !getenv("PKG_ADD_BASE")) {
+		    /* install depending pkg from local disk */
+
+		    snprintf(path, sizeof(path), "%s/%s", Home, ensure_tgz(p->name));
+		    if (fexists(path))
+			cp = path;
+		    else
+			cp = fileFindByPath(pkg, p->name);
+		    if (cp) {
+			if (Verbose)
+			    printf("Loading it from `%s'\n", cp);
+		        if (vsystem("pkg_add %s%s %s%s",
+                                     Prefix ? "-p " : "",
+                                     Prefix ? Prefix : "",
+				     Verbose ? "-v " : "", cp)) {
+			    pwarnx("autoload of dependency `%s' failed%s",
+				cp, Force ? " (proceeding anyway)" : "!");
+			    if (!Force)
+				++code;
+			}
+		    }
+		    else {
+			pwarnx("add of dependency `%s' failed%s",
+				p->name, Force ? " (proceeding anyway)" : "!");
+			     if (!Force)
+				++code;
+		    }
+		} else {
+		    /* install depending pkg via FTP */
+
+		    if (ispkgpattern(p->name)){
+			pwarnx("can't install dependent pkg '%s' via FTP, "
+			     "please install manually!", p->name);
+			/* ... until we come up with a better solution - HF */
+			goto bomb;
+		    }else{
+		    char *saved_Current;   /* allocated/set by save_dirs(), */
+		    char *saved_Previous;  /* freed by restore_dirs() */
+
+		    save_dirs(&saved_Current, &saved_Previous);
+
+		    if ((cp = fileGetURL(pkg, p->name)) != NULL) {
+			if (Verbose)
+			    printf("Finished loading `%s' over FTP\n", p->name);
+			system(solve_deps);
+			if (!fexists(CONTENTS_FNAME)) {
+			    pwarnx("autoloaded package `%s' has no %s file?",
+				  p->name, CONTENTS_FNAME);
+			    if (!Force)
+				++code;
+			}
+			else if (vsystem("(pwd; cat %s) | pkg_add %s%s %s-S",
+					 CONTENTS_FNAME,
+					 Prefix ? "-p " : "",
+					 Prefix ? Prefix : "",
+					 Verbose ? "-v " : "")) {
+			    pwarnx("add of dependency `%s' failed%s",
+				  p->name, Force ? " (proceeding anyway)" : "!");
+			    if (!Force)
+				++code;
+			}
+			else if (Verbose)
+			    printf("\t`%s' loaded successfully\n", p->name);
+			/* Nuke the temporary playpen */
+			leave_playpen(cp);
+			free(cp);
+
+			restore_dirs(saved_Current, saved_Previous);
+		    }
+		}
+	    }
+	    } else {
+		if (Verbose)
+		    printf("and was not found%s\n", Force ? " (proceeding anyway)" : "");
+		else
+		    printf("Package dependency `%s' for `%s' not found%s\n", p->name, pkg,
+			   Force ? " (proceeding anyway)" : "!");
+		if (!Force)
+		    ++code;
+	    }
+	}
+	else if (Verbose)
+	    printf(" - `%s' already installed\n", installed);
+    }
+
+    if (code != 0)
+	goto bomb;
+
+    /* Look for the requirements file */
+    if (fexists(REQUIRE_FNAME)) {
+	vsystem("chmod +x %s", REQUIRE_FNAME);	/* be sure */
+	if (Verbose)
+	    printf("Running requirements file first for `%s'\n", PkgName);
+	if (!Fake && vsystem("./%s %s INSTALL", REQUIRE_FNAME, PkgName)) {
+	    pwarnx("package `%s' fails requirements %s", pkg_fullname,
+		   Force ? "installing anyway" : "- not installed");
+	    if (!Force) {
+		code = 1;
+		goto success;	/* close enough for government work */
+	    }
+	}
+    }
+
+    /* If we're really installing, and have an installation file, run it */
+    if (!NoInstall && fexists(INSTALL_FNAME)) {
+	vsystem("chmod +x %s", INSTALL_FNAME);	/* make sure */
+	if (Verbose)
+	    printf("Running install with PRE-INSTALL for `%s'\n", PkgName);
+	if (!Fake && vsystem("./%s %s PRE-INSTALL", INSTALL_FNAME, PkgName)) {
+	    pwarnx("install script returned error status");
+	    unlink(INSTALL_FNAME);
+	    code = 1;
+	    goto success;		/* nothing to uninstall yet */
+	}
+    }
+
+    extract_plist(".", &Plist);
+
+    if (!Fake && fexists(MTREE_FNAME)) {
+	if (Verbose)
+	    printf("Running mtree for `%s'\n", PkgName);
+	p = find_plist(&Plist, PLIST_CWD);
+	if (Verbose)
+	    printf("mtree -q -U -f %s -d -e -p %s\n", MTREE_FNAME,
+		   p ? p->name : "/");
+	if (!Fake) {
+
+	    if (vsystem("/usr/sbin/mtree -q -U -f %s -d -e -p %s", MTREE_FNAME,
+			p ? p->name : "/"))
+		pwarnx("mtree returned a non-zero status - continuing");
+	}
+	unlink(MTREE_FNAME);
+    }
+
+    /* Run the installation script one last time? */
+    if (!NoInstall && fexists(INSTALL_FNAME)) {
+	if (Verbose)
+	    printf("Running install with POST-INSTALL for `%s'\n", PkgName);
+	if (!Fake && vsystem("./%s %s POST-INSTALL", INSTALL_FNAME, PkgName)) {
+	    pwarnx("install script returned error status");
+	    unlink(INSTALL_FNAME);
+	    code = 1;
+	    goto fail;
+	}
+	unlink(INSTALL_FNAME);
+    }
+
+    /* Time to record the deed? */
+    if (!NoRecord && !Fake) {
+	char contents[FILENAME_MAX];
+	FILE *cfile;
+
+	umask(022);
+	if (getuid() != 0)
+	    pwarnx("not running as root - trying to record install anyway");
+	if (!PkgName) {
+	    pwarnx("no package name! can't record package, sorry");
+	    code = 1;
+	    goto success;	/* well, partial anyway */
+	}
+	(void) snprintf(LogDir, sizeof(LogDir), "%s/%s", dbdir, PkgName);
+	zapLogDir = 1;
+	if (Verbose)
+	    printf("Attempting to record package into `%s'\n", LogDir);
+	if (make_hierarchy(LogDir)) {
+	    pwarnx("can't record package into '%s', you're on your own!",
+		   LogDir);
+	    memset(LogDir, 0, FILENAME_MAX);
+	    code = 1;
+	    goto success;	/* close enough for government work */
+	}
+	/* Make sure pkg_info can read the entry */
+	vsystem("chmod a+rx %s", LogDir);
+	if (fexists(DEINSTALL_FNAME))
+	    move_file(".", DEINSTALL_FNAME, LogDir);
+	if (fexists(REQUIRE_FNAME))
+	    move_file(".", REQUIRE_FNAME, LogDir);
+	(void) snprintf(contents, sizeof(contents), "%s/%s", LogDir, CONTENTS_FNAME);
+	cfile = fopen(contents, "w");
+	if (!cfile) {
+	    pwarnx("can't open new contents file '%s'! can't register pkg",
+		contents);
+	    goto success; /* can't log, but still keep pkg */
+	}
+	write_plist(&Plist, cfile);
+	fclose(cfile);
+	move_file(".", DESC_FNAME, LogDir);
+	move_file(".", COMMENT_FNAME, LogDir);
+	if (fexists(DISPLAY_FNAME))
+	    move_file(".", DISPLAY_FNAME, LogDir);
+
+	/* register dependencies */
+	/* we could save some cycles here if we remembered what we installed
+	 * above (in case we got a wildcard dependency) */
+	/* XXX remembering in p->name would NOT be good! */
+	for (p = Plist.head; p ; p = p->next) {
+	    if (p->type != PLIST_PKGDEP)
+		continue;
+	    if (Verbose)
+		printf("Attempting to record dependency on package `%s'\n", p->name);
+	    (void) snprintf(contents, sizeof(contents), "%s/%s", dbdir,
+	    	    basename_of(p->name));
+	    if (ispkgpattern(p->name)) {
+		char *s;
+		s=findbestmatchingname(dirname_of(contents),
+				       basename_of(contents));
+		if (s != NULL) {
+		    char *t;
+		    t=strrchr(contents, '/');
+		    strlcpy(t+1, s, contents + sizeof(contents) - (t+1));
+		    free(s);
+		}else{
+		    errx(1,"Where did our dependency go?!");
+		    /* this shouldn't happen... X-) */
+		}
+	    }
+	    strlcat(contents, "/", sizeof(contents));
+	    strlcat(contents, REQUIRED_BY_FNAME, sizeof(contents));
+
+	    cfile = fopen(contents, "a");
+	    if (!cfile)
+		pwarnx("can't open dependency file '%s'!\n"
+		       "dependency registration is incomplete", contents);
+	    else {
+		fprintf(cfile, "%s\n", PkgName);
+		if (fclose(cfile) == EOF)
+		    pwarnx("cannot properly close file `%s'", contents);
+	    }
+	}
+	if (Verbose)
+	    printf("Package `%s' registered in `%s'\n", PkgName, LogDir);
+    }
+
+    if ((p = find_plist(&Plist, PLIST_DISPLAY)) != NULL) {
+	char *Pager;
+	char buf[BUFSIZ];
+	struct stat sbuf;
+
+	switch(DisplayMode) {
+	    case CAT:
+		Pager = "/bin/cat";
+		break;
+	    case LESS:
+		Pager = "/usr/bin/less";
+		break;
+	    case MORE:
+		Pager = NULL;
+		break;
+	    case ENV:
+	    default:
+		Pager = getenv("PAGER");
+		break;
+	}
+	if (Pager == NULL)
+	    Pager = "/usr/bin/more";
+
+	snprintf(buf, sizeof buf, "%s/%s", LogDir, p->name);
+	if (stat(buf,&sbuf) == -1 || vsystem("%s %s", Pager, buf)) {
+	    pwarnx("cannot open `%s' as display file", buf);
+	    DisplayMode = CAT;	/* in case the pager is just missing */
+	}
+    }
+
+    goto success;
+
+ bomb:
+    code = 1;
+    goto success;
+
+ fail:
+    /* Nuke the whole (installed) show, XXX but don't clean directories */
+    if (!Fake)
+	delete_package(FALSE, FALSE, FALSE, FALSE, &Plist);
+
+ success:
+    /* delete the packing list contents */
+    free_plist(&Plist);
+    leave_playpen(Home);
+    return code;
+}
+
+static int
+sanity_check(char *pkg)
+{
+    int code = 0;
+
+    if (!fexists(CONTENTS_FNAME)) {
+	pwarnx("package `%s' has no CONTENTS file!", pkg);
+	code = 1;
+    }
+    else if (!fexists(COMMENT_FNAME)) {
+	pwarnx("package `%s' has no COMMENT file!", pkg);
+	code = 1;
+    }
+    else if (!fexists(DESC_FNAME)) {
+	pwarnx("package `%s' has no DESC file!", pkg);
+	code = 1;
+    }
+    return code;
+}
+
+void
+cleanup(int signo)
+{
+    int save_errno = errno;
+    static int	alreadyCleaning;
+    void (*oldint)(int);
+    void (*oldhup)(int);
+    char buf[1024];
+    oldint = signal(SIGINT, SIG_IGN);
+    oldhup = signal(SIGHUP, SIG_IGN);
+
+    /* XXX big signal race, nearly all of it! */
+    if (!alreadyCleaning) {
+    	alreadyCleaning = 1;
+	if (signo) {
+	    snprintf(buf, sizeof buf,
+		"Signal %d received, cleaning up\n", signo);
+	    write(STDOUT_FILENO, buf, strlen(buf));
+	}
+	if (!Fake && zapLogDir && LogDir[0])
+	    vsystem("%s -rf %s", REMOVE_CMD, LogDir);	/* XXX */
+	leave_playpen(Home);				/* XXX */
+	if (signo)
+	    _exit(1);
+    }
+    signal(SIGINT, oldint);
+    signal(SIGHUP, oldhup);
+    errno = save_errno;
+}
+@
+
+
+1.3
+log
+@sync with mpsup module
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: mpsup/pkgtools/add/perform.c,v 1.3 2004/07/21 09:41:35 tg Exp $ */
+d32 1
+a32 1
+__RCSID("$MirBSD: mpsup/pkgtools/add/perform.c,v 1.3 2004/07/21 09:41:35 tg Exp $");
+@
+
+
+1.2
+log
+@* from now on, you can specify pkg_add(1) whether it should use
+  cat, less, more or ${PAGER:-more} as the displaying programme
+  for packet MESSAGEs (the latter was default).
+  Using cat can be useful for bulk unattended installations.
+
+  Annoyed myself and reminded by franciszek holop <fred@@pentacom.sk>
+* whitespace cleanup
+* use new MirOS-style RCS IDs
+* documentation fixes
+@
+text
+@d1 1
+a1 1
+/* $MirBSD$ */
+a22 3
+#include <sys/cdefs.h>
+__RCSID("$MirBSD$");
+
+d32 2
+a281 2
+	/* was: */
+        /* if (!vsystem("/usr/sbin/pkg_info -qe '%s'", p->name)) {*/
+a295 1
+	/* if (vsystem("/usr/sbin/pkg_info -qe '%s'", p->name)) { */
+d311 1
+a311 1
+		        if (vsystem("/usr/sbin/pkg_add %s%s %s%s",
+@
+
+
+1.2.2.1
+log
+@remove old MirPorts tools from #7quinquies-to-be
+agreed bsiegert@@
+@
+text
+@d1 1
+a1 1
+/* $MirBSD: src/usr.sbin/pkg_install/add/perform.c,v 1.2 2004/02/25 13:28:11 tg Exp $ */
+d24 1
+a24 1
+__RCSID("$MirBSD: src/usr.sbin/pkg_install/add/perform.c,v 1.2 2004/02/25 13:28:11 tg Exp $");
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 5
+/*	$OpenBSD: perform.c,v 1.22 2001/11/26 05:04:33 deraadt Exp $	*/
+
+#ifndef lint
+static const char *rcsid = "$OpenBSD: perform.c,v 1.22 2001/11/26 05:04:33 deraadt Exp $";
+#endif
+a20 1
+ *
+d23 3
+d63 1
+a63 1
+check_if_installed(const char *found, char *note)
+d65 1
+a65 1
+    strcpy(note, found);
+d92 1
+a92 1
+    strcpy(playpen, FirstPen);
+d129 1
+a129 1
+	    strcpy(pkg_fullname, pkg);
+d141 1
+a141 1
+	    strlcpy(pkg_fullname, ensure_tgz(pkg), sizeof pkg_fullname);
+d229 5
+a233 1
+    PkgName = (p = find_plist(&Plist, PLIST_NAME)) ? p->name : "anonymous";
+d244 1
+a244 1
+    {	
+d250 1
+a250 1
+	    strcpy(buf, PkgName);
+d254 1
+a254 1
+		for (t = s-1; t >= PkgName; t--) 
+d260 1
+a260 1
+	    strcpy(buf+(s-PkgName+1), isdigit(s[1]) ? "[0-9]*" : "*");
+d262 1
+a262 1
+            if (findmatchingname(dbdir, buf, check_if_installed, installed)) {
+d271 1
+a271 1
+	}	
+d277 1
+a277 1
+	
+d282 1
+a282 1
+	
+d285 2
+a286 2
+	if(findmatchingname(dbdir, p->name, check_if_installed, installed)){
+	    pwarnx("Conflicting package installed, please use\n\t\"pkg_delete %s\" first to remove it!\n",  installed); 
+d294 1
+a294 1
+	
+d300 1
+a300 1
+	if (!findmatchingname(dbdir, p->name, check_if_installed, installed)) {
+d306 2
+a307 2
+		    
+		    snprintf(path, FILENAME_MAX, "%s/%s", Home, ensure_tgz(p->name));
+d342 1
+a342 1
+		    
+d344 1
+a344 1
+		    
+d356 1
+a356 1
+					 CONTENTS_FNAME, 
+d369 1
+d513 2
+a514 1
+		    strcpy(t+1, s);
+d520 3
+a522 3
+	    strcat(contents, "/");
+	    strcat(contents, REQUIRED_BY_FNAME);
+ 
+d542 16
+a557 2
+	Pager = getenv("PAGER");
+	if (!Pager) 
+d561 1
+a561 1
+	if (stat(buf,&sbuf) == -1 || vsystem("%s %s", Pager, buf)) 
+d563 2
+d576 1
+a576 1
+	delete_package(FALSE, FALSE, &Plist);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD cvs as of roughly 11:11 UTC today,
+or CTM delta 3188/3189/3190.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.25 2003/04/05 18:04:00 avsm Exp $	*/
+d4 1
+a4 1
+static const char *rcsid = "$OpenBSD: perform.c,v 1.25 2003/04/05 18:04:00 avsm Exp $";
+d64 1
+a64 1
+check_if_installed(const char *found, char *note, int len)
+d66 1
+a66 1
+    strlcpy(note, found, len);
+d93 1
+a93 1
+    strlcpy(playpen, FirstPen, sizeof(playpen));
+d130 1
+a130 1
+	    strlcpy(pkg_fullname, pkg, sizeof(pkg_fullname));
+d142 1
+a142 1
+	    strlcpy(pkg_fullname, ensure_tgz(pkg), sizeof(pkg_fullname));
+d247 1
+a247 1
+	    strlcpy(buf, PkgName, sizeof(buf));
+d257 1
+a257 1
+	    strlcpy(buf+(s-PkgName+1), isdigit(s[1]) ? "[0-9]*" : "*", sizeof(buf)-(s-PkgName+1));
+d259 1
+a259 1
+            if (findmatchingname(dbdir, buf, check_if_installed, installed, sizeof(installed))) {
+d282 1
+a282 1
+	if(findmatchingname(dbdir, p->name, check_if_installed, installed, sizeof(installed))){
+d297 1
+a297 1
+	if (!findmatchingname(dbdir, p->name, check_if_installed, installed, sizeof(installed))) {
+d304 1
+a304 1
+		    snprintf(path, sizeof(path), "%s/%s", Home, ensure_tgz(p->name));
+d515 2
+a516 2
+	    strlcat(contents, "/", sizeof(contents));
+	    strlcat(contents, REQUIRED_BY_FNAME, sizeof(contents));
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD source tree of short before 17:00 UTC today
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.26 2003/04/19 10:46:16 henning Exp $	*/
+d4 1
+a4 1
+static const char *rcsid = "$OpenBSD: perform.c,v 1.26 2003/04/19 10:46:16 henning Exp $";
+d509 1
+a509 1
+		    strlcpy(t+1, s, contents + sizeof(contents) - (t+1));
+@
+
+
+1.1.1.4
+log
+@Import OpenBSD base system minus kerberos from CTM,
+kernel source from CVS right now (no diffs though)
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.27 2003/07/04 17:31:19 avsm Exp $	*/
+d4 1
+a4 1
+static const char rcsid[] = "$OpenBSD: perform.c,v 1.27 2003/07/04 17:31:19 avsm Exp $";
+@
+
+
+1.1.1.5
+log
+@Synchronize source tree with OpenBSD
+note: due to recent changes in the codebase of OpenBSD,
+out libcom_err will be incompatible with theirs...
+but this is no issue because we don't provide a dynamically
+linked one, and theirs won't be provided longer any more anyways.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.28 2003/07/09 20:01:43 otto Exp $	*/
+d4 1
+a4 1
+static const char rcsid[] = "$OpenBSD: perform.c,v 1.28 2003/07/09 20:01:43 otto Exp $";
+d230 1
+a230 5
+    PkgName = (p = find_plist(&Plist, PLIST_NAME)) ? p->name : NULL;
+    if (PkgName == NULL) {
+	pwarnx("package name not set in package file");
+	goto bomb;
+    }
+@
+
+
+1.1.1.6
+log
+@Import the complete OpenBSD source tree (base system)
+as of CTM delta 3496 (roughly 1200 UTC today) into the
+vendor branch.
+Attention: this is a big update. Don't even try to
+build this system, OpenBSD 3.4-beta, yet on your own.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.30 2003/08/06 20:46:36 millert Exp $	*/
+d4 1
+a4 1
+static const char rcsid[] = "$OpenBSD: perform.c,v 1.30 2003/08/06 20:46:36 millert Exp $";
+a369 1
+			free(cp);
+a513 1
+		    free(s);
+d559 1
+a559 1
+	delete_package(FALSE, FALSE, FALSE, &Plist);
+@
+
+
+1.1.1.7
+log
+@Import OpenBSD source tree from CVS (anoncvs canada)
+of roughly 12:00 UTC today. Bumps us to OpenBSD 3.4
+and makes source/ports in sync. Hopefully.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.31 2003/08/16 17:31:56 deraadt Exp $	*/
+d4 1
+a4 1
+static const char rcsid[] = "$OpenBSD: perform.c,v 1.31 2003/08/16 17:31:56 deraadt Exp $";
+d287 1
+a287 1
+	    pwarnx("Conflicting package installed, please use\n\t\"pkg_delete %s\" first to remove it!",  installed); 
+@
+
+
+1.1.1.8
+log
+@Pull in a bit of current OpenBSD, to the least
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: perform.c,v 1.32 2003/08/21 20:24:56 espie Exp $	*/
+d4 1
+a4 1
+static const char rcsid[] = "$OpenBSD: perform.c,v 1.32 2003/08/21 20:24:56 espie Exp $";
+d561 1
+a561 1
+	delete_package(FALSE, FALSE, FALSE, FALSE, &Plist);
+@
+
+

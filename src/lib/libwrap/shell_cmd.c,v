@@ -1,0 +1,207 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.47.59;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.47.59;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: shell_cmd.c,v 1.2 2002/01/02 20:18:33 deraadt Exp $	*/
+
+ /*
+  * shell_cmd() takes a shell command after %<character> substitutions. The
+  * command is executed by a /bin/sh child process, with standard input,
+  * standard output and standard error connected to /dev/null.
+  * 
+  * Diagnostics are reported through syslog(3).
+  * 
+  * Author: Wietse Venema, Eindhoven University of Technology, The Netherlands.
+  */
+
+#ifndef lint
+#if 0
+static char sccsid[] = "@@(#) shell_cmd.c 1.5 94/12/28 17:42:44";
+#else
+static char rcsid[] = "$OpenBSD: shell_cmd.c,v 1.2 2002/01/02 20:18:33 deraadt Exp $";
+#endif
+#endif
+
+/* System libraries. */
+
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <stdio.h>
+#include <syslog.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+/* Local stuff. */
+
+#include "tcpd.h"
+
+/* Forward declarations. */
+
+static void do_child();
+
+/* shell_cmd - execute shell command */
+
+void    shell_cmd(command)
+char   *command;
+{
+    pid_t	child_pid;
+    pid_t	wait_pid;
+
+    /*
+     * Most of the work is done within the child process, to minimize the
+     * risk of damage to the parent.
+     */
+
+    switch (child_pid = fork()) {
+    case -1:					/* error */
+	tcpd_warn("cannot fork: %m");
+	break;
+    case 00:					/* child */
+	do_child(command);
+	/* NOTREACHED */
+    default:					/* parent */
+	while ((wait_pid = wait((int *) 0)) != -1 && wait_pid != child_pid)
+	     /* void */ ;
+    }
+}
+
+/* do_child - exec command with { stdin, stdout, stderr } to /dev/null */
+
+static void do_child(command)
+char   *command;
+{
+    char   *error;
+    int     tmp_fd;
+
+    /*
+     * Systems with POSIX sessions may send a SIGHUP to grandchildren if the
+     * child exits first. This is sick, sessions were invented for terminals.
+     */
+
+    signal(SIGHUP, SIG_IGN);
+
+    /* Set up new stdin, stdout, stderr, and exec the shell command. */
+
+    for (tmp_fd = 0; tmp_fd < 3; tmp_fd++)
+	(void) close(tmp_fd);
+    if (open("/dev/null", O_RDWR) != 0) {
+	error = "open /dev/null: %m";
+    } else if (dup(0) != 1 || dup(0) != 2) {
+	error = "dup: %m";
+    } else {
+	(void) execl("/bin/sh", "sh", "-c", command, (char *) 0);
+	error = "execl /bin/sh: %m";
+    }
+
+    /* Something went wrong. We MUST terminate the child process. */
+
+    tcpd_warn(error);
+    _exit(0);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,384 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.05.16.17.43.11;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.52;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.29.41;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@# step.exp -- Expect script to test gdb with step.c
+# Copyright (C) 1992 Free Software Foundation, Inc.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+# Please email any bugs, comments, and/or additions to this file to:
+# bug-gdb@@prep.ai.mit.edu
+
+# This file was written by Hiro Sugawara. (hiro@@lynx.com)
+#
+# This test really needs some major surgery to be acceptable, but
+# I'm just about burnt out on lynx work, so I'm not doing it now.
+#
+#	* The test has an indeterminate number of pass/fails
+#	for each run (it runs a small group of tests until
+#	it's timer kicks off).  This is very bad for nightly
+#	automated regression testing.
+#
+#	* It tries to "step" from withint he prologue of a
+# 	function.  This isn't support in gdb (it's going
+#	to act like a continue).
+#
+#	* This test rarely check that it stopped in sensible
+#	places.  (see previous bullet -- this test doesn't
+#	catch the fact it continued rather than stepped)
+
+
+if $tracelevel then {
+	strace $tracelevel
+}
+
+set program_exited 0
+
+proc set_bp { where } {
+    global prompt
+
+    send "break $where\n"
+    # The first regexp is what we get with -g, the second without -g.
+    expect {
+	-re "Break.* at .*: file .*, line \[0-9\]*.*$prompt $" {}
+	-re "Breakpoint \[0-9\]* at 0x\[0-9a-f\]*.*$prompt $" {}
+	-re "$prompt $" { fail "setting breakpoint at $where" ; return 0 }
+	timeout { fail "setting breakpoint at $where (timeout)" ; return 0 }
+    }
+    pass "set_bp"
+}
+
+proc step_it { cmd } {
+    global prompt
+    global program_exited
+
+    send "$cmd\n"
+    expect {
+	-re "0x\[0-9A-Fa-f\]* *in.*\r\n$prompt $" { pass "step_it"; return 0 }
+	-re "0x\[0-9A-Fa-f\]* *\[0-9\]*.*\r\n$prompt $" { pass "step_it"; return 1 }
+	-re "Program exited .*\n$prompt $" {
+		set program_exited 1
+		return -1
+	    }
+	-re "$prompt $"	{ fail "single-stepping ($cmd).\n" ; return -1 }
+	timeout	{ fail "single-stepping ($cmd) timout.\n" ; return -1 }
+    }
+}
+
+proc step_inst {} {
+    step_it "stepi"
+}
+
+proc step_source {} {
+    step_it "step"
+}
+
+proc continue_all {} {
+    global prompt
+
+    send "continue\n"
+    expect {
+	-re "Breakpoint \[0-9\]*, thread\[0-9\]* .*$prompt $" { 
+	    pass "continue_all"
+	    return 0
+	}
+	-re "Program exited .*\n$prompt $" {
+	    set program_exited 1
+	    return 1;
+	}
+	-re "$prompt $" { fail "continue" ; return -1 }
+	timeout { fail "continue (timeout)" ; return -1 }
+    }
+}
+
+proc check_threads { num_threads } {
+    global prompt
+
+    set curr_thread 0
+    send "info threads\n"
+    while { $num_threads > 0 } {
+	expect {
+	    -re "\\* *\[0-9\]* process \[0-9\]* thread \[0-9\]* .*\n" {
+		incr curr_thread
+		set num_threads [expr $num_threads - 1]
+	    }
+	    -re " *\[0-9\]* process \[0-9\]* thread \[0-9\]* .*\n" {
+		set num_threads [expr $num_threads - 1]
+	    }
+	    -re "$prompt $" {
+		if { $num_threads < 0 } {
+		    fail "check_threads (too many)" ; return -1
+		}
+		break
+	    }
+	    timeout { fail "check_threads (timeout)" ; return -1 }
+	}
+    }
+
+    if { $curr_thread == 0 } {
+	fail "check_threads (no current thread)\n"
+	return -1
+    }
+    if { $curr_thread > 1 } {
+	fail "check_threads (more than one current thread)\n"
+	return -1
+    }
+    return 0
+}
+
+proc test_cond_wait {} {
+    global program_exited
+
+    set_bp	135
+    runto	179
+    while { 1 } {
+	set stepi_counter 0
+	while { [step_inst] } {
+		if { $program_exited } { break }
+		incr stepi_counter
+		if { $stepi_counter > 30 } {
+			fail "too many stepi's per line\n"
+			return -1
+		}
+	}
+	if { $program_exited } { break }
+	step_source
+	if { $program_exited } { break }
+	continue_all
+	if { $program_exited } { break }
+	check_threads 3
+    }
+}
+
+proc do_tests {} {
+    global prms_id
+    global bug_id
+    global subdir
+    global objdir
+    global srcdir
+    global binfile
+    global prompt
+
+    set prms_id 0
+    set bug_id 0
+
+    # Start with a fresh gdb.
+
+    gdb_exit
+    gdb_start
+    gdb_reinitialize_dir $srcdir/$subdir
+    gdb_load $objdir/$subdir/$binfile
+
+    send "set width 0\n"
+    expect -re "$prompt $"
+
+    test_cond_wait
+}
+
+# Check to see if we have an executable to test.  If not, then either we
+# haven't tried to compile one, or the compilation failed for some reason.
+# In either case, just notify the user and skip the tests in this file.
+
+set binfile "step"
+set srcfile "step.c"
+
+if ![file exists $objdir/$subdir/$binfile] then {
+    if $all_flag then {
+	warning "$binfile does not exist; tests suppressed."
+    }
+} else {
+    do_tests
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+# Copyright (C) 1992, 1997 Free Software Foundation, Inc.
+d16 1
+a16 1
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  
+d47 1
+a47 1
+    global gdb_prompt
+d49 1
+a49 1
+    send_gdb "break $where\n"
+d51 4
+a54 4
+    gdb_expect {
+	-re "Break.* at .*: file .*, line \[0-9\]*.*$gdb_prompt $" {}
+	-re "Breakpoint \[0-9\]* at 0x\[0-9a-f\]*.*$gdb_prompt $" {}
+	-re "$gdb_prompt $" { fail "setting breakpoint at $where" ; return 0 }
+d61 1
+a61 1
+    global gdb_prompt
+d64 5
+a68 5
+    send_gdb "$cmd\n"
+    gdb_expect {
+	-re "0x\[0-9A-Fa-f\]* *in.*\r\n$gdb_prompt $" { pass "step_it"; return 0 }
+	-re "0x\[0-9A-Fa-f\]* *\[0-9\]*.*\r\n$gdb_prompt $" { pass "step_it"; return 1 }
+	-re "Program exited .*\n$gdb_prompt $" {
+d72 1
+a72 1
+	-re "$gdb_prompt $"	{ fail "single-stepping ($cmd).\n" ; return -1 }
+d86 1
+a86 1
+    global gdb_prompt
+d88 3
+a90 3
+    send_gdb "continue\n"
+    gdb_expect {
+	-re "Breakpoint \[0-9\]*, thread\[0-9\]* .*$gdb_prompt $" { 
+d94 1
+a94 1
+	-re "Program exited .*\n$gdb_prompt $" {
+d98 1
+a98 1
+	-re "$gdb_prompt $" { fail "continue" ; return -1 }
+d104 1
+a104 1
+    global gdb_prompt
+d107 1
+a107 1
+    send_gdb "info threads\n"
+d109 1
+a109 1
+	gdb_expect {
+d117 1
+a117 1
+	    -re "$gdb_prompt $" {
+d169 1
+a169 1
+    global gdb_prompt
+d181 2
+a182 2
+    send_gdb "set width 0\n"
+    gdb_expect -re "$gdb_prompt $"
+@
+

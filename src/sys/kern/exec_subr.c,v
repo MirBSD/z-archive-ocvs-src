@@ -1,0 +1,535 @@
+head	1.2;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	MIRBSD_4:1.2
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.03.29.19.54.32;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.51.50;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.51.50;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.05.21.19.10.26;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@merge elfdiffs.030314
+@
+text
+@/*	$MirBSD$	*/
+/*	$OpenBSD: exec_subr.c,v 1.24 2002/12/19 00:57:07 mickey Exp $	*/
+/*	$NetBSD: exec_subr.c,v 1.9 1994/12/04 03:10:42 mycroft Exp $	*/
+
+/*
+ * Copyright (c) 1993, 1994 Christopher G. Demetriou
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed by Christopher G. Demetriou.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/proc.h>
+#include <sys/malloc.h>
+#include <sys/vnode.h>
+#include <sys/filedesc.h>
+#include <sys/exec.h>
+#include <sys/mman.h>
+#include <sys/resourcevar.h>
+
+#include <uvm/uvm.h>
+
+#ifdef DEBUG
+/*
+ * new_vmcmd():
+ *	create a new vmcmd structure and fill in its fields based
+ *	on function call arguments.  make sure objects ref'd by
+ *	the vmcmd are 'held'.
+ *
+ * If not debugging, this is a macro, so it's expanded inline.
+ */
+
+void
+new_vmcmd(evsp, proc, len, addr, vp, offset, prot, flags)
+	struct	exec_vmcmd_set *evsp;
+	int	(*proc)(struct proc * p, struct exec_vmcmd *);
+	u_long	len;
+	u_long	addr;
+	struct	vnode *vp;
+	u_long	offset;
+	u_int	prot;
+	int	flags;
+{
+	struct exec_vmcmd    *vcp;
+
+	if (evsp->evs_used >= evsp->evs_cnt)
+		vmcmdset_extend(evsp);
+	vcp = &evsp->evs_cmds[evsp->evs_used++];
+	vcp->ev_proc = proc;
+	vcp->ev_len = len;
+	vcp->ev_addr = addr;
+	if ((vcp->ev_vp = vp) != NULL)
+		vref(vp);
+	vcp->ev_offset = offset;
+	vcp->ev_prot = prot;
+	vcp->ev_flags = flags;
+}
+#endif /* DEBUG */
+
+void
+vmcmdset_extend(evsp)
+	struct	exec_vmcmd_set *evsp;
+{
+	struct exec_vmcmd *nvcp;
+	u_int ocnt;
+
+#ifdef DIAGNOSTIC
+	if (evsp->evs_used < evsp->evs_cnt)
+		panic("vmcmdset_extend: not necessary");
+#endif
+
+	ocnt = evsp->evs_cnt;
+	KASSERT(ocnt > 0);
+	/* figure out number of entries in new set */
+	evsp->evs_cnt += ocnt;
+
+	/* reallocate the command set */
+	nvcp = malloc(evsp->evs_cnt * sizeof(struct exec_vmcmd), M_EXEC,
+	    M_WAITOK);
+	bcopy(evsp->evs_cmds, nvcp, (ocnt * sizeof(struct exec_vmcmd)));
+	if (evsp->evs_cmds != evsp->evs_start)
+		free(evsp->evs_cmds, M_EXEC);
+	evsp->evs_cmds = nvcp;
+}
+
+void
+kill_vmcmds(struct exec_vmcmd_set *evsp)
+{
+	struct exec_vmcmd *vcp;
+	int i;
+
+	for (i = 0; i < evsp->evs_used; i++) {
+		vcp = &evsp->evs_cmds[i];
+		if (vcp->ev_vp != NULLVP)
+			vrele(vcp->ev_vp);
+	}
+
+	/*
+	 * Free old vmcmds and restet the array.
+	 */
+	evsp->evs_used = 0;
+	if (evsp->evs_cmds != evsp->evs_start)
+		free(evsp->evs_cmds, M_EXEC);
+	evsp->evs_cmds = evsp->evs_start;
+	evsp->evs_cnt = EXEC_DEFAULT_VMCMD_SETSIZE;
+}
+
+int
+exec_process_vmcmds(struct proc *p, struct exec_package *epp)
+{
+	struct exec_vmcmd *base_vc = NULL;
+	int error = 0;
+	int i;
+
+	for (i = 0; i < epp->ep_vmcmds.evs_used && !error; i++) {
+		struct exec_vmcmd *vcp;
+
+		vcp = &epp->ep_vmcmds.evs_cmds[i];
+
+		if (vcp->ev_flags & VMCMD_RELATIVE) {
+#ifdef DIAGNOSTIC
+			if (base_vc == NULL)
+				panic("exec_process_vmcmds: RELATIVE no base");
+#endif
+			vcp->ev_addr += base_vc->ev_addr;
+		}
+		error = (*vcp->ev_proc)(p, vcp);
+		if (vcp->ev_flags & VMCMD_BASE) {
+			base_vc = vcp;
+		}
+	}
+
+	kill_vmcmds(&epp->ep_vmcmds);
+
+	return (error);
+}
+
+/*
+ * vmcmd_map_pagedvn():
+ *	handle vmcmd which specifies that a vnode should be mmap'd.
+ *	appropriate for handling demand-paged text and data segments.
+ */
+
+int
+vmcmd_map_pagedvn(p, cmd)
+	struct proc *p;
+	struct exec_vmcmd *cmd;
+{
+	/*
+	 * note that if you're going to map part of an process as being
+	 * paged from a vnode, that vnode had damn well better be marked as
+	 * VTEXT.  that's handled in the routine which sets up the vmcmd to
+	 * call this routine.
+	 */
+	struct uvm_object *uobj;
+	int error;
+
+	/*
+	 * map the vnode in using uvm_map.
+	 */
+
+	if (cmd->ev_len == 0)
+		return(0);
+	if (cmd->ev_offset & PAGE_MASK)
+		return(EINVAL);
+	if (cmd->ev_addr & PAGE_MASK)
+		return(EINVAL);
+	if (cmd->ev_len & PAGE_MASK)
+		return(EINVAL);
+
+	/*
+	 * first, attach to the object
+	 */
+
+	uobj = uvn_attach((void *) cmd->ev_vp, VM_PROT_READ|VM_PROT_EXECUTE);
+	if (uobj == NULL)
+		return(ENOMEM);
+
+	/*
+	 * do the map
+	 */
+
+	error = uvm_map(&p->p_vmspace->vm_map, &cmd->ev_addr, cmd->ev_len,
+	    uobj, cmd->ev_offset, 0,
+	    UVM_MAPFLAG(cmd->ev_prot, VM_PROT_ALL, UVM_INH_COPY,
+	    UVM_ADV_NORMAL, UVM_FLAG_COPYONW|UVM_FLAG_FIXED));
+
+	/*
+	 * check for error
+	 */
+
+	if (error) {
+		/*
+		 * error: detach from object
+		 */
+		uobj->pgops->pgo_detach(uobj);
+	}
+
+	return (error);
+}
+
+/*
+ * vmcmd_map_readvn():
+ *	handle vmcmd which specifies that a vnode should be read from.
+ *	appropriate for non-demand-paged text/data segments, i.e. impure
+ *	objects (a la OMAGIC and NMAGIC).
+ */
+int
+vmcmd_map_readvn(p, cmd)
+	struct proc *p;
+	struct exec_vmcmd *cmd;
+{
+	int error;
+
+	if (cmd->ev_len == 0)
+		return (0);
+	
+	cmd->ev_addr = trunc_page(cmd->ev_addr); /* required by uvm_map */
+	error = uvm_map(&p->p_vmspace->vm_map, &cmd->ev_addr,
+	    round_page(cmd->ev_len), NULL, UVM_UNKNOWN_OFFSET, 0,
+	    UVM_MAPFLAG(UVM_PROT_ALL, UVM_PROT_ALL, UVM_INH_COPY,
+	    UVM_ADV_NORMAL,
+	    UVM_FLAG_FIXED|UVM_FLAG_OVERLAY|UVM_FLAG_COPYONW));
+
+	if (error)
+		return (error);
+
+	error = vn_rdwr(UIO_READ, cmd->ev_vp, (caddr_t)cmd->ev_addr,
+	    cmd->ev_len, cmd->ev_offset, UIO_USERSPACE, IO_UNIT|IO_NODELOCKED,
+	    p->p_ucred, NULL, p);
+	if (error)
+		return (error);
+
+	if (cmd->ev_prot != (VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXECUTE)) {
+		/*
+		 * we had to map in the area at PROT_ALL so that vn_rdwr()
+		 * could write to it.   however, the caller seems to want
+		 * it mapped read-only, so now we are going to have to call
+		 * uvm_map_protect() to fix up the protection.  ICK.
+		 */
+		return (uvm_map_protect(&p->p_vmspace->vm_map,
+		    trunc_page(cmd->ev_addr),
+		    round_page(cmd->ev_addr + cmd->ev_len),
+		    cmd->ev_prot, FALSE));
+	}
+	return (0);
+}
+
+/*
+ * vmcmd_map_zero():
+ *	handle vmcmd which specifies a zero-filled address space region.  The
+ *	address range must be first allocated, then protected appropriately.
+ */
+
+int
+vmcmd_map_zero(p, cmd)
+	struct proc *p;
+	struct exec_vmcmd *cmd;
+{
+	int error;
+
+	if (cmd->ev_len == 0)
+		return (0);
+	
+	cmd->ev_addr = trunc_page(cmd->ev_addr); /* required by uvm_map */
+	error = uvm_map(&p->p_vmspace->vm_map, &cmd->ev_addr,
+	    round_page(cmd->ev_len), NULL, UVM_UNKNOWN_OFFSET, 0,
+	    UVM_MAPFLAG(cmd->ev_prot, UVM_PROT_ALL, UVM_INH_COPY,
+	    UVM_ADV_NORMAL, UVM_FLAG_FIXED|UVM_FLAG_COPYONW));
+
+	if (error)
+		return error;
+
+	return (0);
+}
+
+/*
+ * exec_setup_stack(): Set up the stack segment for an a.out
+ * executable.
+ *
+ * Note that the ep_ssize parameter must be set to be the current stack
+ * limit; this is adjusted in the body of execve() to yield the
+ * appropriate stack segment usage once the argument length is
+ * calculated.
+ *
+ * This function returns an int for uniformity with other (future) formats'
+ * stack setup functions.  They might have errors to return.
+ */
+
+int
+exec_setup_stack(struct proc *p, struct exec_package *epp)
+{
+
+#ifdef MACHINE_STACK_GROWS_UP
+	epp->ep_maxsaddr = USRSTACK;
+	epp->ep_minsaddr = USRSTACK + MAXSSIZ;
+#else
+	epp->ep_maxsaddr = USRSTACK - MAXSSIZ;
+	epp->ep_minsaddr = USRSTACK;
+#endif
+	epp->ep_ssize = round_page(p->p_rlimit[RLIMIT_STACK].rlim_cur);
+
+	/*
+	 * set up commands for stack.  note that this takes *two*, one to
+	 * map the part of the stack which we can access, and one to map
+	 * the part which we can't.
+	 *
+	 * arguably, it could be made into one, but that would require the
+	 * addition of another mapping proc, which is unnecessary
+	 *
+	 * note that in memory, things assumed to be: 0 ....... ep_maxsaddr
+	 * <stack> ep_minsaddr
+	 */
+#ifdef MACHINE_STACK_GROWS_UP
+	NEW_VMCMD(&epp->ep_vmcmds, vmcmd_map_zero,
+	    ((epp->ep_minsaddr - epp->ep_ssize) - epp->ep_maxsaddr),
+	    epp->ep_maxsaddr + epp->ep_ssize, NULLVP, 0, VM_PROT_NONE);
+	NEW_VMCMD(&epp->ep_vmcmds, vmcmd_map_zero, epp->ep_ssize,
+	    epp->ep_maxsaddr, NULLVP, 0,
+	    VM_PROT_READ|VM_PROT_WRITE);
+#else
+	NEW_VMCMD(&epp->ep_vmcmds, vmcmd_map_zero,
+	    ((epp->ep_minsaddr - epp->ep_ssize) - epp->ep_maxsaddr),
+	    epp->ep_maxsaddr, NULLVP, 0, VM_PROT_NONE);
+	NEW_VMCMD(&epp->ep_vmcmds, vmcmd_map_zero, epp->ep_ssize,
+	    (epp->ep_minsaddr - epp->ep_ssize), NULLVP, 0,
+	    VM_PROT_READ|VM_PROT_WRITE);
+#endif
+
+	return 0;
+}
+
+int
+exec_setup_heap(struct proc *p, struct exec_package *epp)
+{
+	struct vmspace *vm = p->p_vmspace;
+
+	NEW_VMCMD(&epp->ep_vmcmds, vmcmd_map_zero, MAXDSIZ - ptoa(vm->vm_dsize),
+	    (vaddr_t)vm->vm_daddr + ptoa(vm->vm_dsize), NULLVP, 0,
+	    VM_PROT_NONE);
+
+	return (0);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+d315 1
+a315 3
+exec_setup_stack(p, epp)
+	struct proc *p;
+	struct exec_package *epp;
+d355 12
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync MirBSD main source tree against OpenBSD-current,
+which should be fairly stable after the Hackathon now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: exec_subr.c,v 1.25 2003/05/09 00:48:42 art Exp $	*/
+a230 1
+
+d232 3
+a234 1
+vmcmd_map_readvn(struct proc *p, struct exec_vmcmd *cmd)
+a236 1
+	vm_prot_t prot;
+d240 1
+a240 3
+
+	prot = cmd->ev_prot;
+
+d244 1
+a244 1
+	    UVM_MAPFLAG(prot | UVM_PROT_WRITE, UVM_PROT_ALL, UVM_INH_COPY,
+d267 1
+a267 1
+		    prot, FALSE));
+@
+

@@ -1,0 +1,471 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	MIRBSD_4:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.52.57;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.57;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.15.17.47.03;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: jump.c,v 1.3 2001/11/19 19:02:14 mpech Exp $	*/
+
+/*
+ * Copyright (c) 1984,1985,1989,1994,1995  Mark Nudelman
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice in the documentation and/or other materials provided with 
+ *    the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR 
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT 
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN 
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+/*
+ * Routines which jump to a new location in the file.
+ */
+
+#include "less.h"
+#include "position.h"
+
+extern int hit_eof;
+extern int jump_sline;
+extern int squished;
+extern int screen_trashed;
+extern int sc_width, sc_height;
+
+/*
+ * Jump to the end of the file.
+ */
+	public void
+jump_forw()
+{
+	POSITION pos;
+
+	if (ch_end_seek())
+	{
+		error("Cannot seek to end of file", NULL_PARG);
+		return;
+	}
+	/*
+	 * Position the last line in the file at the last screen line.
+	 * Go back one line from the end of the file
+	 * to get to the beginning of the last line.
+	 */
+	pos = back_line(ch_tell());
+	if (pos == NULL_POSITION)
+		jump_loc((POSITION)0, sc_height-1);
+	else
+		jump_loc(pos, sc_height-1);
+}
+
+/*
+ * Jump to line n in the file.
+ */
+	public void
+jump_back(n)
+	int n;
+{
+	POSITION pos;
+	PARG parg;
+
+	/*
+	 * Find the position of the specified line.
+	 * If we can seek there, just jump to it.
+	 * If we can't seek, but we're trying to go to line number 1,
+	 * use ch_beg_seek() to get as close as we can.
+	 */
+	pos = find_pos(n);
+	if (pos != NULL_POSITION && ch_seek(pos) == 0)
+	{
+		jump_loc(pos, jump_sline);
+	} else if (n <= 1 && ch_beg_seek() == 0)
+	{
+		jump_loc(ch_tell(), jump_sline);
+		error("Cannot seek to beginning of file", NULL_PARG);
+	} else
+	{
+		parg.p_int = n;
+		error("Cannot seek to line number %d", &parg);
+	}
+}
+
+/*
+ * Repaint the screen.
+ */
+	public void
+repaint()
+{
+	struct scrpos scrpos;
+	/*
+	 * Start at the line currently at the top of the screen
+	 * and redisplay the screen.
+	 */
+	get_scrpos(&scrpos);
+	pos_clear();
+	jump_loc(scrpos.pos, scrpos.ln);
+}
+
+/*
+ * Jump to a specified percentage into the file.
+ */
+	public void
+jump_percent(percent)
+	int percent;
+{
+	POSITION pos, len;
+
+	/*
+	 * Determine the position in the file
+	 * (the specified percentage of the file's length).
+	 */
+	if ((len = ch_length()) == NULL_POSITION)
+	{
+		ierror("Determining length of file", NULL_PARG);
+		ch_end_seek();
+	}
+	if ((len = ch_length()) == NULL_POSITION)
+	{
+		error("Don't know length of file", NULL_PARG);
+		return;
+	}
+	/*
+	 * {{ This calculation may overflow! }}
+	 */
+	pos = (percent * len) / 100;
+	if (pos >= len)
+		pos = len-1;
+
+	jump_line_loc(pos, jump_sline);
+}
+
+/*
+ * Jump to a specified position in the file.
+ * Like jump_loc, but the position need not be 
+ * the first character in a line.
+ */
+	public void
+jump_line_loc(pos, sline)
+	POSITION pos;
+	int sline;
+{
+	int c;
+
+	if (ch_seek(pos) == 0)
+	{
+		/*
+		 * Back up to the beginning of the line.
+		 */
+		while ((c = ch_back_get()) != '\n' && c != EOI)
+			;
+		if (c == '\n')
+			(void) ch_forw_get();
+		pos = ch_tell();
+	}
+	jump_loc(pos, sline);
+}
+
+/*
+ * Jump to a specified position in the file.
+ * The position must be the first character in a line.
+ * Place the target line on a specified line on the screen.
+ */
+	public void
+jump_loc(pos, sline)
+	POSITION pos;
+	int sline;
+{
+	int nline;
+	POSITION tpos;
+	POSITION bpos;
+
+	/*
+	 * Normalize sline.
+	 */
+	sline = adjsline(sline);
+
+	if ((nline = onscreen(pos)) >= 0)
+	{
+		/*
+		 * The line is currently displayed.  
+		 * Just scroll there.
+		 */
+		nline -= sline;
+		if (nline > 0)
+			forw(nline, position(BOTTOM_PLUS_ONE), 1, 0, 0);
+		else
+			back(-nline, position(TOP), 1, 0);
+		return;
+	}
+
+	/*
+	 * Line is not on screen.
+	 * Seek to the desired location.
+	 */
+	if (ch_seek(pos))
+	{
+		error("Cannot seek to that file position", NULL_PARG);
+		return;
+	}
+
+	/*
+	 * See if the desired line is before or after 
+	 * the currently displayed screen.
+	 */
+	tpos = position(TOP);
+	bpos = position(BOTTOM_PLUS_ONE);
+	if (tpos == NULL_POSITION || pos >= tpos)
+	{
+		/*
+		 * The desired line is after the current screen.
+		 * Move back in the file far enough so that we can
+		 * call forw() and put the desired line at the 
+		 * sline-th line on the screen.
+		 */
+		for (nline = 0;  nline < sline;  nline++)
+		{
+			if (bpos != NULL_POSITION && pos <= bpos)
+			{
+				/*
+				 * Surprise!  The desired line is
+				 * close enough to the current screen
+				 * that we can just scroll there after all.
+				 */
+				forw(sc_height-sline+nline-1, bpos, 1, 0, 0);
+				return;
+			}
+			pos = back_line(pos);
+			if (pos == NULL_POSITION)
+			{
+				/*
+				 * Oops.  Ran into the beginning of the file.
+				 * Exit the loop here and rely on forw()
+				 * below to draw the required number of
+				 * blank lines at the top of the screen.
+				 */
+				break;
+			}
+		}
+		lastmark();
+		hit_eof = 0;
+		squished = 0;
+		screen_trashed = 0;
+		forw(sc_height-1, pos, 1, 0, sline-nline);
+	} else
+	{
+		/*
+		 * The desired line is before the current screen.
+		 * Move forward in the file far enough so that we
+		 * can call back() and put the desired line at the 
+		 * sline-th line on the screen.
+		 */
+		for (nline = sline;  nline < sc_height - 1;  nline++)
+		{
+			pos = forw_line(pos);
+			if (pos == NULL_POSITION)
+			{
+				/*
+				 * Ran into end of file.
+				 * This shouldn't normally happen, 
+				 * but may if there is some kind of read error.
+				 */
+				break;
+			}
+			if (pos >= tpos)
+			{
+				/* 
+				 * Surprise!  The desired line is
+				 * close enough to the current screen
+				 * that we can just scroll there after all.
+				 */
+				back(nline+1, tpos, 1, 0);
+				return;
+			}
+		}
+		lastmark();
+		clear();
+		screen_trashed = 0;
+		add_back_pos(pos);
+		back(sc_height-1, pos, 1, 0);
+	}
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD source with the "new" command line as well,
+in order to be able to provide a MirBSD release which bases
+upon a fairly current OpenBSD base source code tree deemed
+stable enough.
+@
+text
+@d1 2
+d4 2
+a5 1
+ * Copyright (C) 1984-2002  Mark Nudelman
+d7 8
+a14 2
+ * You may distribute under the terms of either the GNU General Public
+ * License or the Less License, as specified in the README file.
+d16 11
+a26 2
+ * For more information about less, or for information on how to 
+ * contact the author, see the README file.
+a41 1
+extern int show_attn;
+d72 2
+a73 2
+jump_back(linenum)
+	LINENUM linenum;
+d84 1
+a84 1
+	pos = find_pos(linenum);
+a86 2
+		if (show_attn)
+			set_attnpos(pos);
+d88 1
+a88 1
+	} else if (linenum <= 1 && ch_beg_seek() == 0)
+d94 2
+a95 2
+		parg.p_linenum = linenum;
+		error("Cannot seek to line number %n", &parg);
+d138 4
+a141 1
+	pos = percent_pos(len, percent);
+a170 2
+	if (show_attn)
+		set_attnpos(pos);
+d184 1
+a184 1
+	register int nline;
+a203 2
+		if (show_attn)
+			repaint_hilite(1);
+a240 2
+				if (show_attn)
+					repaint_hilite(1);
+a287 2
+				if (show_attn)
+					repaint_hilite(1);
+@
+

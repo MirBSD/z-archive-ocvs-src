@@ -1,0 +1,1045 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.20.53.13;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.00.40;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.39.07;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.39.07;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.26.57;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.40.53;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.04.35;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.08.31;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* Support for 32-bit i386 NLM (NetWare Loadable Module)
+   Copyright 1993, 1994, 2000, 2001, 2002 Free Software Foundation, Inc.
+
+This file is part of BFD, the Binary File Descriptor library.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
+
+#include "bfd.h"
+#include "sysdep.h"
+#include "libbfd.h"
+
+#define ARCH_SIZE 32
+
+#include "nlm/i386-ext.h"
+#define Nlm_External_Fixed_Header	Nlm32_i386_External_Fixed_Header
+
+#include "libnlm.h"
+
+static bfd_boolean nlm_i386_read_reloc
+  PARAMS ((bfd *, nlmNAME(symbol_type) *, asection **, arelent *));
+static bfd_boolean nlm_i386_write_import
+  PARAMS ((bfd *, asection *, arelent *));
+static bfd_boolean nlm_i386_mangle_relocs
+  PARAMS ((bfd *, asection *, PTR, bfd_vma, bfd_size_type));
+static bfd_boolean nlm_i386_read_import
+  PARAMS ((bfd *, nlmNAME(symbol_type) *));
+static bfd_boolean nlm_i386_write_external
+  PARAMS ((bfd *, bfd_size_type, asymbol *, struct reloc_and_sec *));
+
+/* Adjust the reloc location by an absolute value.  */
+
+static reloc_howto_type nlm_i386_abs_howto =
+  HOWTO (0,			/* type */
+	 0,			/* rightshift */
+	 2,			/* size (0 = byte, 1 = short, 2 = long) */
+	 32,			/* bitsize */
+	 FALSE,			/* pc_relative */
+	 0,			/* bitpos */
+	 complain_overflow_bitfield, /* complain_on_overflow */
+	 0,			/* special_function */
+	 "32",			/* name */
+	 TRUE,			/* partial_inplace */
+	 0xffffffff,		/* src_mask */
+	 0xffffffff,		/* dst_mask */
+	 FALSE);		/* pcrel_offset */
+
+/* Adjust the reloc location by a PC relative displacement.  */
+
+static reloc_howto_type nlm_i386_pcrel_howto =
+  HOWTO (1,			/* type */
+	 0,			/* rightshift */
+	 2,			/* size (0 = byte, 1 = short, 2 = long) */
+	 32,			/* bitsize */
+	 TRUE,			/* pc_relative */
+	 0,			/* bitpos */
+	 complain_overflow_signed, /* complain_on_overflow */
+	 0,			/* special_function */
+	 "DISP32",		/* name */
+	 TRUE,			/* partial_inplace */
+	 0xffffffff,		/* src_mask */
+	 0xffffffff,		/* dst_mask */
+	 TRUE);			/* pcrel_offset */
+
+/* Read a NetWare i386 reloc.  */
+
+static bfd_boolean
+nlm_i386_read_reloc (abfd, sym, secp, rel)
+     bfd *abfd;
+     nlmNAME(symbol_type) *sym;
+     asection **secp;
+     arelent *rel;
+{
+  bfd_byte temp[4];
+  bfd_vma val;
+  const char *name;
+
+  if (bfd_bread (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+
+  val = bfd_get_32 (abfd, temp);
+
+  /* The value is an offset into either the code or data segment.
+     This is the location which needs to be adjusted.
+
+     If this is a relocation fixup rather than an imported symbol (the
+     sym argument is NULL) then the high bit is 0 if the location
+     needs to be adjusted by the address of the data segment, or 1 if
+     the location needs to be adjusted by the address of the code
+     segment.  If this is an imported symbol, then the high bit is 0
+     if the location is 0 if the location should be adjusted by the
+     offset to the symbol, or 1 if the location should adjusted by the
+     absolute value of the symbol.
+
+     The second most significant bit is 0 if the value is an offset
+     into the data segment, or 1 if the value is an offset into the
+     code segment.
+
+     All this translates fairly easily into a BFD reloc.  */
+
+  if (sym == NULL)
+    {
+      if ((val & NLM_HIBIT) == 0)
+	name = NLM_INITIALIZED_DATA_NAME;
+      else
+	{
+	  name = NLM_CODE_NAME;
+	  val &=~ NLM_HIBIT;
+	}
+      rel->sym_ptr_ptr = bfd_get_section_by_name (abfd, name)->symbol_ptr_ptr;
+      rel->howto = &nlm_i386_abs_howto;
+    }
+  else
+    {
+      /* In this case we do not need to set the sym_ptr_ptr field.  */
+      rel->sym_ptr_ptr = NULL;
+      if ((val & NLM_HIBIT) == 0)
+	rel->howto = &nlm_i386_pcrel_howto;
+      else
+	{
+	  rel->howto = &nlm_i386_abs_howto;
+	  val &=~ NLM_HIBIT;
+	}
+    }
+
+  if ((val & (NLM_HIBIT >> 1)) == 0)
+    *secp = bfd_get_section_by_name (abfd, NLM_INITIALIZED_DATA_NAME);
+  else
+    {
+      *secp = bfd_get_section_by_name (abfd, NLM_CODE_NAME);
+      val &=~ (NLM_HIBIT >> 1);
+    }
+
+  rel->address = val;
+  rel->addend = 0;
+
+  return TRUE;
+}
+
+/* Write a NetWare i386 reloc.  */
+
+static bfd_boolean
+nlm_i386_write_import (abfd, sec, rel)
+     bfd *abfd;
+     asection *sec;
+     arelent *rel;
+{
+  asymbol *sym;
+  bfd_vma val;
+  bfd_byte temp[4];
+
+  /* NetWare only supports two kinds of relocs.  We should check
+     special_function here, as well, but at the moment coff-i386
+     relocs uses a special_function which does not affect what we do
+     here.  */
+  if (rel->addend != 0
+      || rel->howto == NULL
+      || rel->howto->rightshift != 0
+      || rel->howto->size != 2
+      || rel->howto->bitsize != 32
+      || rel->howto->bitpos != 0
+      || rel->howto->src_mask != 0xffffffff
+      || rel->howto->dst_mask != 0xffffffff)
+    {
+      bfd_set_error (bfd_error_invalid_operation);
+      return FALSE;
+    }
+
+  sym = *rel->sym_ptr_ptr;
+
+  /* The value we write out is the offset into the appropriate
+     segment.  This offset is the section vma, adjusted by the vma of
+     the lowest section in that segment, plus the address of the
+     relocation.  */
+  val = bfd_get_section_vma (abfd, sec) + rel->address;
+
+  /* The second most significant bit is 0 if the value is an offset
+     into the data segment, or 1 if the value is an offset into the
+     code segment.  */
+  if (bfd_get_section_flags (abfd, sec) & SEC_CODE)
+    {
+      val -= nlm_get_text_low (abfd);
+      val |= NLM_HIBIT >> 1;
+    }
+  else
+    val -= nlm_get_data_low (abfd);
+
+  if (! bfd_is_und_section (bfd_get_section (sym)))
+    {
+      /* NetWare only supports absolute internal relocs.  */
+      if (rel->howto->pc_relative)
+	{
+	  bfd_set_error (bfd_error_invalid_operation);
+	  return FALSE;
+	}
+
+      /* The high bit is 1 if the reloc is against the code section, 0
+	 if against the data section.  */
+      if (bfd_get_section_flags (abfd, bfd_get_section (sym)) & SEC_CODE)
+	val |= NLM_HIBIT;
+    }
+  else
+    {
+      /* The high bit is 1 if this is an absolute reloc, 0 if it is PC
+	 relative.  */
+      if (! rel->howto->pc_relative)
+	val |= NLM_HIBIT;
+      else
+	{
+	  /* PC relative relocs on NetWare must be pcrel_offset.  */
+	  if (! rel->howto->pcrel_offset)
+	    {
+	      bfd_set_error (bfd_error_invalid_operation);
+	      return FALSE;
+	    }
+	}
+    }
+
+  bfd_put_32 (abfd, val, temp);
+  if (bfd_bwrite (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+
+  return TRUE;
+}
+
+/* I want to be able to use objcopy to turn an i386 a.out or COFF file
+   into a NetWare i386 module.  That means that the relocs from the
+   source file have to be mapped into relocs that apply to the target
+   file.  This function is called by nlm_set_section_contents to give
+   it a chance to rework the relocs.
+
+   This is actually a fairly general concept.  However, this is not a
+   general implementation.  */
+
+static bfd_boolean
+nlm_i386_mangle_relocs (abfd, sec, data, offset, count)
+     bfd *abfd;
+     asection *sec;
+     PTR data;
+     bfd_vma offset;
+     bfd_size_type count;
+{
+  arelent **rel_ptr_ptr, **rel_end;
+
+  rel_ptr_ptr = sec->orelocation;
+  rel_end = rel_ptr_ptr + sec->reloc_count;
+  for (; rel_ptr_ptr < rel_end; rel_ptr_ptr++)
+    {
+      arelent *rel;
+      asymbol *sym;
+      bfd_vma addend;
+
+      rel = *rel_ptr_ptr;
+      sym = *rel->sym_ptr_ptr;
+
+      /* Note that no serious harm will ensue if we fail to change a
+	 reloc.  We will wind up failing in nlm_i386_write_import.  */
+
+      /* Make sure this reloc is within the data we have.  We only 4
+	 byte relocs here, so we insist on having 4 bytes.  */
+      if (rel->address < offset
+	  || rel->address + 4 > offset + count)
+	continue;
+
+      /* NetWare doesn't support reloc addends, so we get rid of them
+	 here by simply adding them into the object data.  We handle
+	 the symbol value, if any, the same way.  */
+      addend = rel->addend + sym->value;
+
+      /* The value of a symbol is the offset into the section.  If the
+	 symbol is in the .bss segment, we need to include the size of
+	 the data segment in the offset as well.  Fortunately, we know
+	 that at this point the size of the data section is in the NLM
+	 header.  */
+      if (((bfd_get_section_flags (abfd, bfd_get_section (sym))
+	    & SEC_LOAD) == 0)
+	  && ((bfd_get_section_flags (abfd, bfd_get_section (sym))
+	       & SEC_ALLOC) != 0))
+	addend += nlm_fixed_header (abfd)->dataImageSize;
+
+      if (addend != 0
+	  && rel->howto != NULL
+	  && rel->howto->rightshift == 0
+	  && rel->howto->size == 2
+	  && rel->howto->bitsize == 32
+	  && rel->howto->bitpos == 0
+	  && rel->howto->src_mask == 0xffffffff
+	  && rel->howto->dst_mask == 0xffffffff)
+	{
+	  bfd_vma val;
+
+	  val = bfd_get_32 (abfd, (bfd_byte *) data + rel->address - offset);
+	  val += addend;
+	  bfd_put_32 (abfd, val, (bfd_byte *) data + rel->address - offset);
+	  rel->addend = 0;
+	}
+
+      /* NetWare uses a reloc with pcrel_offset set.  We adjust
+	 pc_relative relocs accordingly.  We are going to change the
+	 howto field, so we can only do this if the current one is
+	 compatible.  We should check special_function here, but at
+	 the moment coff-i386 uses a special_function which does not
+	 affect what we are doing here.  */
+      if (rel->howto != NULL
+	  && rel->howto->pc_relative
+	  && ! rel->howto->pcrel_offset
+	  && rel->howto->rightshift == 0
+	  && rel->howto->size == 2
+	  && rel->howto->bitsize == 32
+	  && rel->howto->bitpos == 0
+	  && rel->howto->src_mask == 0xffffffff
+	  && rel->howto->dst_mask == 0xffffffff)
+	{
+	  bfd_vma val;
+
+	  /* When pcrel_offset is not set, it means that the negative
+	     of the address of the memory location is stored in the
+	     memory location.  We must add it back in.  */
+	  val = bfd_get_32 (abfd, (bfd_byte *) data + rel->address - offset);
+	  val += rel->address;
+	  bfd_put_32 (abfd, val, (bfd_byte *) data + rel->address - offset);
+
+	  rel->howto = &nlm_i386_pcrel_howto;
+	}
+    }
+
+  return TRUE;
+}
+
+/* Read a NetWare i386 import record */
+static bfd_boolean
+nlm_i386_read_import (abfd, sym)
+     bfd *abfd;
+     nlmNAME(symbol_type) *sym;
+{
+  struct nlm_relent *nlm_relocs;	/* relocation records for symbol */
+  bfd_size_type rcount;			/* number of relocs */
+  bfd_byte temp[NLM_TARGET_LONG_SIZE];	/* temporary 32-bit value */
+  unsigned char symlength;		/* length of symbol name */
+  char *name;
+
+  if (bfd_bread ((PTR) &symlength, (bfd_size_type) sizeof (symlength), abfd)
+      != sizeof (symlength))
+    return FALSE;
+  sym -> symbol.the_bfd = abfd;
+  name = bfd_alloc (abfd, (bfd_size_type) symlength + 1);
+  if (name == NULL)
+    return FALSE;
+  if (bfd_bread (name, (bfd_size_type) symlength, abfd) != symlength)
+    return FALSE;
+  name[symlength] = '\0';
+  sym -> symbol.name = name;
+  sym -> symbol.flags = 0;
+  sym -> symbol.value = 0;
+  sym -> symbol.section = bfd_und_section_ptr;
+  if (bfd_bread ((PTR) temp, (bfd_size_type) sizeof (temp), abfd)
+      != sizeof (temp))
+    return FALSE;
+  rcount = H_GET_32 (abfd, temp);
+  nlm_relocs = ((struct nlm_relent *)
+		bfd_alloc (abfd, rcount * sizeof (struct nlm_relent)));
+  if (!nlm_relocs)
+    return FALSE;
+  sym -> relocs = nlm_relocs;
+  sym -> rcnt = 0;
+  while (sym -> rcnt < rcount)
+    {
+      asection *section;
+
+      if (! nlm_i386_read_reloc (abfd, sym, &section, &nlm_relocs -> reloc))
+	return FALSE;
+      nlm_relocs -> section = section;
+      nlm_relocs++;
+      sym -> rcnt++;
+    }
+  return TRUE;
+}
+
+/* Write out an external reference.  */
+
+static bfd_boolean
+nlm_i386_write_external (abfd, count, sym, relocs)
+     bfd *abfd;
+     bfd_size_type count;
+     asymbol *sym;
+     struct reloc_and_sec *relocs;
+{
+  unsigned int i;
+  bfd_byte len;
+  unsigned char temp[NLM_TARGET_LONG_SIZE];
+
+  len = strlen (sym->name);
+  if ((bfd_bwrite (&len, (bfd_size_type) sizeof (bfd_byte), abfd)
+       != sizeof (bfd_byte))
+      || bfd_bwrite (sym->name, (bfd_size_type) len, abfd) != len)
+    return FALSE;
+
+  bfd_put_32 (abfd, count, temp);
+  if (bfd_bwrite (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+
+  for (i = 0; i < count; i++)
+    {
+      if (! nlm_i386_write_import (abfd, relocs[i].sec, relocs[i].rel))
+	return FALSE;
+    }
+
+  return TRUE;
+}
+
+#include "nlmswap.h"
+
+static const struct nlm_backend_data nlm32_i386_backend =
+{
+  "NetWare Loadable Module\032",
+  sizeof (Nlm32_i386_External_Fixed_Header),
+  0,	/* optional_prefix_size */
+  bfd_arch_i386,
+  0,
+  FALSE,
+  0,	/* backend_object_p */
+  0,	/* write_prefix_func */
+  nlm_i386_read_reloc,
+  nlm_i386_mangle_relocs,
+  nlm_i386_read_import,
+  nlm_i386_write_import,
+  0,	/* set_public_section */
+  0,	/* get_public_offset */
+  nlm_swap_fixed_header_in,
+  nlm_swap_fixed_header_out,
+  nlm_i386_write_external,
+  0,	/* write_export */
+};
+
+#define TARGET_LITTLE_NAME		"nlm32-i386"
+#define TARGET_LITTLE_SYM		nlmNAME(i386_vec)
+#define TARGET_BACKEND_DATA		&nlm32_i386_backend
+
+#include "nlm-target.h"
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweißer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 2000 Free Software Foundation, Inc.
+d31 1
+a31 1
+static boolean nlm_i386_read_reloc
+d33 1
+a33 1
+static boolean nlm_i386_write_import
+d35 1
+a35 1
+static boolean nlm_i386_mangle_relocs
+d37 1
+a37 1
+static boolean nlm_i386_read_import
+d39 1
+a39 1
+static boolean nlm_i386_write_external
+d49 1
+a49 1
+	 false,			/* pc_relative */
+d54 1
+a54 1
+	 true,			/* partial_inplace */
+d57 1
+a57 1
+	 false);		/* pcrel_offset */
+d66 1
+a66 1
+	 true,			/* pc_relative */
+d71 1
+a71 1
+	 true,			/* partial_inplace */
+d74 1
+a74 1
+	 true);			/* pcrel_offset */
+d78 1
+a78 1
+static boolean
+d89 2
+a90 2
+  if (bfd_read (temp, sizeof (temp), 1, abfd) != sizeof (temp))
+    return false;
+d148 1
+a148 1
+  return true;
+d153 1
+a153 1
+static boolean
+d177 1
+a177 1
+      return false;
+d205 1
+a205 1
+	  return false;
+d225 1
+a225 1
+	      return false;
+d231 2
+a232 2
+  if (bfd_write (temp, sizeof (temp), 1, abfd) != sizeof (temp))
+    return false;
+d234 1
+a234 1
+  return true;
+d237 1
+a237 1
+/* I want to be able to use objcopy to turn a i386 a.out or COFF file
+d246 1
+a246 1
+static boolean
+d338 1
+a338 1
+  return true;
+d342 1
+a342 1
+static boolean
+d353 1
+a353 1
+  if (bfd_read ((PTR) &symlength, sizeof (symlength), 1, abfd)
+d355 1
+a355 1
+    return false;
+d357 1
+a357 1
+  name = bfd_alloc (abfd, symlength + 1);
+d359 3
+a361 3
+    return false;
+  if (bfd_read (name, symlength, 1, abfd) != symlength)
+    return false;
+d367 4
+a370 3
+  if (bfd_read ((PTR) temp, sizeof (temp), 1, abfd) != sizeof (temp))
+    return false;
+  rcount = bfd_h_get_32 (abfd, temp);
+d374 1
+a374 1
+    return false;
+d381 2
+a382 4
+      if (nlm_i386_read_reloc (abfd, sym, &section,
+			       &nlm_relocs -> reloc)
+	  == false)
+	return false;
+d387 1
+a387 1
+  return true;
+d392 1
+a392 1
+static boolean
+d404 4
+a407 3
+  if ((bfd_write (&len, sizeof (bfd_byte), 1, abfd) != sizeof (bfd_byte))
+      || bfd_write (sym->name, len, 1, abfd) != len)
+    return false;
+d410 2
+a411 2
+  if (bfd_write (temp, sizeof (temp), 1, abfd) != sizeof (temp))
+    return false;
+d415 2
+a416 3
+      if (nlm_i386_write_import (abfd, relocs[i].sec,
+				 relocs[i].rel) == false)
+	return false;
+d419 1
+a419 1
+  return true;
+d431 1
+a431 1
+  false,
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 2000, 2001, 2002 Free Software Foundation, Inc.
+d31 1
+a31 1
+static bfd_boolean nlm_i386_read_reloc
+d33 1
+a33 1
+static bfd_boolean nlm_i386_write_import
+d35 1
+a35 1
+static bfd_boolean nlm_i386_mangle_relocs
+d37 1
+a37 1
+static bfd_boolean nlm_i386_read_import
+d39 1
+a39 1
+static bfd_boolean nlm_i386_write_external
+d49 1
+a49 1
+	 FALSE,			/* pc_relative */
+d54 1
+a54 1
+	 TRUE,			/* partial_inplace */
+d57 1
+a57 1
+	 FALSE);		/* pcrel_offset */
+d66 1
+a66 1
+	 TRUE,			/* pc_relative */
+d71 1
+a71 1
+	 TRUE,			/* partial_inplace */
+d74 1
+a74 1
+	 TRUE);			/* pcrel_offset */
+d78 1
+a78 1
+static bfd_boolean
+d89 2
+a90 2
+  if (bfd_bread (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+d148 1
+a148 1
+  return TRUE;
+d153 1
+a153 1
+static bfd_boolean
+d177 1
+a177 1
+      return FALSE;
+d205 1
+a205 1
+	  return FALSE;
+d225 1
+a225 1
+	      return FALSE;
+d231 2
+a232 2
+  if (bfd_bwrite (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+d234 1
+a234 1
+  return TRUE;
+d237 1
+a237 1
+/* I want to be able to use objcopy to turn an i386 a.out or COFF file
+d246 1
+a246 1
+static bfd_boolean
+d338 1
+a338 1
+  return TRUE;
+d342 1
+a342 1
+static bfd_boolean
+d353 1
+a353 1
+  if (bfd_bread ((PTR) &symlength, (bfd_size_type) sizeof (symlength), abfd)
+d355 1
+a355 1
+    return FALSE;
+d357 1
+a357 1
+  name = bfd_alloc (abfd, (bfd_size_type) symlength + 1);
+d359 3
+a361 3
+    return FALSE;
+  if (bfd_bread (name, (bfd_size_type) symlength, abfd) != symlength)
+    return FALSE;
+d367 3
+a369 4
+  if (bfd_bread ((PTR) temp, (bfd_size_type) sizeof (temp), abfd)
+      != sizeof (temp))
+    return FALSE;
+  rcount = H_GET_32 (abfd, temp);
+d373 1
+a373 1
+    return FALSE;
+d380 4
+a383 2
+      if (! nlm_i386_read_reloc (abfd, sym, &section, &nlm_relocs -> reloc))
+	return FALSE;
+d388 1
+a388 1
+  return TRUE;
+d393 1
+a393 1
+static bfd_boolean
+d405 3
+a407 4
+  if ((bfd_bwrite (&len, (bfd_size_type) sizeof (bfd_byte), abfd)
+       != sizeof (bfd_byte))
+      || bfd_bwrite (sym->name, (bfd_size_type) len, abfd) != len)
+    return FALSE;
+d410 2
+a411 2
+  if (bfd_bwrite (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+d415 3
+a417 2
+      if (! nlm_i386_write_import (abfd, relocs[i].sec, relocs[i].rel))
+	return FALSE;
+d420 1
+a420 1
+  return TRUE;
+d432 1
+a432 1
+  FALSE,
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d2 1
+a2 2
+   Copyright 1993, 1994, 2000, 2001, 2002, 2003
+   Free Software Foundation, Inc.
+d36 1
+a36 1
+  PARAMS ((bfd *, asection *, const PTR, bfd_vma, bfd_size_type));
+d250 1
+a250 1
+     const PTR data;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1993, 1994, 2000, 2001, 2002 Free Software Foundation, Inc.
+d31 1
+a31 1
+static bfd_boolean nlm_i386_read_reloc
+d33 1
+a33 1
+static bfd_boolean nlm_i386_write_import
+d35 1
+a35 1
+static bfd_boolean nlm_i386_mangle_relocs
+d37 1
+a37 1
+static bfd_boolean nlm_i386_read_import
+d39 1
+a39 1
+static bfd_boolean nlm_i386_write_external
+d49 1
+a49 1
+	 FALSE,			/* pc_relative */
+d54 1
+a54 1
+	 TRUE,			/* partial_inplace */
+d57 1
+a57 1
+	 FALSE);		/* pcrel_offset */
+d66 1
+a66 1
+	 TRUE,			/* pc_relative */
+d71 1
+a71 1
+	 TRUE,			/* partial_inplace */
+d74 1
+a74 1
+	 TRUE);			/* pcrel_offset */
+d78 1
+a78 1
+static bfd_boolean
+d89 2
+a90 2
+  if (bfd_bread (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+d148 1
+a148 1
+  return TRUE;
+d153 1
+a153 1
+static bfd_boolean
+d177 1
+a177 1
+      return FALSE;
+d205 1
+a205 1
+	  return FALSE;
+d225 1
+a225 1
+	      return FALSE;
+d231 2
+a232 2
+  if (bfd_bwrite (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+d234 1
+a234 1
+  return TRUE;
+d237 1
+a237 1
+/* I want to be able to use objcopy to turn an i386 a.out or COFF file
+d246 1
+a246 1
+static bfd_boolean
+d338 1
+a338 1
+  return TRUE;
+d342 1
+a342 1
+static bfd_boolean
+d353 1
+a353 1
+  if (bfd_bread ((PTR) &symlength, (bfd_size_type) sizeof (symlength), abfd)
+d355 1
+a355 1
+    return FALSE;
+d357 1
+a357 1
+  name = bfd_alloc (abfd, (bfd_size_type) symlength + 1);
+d359 3
+a361 3
+    return FALSE;
+  if (bfd_bread (name, (bfd_size_type) symlength, abfd) != symlength)
+    return FALSE;
+d367 3
+a369 4
+  if (bfd_bread ((PTR) temp, (bfd_size_type) sizeof (temp), abfd)
+      != sizeof (temp))
+    return FALSE;
+  rcount = H_GET_32 (abfd, temp);
+d373 1
+a373 1
+    return FALSE;
+d380 4
+a383 2
+      if (! nlm_i386_read_reloc (abfd, sym, &section, &nlm_relocs -> reloc))
+	return FALSE;
+d388 1
+a388 1
+  return TRUE;
+d393 1
+a393 1
+static bfd_boolean
+d405 3
+a407 4
+  if ((bfd_bwrite (&len, (bfd_size_type) sizeof (bfd_byte), abfd)
+       != sizeof (bfd_byte))
+      || bfd_bwrite (sym->name, (bfd_size_type) len, abfd) != len)
+    return FALSE;
+d410 2
+a411 2
+  if (bfd_bwrite (temp, (bfd_size_type) sizeof (temp), abfd) != sizeof (temp))
+    return FALSE;
+d415 3
+a417 2
+      if (! nlm_i386_write_import (abfd, relocs[i].sec, relocs[i].rel))
+	return FALSE;
+d420 1
+a420 1
+  return TRUE;
+d432 1
+a432 1
+  FALSE,
+@
+

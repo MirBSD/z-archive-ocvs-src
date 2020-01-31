@@ -1,0 +1,432 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309261655:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	cvs-200307072125:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200307021520:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	cvs-200306082100:1.1.1.2
+	ctm-3316:1.1.1.2
+	ctm-3272:1.1.1.2
+	ctm-3264:1.1.1.2
+	cvs-200305071630:1.1.1.2
+	ctm-3255:1.1.1.2
+	ctm-3229:1.1.1.2
+	ctm-3203:1.1.1.2
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.28.29;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.33;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.33;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.04.15.17.39.24;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/*	$OpenBSD: fcnvff.c,v 1.6 2002/05/07 22:19:30 mickey Exp $	*/
+/*
+  (c) Copyright 1986 HEWLETT-PACKARD COMPANY
+  To anyone who acknowledges that this file is provided "AS IS"
+  without any express or implied warranty:
+      permission to use, copy, modify, and distribute this file
+  for any purpose is hereby granted without fee, provided that
+  the above copyright notice and this notice appears in all
+  copies, and that the name of Hewlett-Packard Company not be
+  used in advertising or publicity pertaining to distribution
+  of the software without specific, written prior permission.
+  Hewlett-Packard Company makes no representations about the
+  suitability of this software for any purpose.
+*/
+/* @@(#)fcnvff.c: Revision: 2.8.88.1 Date: 93/12/07 15:06:09 */
+
+#include "float.h"
+#include "sgl_float.h"
+#include "dbl_float.h"
+#include "cnv_float.h"
+
+/*
+ *  Single Floating-point to Double Floating-point
+ */
+/*ARGSUSED*/
+int
+sgl_to_dbl_fcnvff(srcptr,dstptr,status)
+	sgl_floating_point *srcptr;
+	dbl_floating_point *dstptr;
+	unsigned int *status;
+{
+	register unsigned int src, resultp1, resultp2;
+	register int src_exponent;
+
+	src = *srcptr;
+	src_exponent = Sgl_exponent(src);
+	Dbl_allp1(resultp1) = Sgl_all(src);  /* set sign of result */
+	/*
+	 * Test for NaN or infinity
+	 */
+	if (src_exponent == SGL_INFINITY_EXPONENT) {
+		/*
+		 * determine if NaN or infinity
+		 */
+		if (Sgl_iszero_mantissa(src)) {
+			/*
+			 * is infinity; want to return double infinity
+			 */
+			Dbl_setinfinity_exponentmantissa(resultp1,resultp2);
+			Dbl_copytoptr(resultp1,resultp2,dstptr);
+			return(NOEXCEPTION);
+		}
+		else {
+			/*
+			 * is NaN; signaling or quiet?
+			 */
+			if (Sgl_isone_signaling(src)) {
+				/* trap if INVALIDTRAP enabled */
+				if (Is_invalidtrap_enabled())
+					return(INVALIDEXCEPTION);
+				/* make NaN quiet */
+				else {
+					Set_invalidflag();
+					Sgl_set_quiet(src);
+				}
+			}
+			/*
+			 * NaN is quiet, return as double NaN
+			 */
+			Dbl_setinfinity_exponent(resultp1);
+			Sgl_to_dbl_mantissa(src,resultp1,resultp2);
+			Dbl_copytoptr(resultp1,resultp2,dstptr);
+			return(NOEXCEPTION);
+		}
+	}
+	/*
+	 * Test for zero or denormalized
+	 */
+	if (src_exponent == 0) {
+		/*
+		 * determine if zero or denormalized
+		 */
+		if (Sgl_isnotzero_mantissa(src)) {
+			/*
+			 * is denormalized; want to normalize
+			 */
+			Sgl_clear_signexponent(src);
+			Sgl_leftshiftby1(src);
+			Sgl_normalize(src,src_exponent);
+			Sgl_to_dbl_exponent(src_exponent,resultp1);
+			Sgl_to_dbl_mantissa(src,resultp1,resultp2);
+		}
+		else {
+			Dbl_setzero_exponentmantissa(resultp1,resultp2);
+		}
+		Dbl_copytoptr(resultp1,resultp2,dstptr);
+		return(NOEXCEPTION);
+	}
+	/*
+	 * No special cases, just complete the conversion
+	 */
+	Sgl_to_dbl_exponent(src_exponent, resultp1);
+	Sgl_to_dbl_mantissa(Sgl_mantissa(src), resultp1,resultp2);
+	Dbl_copytoptr(resultp1,resultp2,dstptr);
+	return(NOEXCEPTION);
+}
+
+/*
+ *  Double Floating-point to Single Floating-point
+ */
+/*ARGSUSED*/
+int
+dbl_to_sgl_fcnvff(srcptr,dstptr,status)
+	dbl_floating_point *srcptr;
+	sgl_floating_point *dstptr;
+	unsigned int *status;
+{
+	register unsigned int srcp1, srcp2, result;
+	register int src_exponent, dest_exponent, dest_mantissa;
+	register int inexact = FALSE, guardbit = FALSE, stickybit = FALSE;
+	register int lsb_odd = FALSE;
+	int is_tiny;
+
+	Dbl_copyfromptr(srcptr,srcp1,srcp2);
+	src_exponent = Dbl_exponent(srcp1);
+	Sgl_all(result) = Dbl_allp1(srcp1);  /* set sign of result */
+	/*
+	 * Test for NaN or infinity
+	 */
+	if (src_exponent == DBL_INFINITY_EXPONENT) {
+		/*
+		 * determine if NaN or infinity
+		 */
+		if (Dbl_iszero_mantissa(srcp1,srcp2)) {
+			/*
+			 * is infinity; want to return single infinity
+			 */
+			Sgl_setinfinity_exponentmantissa(result);
+			*dstptr = result;
+			return(NOEXCEPTION);
+		}
+		/*
+		 * is NaN; signaling or quiet?
+		 */
+		if (Dbl_isone_signaling(srcp1)) {
+			/* trap if INVALIDTRAP enabled */
+			if (Is_invalidtrap_enabled()) return(INVALIDEXCEPTION);
+			else {
+				Set_invalidflag();
+				/* make NaN quiet */
+				Dbl_set_quiet(srcp1);
+			}
+		}
+		/*
+		 * NaN is quiet, return as single NaN
+		 */
+		Sgl_setinfinity_exponent(result);
+		Sgl_set_mantissa(result,Dallp1(srcp1)<<3 | Dallp2(srcp2)>>29);
+		if (Sgl_iszero_mantissa(result)) Sgl_set_quiet(result);
+		*dstptr = result;
+		return(NOEXCEPTION);
+	}
+	/*
+	 * Generate result
+	 */
+	Dbl_to_sgl_exponent(src_exponent,dest_exponent);
+	if (dest_exponent > 0) {
+		Dbl_to_sgl_mantissa(srcp1,srcp2,dest_mantissa,inexact,guardbit,
+		stickybit,lsb_odd);
+	}
+	else {
+		if (Dbl_iszero_exponentmantissa(srcp1,srcp2)){
+			Sgl_setzero_exponentmantissa(result);
+			*dstptr = result;
+			return(NOEXCEPTION);
+		}
+		if (Is_underflowtrap_enabled()) {
+			Dbl_to_sgl_mantissa(srcp1,srcp2,dest_mantissa,inexact,
+			guardbit,stickybit,lsb_odd);
+		}
+		else {
+			/* compute result, determine inexact info,
+			 * and set Underflowflag if appropriate
+			 */
+			Dbl_to_sgl_denormalized(srcp1,srcp2,dest_exponent,
+			dest_mantissa,inexact,guardbit,stickybit,lsb_odd,
+			is_tiny);
+		}
+	}
+	/*
+	 * Now round result if not exact
+	 */
+	if (inexact) {
+		switch (Rounding_mode()) {
+			case ROUNDPLUS:
+				if (Sgl_iszero_sign(result)) dest_mantissa++;
+				break;
+			case ROUNDMINUS:
+				if (Sgl_isone_sign(result)) dest_mantissa++;
+				break;
+			case ROUNDNEAREST:
+				if (guardbit) {
+				   if (stickybit || lsb_odd) dest_mantissa++;
+				   }
+		}
+	}
+	Sgl_set_exponentmantissa(result,dest_mantissa);
+
+	/*
+	 * check for mantissa overflow after rounding
+	 */
+	if ((dest_exponent>0 || Is_underflowtrap_enabled()) &&
+	    Sgl_isone_hidden(result)) dest_exponent++;
+
+	/*
+	 * Test for overflow
+	 */
+	if (dest_exponent >= SGL_INFINITY_EXPONENT) {
+		/* trap if OVERFLOWTRAP enabled */
+		if (Is_overflowtrap_enabled()) {
+			/*
+			 * Check for gross overflow
+			 */
+			if (dest_exponent >= SGL_INFINITY_EXPONENT+SGL_WRAP)
+				return(UNIMPLEMENTEDEXCEPTION);
+
+			/*
+			 * Adjust bias of result
+			 */
+			Sgl_setwrapped_exponent(result,dest_exponent,ovfl);
+			*dstptr = result;
+			if (inexact) {
+			    if (Is_inexacttrap_enabled())
+				return(OVERFLOWEXCEPTION|INEXACTEXCEPTION);
+			    else
+				Set_inexactflag();
+			}
+			return(OVERFLOWEXCEPTION);
+		}
+		Set_overflowflag();
+		inexact = TRUE;
+		/* set result to infinity or largest number */
+		Sgl_setoverflow(result);
+	}
+	/*
+	 * Test for underflow
+	 */
+	else if (dest_exponent <= 0) {
+		/* trap if UNDERFLOWTRAP enabled */
+		if (Is_underflowtrap_enabled()) {
+			/*
+			 * Check for gross underflow
+			 */
+			if (dest_exponent <= -(SGL_WRAP))
+				return(UNIMPLEMENTEDEXCEPTION);
+			/*
+			 * Adjust bias of result
+			 */
+			Sgl_setwrapped_exponent(result,dest_exponent,unfl);
+			*dstptr = result;
+			if (inexact) {
+			    if (Is_inexacttrap_enabled())
+				return(UNDERFLOWEXCEPTION|INEXACTEXCEPTION);
+			    else
+				Set_inexactflag();
+			}
+			return(UNDERFLOWEXCEPTION);
+		}
+		 /*
+		  * result is denormalized or signed zero
+		  */
+	       if (inexact && is_tiny) Set_underflowflag();
+
+	}
+	else Sgl_set_exponent(result,dest_exponent);
+	*dstptr = result;
+	/*
+	 * Trap if inexact trap is enabled
+	 */
+	if (inexact) {
+		if (Is_inexacttrap_enabled())
+			return(INEXACTEXCEPTION);
+		else
+			Set_inexactflag();
+	}
+	return(NOEXCEPTION);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD source with the "new" command line as well,
+in order to be able to provide a MirBSD release which bases
+upon a fairly current OpenBSD base source code tree deemed
+stable enough.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: fcnvff.c,v 1.7 2003/04/10 17:27:58 mickey Exp $	*/
+d27 2
+a28 2
+sgl_to_dbl_fcnvff(srcptr, null, dstptr, status)
+	sgl_floating_point *srcptr, *null;
+d113 2
+a114 2
+dbl_to_sgl_fcnvff(srcptr, null, dstptr, status)
+	dbl_floating_point *srcptr, *null;
+@
+

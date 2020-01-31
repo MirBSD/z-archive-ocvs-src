@@ -1,0 +1,538 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.5
+	tg-mergefixes-1-branch:1.1.1.5.0.8
+	tg-mergefixes-1-base:1.1.1.5
+	MIROS_X:1.1.1.5.0.6
+	MIROS_X_BASE:1.1.1.5
+	tg-mergetmp-3:1.1.1.5
+	MIRBSD_XP_MIRPPC:1.1.1.5.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.5
+	MIRBSD_XP_SPARC:1.1.1.5.0.2
+	MIRBSD_7quater:1.1.1.4
+	cvs-200405160640:1.1.1.5
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.4
+	cvs-200401021645:1.1.1.4
+	MIRBSD_7_ALPHA:1.1.1.4.0.6
+	MIRBSD_7:1.1.1.4.0.4
+	cvs-200312222040:1.1.1.4
+	MIRBSD_7ter:1.1.1.4
+	MIRBSD_7_DEV:1.1.1.4.0.2
+	cvs-200310020700:1.1.1.4
+	cvs-200309271030:1.1.1.4
+	cvs-200309251530:1.1.1.4
+	cvs-200308302005:1.1.1.4
+	cvs-200308171200:1.1.1.4
+	ctm-3496:1.1.1.4
+	ctm-3449:1.1.1.4
+	ctm-3437:1.1.1.4
+	cvs-200307191805:1.1.1.4
+	ctm-3425:1.1.1.4
+	cvs-200307091500:1.1.1.4
+	ctm-3389:1.1.1.3
+	cvs-200306291430:1.1.1.3
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.35;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.35;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.19.12.54.18;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2003.06.29.17.37.36;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2003.07.09.16.50.29;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2004.05.16.08.13.14;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: username.c,v 1.7 2002/07/15 17:20:36 deraadt Exp $	*/
+
+/*
+ *  Top users/processes display for Unix
+ *  Version 3
+ *
+ * Copyright (c) 1984, 1989, William LeFebvre, Rice University
+ * Copyright (c) 1989, 1990, 1992, William LeFebvre, Northwestern University
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR OR HIS EMPLOYER BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ *  Username translation code for top.
+ *
+ *  These routines handle uid to username mapping.
+ *  They use a hashing table scheme to reduce reading overhead.
+ *  For the time being, these are very straightforward hashing routines.
+ *  Maybe someday I'll put in something better.  But with the advent of
+ *  "random access" password files, it might not be worth the effort.
+ *
+ *  Changes to these have been provided by John Gilmore (gnu@@toad.com).
+ *
+ *  The hash has been simplified in this release, to avoid the
+ *  table overflow problems of previous releases.  If the value
+ *  at the initial hash location is not right, it is replaced
+ *  by the right value.  Collisions will cause us to call getpw*
+ *  but hey, this is a cache, not the Library of Congress.
+ *  This makes the table size independent of the passwd file size.
+ */
+
+#include <sys/types.h>
+#include <stdio.h>
+#include <string.h>
+#include <pwd.h>
+
+#include "top.local.h"
+#include "utils.h"
+
+struct hash_el {
+    uid_t  uid;
+    char name[9];
+};
+
+static int enter_user(uid_t, char *, int);
+static int get_user(uid_t);
+
+#define    is_empty_hash(x)	(hash_table[x].name[0] == 0)
+
+/* simple minded hashing function */
+/* Uid "nobody" is -2 results in hashit(-2) = -2 which is out of bounds for
+   the hash_table.  Applied abs() function to fix. 2/16/96 tpugh
+*/
+#define    hashit(i)	(abs(i) % Table_size)
+
+/* K&R requires that statically declared tables be initialized to zero. */
+/* We depend on that for hash_table and YOUR compiler had BETTER do it! */
+struct hash_el hash_table[Table_size];
+
+void init_hash()
+
+{
+    /*
+     *  There used to be some steps we had to take to initialize things.
+     *  We don't need to do that anymore, but we will leave this stub in
+     *  just in case future changes require initialization steps.
+     */
+}
+
+char *username(uid)
+
+uid_t uid;
+
+{
+    int hashindex;
+
+    hashindex = hashit(uid);
+    if (is_empty_hash(hashindex) || (hash_table[hashindex].uid != uid))
+    {
+	/* not here or not right -- get it out of passwd */
+	hashindex = get_user(uid);
+    }
+    return(hash_table[hashindex].name);
+}
+
+uid_t userid(username)
+
+char *username;
+
+{
+    struct passwd *pwd;
+
+    /* Eventually we want this to enter everything in the hash table,
+       but for now we just do it simply and remember just the result.
+     */
+
+    if ((pwd = getpwnam(username)) == NULL)
+    {
+	return(-1);
+    }
+
+    /* enter the result in the hash table */
+    enter_user(pwd->pw_uid, username, 1);
+
+    /* return our result */
+    return(pwd->pw_uid);
+}
+
+static int enter_user(uid, name, wecare)
+
+uid_t  uid;
+char *name;
+int wecare;		/* 1 = enter it always, 0 = nice to have */
+
+{
+    int hashindex;
+
+#ifdef DEBUG
+    fprintf(stderr, "enter_hash(%u, %s, %d)\n", uid, name, wecare);
+#endif
+
+    hashindex = hashit(uid);
+
+    if (!is_empty_hash(hashindex))
+    {
+	if (!wecare)
+	    return 0;		/* Don't clobber a slot for trash */
+	if (hash_table[hashindex].uid == uid)
+	    return(hashindex);	/* Fortuitous find */
+    }
+
+    /* empty or wrong slot -- fill it with new value */
+    hash_table[hashindex].uid = uid;
+    (void) strlcpy(hash_table[hashindex].name, name,
+               sizeof(hash_table[hashindex].name));
+    return(hashindex);
+}
+
+/*
+ * Get a userid->name mapping from the system.
+ * If the passwd database is hashed (#define RANDOM_PW), we
+ * just handle this uid.  Otherwise we scan the passwd file
+ * and cache any entries we pass over while looking.
+ */
+
+static int get_user(uid)
+
+uid_t uid;
+
+{
+    struct passwd *pwd;
+
+#ifdef RANDOM_PW
+    /* no performance penalty for using getpwuid makes it easy */
+    if ((pwd = getpwuid(uid)) != NULL)
+    {
+	return(enter_user(pwd->pw_uid, pwd->pw_name, 1));
+    }
+#else
+
+    int from_start = 0;
+
+    /*
+     *  If we just called getpwuid each time, things would be very slow
+     *  since that just iterates through the passwd file each time.  So,
+     *  we walk through the file instead (using getpwent) and cache each
+     *  entry as we go.  Once the right record is found, we cache it and
+     *  return immediately.  The next time we come in, getpwent will get
+     *  the next record.  In theory, we never have to read the passwd file
+     *  a second time (because we cache everything we read).  But in
+     *  practice, the cache may not be large enough, so if we don't find
+     *  it the first time we have to scan the file a second time.  This
+     *  is not very efficient, but it will do for now.
+     */
+
+    while (from_start++ < 2)
+    {
+	while ((pwd = getpwent()) != NULL)
+	{
+	    if (pwd->pw_uid == uid)
+	    {
+		return(enter_user(pwd->pw_uid, pwd->pw_name, 1));
+	    }
+	    (void) enter_user(pwd->pw_uid, pwd->pw_name, 0);
+	}
+	/* try again */
+	setpwent();
+    }
+#endif
+    /* if we can't find the name at all, then use the uid as the name */
+    return(enter_user(uid, itoa7(uid), 1));
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@sync with OpenBSD, this gives us a fair amount of fixes
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: username.c,v 1.11 2003/06/15 16:24:44 millert Exp $	 */
+d59 2
+a60 2
+	uid_t	uid;
+	char	name[9];
+d63 2
+a64 2
+static int      enter_user(uid_t, char *, int);
+static int      get_user(uid_t);
+d66 1
+a66 1
+#define	is_empty_hash(x)	(hash_table[x].name[0] == 0)
+d69 4
+a72 5
+/*
+ * Uid "nobody" is -2 results in hashit(-2) = -2 which is out of bounds for
+ * the hash_table.  Applied abs() function to fix. 2/16/96 tpugh
+ */
+#define	hashit(i)	(abs(i) % Table_size)
+d76 15
+a90 1
+struct hash_el  hash_table[Table_size];
+a91 2
+char *
+username(uid_t uid)
+d93 1
+a93 1
+	int hashindex;
+d95 7
+a101 6
+	hashindex = hashit(uid);
+	if (is_empty_hash(hashindex) || (hash_table[hashindex].uid != uid)) {
+		/* not here or not right -- get it out of passwd */
+		hashindex = get_user(uid);
+	}
+	return (hash_table[hashindex].name);
+d104 4
+a107 2
+uid_t
+userid(char *username)
+d109 1
+a109 1
+	struct passwd *pwd;
+d111 8
+a118 6
+	/*
+	 * Eventually we want this to enter everything in the hash table, but
+	 * for now we just do it simply and remember just the result.
+	 */
+	if ((pwd = getpwnam(username)) == NULL)
+		return ((uid_t)-1);
+d120 2
+a121 2
+	/* enter the result in the hash table */
+	enter_user(pwd->pw_uid, username, 1);
+d123 2
+a124 2
+	/* return our result */
+	return (pwd->pw_uid);
+d127 6
+a132 5
+/*
+ * wecare: 1 = enter it always, 0 = nice to have
+ */
+static int
+enter_user(uid_t uid, char *name, int wecare)
+d134 1
+a134 1
+	int hashindex;
+d137 1
+a137 1
+	fprintf(stderr, "enter_hash(%u, %s, %d)\n", uid, name, wecare);
+d140 1
+a140 1
+	hashindex = hashit(uid);
+d142 13
+a154 11
+	if (!is_empty_hash(hashindex)) {
+		if (!wecare)
+			return 0;	/* Don't clobber a slot for trash */
+		if (hash_table[hashindex].uid == uid)
+			return (hashindex);	/* Fortuitous find */
+	}
+	/* empty or wrong slot -- fill it with new value */
+	hash_table[hashindex].uid = uid;
+	(void) strlcpy(hash_table[hashindex].name, name,
+	    sizeof(hash_table[hashindex].name));
+	return (hashindex);
+d163 5
+a167 2
+static int
+get_user(uid_t uid)
+d169 1
+a169 1
+	struct passwd *pwd;
+d172 5
+a176 3
+	/* no performance penalty for using getpwuid makes it easy */
+	if ((pwd = getpwuid(uid)) != NULL)
+		return (enter_user(pwd->pw_uid, pwd->pw_name, 1));
+d179 1
+a179 1
+	int from_start = 0;
+d181 22
+a202 20
+	/*
+	 *  If we just called getpwuid each time, things would be very slow
+	 *  since that just iterates through the passwd file each time.  So,
+	 *  we walk through the file instead (using getpwent) and cache each
+	 *  entry as we go.  Once the right record is found, we cache it and
+	 *  return immediately.  The next time we come in, getpwent will get
+	 *  the next record.  In theory, we never have to read the passwd file
+	 *  a second time (because we cache everything we read).  But in
+	 *  practice, the cache may not be large enough, so if we don't find
+	 *  it the first time we have to scan the file a second time.  This
+	 *  is not very efficient, but it will do for now.
+	 */
+	while (from_start++ < 2) {
+		while ((pwd = getpwent()) != NULL) {
+			if (pwd->pw_uid == uid)
+				return (enter_user(pwd->pw_uid, pwd->pw_name, 1));
+			(void) enter_user(pwd->pw_uid, pwd->pw_name, 0);
+		}
+		/* try again */
+		setpwent();
+d204 3
+d208 2
+a209 2
+	/* if we can't find the name at all, then use the uid as the name */
+	return (enter_user(uid, itoa7(uid), 1));
+@
+
+
+1.1.1.3
+log
+@the previous cvs import did not finish due to 'memory fault'
+sync with OpenBSD-cvs
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: username.c,v 1.12 2003/06/19 22:40:45 millert Exp $	 */
+d60 1
+a60 1
+	char	name[_PW_NAME_LEN + 1];
+d68 1
+d70 2
+a71 1
+ * Simple minded hashing function, assumes i is unsigned.
+d73 1
+a73 1
+#define	hashit(i)	(i % Table_size)
+d75 2
+d180 1
+a180 1
+	return (enter_user(uid, format_uid(uid), 1));
+@
+
+
+1.1.1.4
+log
+@Bring the entire base system and ports tree in sync with OpenBSD
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: username.c,v 1.13 2003/07/07 21:36:52 deraadt Exp $	 */
+a55 1
+#include "top.h"
+@
+
+
+1.1.1.5
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: username.c,v 1.14 2004/05/09 22:14:15 deraadt Exp $	 */
+d64 2
+a65 2
+static int	enter_user(uid_t, char *, int);
+static int	get_user(uid_t);
+@
+
+

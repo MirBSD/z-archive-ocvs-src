@@ -1,0 +1,414 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.53.47;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.47;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: vs_relative.c,v 1.3 2002/02/16 21:27:58 millert Exp $	*/
+
+/*-
+ * Copyright (c) 1993, 1994
+ *	The Regents of the University of California.  All rights reserved.
+ * Copyright (c) 1993, 1994, 1995, 1996
+ *	Keith Bostic.  All rights reserved.
+ *
+ * See the LICENSE file for redistribution information.
+ */
+
+#include "config.h"
+
+#ifndef lint
+static const char sccsid[] = "@@(#)vs_relative.c	10.11 (Berkeley) 5/13/96";
+#endif /* not lint */
+
+#include <sys/types.h>
+#include <sys/queue.h>
+#include <sys/time.h>
+
+#include <bitstring.h>
+#include <limits.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "../common/common.h"
+#include "vi.h"
+
+/*
+ * vs_column --
+ *	Return the logical column of the cursor in the line.
+ *
+ * PUBLIC: int vs_column(SCR *, size_t *);
+ */
+int
+vs_column(sp, colp)
+	SCR *sp;
+	size_t *colp;
+{
+	VI_PRIVATE *vip;
+
+	vip = VIP(sp);
+
+	*colp = (O_ISSET(sp, O_LEFTRIGHT) ?
+	    vip->sc_smap->coff : (vip->sc_smap->soff - 1) * sp->cols) +
+	    vip->sc_col - (O_ISSET(sp, O_NUMBER) ? O_NUMBER_LENGTH : 0);
+	return (0);
+}
+
+/*
+ * vs_screens --
+ *	Return the screens necessary to display the line, or if specified,
+ *	the physical character column within the line, including space
+ *	required for the O_NUMBER and O_LIST options.
+ *
+ * PUBLIC: size_t vs_screens(SCR *, recno_t, size_t *);
+ */
+size_t
+vs_screens(sp, lno, cnop)
+	SCR *sp;
+	recno_t lno;
+	size_t *cnop;
+{
+	size_t cols, screens;
+
+	/* Left-right screens are simple, it's always 1. */
+	if (O_ISSET(sp, O_LEFTRIGHT))
+		return (1);
+
+	/*
+	 * Check for a cached value.  We maintain a cache because, if the
+	 * line is large, this routine gets called repeatedly.  One other
+	 * hack, lots of time the cursor is on column one, which is an easy
+	 * one.
+	 */
+	if (cnop == NULL) {
+		if (VIP(sp)->ss_lno == lno)
+			return (VIP(sp)->ss_screens);
+	} else if (*cnop == 0)
+		return (1);
+
+	/* Figure out how many columns the line/column needs. */
+	cols = vs_columns(sp, NULL, lno, cnop, NULL);
+
+	screens = (cols / sp->cols + (cols % sp->cols ? 1 : 0));
+	if (screens == 0)
+		screens = 1;
+
+	/* Cache the value. */
+	if (cnop == NULL) {
+		VIP(sp)->ss_lno = lno;
+		VIP(sp)->ss_screens = screens;
+	}
+	return (screens);
+}
+
+/*
+ * vs_columns --
+ *	Return the screen columns necessary to display the line, or,
+ *	if specified, the physical character column within the line.
+ *
+ * PUBLIC: size_t vs_columns(SCR *, char *, recno_t, size_t *, size_t *);
+ */
+size_t
+vs_columns(sp, lp, lno, cnop, diffp)
+	SCR *sp;
+	char *lp;
+	recno_t lno;
+	size_t *cnop, *diffp;
+{
+	size_t chlen, cno, curoff, last, len, scno;
+	int ch, leftright, listset;
+	char *p;
+
+	/* Need the line to go any further. */
+	if (lp == NULL) {
+		(void)db_get(sp, lno, 0, &lp, &len);
+		if (len == 0)
+			goto done;
+	}
+
+	/* Missing or empty lines are easy. */
+	if (lp == NULL) {
+done:		if (diffp != NULL)		/* XXX */
+			*diffp = 0;
+		return (0);
+	}
+
+	/* Store away the values of the list and leftright edit options. */
+	listset = O_ISSET(sp, O_LIST);
+	leftright = O_ISSET(sp, O_LEFTRIGHT);
+
+	/*
+	 * Initialize the pointer into the buffer and screen and current
+	 * offsets.
+	 */
+	p = lp;
+	curoff = scno = 0;
+
+	/* Leading number if O_NUMBER option set. */
+	if (O_ISSET(sp, O_NUMBER))
+		scno += O_NUMBER_LENGTH;
+
+	/* Macro to return the display length of any signal character. */
+#define	CHLEN(val) (ch = *(u_char *)p++) == '\t' &&			\
+	    !listset ? TAB_OFF(val) : KEY_LEN(sp, ch);
+
+	/*
+	 * If folding screens (the historic vi screen format), past the end
+	 * of the current screen, and the character was a tab, reset the
+	 * current screen column to 0, and the total screen columns to the
+	 * last column of the screen.  Otherwise, display the rest of the
+	 * character in the next screen.
+	 */
+#define	TAB_RESET {							\
+	curoff += chlen;						\
+	if (!leftright && curoff >= sp->cols)				\
+		if (ch == '\t') {					\
+			curoff = 0;					\
+			scno -= scno % sp->cols;			\
+		} else							\
+			curoff -= sp->cols;				\
+}
+	if (cnop == NULL)
+		while (len--) {
+			chlen = CHLEN(curoff);
+			last = scno;
+			scno += chlen;
+			TAB_RESET;
+		}
+	else
+		for (cno = *cnop;; --cno) {
+			chlen = CHLEN(curoff);
+			last = scno;
+			scno += chlen;
+			TAB_RESET;
+			if (cno == 0)
+				break;
+		}
+
+	/* Add the trailing '$' if the O_LIST option set. */
+	if (listset && cnop == NULL)
+		scno += KEY_LEN(sp, '$');
+
+	/*
+	 * The text input screen code needs to know how much additional
+	 * room the last two characters required, so that it can handle
+	 * tab character displays correctly.
+	 */
+	if (diffp != NULL)
+		*diffp = scno - last;
+	return (scno);
+}
+
+/*
+ * vs_rcm --
+ *	Return the physical column from the line that will display a
+ *	character closest to the currently most attractive character
+ *	position (which is stored as a screen column).
+ *
+ * PUBLIC: size_t vs_rcm(SCR *, recno_t, int);
+ */
+size_t
+vs_rcm(sp, lno, islast)
+	SCR *sp;
+	recno_t lno;
+	int islast;
+{
+	size_t len;
+
+	/* Last character is easy, and common. */
+	if (islast) {
+		if (db_get(sp, lno, 0, NULL, &len) || len == 0)
+			return (0);
+		return (len - 1);
+	}
+
+	/* First character is easy, and common. */
+	if (sp->rcm == 0)
+		return (0);
+
+	return (vs_colpos(sp, lno, sp->rcm));
+}
+
+/*
+ * vs_colpos --
+ *	Return the physical column from the line that will display a
+ *	character closest to the specified screen column.
+ *
+ * PUBLIC: size_t vs_colpos(SCR *, recno_t, size_t);
+ */
+size_t
+vs_colpos(sp, lno, cno)
+	SCR *sp;
+	recno_t lno;
+	size_t cno;
+{
+	size_t chlen, curoff, len, llen, off, scno;
+	int ch, leftright, listset;
+	char *lp, *p;
+
+	/* Need the line to go any further. */
+	(void)db_get(sp, lno, 0, &lp, &llen);
+
+	/* Missing or empty lines are easy. */
+	if (lp == NULL || llen == 0)
+		return (0);
+
+	/* Store away the values of the list and leftright edit options. */
+	listset = O_ISSET(sp, O_LIST);
+	leftright = O_ISSET(sp, O_LEFTRIGHT);
+
+	/* Discard screen (logical) lines. */
+	off = cno / sp->cols;
+	cno %= sp->cols;
+	for (scno = 0, p = lp, len = llen; off--;) {
+		for (; len && scno < sp->cols; --len)
+			scno += CHLEN(scno);
+
+		/*
+		 * If reached the end of the physical line, return the last
+		 * physical character in the line.
+		 */
+		if (len == 0)
+			return (llen - 1);
+
+		/*
+		 * If folding screens (the historic vi screen format), past
+		 * the end of the current screen, and the character was a tab,
+		 * reset the current screen column to 0.  Otherwise, the rest
+		 * of the character is displayed in the next screen.
+		 */
+		if (leftright && ch == '\t')
+			scno = 0;
+		else
+			scno -= sp->cols;
+	}
+
+	/* Step through the line until reach the right character or EOL. */
+	for (curoff = scno; len--;) {
+		chlen = CHLEN(curoff);
+
+		/*
+		 * If we've reached the specific character, there are three
+		 * cases.
+		 *
+		 * 1: scno == cno, i.e. the current character ends at the
+		 *    screen character we care about.
+		 *	a: off < llen - 1, i.e. not the last character in
+		 *	   the line, return the offset of the next character.
+		 *	b: else return the offset of the last character.
+		 * 2: scno != cno, i.e. this character overruns the character
+		 *    we care about, return the offset of this character.
+		 */
+		if ((scno += chlen) >= cno) {
+			off = p - lp;
+			return (scno == cno ?
+			    (off < llen - 1 ? off : llen - 1) : off - 1);
+		}
+
+		TAB_RESET;
+	}
+
+	/* No such character; return the start of the last character. */
+	return (llen - 1);
+}
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

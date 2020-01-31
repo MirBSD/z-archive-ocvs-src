@@ -1,0 +1,4248 @@
+head	1.4;
+access;
+symbols
+	cvs-1_12_11:1.1.2.1
+	tg-mergetmp-mirosx-1:1.4
+	tg-mergefixes-1-branch:1.4.0.4
+	tg-mergefixes-1-base:1.4
+	MIROS_X:1.4.0.2
+	MIROS_X_BASE:1.4
+	cvs-1_12_10:1.1.2.1
+	FSF:1.1.2
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200404170130:1.1.1.1
+	cvs-1_11_12:1.1.3.2
+	cvs-1_11_1p1:1.1.3.1
+	tg:1.1.3
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.4
+date	2004.12.02.12.39.46;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.02.22.13.49.11;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.12.21.15.51;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.23;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.23;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2004.12.02.11.58.16;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.02.12.19.17.10;	author tg;	state Exp;
+branches;
+next	1.1.3.2;
+
+1.1.3.2
+date	2004.02.12.19.37.29;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@update to cvs 1.12.10-MirOS except automatically
+generated files
+XXX this installs as /usr/bin/ncvs yet, so no
+XXX conflicts during the test phase.
+XXX I suggest to _not_ update.
+
+XXX *** IMPORTANT *** DO NOT ACCESS CVS 1.11 REPOSITORIES
+XXX *** IMPORTANT *** WITH CVS 1.12 OR VICE VERSA!
+@
+text
+@#! @@PERL@@
+# -*-Perl-*-
+#
+# Perl filter to handle the log messages from the checkin of files in
+# a directory.  This script will group the lists of files by log
+# message, and mail a single consolidated log message at the end of
+# the commit.
+#
+# This file assumes a pre-commit checking program that leaves the
+# names of the first and last commit directories in a temporary file.
+#
+# IMPORTANT: what the above means is, this script interacts with
+# commit_prep, in that they have to agree on the tmpfile name to use.
+# See $LAST_FILE below. 
+#
+# How this works: CVS triggers this script once for each directory
+# involved in the commit -- in other words, a single commit can invoke
+# this script N times.  It knows when it's on the last invocation by
+# examining the contents of $LAST_FILE.  Between invocations, it
+# caches information for its future incarnations in various temporary
+# files in /tmp, which are named according to the process group and
+# the committer (by themselves, neither of these are unique, but
+# together they almost always are, unless the same user is doing two
+# commits simultaneously).  The final invocation is the one that
+# actually sends the mail -- it gathers up the cached information,
+# combines that with what it found out on this pass, and sends a
+# commit message to the appropriate mailing list.
+#
+# (Ask Karl Fogel <kfogel@@collab.net> if questions.)
+#
+# Contributed by David Hampton <hampton@@cisco.com>
+# Roy Fielding removed useless code and added log/mail of new files
+# Ken Coar added special processing (i.e., no diffs) for binary files
+#
+
+############################################################
+#
+# Configurable options
+#
+############################################################
+#
+# The newest versions of CVS have UseNewInfoFmtStrings=yes
+# to change the arguments being passed on the command line.
+# If you are using %1s on the command line, then set this
+# value to 0.
+# 0 = old-style %1s format. use split(' ') to separate ARGV into filesnames.
+# 1 = new-style %s format. Note: allows spaces in filenames.
+my $UseNewInfoFmtStrings = 0;
+
+#
+# Where do you want the RCS ID and delta info?
+# 0 = none,
+# 1 = in mail only,
+# 2 = in both mail and logs.
+#
+$rcsidinfo = 2;
+
+#if you are using CVS web then set this to some value... if not set it to ""
+#
+# When set properly, this will cause links to aspects of the project to
+# print in the commit emails.
+#$CVSWEB_SCHEME = "http";
+#$CVSWEB_DOMAIN = "cvshome.org";
+#$CVSWEB_PORT = "80";
+#$CVSWEB_URI = "source/browse/";
+#$SEND_URL = "true";
+$SEND_DIFF = "true";
+
+
+# Set this to a domain to have CVS pretend that all users who make
+# commits have mail accounts within that domain.
+#$EMULATE_LOCAL_MAIL_USER="cvshome.org"; 
+
+# Set this to '-c' for context diffs; defaults to '-u' for unidiff format.
+$difftype = '-uN';
+
+############################################################
+#
+# Constants
+#
+############################################################
+$STATE_NONE    = 0;
+$STATE_CHANGED = 1;
+$STATE_ADDED   = 2;
+$STATE_REMOVED = 3;
+$STATE_LOG     = 4;
+
+$TMPDIR        = $ENV{'TMPDIR'} || '/tmp';
+$FILE_PREFIX   = '#cvs.';
+
+$LAST_FILE     = "$TMPDIR/${FILE_PREFIX}lastdir";  # Created by commit_prep!
+$ADDED_FILE    = "$TMPDIR/${FILE_PREFIX}files.added";
+$REMOVED_FILE  = "$TMPDIR/${FILE_PREFIX}files.removed";
+$LOG_FILE      = "$TMPDIR/${FILE_PREFIX}files.log";
+$BRANCH_FILE   = "$TMPDIR/${FILE_PREFIX}files.branch";
+$MLIST_FILE    = "$TMPDIR/${FILE_PREFIX}files.mlist";
+$SUMMARY_FILE  = "$TMPDIR/${FILE_PREFIX}files.summary";
+
+$CVSROOT       = $ENV{'CVSROOT'};
+
+$MAIL_CMD      = "| /usr/lib/sendmail -i -t";
+#$MAIL_CMD      = "| /var/qmail/bin/qmail-inject";
+$MAIL_FROM     = 'commitlogger';  #not needed if EMULATE_LOCAL_MAIL_USER
+$SUBJECT_PRE   = 'CVS update:';
+
+
+############################################################
+#
+# Subroutines
+#
+############################################################
+
+sub format_names {
+    local($dir, @@files) = @@_;
+    local(@@lines);
+
+    $lines[0] = sprintf(" %-08s", $dir);
+    foreach $file (@@files) {
+        if (length($lines[$#lines]) + length($file) > 60) {
+            $lines[++$#lines] = sprintf(" %8s", " ");
+        }
+        $lines[$#lines] .= " ".$file;
+    }
+    @@lines;
+}
+
+sub cleanup_tmpfiles {
+    local(@@files);
+
+    opendir(DIR, $TMPDIR);
+    push(@@files, grep(/^${FILE_PREFIX}.*\.${id}\.${cvs_user}$/, readdir(DIR)));
+    closedir(DIR);
+    foreach (@@files) {
+        unlink "$TMPDIR/$_";
+    }
+}
+
+sub write_logfile {
+    local($filename, @@lines) = @@_;
+
+    open(FILE, ">$filename") || die ("Cannot open log file $filename: $!\n");
+    print(FILE join("\n", @@lines), "\n");
+    close(FILE);
+}
+
+sub append_to_file {
+    local($filename, $dir, @@files) = @@_;
+
+    if (@@files) {
+        local(@@lines) = &format_names($dir, @@files);
+        open(FILE, ">>$filename") || die ("Cannot open file $filename: $!\n");
+        print(FILE join("\n", @@lines), "\n");
+        close(FILE);
+    }
+}
+
+sub write_line {
+    local($filename, $line) = @@_;
+
+    open(FILE, ">$filename") || die("Cannot open file $filename: $!\n");
+    print(FILE $line, "\n");
+    close(FILE);
+}
+
+sub append_line {
+    local($filename, $line) = @@_;
+
+    open(FILE, ">>$filename") || die("Cannot open file $filename: $!\n");
+    print(FILE $line, "\n");
+    close(FILE);
+}
+
+sub read_line {
+    local($filename) = @@_;
+    local($line);
+
+    open(FILE, "<$filename") || die("Cannot open file $filename: $!\n");
+    $line = <FILE>;
+    close(FILE);
+    chomp($line);
+    $line;
+}
+
+sub read_line_nodie {
+    local($filename) = @@_;
+    local($line);
+    open(FILE, "<$filename") || return ("");
+
+    $line = <FILE>;
+    close(FILE);
+    chomp($line);
+    $line;
+}
+
+sub read_file_lines {
+    local($filename) = @@_;
+    local(@@text) = ();
+
+    open(FILE, "<$filename") || return ();
+    while (<FILE>) {
+        chomp;
+        push(@@text, $_);
+    }
+    close(FILE);
+    @@text;
+}
+
+sub read_file {
+    local($filename, $leader) = @@_;
+    local(@@text) = ();
+
+    open(FILE, "<$filename") || return ();
+    while (<FILE>) {
+        chomp;
+        push(@@text, sprintf("  %-10s  %s", $leader, $_));
+        $leader = "";
+    }
+    close(FILE);
+    @@text;
+}
+
+sub read_logfile {
+    local($filename, $leader) = @@_;
+    local(@@text) = ();
+
+    open(FILE, "<$filename") || die ("Cannot open log file $filename: $!\n");
+    while (<FILE>) {
+        chomp;
+        push(@@text, $leader.$_);
+    }
+    close(FILE);
+    @@text;
+}
+
+#
+# do an 'cvs -Qn status' on each file in the arguments, and extract info.
+#
+sub change_summary {
+    local($out, @@filenames) = @@_;
+    local(@@revline);
+    local($file, $rev, $rcsfile, $line, $vhost, $cvsweb_base);
+
+    while (@@filenames) {
+        $file = shift @@filenames;
+
+        if ("$file" eq "") {
+            next;
+        }
+
+        open(RCS, "-|") || exec "$cvsbin/cvs", '-Qn', 'status', '--', $file;
+
+        $rev = "";
+        $delta = "";
+        $rcsfile = "";
+
+
+        while (<RCS>) {
+            if (/^[ \t]*Repository revision/) {
+                chomp;
+                @@revline = split(' ', $_);
+                $rev = $revline[2];
+                $rcsfile = $revline[3];
+                $rcsfile =~ s,^$CVSROOT/,,;
+                $rcsfile =~ s/,v$//;
+            }
+        }
+        close(RCS);
+
+
+        if ($rev ne '' && $rcsfile ne '') {
+            open(RCS, "-|") || exec "$cvsbin/cvs", '-Qn', 'log', "-r$rev",
+				    '--', $file;
+            while (<RCS>) {
+                if (/^date:/) {
+                    chomp;
+                    $delta = $_;
+                    $delta =~ s/^.*;//;
+                    $delta =~ s/^[\s]+lines://;
+                }
+            }
+            close(RCS);
+        }
+
+        $diff = "\n\n";
+        $vhost = $path[0];
+        if ($CVSWEB_PORT eq "80") {
+          $cvsweb_base = "$CVSWEB_SCHEME://$vhost.$CVSWEB_DOMAIN/$CVSWEB_URI";
+        }
+        else {
+          $cvsweb_base = "$CVSWEB_SCHEME://$vhost.$CVSWEB_DOMAIN:$CVSWEB_PORT/$CVSWEB_URI";
+        }
+        if ($SEND_URL eq "true") {
+          $diff .= $cvsweb_base . join("/", @@path) . "/$file";
+        }
+
+        #
+        # If this is a binary file, don't try to report a diff; not only is
+        # it meaningless, but it also screws up some mailers.  We rely on
+        # Perl's 'is this binary' algorithm; it's pretty good.  But not
+        # perfect.
+        #
+        if (($file =~ /\.(?:pdf|gif|jpg|mpg)$/i) || (-B $file)) {
+          if ($SEND_URL eq "true") {
+            $diff .= "?rev=$rev&content-type=text/x-cvsweb-markup\n\n";
+          }
+          if ($SEND_DIFF eq "true") {
+            $diff .= "\t<<Binary file>>\n\n";
+          }
+        }
+        else {
+            #
+            # Get the differences between this and the previous revision,
+            # being aware that new files always have revision '1.1' and
+            # new branches always end in '.n.1'.
+            #
+            if ($rev =~ /^(.*)\.([0-9]+)$/) {
+                $prev = $2 - 1;
+                $prev_rev = $1 . '.' .  $prev;
+
+                $prev_rev =~ s/\.[0-9]+\.0$//;# Truncate if first rev on branch
+
+                if ($rev eq '1.1') {
+                  if ($SEND_URL eq "true") {
+                    $diff .= "?rev=$rev&content-type=text/x-cvsweb-markup\n\n";
+                  }
+                  if ($SEND_DIFF eq "true") {
+                    open(DIFF, "-|")
+                      || exec "$cvsbin/cvs", '-Qn', 'update', '-p', '-r1.1',
+			      '--', $file;
+                    $diff .= "Index: $file\n=================================="
+                      . "=================================\n";
+                  }
+                }
+                else {
+                  if ($SEND_URL eq "true") {
+                    $diff .= ".diff?r1=$prev_rev&r2=$rev\n\n";
+                  }
+                  if ($SEND_DIFF eq "true") {
+                    $diff .= "(In the diff below, changes in quantity "
+                      . "of whitespace are not shown.)\n\n";
+                    open(DIFF, "-|")
+                      || exec "$cvsbin/cvs", '-Qn', 'diff', "$difftype",
+                      '-b', "-r$prev_rev", "-r$rev", '--', $file;
+                  }
+                }
+
+                if ($SEND_DIFF eq "true") {
+                  while (<DIFF>) {
+                    $diff .= $_;
+                  }
+                  close(DIFF);
+                }
+                $diff .= "\n\n";
+            }
+        }
+
+        &append_line($out, sprintf("%-9s%-12s%s%s", $rev, $delta,
+                                   $rcsfile, $diff));
+    }
+}
+
+
+sub build_header {
+    local($header);
+    delete $ENV{'TZ'};
+    local($sec,$min,$hour,$mday,$mon,$year) = localtime(time);
+
+    $header = sprintf("  User: %-8s\n  Date: %02d/%02d/%02d %02d:%02d:%02d",
+                       $cvs_user, $year%100, $mon+1, $mday,
+                       $hour, $min, $sec);
+#    $header = sprintf("%-8s    %02d/%02d/%02d %02d:%02d:%02d",
+#                       $login, $year%100, $mon+1, $mday,
+#                       $hour, $min, $sec);
+}
+
+# !!! Destination Mailing-list and history file mappings here !!!
+
+#sub mlist_map
+#{
+#    local($path) = @@_;
+#    my $domain = "cvshome.org";
+#    
+#    if ($path =~ /^([^\/]+)/) {
+#        return "cvs\@@$1.$domain";
+#    } else {
+#        return "cvs\@@$domain";
+#    }
+#}    
+
+sub derive_subject_from_changes_file ()
+{
+  my $subj = "";
+
+  for ($i = 0; ; $i++)
+  {
+    open (CH, "<$CHANGED_FILE.$i.$id.$cvs_user") or last;
+
+    while (my $change = <CH>)
+    {
+      # A changes file looks like this:
+      #
+      #  src      foo.c newfile.html
+      #  www      index.html project_nav.html
+      #
+      # Each line is " Dir File1 File2 ..."
+      # We only care about Dir, since the subject line should
+      # summarize. 
+      
+      $change =~ s/^[ \t]*//;
+      $change =~ /^([^ \t]+)[ \t]*/;
+      my $dir = $1;
+      # Fold to rightmost directory component
+      $dir =~ /([^\/]+)$/;
+      $dir = $1;
+      if ($subj eq "") {
+        $subj = $dir;
+      } else {
+        $subj .= ", $dir"; 
+      }
+    }
+    close (CH);
+  }
+
+  if ($subj ne "") {
+      $subj = "MODIFIED: $subj ..."; 
+  }
+  else {
+      # NPM: See if there's any file-addition notifications.
+      my $added = &read_line_nodie("$ADDED_FILE.$i.$id.$cvs_user");
+      if ($added ne "") {
+          $subj .= "ADDED: $added "; 
+      }
+    
+#    print "derive_subject_from_changes_file().. added== $added \n";
+    
+       ## NPM: See if there's any file-removal notications.
+      my $removed = &read_line_nodie("$REMOVED_FILE.$i.$id.$cvs_user");
+      if ($removed ne "") {
+          $subj .= "REMOVED: $removed "; 
+      }
+    
+#    print "derive_subject_from_changes_file().. removed== $removed \n";
+    
+      ## NPM: See if there's any branch notifications.
+      my $branched = &read_line_nodie("$BRANCH_FILE.$i.$id.$cvs_user");
+      if ($branched ne "") {
+          $subj .= "BRANCHED: $branched"; 
+      }
+    
+#    print "derive_subject_from_changes_file().. branched== $branched \n";
+    
+      ## NPM: DEFAULT: DIRECTORY CREATION (c.f. "Check for a new directory first" in main mody)
+      if ($subj eq "") {
+          my $subject = join("/", @@path);
+          $subj = "NEW: $subject"; 
+      }    
+  }
+
+  return $subj;
+}
+
+sub mail_notification
+{
+    local($addr_list, @@text) = @@_;
+    local($mail_to);
+
+    my $subj = &derive_subject_from_changes_file ();
+
+    if ($EMULATE_LOCAL_MAIL_USER ne "") {
+        $MAIL_FROM = "$cvs_user\@@$EMULATE_LOCAL_MAIL_USER";
+    }
+
+    $mail_to = join(", ", @@{$addr_list});
+
+    print "Mailing the commit message to $mail_to (from $MAIL_FROM)\n";
+
+    $ENV{'MAILUSER'} = $MAIL_FROM;
+    # Commented out on hocus, so comment it out here.  -kff
+    # $ENV{'QMAILINJECT'} = 'f';
+
+    open(MAIL, "$MAIL_CMD -f$MAIL_FROM");
+    print MAIL "From: $MAIL_FROM\n";
+    print MAIL "To: $mail_to\n";
+    print MAIL "Subject: $SUBJECT_PRE $subj\n\n";
+    print(MAIL join("\n", @@text));
+    close(MAIL);
+#    print "Mailing the commit message to $MAIL_TO...\n";
+#
+#    #added by jrobbins@@collab.net 1999/12/15
+#    # attempt to get rid of anonymous
+#    $ENV{'MAILUSER'} = 'commitlogger';
+#    $ENV{'QMAILINJECT'} = 'f';
+#
+#    open(MAIL, "| /var/qmail/bin/qmail-inject");
+#    print(MAIL "To: $MAIL_TO\n"); 
+#    print(MAIL "Subject: cvs commit: $ARGV[0]\n"); 
+#    print(MAIL join("\n", @@text));
+#    close(MAIL);
+}
+
+## process the command line arguments sent to this script
+## it returns an array of files, %s, sent from the loginfo
+## command
+sub process_argv
+{
+    local(@@argv) = @@_;
+    local(@@files);
+    local($arg);
+    print "Processing log script arguments...\n";
+
+    if ($UseNewInfoFmtStrings) {
+        while (@@argv) {
+            $arg = shift @@argv;
+
+            if ($arg eq '-u' && !defined($cvs_user)) {
+                $cvs_user = shift @@argv;
+            }
+            if ($arg eq '- New directory') {
+                $new_directory = 1;
+            } elsif ($arg eq '- Imported sources') {
+                $imported_sources = 1;
+            } else {
+                push(@@files, $arg);
+            }
+        }
+    } else {
+        while (@@argv) {
+            $arg = shift @@argv;
+
+            if ($arg eq '-u') {
+                $cvs_user = shift @@argv;
+            } else {
+                ($donefiles) && die "Too many arguments!\n";
+                $donefiles = 1;
+                $ARGV[0] = $arg;
+                if ($arg =~ s/ - New directory//) {
+                    $new_directory = 1;
+                } elsif ($arg =~ s/ - Imported sources//) {
+                    $imported_sources = 1;
+                }
+                @@files = split(' ', $arg);
+            }
+        }
+    }
+    return @@files;
+}
+
+
+#############################################################
+#
+# Main Body
+#
+############################################################
+#
+# Setup environment
+#
+umask (002);
+
+# Connect to the database
+$cvsbin = "/usr/bin";
+
+#
+# Initialize basic variables
+#
+$id = getpgrp();
+$state = $STATE_NONE;
+$cvs_user = $ENV{'USER'} || getlogin || (getpwuid($<))[0] || sprintf("uid#%d",$<);
+$new_directory = 0;             # Is this a 'cvs add directory' command?
+$imported_sources = 0;          # Is this a 'cvs import' command?
+@@files = process_argv(@@ARGV);
+@@path = split('/', $files[0]);
+if ($#path == 0) {
+    $dir = ".";
+} else {
+    $dir = join('/', @@path[1..$#path]);
+}
+#print("ARGV  - ", join(":", @@ARGV), "\n");
+#print("files - ", join(":", @@files), "\n");
+#print("path  - ", join(":", @@path), "\n");
+#print("dir   - ", $dir, "\n");
+#print("id    - ", $id, "\n");
+
+#
+# Map the repository directory to an email address for commitlogs to be sent
+# to.
+#
+#$mlist = &mlist_map($files[0]);
+
+##########################
+#
+# Check for a new directory first.  This will always appear as a
+# single item in the argument list, and an empty log message.
+#
+if ($new_directory) {
+    $header = &build_header;
+    @@text = ();
+    push(@@text, $header);
+    push(@@text, "");
+    push(@@text, "  ".$files[0]." - New directory");
+    &mail_notification([ $mlist ], @@text);
+    exit 0;
+}
+
+#
+# Iterate over the body of the message collecting information.
+#
+while (<STDIN>) {
+    chomp;                      # Drop the newline
+    if (/^Revision\/Branch:/) {
+        s,^Revision/Branch:,,;
+        push (@@branch_lines, split);
+        next;
+    }
+#    next if (/^[ \t]+Tag:/ && $state != $STATE_LOG);
+    if (/^Modified Files/) { $state = $STATE_CHANGED; next; }
+    if (/^Added Files/)    { $state = $STATE_ADDED;   next; }
+    if (/^Removed Files/)  { $state = $STATE_REMOVED; next; }
+    if (/^Log Message/)    { $state = $STATE_LOG;     last; }
+    s/[ \t\n]+$//;              # delete trailing space
+    
+    push (@@changed_files, split) if ($state == $STATE_CHANGED);
+    push (@@added_files,   split) if ($state == $STATE_ADDED);
+    push (@@removed_files, split) if ($state == $STATE_REMOVED);
+}
+# Proces the /Log Message/ section now, if it exists.
+# Do this here rather than above to deal with Log messages
+# that include lines that confuse the state machine.
+if (!eof(STDIN)) {
+    while (<STDIN>) {
+        next unless ($state == $STATE_LOG); # eat all STDIN
+
+        if ($state == $STATE_LOG) {
+            if (/^PR:$/i ||
+                /^Reviewed by:$/i ||
+                /^Submitted by:$/i ||
+                /^Obtained from:$/i) {
+                next;
+            }
+            push (@@log_lines,     $_);
+        }
+    }
+}
+
+#
+# Strip leading and trailing blank lines from the log message.  Also
+# compress multiple blank lines in the body of the message down to a
+# single blank line.
+# (Note, this only does the mail and changes log, not the rcs log).
+#
+while ($#log_lines > -1) {
+    last if ($log_lines[0] ne "");
+    shift(@@log_lines);
+}
+while ($#log_lines > -1) {
+    last if ($log_lines[$#log_lines] ne "");
+    pop(@@log_lines);
+}
+for ($i = $#log_lines; $i > 0; $i--) {
+    if (($log_lines[$i - 1] eq "") && ($log_lines[$i] eq "")) {
+        splice(@@log_lines, $i, 1);
+    }
+}
+
+#
+# Find the log file that matches this log message
+#
+for ($i = 0; ; $i++) {
+    last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+    @@text = &read_logfile("$LOG_FILE.$i.$id.$cvs_user", "");
+    last if ($#text == -1);
+    last if (join(" ", @@log_lines) eq join(" ", @@text));
+}
+
+#
+# Spit out the information gathered in this pass.
+#
+&write_logfile("$LOG_FILE.$i.$id.$cvs_user", @@log_lines);
+&append_to_file("$BRANCH_FILE.$i.$id.$cvs_user",  $dir, @@branch_lines);
+&append_to_file("$ADDED_FILE.$i.$id.$cvs_user",   $dir, @@added_files);
+&append_to_file("$CHANGED_FILE.$i.$id.$cvs_user", $dir, @@changed_files);
+&append_to_file("$REMOVED_FILE.$i.$id.$cvs_user", $dir, @@removed_files);
+&append_line("$MLIST_FILE.$i.$id.$cvs_user", $mlist);
+if ($rcsidinfo) {
+    &change_summary("$SUMMARY_FILE.$i.$id.$cvs_user", (@@changed_files, @@added_files));
+}
+
+#
+# Check whether this is the last directory.  If not, quit.
+#
+if (-e "$LAST_FILE.$id.$cvs_user") {
+   $_ = &read_line("$LAST_FILE.$id.$cvs_user");
+   $tmpfiles = $files[0];
+   $tmpfiles =~ s,([^a-zA-Z0-9_/]),\\$1,g;
+   if (! grep(/$tmpfiles$/, $_)) {
+        print "More commits to come...\n";
+        exit 0
+   }
+}
+
+#
+# This is it.  The commits are all finished.  Lump everything together
+# into a single message, fire a copy off to the mailing list, and drop
+# it on the end of the Changes file.
+#
+$header = &build_header;
+
+#
+# Produce the final compilation of the log messages
+#
+@@text = ();
+@@mlist_list = ();
+push(@@text, $header);
+push(@@text, "");
+for ($i = 0; ; $i++) {
+    last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+    push(@@text, &read_file("$BRANCH_FILE.$i.$id.$cvs_user", "Branch:"));
+    push(@@text, &read_file("$CHANGED_FILE.$i.$id.$cvs_user", "Modified:"));
+    push(@@text, &read_file("$ADDED_FILE.$i.$id.$cvs_user", "Added:"));
+    push(@@text, &read_file("$REMOVED_FILE.$i.$id.$cvs_user", "Removed:"));
+    push(@@text, "  Log:");
+    push(@@text, &read_logfile("$LOG_FILE.$i.$id.$cvs_user", "  "));
+    push(@@mlist_list, &read_file_lines("$MLIST_FILE.$i.$id.$cvs_user"));
+    if ($rcsidinfo == 2) {
+        if (-e "$SUMMARY_FILE.$i.$id.$cvs_user") {
+            push(@@text, "  ");
+            push(@@text, "  Revision  Changes    Path");
+            push(@@text, &read_logfile("$SUMMARY_FILE.$i.$id.$cvs_user", "  "));
+        }
+    }
+    push(@@text, "");
+}
+
+#
+# Now generate the extra info for the mail message..
+#
+if ($rcsidinfo == 1) {
+    $revhdr = 0;
+    for ($i = 0; ; $i++) {
+        last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+        if (-e "$SUMMARY_FILE.$i.$id.$cvs_user") {
+            if (!$revhdr++) {
+                push(@@text, "Revision  Changes    Path");
+            }
+            push(@@text, &read_logfile("$SUMMARY_FILE.$i.$id.$cvs_user", ""));
+        }
+    }
+    if ($revhdr) {
+        push(@@text, "");        # consistancy...
+    }
+}
+
+%mlist_hash = ();
+
+foreach (@@mlist_list) { $mlist_hash{ $_ } = 1; }
+
+#
+# Mail out the notification.
+#
+&mail_notification([ keys(%mlist_hash) ], @@text);
+&cleanup_tmpfiles;
+exit 0;
+@
+
+
+1.3
+log
+@cvs-1.11.12 doesn't do the joints correctly (what were the
+FSF people smoking?), it memory faults.
+thusly revert to 1.11.1p1
+
+tested.
+agreed bsiegert@@
+@
+text
+@d12 19
+d32 2
+a34 1
+# hacked greatly by Greg A. Woods <woods@@planix.com>
+d36 13
+a48 9
+# Usage: log_accum.pl [-d] [-s] [-w] [-M module] [-u user] [[-m mailto] ...] [[-R replyto] ...] [-f logfile]
+#	-d		- turn on debugging
+#	-m mailto	- send mail to "mailto" (multiple)
+#	-R replyto	- set the "Reply-To:" to "replyto" (multiple)
+#	-M modulename	- set module name to "modulename"
+#	-f logfile	- write commit messages to logfile too
+#	-s		- *don't* run "cvs status -v" for each file
+#	-w		- show working directory with log message
+#	-u user		- $USER passed from loginfo
+d51 4
+a54 1
+#	Configurable options
+d56 1
+d58 10
+a67 2
+# set this to something that takes a whole message on stdin
+$MAILER	       = "/usr/lib/sendmail -t";
+d69 9
+d79 1
+a79 4
+#	End user configurable options.
+#
+
+# Constants (don't change these!)
+d81 1
+d88 2
+a89 1
+$LAST_FILE     = "/tmp/#cvs.lastdir";
+d91 7
+a97 4
+$CHANGED_FILE  = "/tmp/#cvs.files.changed";
+$ADDED_FILE    = "/tmp/#cvs.files.added";
+$REMOVED_FILE  = "/tmp/#cvs.files.removed";
+$LOG_FILE      = "/tmp/#cvs.files.log";
+d99 1
+a99 1
+$FILE_PREFIX   = "#cvs.files";
+d101 7
+d109 1
+a109 1
+#	Subroutines
+d111 15
+d128 1
+a128 1
+    local($wd, @@files);
+d130 2
+a131 4
+    $wd = `pwd`;
+    chdir("/tmp") || die("Can't chdir('/tmp')\n");
+    opendir(DIR, ".");
+    push(@@files, grep(/^$FILE_PREFIX\..*\.$id$/, readdir(DIR)));
+d134 1
+a134 1
+	unlink $_;
+a135 3
+    unlink $LAST_FILE . "." . $id;
+
+    chdir($wd);
+d141 2
+a142 2
+    open(FILE, ">$filename") || die("Cannot open log file $filename.\n");
+    print FILE join("\n", @@lines), "\n";
+d146 13
+a158 2
+sub append_to_logfile {
+    local($filename, @@lines) = @@_;
+d160 2
+a161 2
+    open(FILE, ">$filename") || die("Cannot open log file $filename.\n");
+    print FILE join("\n", @@lines), "\n";
+d165 7
+a171 3
+sub format_names {
+    local($dir, @@files) = @@_;
+    local(@@lines);
+d173 3
+a175 1
+    $format = "\t%-" . sprintf("%d", length($dir)) . "s%s ";
+d177 6
+a182 1
+    $lines[0] = sprintf($format, $dir, ":");
+d184 4
+a187 9
+    if ($debug) {
+	print STDERR "format_names(): dir = ", $dir, "; files = ", join(":", @@files), ".\n";
+    }
+    foreach $file (@@files) {
+	if (length($lines[$#lines]) + length($file) > 65) {
+	    $lines[++$#lines] = sprintf($format, " ", " ");
+	}
+	$lines[$#lines] .= $file . " ";
+    }
+d189 4
+a192 1
+    @@lines;
+d195 3
+a197 3
+sub format_lists {
+    local(@@lines) = @@_;
+    local(@@text, @@files, $lastdir);
+d199 4
+a202 2
+    if ($debug) {
+	print STDERR "format_lists(): ", join(":", @@lines), "\n";
+d204 1
+a204 17
+    @@text = ();
+    @@files = ();
+    $lastdir = shift @@lines;	# first thing is always a directory
+    if ($lastdir !~ /.*\/$/) {
+	die("Damn, $lastdir doesn't look like a directory!\n");
+    }
+    foreach $line (@@lines) {
+	if ($line =~ /.*\/$/) {
+	    push(@@text, &format_names($lastdir, @@files));
+	    $lastdir = $line;
+	    @@files = ();
+	} else {
+	    push(@@files, $line);
+	}
+    }
+    push(@@text, &format_names($lastdir, @@files));
+
+d208 3
+a210 2
+sub append_names_to_file {
+    local($filename, $dir, @@files) = @@_;
+d212 5
+a216 5
+    if (@@files) {
+	open(FILE, ">>$filename") || die("Cannot open file $filename.\n");
+	print FILE $dir, "\n";
+	print FILE join("\n", @@files), "\n";
+	close(FILE);
+a217 8
+}
+
+sub read_line {
+    local($line);
+    local($filename) = @@_;
+
+    open(FILE, "<$filename") || die("Cannot open file $filename.\n");
+    $line = <FILE>;
+d219 1
+a219 2
+    chop($line);
+    $line;
+a222 1
+    local(@@text);
+d224 1
+d226 1
+a226 1
+    open(FILE, "<$filename");
+d228 2
+a229 2
+	chop;
+	push(@@text, $leader.$_);
+d235 128
+d365 95
+a459 61
+    local($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
+    $header = sprintf("CVSROOT:\t%s\nModule name:\t%s\nRepository:\t%s\nChanges by:\t%s@@%s\t%02d/%02d/%02d %02d:%02d:%02d",
+		      $cvsroot,
+		      $modulename,
+		      $dir,
+		      $login, $hostdomain,
+		      $year%100, $mon+1, $mday,
+		      $hour, $min, $sec);
+}
+
+sub mail_notification {
+    local(@@text) = @@_;
+
+    # if only we had strftime()...  stuff stolen from perl's ctime.pl:
+    local($[) = 0;
+
+    @@DoW = ('Sun','Mon','Tue','Wed','Thu','Fri','Sat');
+    @@MoY = ('Jan','Feb','Mar','Apr','May','Jun',
+	    'Jul','Aug','Sep','Oct','Nov','Dec');
+
+    # Determine what time zone is in effect.
+    # Use GMT if TZ is defined as null, local time if TZ undefined.
+    # There's no portable way to find the system default timezone.
+    #
+    $TZ = defined($ENV{'TZ'}) ? ( $ENV{'TZ'} ? $ENV{'TZ'} : 'GMT' ) : '';
+
+    # Hack to deal with 'PST8PDT' format of TZ
+    # Note that this can't deal with all the esoteric forms, but it
+    # does recognize the most common: [:]STDoff[DST[off][,rule]]
+    #
+    if ($TZ =~ /^([^:\d+\-,]{3,})([+-]?\d{1,2}(:\d{1,2}){0,2})([^\d+\-,]{3,})?/) {
+        $TZ = $isdst ? $4 : $1;
+	$tzoff = sprintf("%05d", -($2) * 100);
+    }
+
+    # perl-4.036 doesn't have the $zone or $gmtoff...
+    ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst, $zone, $gmtoff) =
+        ($TZ eq 'GMT') ? gmtime(time) : localtime(time);
+
+    $year += ($year < 70) ? 2000 : 1900;
+
+    if ($gmtoff != 0) {
+	$tzoff = sprintf("%05d", ($gmtoff / 60) * 100);
+    }
+    if ($zone ne '') {
+	$TZ = $zone;
+    }
+
+    # ok, let's try....
+    $rfc822date = sprintf("%s, %2d %s %4d %2d:%02d:%02d %s (%s)",
+			  $DoW[$wday], $mday, $MoY[$mon], $year,
+			  $hour, $min, $sec, $tzoff, $TZ);
+
+    open(MAIL, "| $MAILER");
+    print MAIL "Date:     " . $rfc822date . "\n";
+    print MAIL "Subject:  CVS Update: " . $modulename . "\n";
+    print MAIL "To:       " . $mailto . "\n";
+    print MAIL "Reply-To: " . $replyto . "\n";
+    print MAIL "\n";
+    print MAIL join("\n", @@text), "\n";
+    close(MAIL);
+d462 12
+a473 2
+sub write_commitlog {
+    local($logfile, @@text) = @@_;
+d475 1
+a475 4
+    open(FILE, ">>$logfile");
+    print FILE join("\n", @@text), "\n";
+    close(FILE);
+}
+d477 3
+a479 3
+#
+#	Main Body
+#
+d481 7
+a487 1
+# Initialize basic variables
+d489 37
+a525 45
+$debug = 0;
+$id = getpgrp();		# note, you *must* use a shell which does setpgrp()
+$state = $STATE_NONE;
+chop($hostname = `hostname`);
+chop($domainname = `domainname`);
+if ($domainname !~ '^\..*') {
+    $domainname = '.' . $domainname;
+}
+$hostdomain = $hostname . $domainname;
+$cvsroot = $ENV{'CVSROOT'};
+$do_status = 1;			# moderately useful
+$show_wd = 0;			# useless in client/server
+$modulename = "";
+
+# parse command line arguments (file list is seen as one arg)
+#
+while (@@ARGV) {
+    $arg = shift @@ARGV;
+
+    if ($arg eq '-d') {
+	$debug = 1;
+	print STDERR "Debug turned on...\n";
+    } elsif ($arg eq '-m') {
+	if ($mailto eq '') {
+	    $mailto = shift @@ARGV;
+	} else {
+	    $mailto = $mailto . ", " . shift @@ARGV;
+	}
+    } elsif ($arg eq '-R') {
+	if ($replyto eq '') {
+	    $replyto = shift @@ARGV;
+	} else {
+	    $replyto = $replyto . ", " . shift @@ARGV;
+	}
+    } elsif ($arg eq '-M') {
+	$modulename = shift @@ARGV;
+    } elsif ($arg eq '-u') {
+	$login = shift @@ARGV;
+    } elsif ($arg eq '-s') {
+	$do_status = 0;
+    } elsif ($arg eq '-w') {
+	$show_wd = 1;
+    } elsif ($arg eq '-f') {
+	($commitlog) && die("Too many '-f' args\n");
+	$commitlog = shift @@ARGV;
+d527 17
+a543 3
+	($donefiles) && die("Too many arguments!  Check usage.\n");
+	$donefiles = 1;
+	@@files = split(/ /, $arg);
+d545 1
+a545 7
+}
+if ($login eq '') {
+    $login = getlogin || (getpwuid($<))[0] || "nobody";
+}
+($mailto) || die("No mail recipient specified (use -m)\n");
+if ($replyto eq '') {
+    $replyto = $login;
+d548 4
+a551 2
+# for now, the first "file" is the repository directory being committed,
+# relative to the $CVSROOT location
+d553 8
+a560 1
+@@path = split('/', $files[0]);
+a561 8
+# XXX There are some ugly assumptions in here about module names and
+# XXX directories relative to the $CVSROOT location -- really should
+# XXX read $CVSROOT/CVSROOT/modules, but that's not so easy to do, since
+# XXX we have to parse it backwards.
+# XXX 
+# XXX Fortunately it's relatively easy for the user to specify the
+# XXX module name as appropriate with a '-M' via the directory
+# XXX matching in loginfo.
+d563 9
+a571 3
+if ($modulename eq "") {
+    $modulename = $path[0];	# I.e. the module name == top-level dir
+}
+d575 1
+a575 10
+    $dir = join('/', @@path);
+}
+$dir = $dir . "/";
+
+if ($debug) {
+    print STDERR "module - ", $modulename, "\n";
+    print STDERR "dir    - ", $dir, "\n";
+    print STDERR "path   - ", join(":", @@path), "\n";
+    print STDERR "files  - ", join(":", @@files), "\n";
+    print STDERR "id     - ", $id, "\n";
+d577 5
+a582 1
+# Check for a new directory first.  This appears with files set as follows:
+d584 2
+a585 4
+#    files[0] - "path/name/newdir"
+#    files[1] - "-"
+#    files[2] - "New"
+#    files[3] - "directory"
+d587 1
+a587 2
+if ($files[2] =~ /New/ && $files[3] =~ /directory/) {
+    local(@@text);
+d589 1
+a589 17
+    @@text = ();
+    push(@@text, &build_header());
+    push(@@text, "");
+    push(@@text, $files[0]);
+    push(@@text, "");
+
+    while (<STDIN>) {
+	chop;			# Drop the newline
+	push(@@text, $_);
+    }
+
+    &mail_notification($mailto, @@text);
+
+    exit 0;
+}
+
+# Check for an import command.  This appears with files set as follows:
+d591 2
+a592 4
+#    files[0] - "path/name"
+#    files[1] - "-"
+#    files[2] - "Imported"
+#    files[3] - "sources"
+d594 2
+a595 3
+if ($files[2] =~ /Imported/ && $files[3] =~ /sources/) {
+    local(@@text);
+
+d597 1
+a597 3
+    push(@@text, &build_header());
+    push(@@text, "");
+    push(@@text, $files[0]);
+d599 2
+a600 8
+
+    while (<STDIN>) {
+	chop;			# Drop the newline
+	push(@@text, $_);
+    }
+
+    &mail_notification(@@text);
+
+d604 1
+d608 5
+a612 8
+    chop;			# Drop the newline
+
+    if (/^In directory/) {
+	if ($show_wd) {		# useless in client/server mode
+	    push(@@log_lines, $_);
+	    push(@@log_lines, "");
+	}
+	next;
+d614 1
+a614 1
+
+d618 13
+a630 1
+    if (/^Log Message/)    { $state = $STATE_LOG;     next; }
+d632 10
+a641 7
+    s/^[ \t\n]+//;		# delete leading whitespace
+    s/[ \t\n]+$//;		# delete trailing whitespace
+    
+    if ($state == $STATE_CHANGED) { push(@@changed_files, split); }
+    if ($state == $STATE_ADDED)   { push(@@added_files,   split); }
+    if ($state == $STATE_REMOVED) { push(@@removed_files, split); }
+    if ($state == $STATE_LOG)     { push(@@log_lines,     $_); }
+d644 1
+d648 1
+d660 1
+a660 1
+	splice(@@log_lines, $i, 1);
+d664 2
+a665 4
+if ($debug) {
+    print STDERR "Searching for log file index...";
+}
+# Find an index to a log file that matches this log message
+d668 4
+a671 9
+    local(@@text);
+
+    last if (! -e "$LOG_FILE.$i.$id"); # the next available one
+    @@text = &read_logfile("$LOG_FILE.$i.$id", "");
+    last if ($#text == -1);	# nothing in this file, use it
+    last if (join(" ", @@log_lines) eq join(" ", @@text)); # it's the same log message as another
+}
+if ($debug) {
+    print STDERR " found log file at $i.$id, now writing tmp files.\n";
+d674 1
+d677 9
+a685 4
+&append_names_to_file("$CHANGED_FILE.$i.$id", $dir, @@changed_files);
+&append_names_to_file("$ADDED_FILE.$i.$id",   $dir, @@added_files);
+&append_names_to_file("$REMOVED_FILE.$i.$id", $dir, @@removed_files);
+&write_logfile("$LOG_FILE.$i.$id", @@log_lines);
+d687 1
+d690 8
+a697 2
+if ($debug) {
+    print STDERR "Checking current dir against last dir.\n";
+a698 1
+$_ = &read_line("$LAST_FILE.$id");
+a699 12
+if ($_ ne $cvsroot . "/" . $files[0]) {
+    if ($debug) {
+	print STDERR sprintf("Current directory %s is not last directory %s.\n", $cvsroot . "/" .$files[0], $_);
+    }
+    exit 0;
+}
+if ($debug) {
+    print STDERR sprintf("Current directory %s is last directory %s -- all commits done.\n", $files[0], $_);
+}
+
+#
+#	End Of Commits!
+a700 1
+
+d705 1
+d711 2
+a712 2
+@@status_txt = ();
+push(@@text, &build_header());
+a713 1
+
+d715 14
+a728 5
+    last if (! -e "$LOG_FILE.$i.$id"); # we're done them all!
+    @@lines = &read_logfile("$CHANGED_FILE.$i.$id", "");
+    if ($#lines >= 0) {
+	push(@@text, "Modified files:");
+	push(@@text, &format_lists(@@lines));
+d730 16
+a745 12
+    @@lines = &read_logfile("$ADDED_FILE.$i.$id", "");
+    if ($#lines >= 0) {
+	push(@@text, "Added files:");
+	push(@@text, &format_lists(@@lines));
+    }
+    @@lines = &read_logfile("$REMOVED_FILE.$i.$id", "");
+    if ($#lines >= 0) {
+	push(@@text, "Removed files:");
+	push(@@text, &format_lists(@@lines));
+    }
+    if ($#text >= 0) {
+	push(@@text, "");
+d747 2
+a748 35
+    @@lines = &read_logfile("$LOG_FILE.$i.$id", "\t");
+    if ($#lines >= 0) {
+	push(@@text, "Log message:");
+	push(@@text, @@lines);
+	push(@@text, "");
+    }
+    if ($do_status) {
+	local(@@changed_files);
+
+	@@changed_files = ();
+	push(@@changed_files, &read_logfile("$CHANGED_FILE.$i.$id", ""));
+	push(@@changed_files, &read_logfile("$ADDED_FILE.$i.$id", ""));
+	push(@@changed_files, &read_logfile("$REMOVED_FILE.$i.$id", ""));
+
+	if ($debug) {
+	    print STDERR "main: pre-sort changed_files = ", join(":", @@changed_files), ".\n";
+	}
+	sort(@@changed_files);
+	if ($debug) {
+	    print STDERR "main: post-sort changed_files = ", join(":", @@changed_files), ".\n";
+	}
+
+	foreach $dofile (@@changed_files) {
+	    if ($dofile =~ /\/$/) {
+		next;		# ignore the silly "dir" entries
+	    }
+	    if ($debug) {
+		print STDERR "main(): doing 'cvs -nQq status -v $dofile'\n";
+	    }
+	    open(STATUS, "-|") || exec 'cvs', '-nQq', 'status', '-v', $dofile;
+	    while (<STATUS>) {
+		chop;
+		push(@@status_txt, $_);
+	    }
+	}
+d752 1
+a752 5
+# Write to the commitlog file
+#
+if ($commitlog) {
+    &write_commitlog($commitlog, @@text);
+}
+d754 1
+a754 3
+if ($#status_txt >= 0) {
+    push(@@text, @@status_txt);
+}
+a755 1
+# Mailout the notification.
+d757 1
+a757 3
+&mail_notification(@@text);
+
+# cleanup
+d759 2
+a760 4
+if (! $debug) {
+    &cleanup_tmpfiles();
+}
+
+@
+
+
+1.2
+log
+@first step of merging new cvs
+XXX might not compile
+XXX might not work
+XXX might contain bugs
+XXX definitively needs autoconf 2.58 first
+@
+text
+@a11 19
+# IMPORTANT: what the above means is, this script interacts with
+# commit_prep, in that they have to agree on the tmpfile name to use.
+# See $LAST_FILE below. 
+#
+# How this works: CVS triggers this script once for each directory
+# involved in the commit -- in other words, a single commit can invoke
+# this script N times.  It knows when it's on the last invocation by
+# examining the contents of $LAST_FILE.  Between invocations, it
+# caches information for its future incarnations in various temporary
+# files in /tmp, which are named according to the process group and
+# the committer (by themselves, neither of these are unique, but
+# together they almost always are, unless the same user is doing two
+# commits simultaneously).  The final invocation is the one that
+# actually sends the mail -- it gathers up the cached information,
+# combines that with what it found out on this pass, and sends a
+# commit message to the appropriate mailing list.
+#
+# (Ask Karl Fogel <kfogel@@collab.net> if questions.)
+#
+a12 2
+# Roy Fielding removed useless code and added log/mail of new files
+# Ken Coar added special processing (i.e., no diffs) for binary files
+d14 11
+a25 1
+############################################################
+d27 1
+a27 1
+# Configurable options
+d29 4
+a32 1
+############################################################
+d34 1
+a34 4
+# Where do you want the RCS ID and delta info?
+# 0 = none,
+# 1 = in mail only,
+# 2 = in both mail and logs.
+a35 1
+$rcsidinfo = 2;
+d37 1
+a37 22
+#if you are using CVS web then set this to some value... if not set it to ""
+#
+# When set properly, this will cause links to aspects of the project to
+# print in the commit emails.
+#$CVSWEB_SCHEME = "http";
+#$CVSWEB_DOMAIN = "cvshome.org";
+#$CVSWEB_PORT = "80";
+#$CVSWEB_URI = "source/browse/";
+#$SEND_URL = "true";
+$SEND_DIFF = "true";
+
+
+# Set this to a domain to have CVS pretend that all users who make
+# commits have mail accounts within that domain.
+#$EMULATE_LOCAL_MAIL_USER="cvshome.org"; 
+
+# Set this to '-c' for context diffs; defaults to '-u' for unidiff format.
+$difftype = '-uN';
+
+############################################################
+#
+# Constants
+a38 1
+############################################################
+d45 1
+a45 2
+$TMPDIR        = $ENV{'TMPDIR'} || '/tmp';
+$FILE_PREFIX   = '#cvs.';
+d47 4
+a50 7
+$LAST_FILE     = "$TMPDIR/${FILE_PREFIX}lastdir";  # Created by commit_prep!
+$ADDED_FILE    = "$TMPDIR/${FILE_PREFIX}files.added";
+$REMOVED_FILE  = "$TMPDIR/${FILE_PREFIX}files.removed";
+$LOG_FILE      = "$TMPDIR/${FILE_PREFIX}files.log";
+$BRANCH_FILE   = "$TMPDIR/${FILE_PREFIX}files.branch";
+$MLIST_FILE    = "$TMPDIR/${FILE_PREFIX}files.mlist";
+$SUMMARY_FILE  = "$TMPDIR/${FILE_PREFIX}files.summary";
+d52 1
+a52 1
+$CVSROOT       = $ENV{'CVSROOT'};
+a53 7
+$MAIL_CMD      = "| /usr/lib/sendmail -i -t";
+#$MAIL_CMD      = "| /var/qmail/bin/qmail-inject";
+$MAIL_FROM     = 'commitlogger';  #not needed if EMULATE_LOCAL_MAIL_USER
+$SUBJECT_PRE   = 'CVS update:';
+
+
+############################################################
+d55 1
+a55 1
+# Subroutines
+a56 15
+############################################################
+
+sub format_names {
+    local($dir, @@files) = @@_;
+    local(@@lines);
+
+    $lines[0] = sprintf(" %-08s", $dir);
+    foreach $file (@@files) {
+        if (length($lines[$#lines]) + length($file) > 60) {
+            $lines[++$#lines] = sprintf(" %8s", " ");
+        }
+        $lines[$#lines] .= " ".$file;
+    }
+    @@lines;
+}
+d59 1
+a59 1
+    local(@@files);
+d61 4
+a64 2
+    opendir(DIR, $TMPDIR);
+    push(@@files, grep(/^${FILE_PREFIX}.*\.${id}\.${cvs_user}$/, readdir(DIR)));
+d67 1
+a67 1
+        unlink "$TMPDIR/$_";
+d69 3
+d77 2
+a78 2
+    open(FILE, ">$filename") || die ("Cannot open log file $filename: $!\n");
+    print(FILE join("\n", @@lines), "\n");
+d82 2
+a83 2
+sub append_to_file {
+    local($filename, $dir, @@files) = @@_;
+d85 3
+a87 6
+    if (@@files) {
+        local(@@lines) = &format_names($dir, @@files);
+        open(FILE, ">>$filename") || die ("Cannot open file $filename: $!\n");
+        print(FILE join("\n", @@lines), "\n");
+        close(FILE);
+    }
+d90 5
+a94 2
+sub write_line {
+    local($filename, $line) = @@_;
+d96 1
+a96 4
+    open(FILE, ">$filename") || die("Cannot open file $filename: $!\n");
+    print(FILE $line, "\n");
+    close(FILE);
+}
+d98 9
+a106 2
+sub append_line {
+    local($filename, $line) = @@_;
+d108 1
+a108 3
+    open(FILE, ">>$filename") || die("Cannot open file $filename: $!\n");
+    print(FILE $line, "\n");
+    close(FILE);
+d111 3
+a113 10
+sub read_line {
+    local($filename) = @@_;
+    local($line);
+
+    open(FILE, "<$filename") || die("Cannot open file $filename: $!\n");
+    $line = <FILE>;
+    close(FILE);
+    chomp($line);
+    $line;
+}
+d115 19
+a133 4
+sub read_line_nodie {
+    local($filename) = @@_;
+    local($line);
+    open(FILE, "<$filename") || return ("");
+d135 1
+a135 4
+    $line = <FILE>;
+    close(FILE);
+    chomp($line);
+    $line;
+d138 2
+a139 3
+sub read_file_lines {
+    local($filename) = @@_;
+    local(@@text) = ();
+d141 5
+a145 4
+    open(FILE, "<$filename") || return ();
+    while (<FILE>) {
+        chomp;
+        push(@@text, $_);
+a146 2
+    close(FILE);
+    @@text;
+d149 3
+a151 3
+sub read_file {
+    local($filename, $leader) = @@_;
+    local(@@text) = ();
+d153 2
+a154 6
+    open(FILE, "<$filename") || return ();
+    while (<FILE>) {
+        chomp;
+        push(@@text, sprintf("  %-10s  %s", $leader, $_));
+        $leader = "";
+    }
+d156 2
+a157 1
+    @@text;
+d161 1
+a162 1
+    local(@@text) = ();
+d164 1
+a164 1
+    open(FILE, "<$filename") || die ("Cannot open log file $filename: $!\n");
+d166 2
+a167 2
+        chomp;
+        push(@@text, $leader.$_);
+a172 128
+#
+# do an 'cvs -Qn status' on each file in the arguments, and extract info.
+#
+sub change_summary {
+    local($out, @@filenames) = @@_;
+    local(@@revline);
+    local($file, $rev, $rcsfile, $line, $vhost, $cvsweb_base);
+
+    while (@@filenames) {
+        $file = shift @@filenames;
+
+        if ("$file" eq "") {
+            next;
+        }
+
+        open(RCS, "-|") || exec "$cvsbin/cvs", '-Qn', 'status', '--', $file;
+
+        $rev = "";
+        $delta = "";
+        $rcsfile = "";
+
+
+        while (<RCS>) {
+            if (/^[ \t]*Repository revision/) {
+                chomp;
+                @@revline = split(' ', $_);
+                $rev = $revline[2];
+                $rcsfile = $revline[3];
+                $rcsfile =~ s,^$CVSROOT/,,;
+                $rcsfile =~ s/,v$//;
+            }
+        }
+        close(RCS);
+
+
+        if ($rev ne '' && $rcsfile ne '') {
+            open(RCS, "-|") || exec "$cvsbin/cvs", '-Qn', 'log', "-r$rev",
+				    '--', $file;
+            while (<RCS>) {
+                if (/^date:/) {
+                    chomp;
+                    $delta = $_;
+                    $delta =~ s/^.*;//;
+                    $delta =~ s/^[\s]+lines://;
+                }
+            }
+            close(RCS);
+        }
+
+        $diff = "\n\n";
+        $vhost = @@path[0];
+        if ($CVSWEB_PORT eq "80") {
+          $cvsweb_base = "$CVSWEB_SCHEME://$vhost.$CVSWEB_DOMAIN/$CVSWEB_URI";
+        }
+        else {
+          $cvsweb_base = "$CVSWEB_SCHEME://$vhost.$CVSWEB_DOMAIN:$CVSWEB_PORT/$CVSWEB_URI";
+        }
+        if ($SEND_URL eq "true") {
+          $diff .= $cvsweb_base . join("/", @@path) . "/$file";
+        }
+
+        #
+        # If this is a binary file, don't try to report a diff; not only is
+        # it meaningless, but it also screws up some mailers.  We rely on
+        # Perl's 'is this binary' algorithm; it's pretty good.  But not
+        # perfect.
+        #
+        if (($file =~ /\.(?:pdf|gif|jpg|mpg)$/i) || (-B $file)) {
+          if ($SEND_URL eq "true") {
+            $diff .= "?rev=$rev&content-type=text/x-cvsweb-markup\n\n";
+          }
+          if ($SEND_DIFF eq "true") {
+            $diff .= "\t<<Binary file>>\n\n";
+          }
+        }
+        else {
+            #
+            # Get the differences between this and the previous revision,
+            # being aware that new files always have revision '1.1' and
+            # new branches always end in '.n.1'.
+            #
+            if ($rev =~ /^(.*)\.([0-9]+)$/) {
+                $prev = $2 - 1;
+                $prev_rev = $1 . '.' .  $prev;
+
+                $prev_rev =~ s/\.[0-9]+\.0$//;# Truncate if first rev on branch
+
+                if ($rev eq '1.1') {
+                  if ($SEND_URL eq "true") {
+                    $diff .= "?rev=$rev&content-type=text/x-cvsweb-markup\n\n";
+                  }
+                  if ($SEND_DIFF eq "true") {
+                    open(DIFF, "-|")
+                      || exec "$cvsbin/cvs", '-Qn', 'update', '-p', '-r1.1',
+			      '--', $file;
+                    $diff .= "Index: $file\n=================================="
+                      . "=================================\n";
+                  }
+                }
+                else {
+                  if ($SEND_URL eq "true") {
+                    $diff .= ".diff?r1=$prev_rev&r2=$rev\n\n";
+                  }
+                  if ($SEND_DIFF eq "true") {
+                    $diff .= "(In the diff below, changes in quantity "
+                      . "of whitespace are not shown.)\n\n";
+                    open(DIFF, "-|")
+                      || exec "$cvsbin/cvs", '-Qn', 'diff', "$difftype",
+                      '-b', "-r$prev_rev", "-r$rev", '--', $file;
+                  }
+                }
+
+                if ($SEND_DIFF eq "true") {
+                  while (<DIFF>) {
+                    $diff .= $_;
+                  }
+                  close(DIFF);
+                }
+                $diff .= "\n\n";
+            }
+        }
+
+        &append_line($out, sprintf("%-9s%-12s%s%s", $rev, $delta,
+                                   $rcsfile, $diff));
+    }
+}
+
+
+d175 60
+a234 121
+    delete $ENV{'TZ'};
+    local($sec,$min,$hour,$mday,$mon,$year) = localtime(time);
+
+    $header = sprintf("  User: %-8s\n  Date: %02d/%02d/%02d %02d:%02d:%02d",
+                       $cvs_user, $year%100, $mon+1, $mday,
+                       $hour, $min, $sec);
+#    $header = sprintf("%-8s    %02d/%02d/%02d %02d:%02d:%02d",
+#                       $login, $year%100, $mon+1, $mday,
+#                       $hour, $min, $sec);
+}
+
+# !!! Destination Mailing-list and history file mappings here !!!
+
+#sub mlist_map
+#{
+#    local($path) = @@_;
+#    my $domain = "cvshome.org";
+#    
+#    if ($path =~ /^([^\/]+)/) {
+#        return "cvs\@@$1.$domain";
+#    } else {
+#        return "cvs\@@$domain";
+#    }
+#}    
+
+sub derive_subject_from_changes_file ()
+{
+  my $subj = "";
+
+  for ($i = 0; ; $i++)
+  {
+    open (CH, "<$CHANGED_FILE.$i.$id.$cvs_user") or last;
+
+    while (my $change = <CH>)
+    {
+      # A changes file looks like this:
+      #
+      #  src      foo.c newfile.html
+      #  www      index.html project_nav.html
+      #
+      # Each line is " Dir File1 File2 ..."
+      # We only care about Dir, since the subject line should
+      # summarize. 
+      
+      $change =~ s/^[ \t]*//;
+      $change =~ /^([^ \t]+)[ \t]*/;
+      my $dir = $1;
+      # Fold to rightmost directory component
+      $dir =~ /([^\/]+)$/;
+      $dir = $1;
+      if ($subj eq "") {
+        $subj = $dir;
+      } else {
+        $subj .= ", $dir"; 
+      }
+    }
+    close (CH);
+  }
+
+  if ($subj ne "") {
+      $subj = "MODIFIED: $subj ..."; 
+  }
+  else {
+      # NPM: See if there's any file-addition notifications.
+      my $added = &read_line_nodie("$ADDED_FILE.$i.$id.$cvs_user");
+      if ($added ne "") {
+          $subj .= "ADDED: $added "; 
+      }
+    
+#    print "derive_subject_from_changes_file().. added== $added \n";
+    
+       ## NPM: See if there's any file-removal notications.
+      my $removed = &read_line_nodie("$REMOVED_FILE.$i.$id.$cvs_user");
+      if ($removed ne "") {
+          $subj .= "REMOVED: $removed "; 
+      }
+    
+#    print "derive_subject_from_changes_file().. removed== $removed \n";
+    
+      ## NPM: See if there's any branch notifications.
+      my $branched = &read_line_nodie("$BRANCH_FILE.$i.$id.$cvs_user");
+      if ($branched ne "") {
+          $subj .= "BRANCHED: $branched"; 
+      }
+    
+#    print "derive_subject_from_changes_file().. branched== $branched \n";
+    
+      ## NPM: DEFAULT: DIRECTORY CREATION (c.f. "Check for a new directory first" in main mody)
+      if ($subj eq "") {
+          my $subject = join("/", @@path);
+          $subj = "NEW: $subject"; 
+      }    
+  }
+
+  return $subj;
+}
+
+sub mail_notification
+{
+    local($addr_list, @@text) = @@_;
+    local($mail_to);
+
+    my $subj = &derive_subject_from_changes_file ();
+
+    if ($EMULATE_LOCAL_MAIL_USER NE "") {
+        $MAIL_FROM = "$cvs_user\@@$EMULATE_LOCAL_MAIL_USER";
+    }
+
+    $mail_to = join(", ", @@{$addr_list});
+
+    print "Mailing the commit message to $mail_to (from $MAIL_FROM)\n";
+
+    $ENV{'MAILUSER'} = $MAIL_FROM;
+    # Commented out on hocus, so comment it out here.  -kff
+    # $ENV{'QMAILINJECT'} = 'f';
+
+    open(MAIL, "$MAIL_CMD -f$MAIL_FROM");
+    print MAIL "From: $MAIL_FROM\n";
+    print MAIL "To: $mail_to\n";
+    print MAIL "Subject: $SUBJECT_PRE $subj\n\n";
+    print(MAIL join("\n", @@text));
+a235 12
+#    print "Mailing the commit message to $MAIL_TO...\n";
+#
+#    #added by jrobbins@@collab.net 1999/12/15
+#    # attempt to get rid of anonymous
+#    $ENV{'MAILUSER'} = 'commitlogger';
+#    $ENV{'QMAILINJECT'} = 'f';
+#
+#    open(MAIL, "| /var/qmail/bin/qmail-inject");
+#    print(MAIL "To: $MAIL_TO\n"); 
+#    print(MAIL "Subject: cvs commit: $ARGV[0]\n"); 
+#    print(MAIL join("\n", @@text));
+#    close(MAIL);
+d238 2
+a239 9
+## process the command line arguments sent to this script
+## it returns an array of files, %s, sent from the loginfo
+## command
+sub process_argv
+{
+    local(@@argv) = @@_;
+    local(@@files);
+    local($arg);
+    print "Processing log script arguments...\n";
+d241 3
+a243 13
+    while (@@argv) {
+        $arg = shift @@argv;
+
+        if ($arg eq '-u') {
+                $cvs_user = shift @@argv;
+        } else {
+                ($donefiles) && die "Too many arguments!\n";
+                $donefiles = 1;
+                $ARGV[0] = $arg;
+                @@files = split(' ', $arg);
+        }
+    }
+    return @@files;
+a245 6
+
+#############################################################
+#
+# Main Body
+#
+############################################################
+d247 1
+a247 1
+# Setup environment
+a248 1
+umask (002);
+a249 4
+# Connect to the database
+$cvsbin = "/usr/bin";
+
+#
+d252 2
+a253 1
+$id = getpgrp();
+d255 59
+a313 2
+$cvs_user = $ENV{'USER'} || getlogin || (getpwuid($<))[0] || sprintf("uid#%d",$<);
+@@files = process_argv(@@ARGV);
+d315 13
+a327 1
+$repository = $path[0];
+d331 1
+a331 1
+    $dir = join('/', @@path[1..$#path]);
+d333 1
+a333 5
+#print("ARGV  - ", join(":", @@ARGV), "\n");
+#print("files - ", join(":", @@files), "\n");
+#print("path  - ", join(":", @@path), "\n");
+#print("dir   - ", $dir, "\n");
+#print("id    - ", $id, "\n");
+d335 9
+d345 4
+a348 2
+# Map the repository directory to an email address for commitlogs to be sent
+# to.
+d350 2
+a351 1
+#$mlist = &mlist_map($files[0]);
+d353 17
+a369 1
+##########################
+d371 4
+a374 2
+# Check for a new directory first.  This will always appear as a
+# single item in the argument list, and an empty log message.
+d376 3
+a378 2
+if ($ARGV[0] =~ /New directory/) {
+    $header = &build_header;
+d380 1
+a380 1
+    push(@@text, $header);
+d382 10
+a391 2
+    push(@@text, "  ".$ARGV[0]);
+    &mail_notification([ $mlist ], @@text);
+a394 1
+#
+d398 8
+a405 5
+    chomp;                      # Drop the newline
+    if (/^Revision\/Branch:/) {
+        s,^Revision/Branch:,,;
+        push (@@branch_lines, split);
+        next;
+d407 1
+a407 1
+#    next if (/^[ \t]+Tag:/ && $state != $STATE_LOG);
+d412 3
+a414 1
+    s/[ \t\n]+$//;              # delete trailing space
+d416 4
+a419 12
+    push (@@changed_files, split) if ($state == $STATE_CHANGED);
+    push (@@added_files,   split) if ($state == $STATE_ADDED);
+    push (@@removed_files, split) if ($state == $STATE_REMOVED);
+    if ($state == $STATE_LOG) {
+        if (/^PR:$/i ||
+            /^Reviewed by:$/i ||
+            /^Submitted by:$/i ||
+            /^Obtained from:$/i) {
+            next;
+        }
+        push (@@log_lines,     $_);
+    }
+a421 1
+#
+a424 1
+# (Note, this only does the mail and changes log, not the rcs log).
+d436 1
+a436 1
+        splice(@@log_lines, $i, 1);
+d440 4
+a443 2
+#
+# Find the log file that matches this log message
+d446 9
+a454 4
+    last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+    @@text = &read_logfile("$LOG_FILE.$i.$id.$cvs_user", "");
+    last if ($#text == -1);
+    last if (join(" ", @@log_lines) eq join(" ", @@text));
+a456 1
+#
+d459 4
+a462 9
+&write_logfile("$LOG_FILE.$i.$id.$cvs_user", @@log_lines);
+&append_to_file("$BRANCH_FILE.$i.$id.$cvs_user",  $dir, @@branch_lines);
+&append_to_file("$ADDED_FILE.$i.$id.$cvs_user",   $dir, @@added_files);
+&append_to_file("$CHANGED_FILE.$i.$id.$cvs_user", $dir, @@changed_files);
+&append_to_file("$REMOVED_FILE.$i.$id.$cvs_user", $dir, @@removed_files);
+&append_line("$MLIST_FILE.$i.$id.$cvs_user", $mlist);
+if ($rcsidinfo) {
+    &change_summary("$SUMMARY_FILE.$i.$id.$cvs_user", (@@changed_files, @@added_files));
+}
+a463 1
+#
+d466 13
+a478 8
+if (-e "$LAST_FILE.$id.$cvs_user") {
+   $_ = &read_line("$LAST_FILE.$id.$cvs_user");
+   $tmpfiles = $files[0];
+   $tmpfiles =~ s,([^a-zA-Z0-9_/]),\\$1,g;
+   if (! grep(/$tmpfiles$/, $_)) {
+        print "More commits to come...\n";
+        exit 0
+   }
+d482 3
+a488 1
+$header = &build_header;
+d494 2
+a495 2
+@@mlist_list = ();
+push(@@text, $header);
+d497 1
+d499 54
+a552 14
+    last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+    push(@@text, &read_file("$BRANCH_FILE.$i.$id.$cvs_user", "Branch:"));
+    push(@@text, &read_file("$CHANGED_FILE.$i.$id.$cvs_user", "Modified:"));
+    push(@@text, &read_file("$ADDED_FILE.$i.$id.$cvs_user", "Added:"));
+    push(@@text, &read_file("$REMOVED_FILE.$i.$id.$cvs_user", "Removed:"));
+    push(@@text, "  Log:");
+    push(@@text, &read_logfile("$LOG_FILE.$i.$id.$cvs_user", "  "));
+    push(@@mlist_list, &read_file_lines("$MLIST_FILE.$i.$id.$cvs_user"));
+    if ($rcsidinfo == 2) {
+        if (-e "$SUMMARY_FILE.$i.$id.$cvs_user") {
+            push(@@text, "  ");
+            push(@@text, "  Revision  Changes    Path");
+            push(@@text, &read_logfile("$SUMMARY_FILE.$i.$id.$cvs_user", "  "));
+        }
+a553 1
+    push(@@text, "");
+d556 1
+d558 2
+a559 16
+# Now generate the extra info for the mail message..
+#
+if ($rcsidinfo == 1) {
+    $revhdr = 0;
+    for ($i = 0; ; $i++) {
+        last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+        if (-e "$SUMMARY_FILE.$i.$id.$cvs_user") {
+            if (!$revhdr++) {
+                push(@@text, "Revision  Changes    Path");
+            }
+            push(@@text, &read_logfile("$SUMMARY_FILE.$i.$id.$cvs_user", ""));
+        }
+    }
+    if ($revhdr) {
+        push(@@text, "");        # consistancy...
+    }
+d562 3
+a564 1
+%mlist_hash = ();
+d566 3
+a568 1
+foreach (@@mlist_list) { $mlist_hash{ $_ } = 1; }
+d570 1
+d572 4
+a575 4
+# Mail out the notification.
+#
+&mail_notification([ keys(%mlist_hash) ], @@text);
+&cleanup_tmpfiles;
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d12 19
+d32 2
+a34 1
+# hacked greatly by Greg A. Woods <woods@@planix.com>
+d36 12
+a47 9
+# Usage: log_accum.pl [-d] [-s] [-w] [-M module] [-u user] [[-m mailto] ...] [[-R replyto] ...] [-f logfile]
+#	-d		- turn on debugging
+#	-m mailto	- send mail to "mailto" (multiple)
+#	-R replyto	- set the "Reply-To:" to "replyto" (multiple)
+#	-M modulename	- set module name to "modulename"
+#	-f logfile	- write commit messages to logfile too
+#	-s		- *don't* run "cvs status -v" for each file
+#	-w		- show working directory with log message
+#	-u user		- $USER passed from loginfo
+d49 1
+d51 13
+a63 2
+#	Configurable options
+#
+d65 2
+a66 2
+# set this to something that takes a whole message on stdin
+$MAILER	       = "/usr/lib/sendmail -t";
+d68 1
+d70 1
+a70 4
+#	End user configurable options.
+#
+
+# Constants (don't change these!)
+d72 1
+d79 2
+a80 1
+$LAST_FILE     = "/tmp/#cvs.lastdir";
+d82 7
+a88 4
+$CHANGED_FILE  = "/tmp/#cvs.files.changed";
+$ADDED_FILE    = "/tmp/#cvs.files.added";
+$REMOVED_FILE  = "/tmp/#cvs.files.removed";
+$LOG_FILE      = "/tmp/#cvs.files.log";
+d90 1
+a90 1
+$FILE_PREFIX   = "#cvs.files";
+d92 7
+d100 1
+a100 1
+#	Subroutines
+d102 15
+d119 1
+a119 1
+    local($wd, @@files);
+d121 2
+a122 4
+    $wd = `pwd`;
+    chdir("/tmp") || die("Can't chdir('/tmp')\n");
+    opendir(DIR, ".");
+    push(@@files, grep(/^$FILE_PREFIX\..*\.$id$/, readdir(DIR)));
+d125 1
+a125 1
+	unlink $_;
+a126 3
+    unlink $LAST_FILE . "." . $id;
+
+    chdir($wd);
+d132 2
+a133 2
+    open(FILE, ">$filename") || die("Cannot open log file $filename.\n");
+    print FILE join("\n", @@lines), "\n";
+d137 13
+a149 2
+sub append_to_logfile {
+    local($filename, @@lines) = @@_;
+d151 2
+a152 2
+    open(FILE, ">$filename") || die("Cannot open log file $filename.\n");
+    print FILE join("\n", @@lines), "\n";
+d156 7
+a162 3
+sub format_names {
+    local($dir, @@files) = @@_;
+    local(@@lines);
+d164 3
+a166 1
+    $format = "\t%-" . sprintf("%d", length($dir)) . "s%s ";
+d168 6
+a173 1
+    $lines[0] = sprintf($format, $dir, ":");
+d175 4
+a178 9
+    if ($debug) {
+	print STDERR "format_names(): dir = ", $dir, "; files = ", join(":", @@files), ".\n";
+    }
+    foreach $file (@@files) {
+	if (length($lines[$#lines]) + length($file) > 65) {
+	    $lines[++$#lines] = sprintf($format, " ", " ");
+	}
+	$lines[$#lines] .= $file . " ";
+    }
+d180 4
+a183 1
+    @@lines;
+d186 3
+a188 3
+sub format_lists {
+    local(@@lines) = @@_;
+    local(@@text, @@files, $lastdir);
+d190 4
+a193 2
+    if ($debug) {
+	print STDERR "format_lists(): ", join(":", @@lines), "\n";
+d195 1
+a195 17
+    @@text = ();
+    @@files = ();
+    $lastdir = shift @@lines;	# first thing is always a directory
+    if ($lastdir !~ /.*\/$/) {
+	die("Damn, $lastdir doesn't look like a directory!\n");
+    }
+    foreach $line (@@lines) {
+	if ($line =~ /.*\/$/) {
+	    push(@@text, &format_names($lastdir, @@files));
+	    $lastdir = $line;
+	    @@files = ();
+	} else {
+	    push(@@files, $line);
+	}
+    }
+    push(@@text, &format_names($lastdir, @@files));
+
+d199 3
+a201 2
+sub append_names_to_file {
+    local($filename, $dir, @@files) = @@_;
+d203 5
+a207 5
+    if (@@files) {
+	open(FILE, ">>$filename") || die("Cannot open file $filename.\n");
+	print FILE $dir, "\n";
+	print FILE join("\n", @@files), "\n";
+	close(FILE);
+a208 8
+}
+
+sub read_line {
+    local($line);
+    local($filename) = @@_;
+
+    open(FILE, "<$filename") || die("Cannot open file $filename.\n");
+    $line = <FILE>;
+d210 1
+a210 2
+    chop($line);
+    $line;
+a213 1
+    local(@@text);
+d215 1
+d217 1
+a217 1
+    open(FILE, "<$filename");
+d219 2
+a220 2
+	chop;
+	push(@@text, $leader.$_);
+d226 128
+d356 121
+a476 60
+    local($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
+    $header = sprintf("CVSROOT:\t%s\nModule name:\t%s\nRepository:\t%s\nChanges by:\t%s@@%s\t%02d/%02d/%02d %02d:%02d:%02d",
+		      $cvsroot,
+		      $modulename,
+		      $dir,
+		      $login, $hostdomain,
+		      $year%100, $mon+1, $mday,
+		      $hour, $min, $sec);
+}
+
+sub mail_notification {
+    local(@@text) = @@_;
+
+    # if only we had strftime()...  stuff stolen from perl's ctime.pl:
+    local($[) = 0;
+
+    @@DoW = ('Sun','Mon','Tue','Wed','Thu','Fri','Sat');
+    @@MoY = ('Jan','Feb','Mar','Apr','May','Jun',
+	    'Jul','Aug','Sep','Oct','Nov','Dec');
+
+    # Determine what time zone is in effect.
+    # Use GMT if TZ is defined as null, local time if TZ undefined.
+    # There's no portable way to find the system default timezone.
+    #
+    $TZ = defined($ENV{'TZ'}) ? ( $ENV{'TZ'} ? $ENV{'TZ'} : 'GMT' ) : '';
+
+    # Hack to deal with 'PST8PDT' format of TZ
+    # Note that this can't deal with all the esoteric forms, but it
+    # does recognize the most common: [:]STDoff[DST[off][,rule]]
+    #
+    if ($TZ =~ /^([^:\d+\-,]{3,})([+-]?\d{1,2}(:\d{1,2}){0,2})([^\d+\-,]{3,})?/) {
+        $TZ = $isdst ? $4 : $1;
+	$tzoff = sprintf("%05d", -($2) * 100);
+    }
+
+    # perl-4.036 doesn't have the $zone or $gmtoff...
+    ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst, $zone, $gmtoff) =
+        ($TZ eq 'GMT') ? gmtime(time) : localtime(time);
+
+    $year += ($year < 70) ? 2000 : 1900;
+
+    if ($gmtoff != 0) {
+	$tzoff = sprintf("%05d", ($gmtoff / 60) * 100);
+    }
+    if ($zone ne '') {
+	$TZ = $zone;
+    }
+
+    # ok, let's try....
+    $rfc822date = sprintf("%s, %2d %s %4d %2d:%02d:%02d %s (%s)",
+			  $DoW[$wday], $mday, $MoY[$mon], $year,
+			  $hour, $min, $sec, $tzoff, $TZ);
+
+    open(MAIL, "| $MAILER");
+    print MAIL "Date:     " . $rfc822date . "\n";
+    print MAIL "Subject:  CVS Update: " . $modulename . "\n";
+    print MAIL "To:       " . $mailto . "\n";
+    print MAIL "Reply-To: " . $replyto . "\n";
+    print MAIL "\n";
+    print MAIL join("\n", @@text), "\n";
+d478 12
+d492 12
+a503 2
+sub write_commitlog {
+    local($logfile, @@text) = @@_;
+d505 10
+a514 3
+    open(FILE, ">>$logfile");
+    print FILE join("\n", @@text), "\n";
+    close(FILE);
+d517 6
+d524 1
+a524 1
+#	Main Body
+d526 1
+d528 4
+d534 1
+a534 2
+$debug = 0;
+$id = getpgrp();		# note, you *must* use a shell which does setpgrp()
+d536 2
+a537 59
+chop($hostname = `hostname`);
+chop($domainname = `domainname`);
+if ($domainname !~ '^\..*') {
+    $domainname = '.' . $domainname;
+}
+$hostdomain = $hostname . $domainname;
+$cvsroot = $ENV{'CVSROOT'};
+$do_status = 1;			# moderately useful
+$show_wd = 0;			# useless in client/server
+$modulename = "";
+
+# parse command line arguments (file list is seen as one arg)
+#
+while (@@ARGV) {
+    $arg = shift @@ARGV;
+
+    if ($arg eq '-d') {
+	$debug = 1;
+	print STDERR "Debug turned on...\n";
+    } elsif ($arg eq '-m') {
+	if ($mailto eq '') {
+	    $mailto = shift @@ARGV;
+	} else {
+	    $mailto = $mailto . ", " . shift @@ARGV;
+	}
+    } elsif ($arg eq '-R') {
+	if ($replyto eq '') {
+	    $replyto = shift @@ARGV;
+	} else {
+	    $replyto = $replyto . ", " . shift @@ARGV;
+	}
+    } elsif ($arg eq '-M') {
+	$modulename = shift @@ARGV;
+    } elsif ($arg eq '-u') {
+	$login = shift @@ARGV;
+    } elsif ($arg eq '-s') {
+	$do_status = 0;
+    } elsif ($arg eq '-w') {
+	$show_wd = 1;
+    } elsif ($arg eq '-f') {
+	($commitlog) && die("Too many '-f' args\n");
+	$commitlog = shift @@ARGV;
+    } else {
+	($donefiles) && die("Too many arguments!  Check usage.\n");
+	$donefiles = 1;
+	@@files = split(/ /, $arg);
+    }
+}
+if ($login eq '') {
+    $login = getlogin || (getpwuid($<))[0] || "nobody";
+}
+($mailto) || die("No mail recipient specified (use -m)\n");
+if ($replyto eq '') {
+    $replyto = $login;
+}
+
+# for now, the first "file" is the repository directory being committed,
+# relative to the $CVSROOT location
+#
+d539 1
+a539 13
+
+# XXX There are some ugly assumptions in here about module names and
+# XXX directories relative to the $CVSROOT location -- really should
+# XXX read $CVSROOT/CVSROOT/modules, but that's not so easy to do, since
+# XXX we have to parse it backwards.
+# XXX 
+# XXX Fortunately it's relatively easy for the user to specify the
+# XXX module name as appropriate with a '-M' via the directory
+# XXX matching in loginfo.
+#
+if ($modulename eq "") {
+    $modulename = $path[0];	# I.e. the module name == top-level dir
+}
+d543 1
+a543 1
+    $dir = join('/', @@path);
+d545 5
+a549 1
+$dir = $dir . "/";
+a550 9
+if ($debug) {
+    print STDERR "module - ", $modulename, "\n";
+    print STDERR "dir    - ", $dir, "\n";
+    print STDERR "path   - ", join(":", @@path), "\n";
+    print STDERR "files  - ", join(":", @@files), "\n";
+    print STDERR "id     - ", $id, "\n";
+}
+
+# Check for a new directory first.  This appears with files set as follows:
+d552 2
+a553 4
+#    files[0] - "path/name/newdir"
+#    files[1] - "-"
+#    files[2] - "New"
+#    files[3] - "directory"
+d555 1
+a555 2
+if ($files[2] =~ /New/ && $files[3] =~ /directory/) {
+    local(@@text);
+d557 1
+a557 17
+    @@text = ();
+    push(@@text, &build_header());
+    push(@@text, "");
+    push(@@text, $files[0]);
+    push(@@text, "");
+
+    while (<STDIN>) {
+	chop;			# Drop the newline
+	push(@@text, $_);
+    }
+
+    &mail_notification($mailto, @@text);
+
+    exit 0;
+}
+
+# Check for an import command.  This appears with files set as follows:
+d559 2
+a560 4
+#    files[0] - "path/name"
+#    files[1] - "-"
+#    files[2] - "Imported"
+#    files[3] - "sources"
+d562 2
+a563 3
+if ($files[2] =~ /Imported/ && $files[3] =~ /sources/) {
+    local(@@text);
+
+d565 1
+a565 1
+    push(@@text, &build_header());
+d567 2
+a568 10
+    push(@@text, $files[0]);
+    push(@@text, "");
+
+    while (<STDIN>) {
+	chop;			# Drop the newline
+	push(@@text, $_);
+    }
+
+    &mail_notification(@@text);
+
+d572 1
+d576 5
+a580 8
+    chop;			# Drop the newline
+
+    if (/^In directory/) {
+	if ($show_wd) {		# useless in client/server mode
+	    push(@@log_lines, $_);
+	    push(@@log_lines, "");
+	}
+	next;
+d582 1
+a582 1
+
+d587 1
+a587 3
+
+    s/^[ \t\n]+//;		# delete leading whitespace
+    s/[ \t\n]+$//;		# delete trailing whitespace
+d589 12
+a600 4
+    if ($state == $STATE_CHANGED) { push(@@changed_files, split); }
+    if ($state == $STATE_ADDED)   { push(@@added_files,   split); }
+    if ($state == $STATE_REMOVED) { push(@@removed_files, split); }
+    if ($state == $STATE_LOG)     { push(@@log_lines,     $_); }
+d603 1
+d607 1
+d619 1
+a619 1
+	splice(@@log_lines, $i, 1);
+d623 2
+a624 4
+if ($debug) {
+    print STDERR "Searching for log file index...";
+}
+# Find an index to a log file that matches this log message
+d627 4
+a630 9
+    local(@@text);
+
+    last if (! -e "$LOG_FILE.$i.$id"); # the next available one
+    @@text = &read_logfile("$LOG_FILE.$i.$id", "");
+    last if ($#text == -1);	# nothing in this file, use it
+    last if (join(" ", @@log_lines) eq join(" ", @@text)); # it's the same log message as another
+}
+if ($debug) {
+    print STDERR " found log file at $i.$id, now writing tmp files.\n";
+d633 1
+d636 9
+a644 4
+&append_names_to_file("$CHANGED_FILE.$i.$id", $dir, @@changed_files);
+&append_names_to_file("$ADDED_FILE.$i.$id",   $dir, @@added_files);
+&append_names_to_file("$REMOVED_FILE.$i.$id", $dir, @@removed_files);
+&write_logfile("$LOG_FILE.$i.$id", @@log_lines);
+d646 1
+d649 8
+a656 13
+if ($debug) {
+    print STDERR "Checking current dir against last dir.\n";
+}
+$_ = &read_line("$LAST_FILE.$id");
+
+if ($_ ne $cvsroot . "/" . $files[0]) {
+    if ($debug) {
+	print STDERR sprintf("Current directory %s is not last directory %s.\n", $cvsroot . "/" .$files[0], $_);
+    }
+    exit 0;
+}
+if ($debug) {
+    print STDERR sprintf("Current directory %s is last directory %s -- all commits done.\n", $files[0], $_);
+a659 3
+#	End Of Commits!
+#
+
+d664 1
+d670 2
+a671 2
+@@status_txt = ();
+push(@@text, &build_header());
+a672 1
+
+d674 14
+a687 5
+    last if (! -e "$LOG_FILE.$i.$id"); # we're done them all!
+    @@lines = &read_logfile("$CHANGED_FILE.$i.$id", "");
+    if ($#lines >= 0) {
+	push(@@text, "Modified files:");
+	push(@@text, &format_lists(@@lines));
+d689 16
+a704 12
+    @@lines = &read_logfile("$ADDED_FILE.$i.$id", "");
+    if ($#lines >= 0) {
+	push(@@text, "Added files:");
+	push(@@text, &format_lists(@@lines));
+    }
+    @@lines = &read_logfile("$REMOVED_FILE.$i.$id", "");
+    if ($#lines >= 0) {
+	push(@@text, "Removed files:");
+	push(@@text, &format_lists(@@lines));
+    }
+    if ($#text >= 0) {
+	push(@@text, "");
+d706 2
+a707 35
+    @@lines = &read_logfile("$LOG_FILE.$i.$id", "\t");
+    if ($#lines >= 0) {
+	push(@@text, "Log message:");
+	push(@@text, @@lines);
+	push(@@text, "");
+    }
+    if ($do_status) {
+	local(@@changed_files);
+
+	@@changed_files = ();
+	push(@@changed_files, &read_logfile("$CHANGED_FILE.$i.$id", ""));
+	push(@@changed_files, &read_logfile("$ADDED_FILE.$i.$id", ""));
+	push(@@changed_files, &read_logfile("$REMOVED_FILE.$i.$id", ""));
+
+	if ($debug) {
+	    print STDERR "main: pre-sort changed_files = ", join(":", @@changed_files), ".\n";
+	}
+	sort(@@changed_files);
+	if ($debug) {
+	    print STDERR "main: post-sort changed_files = ", join(":", @@changed_files), ".\n";
+	}
+
+	foreach $dofile (@@changed_files) {
+	    if ($dofile =~ /\/$/) {
+		next;		# ignore the silly "dir" entries
+	    }
+	    if ($debug) {
+		print STDERR "main(): doing 'cvs -nQq status -v $dofile'\n";
+	    }
+	    open(STATUS, "-|") || exec 'cvs', '-nQq', 'status', '-v', $dofile;
+	    while (<STATUS>) {
+		chop;
+		push(@@status_txt, $_);
+	    }
+	}
+d711 1
+a711 5
+# Write to the commitlog file
+#
+if ($commitlog) {
+    &write_commitlog($commitlog, @@text);
+}
+d713 1
+a713 3
+if ($#status_txt >= 0) {
+    push(@@text, @@status_txt);
+}
+a714 1
+# Mailout the notification.
+d716 1
+a716 3
+&mail_notification(@@text);
+
+# cleanup
+d718 2
+a719 4
+if (! $debug) {
+    &cleanup_tmpfiles();
+}
+
+@
+
+
+1.1.2.1
+log
+@vendor-branch-ify new cvs 1.12
+@
+text
+@a11 19
+# IMPORTANT: what the above means is, this script interacts with
+# commit_prep, in that they have to agree on the tmpfile name to use.
+# See $LAST_FILE below. 
+#
+# How this works: CVS triggers this script once for each directory
+# involved in the commit -- in other words, a single commit can invoke
+# this script N times.  It knows when it's on the last invocation by
+# examining the contents of $LAST_FILE.  Between invocations, it
+# caches information for its future incarnations in various temporary
+# files in /tmp, which are named according to the process group and
+# the committer (by themselves, neither of these are unique, but
+# together they almost always are, unless the same user is doing two
+# commits simultaneously).  The final invocation is the one that
+# actually sends the mail -- it gathers up the cached information,
+# combines that with what it found out on this pass, and sends a
+# commit message to the appropriate mailing list.
+#
+# (Ask Karl Fogel <kfogel@@collab.net> if questions.)
+#
+a12 2
+# Roy Fielding removed useless code and added log/mail of new files
+# Ken Coar added special processing (i.e., no diffs) for binary files
+d14 11
+a25 1
+############################################################
+d27 1
+a27 1
+# Configurable options
+d29 3
+a31 9
+############################################################
+#
+# The newest versions of CVS have UseNewInfoFmtStrings=yes
+# to change the arguments being passed on the command line.
+# If you are using %1s on the command line, then set this
+# value to 0.
+# 0 = old-style %1s format. use split(' ') to separate ARGV into filesnames.
+# 1 = new-style %s format. Note: allows spaces in filenames.
+my $UseNewInfoFmtStrings = 0;
+d34 1
+a34 4
+# Where do you want the RCS ID and delta info?
+# 0 = none,
+# 1 = in mail only,
+# 2 = in both mail and logs.
+a35 1
+$rcsidinfo = 2;
+d37 1
+a37 22
+#if you are using CVS web then set this to some value... if not set it to ""
+#
+# When set properly, this will cause links to aspects of the project to
+# print in the commit emails.
+#$CVSWEB_SCHEME = "http";
+#$CVSWEB_DOMAIN = "cvshome.org";
+#$CVSWEB_PORT = "80";
+#$CVSWEB_URI = "source/browse/";
+#$SEND_URL = "true";
+$SEND_DIFF = "true";
+
+
+# Set this to a domain to have CVS pretend that all users who make
+# commits have mail accounts within that domain.
+#$EMULATE_LOCAL_MAIL_USER="cvshome.org"; 
+
+# Set this to '-c' for context diffs; defaults to '-u' for unidiff format.
+$difftype = '-uN';
+
+############################################################
+#
+# Constants
+a38 1
+############################################################
+d45 1
+a45 2
+$TMPDIR        = $ENV{'TMPDIR'} || '/tmp';
+$FILE_PREFIX   = '#cvs.';
+d47 4
+a50 7
+$LAST_FILE     = "$TMPDIR/${FILE_PREFIX}lastdir";  # Created by commit_prep!
+$ADDED_FILE    = "$TMPDIR/${FILE_PREFIX}files.added";
+$REMOVED_FILE  = "$TMPDIR/${FILE_PREFIX}files.removed";
+$LOG_FILE      = "$TMPDIR/${FILE_PREFIX}files.log";
+$BRANCH_FILE   = "$TMPDIR/${FILE_PREFIX}files.branch";
+$MLIST_FILE    = "$TMPDIR/${FILE_PREFIX}files.mlist";
+$SUMMARY_FILE  = "$TMPDIR/${FILE_PREFIX}files.summary";
+d52 1
+a52 1
+$CVSROOT       = $ENV{'CVSROOT'};
+a53 7
+$MAIL_CMD      = "| /usr/lib/sendmail -i -t";
+#$MAIL_CMD      = "| /var/qmail/bin/qmail-inject";
+$MAIL_FROM     = 'commitlogger';  #not needed if EMULATE_LOCAL_MAIL_USER
+$SUBJECT_PRE   = 'CVS update:';
+
+
+############################################################
+d55 1
+a55 1
+# Subroutines
+a56 15
+############################################################
+
+sub format_names {
+    local($dir, @@files) = @@_;
+    local(@@lines);
+
+    $lines[0] = sprintf(" %-08s", $dir);
+    foreach $file (@@files) {
+        if (length($lines[$#lines]) + length($file) > 60) {
+            $lines[++$#lines] = sprintf(" %8s", " ");
+        }
+        $lines[$#lines] .= " ".$file;
+    }
+    @@lines;
+}
+d59 1
+a59 1
+    local(@@files);
+d61 4
+a64 2
+    opendir(DIR, $TMPDIR);
+    push(@@files, grep(/^${FILE_PREFIX}.*\.${id}\.${cvs_user}$/, readdir(DIR)));
+d67 1
+a67 1
+        unlink "$TMPDIR/$_";
+d69 3
+d77 2
+a78 2
+    open(FILE, ">$filename") || die ("Cannot open log file $filename: $!\n");
+    print(FILE join("\n", @@lines), "\n");
+d82 2
+a83 2
+sub append_to_file {
+    local($filename, $dir, @@files) = @@_;
+d85 3
+a87 6
+    if (@@files) {
+        local(@@lines) = &format_names($dir, @@files);
+        open(FILE, ">>$filename") || die ("Cannot open file $filename: $!\n");
+        print(FILE join("\n", @@lines), "\n");
+        close(FILE);
+    }
+d90 3
+a92 2
+sub write_line {
+    local($filename, $line) = @@_;
+d94 3
+a96 4
+    open(FILE, ">$filename") || die("Cannot open file $filename: $!\n");
+    print(FILE $line, "\n");
+    close(FILE);
+}
+d98 9
+a106 2
+sub append_line {
+    local($filename, $line) = @@_;
+d108 1
+a108 3
+    open(FILE, ">>$filename") || die("Cannot open file $filename: $!\n");
+    print(FILE $line, "\n");
+    close(FILE);
+d111 3
+a113 3
+sub read_line {
+    local($filename) = @@_;
+    local($line);
+d115 19
+a133 6
+    open(FILE, "<$filename") || die("Cannot open file $filename: $!\n");
+    $line = <FILE>;
+    close(FILE);
+    chomp($line);
+    $line;
+}
+d135 1
+a135 9
+sub read_line_nodie {
+    local($filename) = @@_;
+    local($line);
+    open(FILE, "<$filename") || return ("");
+
+    $line = <FILE>;
+    close(FILE);
+    chomp($line);
+    $line;
+d138 2
+a139 3
+sub read_file_lines {
+    local($filename) = @@_;
+    local(@@text) = ();
+d141 5
+a145 4
+    open(FILE, "<$filename") || return ();
+    while (<FILE>) {
+        chomp;
+        push(@@text, $_);
+a146 2
+    close(FILE);
+    @@text;
+d149 3
+a151 3
+sub read_file {
+    local($filename, $leader) = @@_;
+    local(@@text) = ();
+d153 2
+a154 6
+    open(FILE, "<$filename") || return ();
+    while (<FILE>) {
+        chomp;
+        push(@@text, sprintf("  %-10s  %s", $leader, $_));
+        $leader = "";
+    }
+d156 2
+a157 1
+    @@text;
+d161 1
+a162 1
+    local(@@text) = ();
+d164 1
+a164 1
+    open(FILE, "<$filename") || die ("Cannot open log file $filename: $!\n");
+d166 2
+a167 2
+        chomp;
+        push(@@text, $leader.$_);
+a172 128
+#
+# do an 'cvs -Qn status' on each file in the arguments, and extract info.
+#
+sub change_summary {
+    local($out, @@filenames) = @@_;
+    local(@@revline);
+    local($file, $rev, $rcsfile, $line, $vhost, $cvsweb_base);
+
+    while (@@filenames) {
+        $file = shift @@filenames;
+
+        if ("$file" eq "") {
+            next;
+        }
+
+        open(RCS, "-|") || exec "$cvsbin/cvs", '-Qn', 'status', '--', $file;
+
+        $rev = "";
+        $delta = "";
+        $rcsfile = "";
+
+
+        while (<RCS>) {
+            if (/^[ \t]*Repository revision/) {
+                chomp;
+                @@revline = split(' ', $_);
+                $rev = $revline[2];
+                $rcsfile = $revline[3];
+                $rcsfile =~ s,^$CVSROOT/,,;
+                $rcsfile =~ s/,v$//;
+            }
+        }
+        close(RCS);
+
+
+        if ($rev ne '' && $rcsfile ne '') {
+            open(RCS, "-|") || exec "$cvsbin/cvs", '-Qn', 'log', "-r$rev",
+				    '--', $file;
+            while (<RCS>) {
+                if (/^date:/) {
+                    chomp;
+                    $delta = $_;
+                    $delta =~ s/^.*;//;
+                    $delta =~ s/^[\s]+lines://;
+                }
+            }
+            close(RCS);
+        }
+
+        $diff = "\n\n";
+        $vhost = $path[0];
+        if ($CVSWEB_PORT eq "80") {
+          $cvsweb_base = "$CVSWEB_SCHEME://$vhost.$CVSWEB_DOMAIN/$CVSWEB_URI";
+        }
+        else {
+          $cvsweb_base = "$CVSWEB_SCHEME://$vhost.$CVSWEB_DOMAIN:$CVSWEB_PORT/$CVSWEB_URI";
+        }
+        if ($SEND_URL eq "true") {
+          $diff .= $cvsweb_base . join("/", @@path) . "/$file";
+        }
+
+        #
+        # If this is a binary file, don't try to report a diff; not only is
+        # it meaningless, but it also screws up some mailers.  We rely on
+        # Perl's 'is this binary' algorithm; it's pretty good.  But not
+        # perfect.
+        #
+        if (($file =~ /\.(?:pdf|gif|jpg|mpg)$/i) || (-B $file)) {
+          if ($SEND_URL eq "true") {
+            $diff .= "?rev=$rev&content-type=text/x-cvsweb-markup\n\n";
+          }
+          if ($SEND_DIFF eq "true") {
+            $diff .= "\t<<Binary file>>\n\n";
+          }
+        }
+        else {
+            #
+            # Get the differences between this and the previous revision,
+            # being aware that new files always have revision '1.1' and
+            # new branches always end in '.n.1'.
+            #
+            if ($rev =~ /^(.*)\.([0-9]+)$/) {
+                $prev = $2 - 1;
+                $prev_rev = $1 . '.' .  $prev;
+
+                $prev_rev =~ s/\.[0-9]+\.0$//;# Truncate if first rev on branch
+
+                if ($rev eq '1.1') {
+                  if ($SEND_URL eq "true") {
+                    $diff .= "?rev=$rev&content-type=text/x-cvsweb-markup\n\n";
+                  }
+                  if ($SEND_DIFF eq "true") {
+                    open(DIFF, "-|")
+                      || exec "$cvsbin/cvs", '-Qn', 'update', '-p', '-r1.1',
+			      '--', $file;
+                    $diff .= "Index: $file\n=================================="
+                      . "=================================\n";
+                  }
+                }
+                else {
+                  if ($SEND_URL eq "true") {
+                    $diff .= ".diff?r1=$prev_rev&r2=$rev\n\n";
+                  }
+                  if ($SEND_DIFF eq "true") {
+                    $diff .= "(In the diff below, changes in quantity "
+                      . "of whitespace are not shown.)\n\n";
+                    open(DIFF, "-|")
+                      || exec "$cvsbin/cvs", '-Qn', 'diff', "$difftype",
+                      '-b', "-r$prev_rev", "-r$rev", '--', $file;
+                  }
+                }
+
+                if ($SEND_DIFF eq "true") {
+                  while (<DIFF>) {
+                    $diff .= $_;
+                  }
+                  close(DIFF);
+                }
+                $diff .= "\n\n";
+            }
+        }
+
+        &append_line($out, sprintf("%-9s%-12s%s%s", $rev, $delta,
+                                   $rcsfile, $diff));
+    }
+}
+
+
+d175 62
+a236 2
+    delete $ENV{'TZ'};
+    local($sec,$min,$hour,$mday,$mon,$year) = localtime(time);
+d238 2
+a239 90
+    $header = sprintf("  User: %-8s\n  Date: %02d/%02d/%02d %02d:%02d:%02d",
+                       $cvs_user, $year%100, $mon+1, $mday,
+                       $hour, $min, $sec);
+#    $header = sprintf("%-8s    %02d/%02d/%02d %02d:%02d:%02d",
+#                       $login, $year%100, $mon+1, $mday,
+#                       $hour, $min, $sec);
+}
+
+# !!! Destination Mailing-list and history file mappings here !!!
+
+#sub mlist_map
+#{
+#    local($path) = @@_;
+#    my $domain = "cvshome.org";
+#    
+#    if ($path =~ /^([^\/]+)/) {
+#        return "cvs\@@$1.$domain";
+#    } else {
+#        return "cvs\@@$domain";
+#    }
+#}    
+
+sub derive_subject_from_changes_file ()
+{
+  my $subj = "";
+
+  for ($i = 0; ; $i++)
+  {
+    open (CH, "<$CHANGED_FILE.$i.$id.$cvs_user") or last;
+
+    while (my $change = <CH>)
+    {
+      # A changes file looks like this:
+      #
+      #  src      foo.c newfile.html
+      #  www      index.html project_nav.html
+      #
+      # Each line is " Dir File1 File2 ..."
+      # We only care about Dir, since the subject line should
+      # summarize. 
+      
+      $change =~ s/^[ \t]*//;
+      $change =~ /^([^ \t]+)[ \t]*/;
+      my $dir = $1;
+      # Fold to rightmost directory component
+      $dir =~ /([^\/]+)$/;
+      $dir = $1;
+      if ($subj eq "") {
+        $subj = $dir;
+      } else {
+        $subj .= ", $dir"; 
+      }
+    }
+    close (CH);
+  }
+
+  if ($subj ne "") {
+      $subj = "MODIFIED: $subj ..."; 
+  }
+  else {
+      # NPM: See if there's any file-addition notifications.
+      my $added = &read_line_nodie("$ADDED_FILE.$i.$id.$cvs_user");
+      if ($added ne "") {
+          $subj .= "ADDED: $added "; 
+      }
+    
+#    print "derive_subject_from_changes_file().. added== $added \n";
+    
+       ## NPM: See if there's any file-removal notications.
+      my $removed = &read_line_nodie("$REMOVED_FILE.$i.$id.$cvs_user");
+      if ($removed ne "") {
+          $subj .= "REMOVED: $removed "; 
+      }
+    
+#    print "derive_subject_from_changes_file().. removed== $removed \n";
+    
+      ## NPM: See if there's any branch notifications.
+      my $branched = &read_line_nodie("$BRANCH_FILE.$i.$id.$cvs_user");
+      if ($branched ne "") {
+          $subj .= "BRANCHED: $branched"; 
+      }
+    
+#    print "derive_subject_from_changes_file().. branched== $branched \n";
+    
+      ## NPM: DEFAULT: DIRECTORY CREATION (c.f. "Check for a new directory first" in main mody)
+      if ($subj eq "") {
+          my $subject = join("/", @@path);
+          $subj = "NEW: $subject"; 
+      }    
+  }
+d241 3
+a243 1
+  return $subj;
+d246 3
+a248 4
+sub mail_notification
+{
+    local($addr_list, @@text) = @@_;
+    local($mail_to);
+d250 1
+a250 21
+    my $subj = &derive_subject_from_changes_file ();
+
+    if ($EMULATE_LOCAL_MAIL_USER ne "") {
+        $MAIL_FROM = "$cvs_user\@@$EMULATE_LOCAL_MAIL_USER";
+    }
+
+    $mail_to = join(", ", @@{$addr_list});
+
+    print "Mailing the commit message to $mail_to (from $MAIL_FROM)\n";
+
+    $ENV{'MAILUSER'} = $MAIL_FROM;
+    # Commented out on hocus, so comment it out here.  -kff
+    # $ENV{'QMAILINJECT'} = 'f';
+
+    open(MAIL, "$MAIL_CMD -f$MAIL_FROM");
+    print MAIL "From: $MAIL_FROM\n";
+    print MAIL "To: $mail_to\n";
+    print MAIL "Subject: $SUBJECT_PRE $subj\n\n";
+    print(MAIL join("\n", @@text));
+    close(MAIL);
+#    print "Mailing the commit message to $MAIL_TO...\n";
+d252 45
+a296 37
+#    #added by jrobbins@@collab.net 1999/12/15
+#    # attempt to get rid of anonymous
+#    $ENV{'MAILUSER'} = 'commitlogger';
+#    $ENV{'QMAILINJECT'} = 'f';
+#
+#    open(MAIL, "| /var/qmail/bin/qmail-inject");
+#    print(MAIL "To: $MAIL_TO\n"); 
+#    print(MAIL "Subject: cvs commit: $ARGV[0]\n"); 
+#    print(MAIL join("\n", @@text));
+#    close(MAIL);
+}
+
+## process the command line arguments sent to this script
+## it returns an array of files, %s, sent from the loginfo
+## command
+sub process_argv
+{
+    local(@@argv) = @@_;
+    local(@@files);
+    local($arg);
+    print "Processing log script arguments...\n";
+
+    if ($UseNewInfoFmtStrings) {
+        while (@@argv) {
+            $arg = shift @@argv;
+
+            if ($arg eq '-u' && !defined($cvs_user)) {
+                $cvs_user = shift @@argv;
+            }
+            if ($arg eq '- New directory') {
+                $new_directory = 1;
+            } elsif ($arg eq '- Imported sources') {
+                $imported_sources = 1;
+            } else {
+                push(@@files, $arg);
+            }
+        }
+d298 3
+a300 17
+        while (@@argv) {
+            $arg = shift @@argv;
+
+            if ($arg eq '-u') {
+                $cvs_user = shift @@argv;
+            } else {
+                ($donefiles) && die "Too many arguments!\n";
+                $donefiles = 1;
+                $ARGV[0] = $arg;
+                if ($arg =~ s/ - New directory//) {
+                    $new_directory = 1;
+                } elsif ($arg =~ s/ - Imported sources//) {
+                    $imported_sources = 1;
+                }
+                @@files = split(' ', $arg);
+            }
+        }
+a301 1
+    return @@files;
+d303 7
+d311 2
+a312 2
+
+#############################################################
+d314 1
+a314 10
+# Main Body
+#
+############################################################
+#
+# Setup environment
+#
+umask (002);
+
+# Connect to the database
+$cvsbin = "/usr/bin";
+d316 8
+d325 3
+a327 9
+# Initialize basic variables
+#
+$id = getpgrp();
+$state = $STATE_NONE;
+$cvs_user = $ENV{'USER'} || getlogin || (getpwuid($<))[0] || sprintf("uid#%d",$<);
+$new_directory = 0;             # Is this a 'cvs add directory' command?
+$imported_sources = 0;          # Is this a 'cvs import' command?
+@@files = process_argv(@@ARGV);
+@@path = split('/', $files[0]);
+d331 10
+a340 1
+    $dir = join('/', @@path[1..$#path]);
+a341 5
+#print("ARGV  - ", join(":", @@ARGV), "\n");
+#print("files - ", join(":", @@files), "\n");
+#print("path  - ", join(":", @@path), "\n");
+#print("dir   - ", $dir, "\n");
+#print("id    - ", $id, "\n");
+d343 1
+d345 4
+a348 2
+# Map the repository directory to an email address for commitlogs to be sent
+# to.
+d350 2
+a351 1
+#$mlist = &mlist_map($files[0]);
+d353 17
+a369 1
+##########################
+d371 4
+a374 2
+# Check for a new directory first.  This will always appear as a
+# single item in the argument list, and an empty log message.
+d376 3
+a378 2
+if ($new_directory) {
+    $header = &build_header;
+d380 3
+a382 1
+    push(@@text, $header);
+d384 8
+a391 2
+    push(@@text, "  ".$files[0]." - New directory");
+    &mail_notification([ $mlist ], @@text);
+a394 1
+#
+d398 8
+a405 5
+    chomp;                      # Drop the newline
+    if (/^Revision\/Branch:/) {
+        s,^Revision/Branch:,,;
+        push (@@branch_lines, split);
+        next;
+d407 1
+a407 1
+#    next if (/^[ \t]+Tag:/ && $state != $STATE_LOG);
+d411 4
+a414 2
+    if (/^Log Message/)    { $state = $STATE_LOG;     last; }
+    s/[ \t\n]+$//;              # delete trailing space
+d416 4
+a419 21
+    push (@@changed_files, split) if ($state == $STATE_CHANGED);
+    push (@@added_files,   split) if ($state == $STATE_ADDED);
+    push (@@removed_files, split) if ($state == $STATE_REMOVED);
+}
+# Proces the /Log Message/ section now, if it exists.
+# Do this here rather than above to deal with Log messages
+# that include lines that confuse the state machine.
+if (!eof(STDIN)) {
+    while (<STDIN>) {
+        next unless ($state == $STATE_LOG); # eat all STDIN
+
+        if ($state == $STATE_LOG) {
+            if (/^PR:$/i ||
+                /^Reviewed by:$/i ||
+                /^Submitted by:$/i ||
+                /^Obtained from:$/i) {
+                next;
+            }
+            push (@@log_lines,     $_);
+        }
+    }
+a421 1
+#
+a424 1
+# (Note, this only does the mail and changes log, not the rcs log).
+d436 1
+a436 1
+        splice(@@log_lines, $i, 1);
+d440 4
+a443 2
+#
+# Find the log file that matches this log message
+d446 9
+a454 4
+    last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+    @@text = &read_logfile("$LOG_FILE.$i.$id.$cvs_user", "");
+    last if ($#text == -1);
+    last if (join(" ", @@log_lines) eq join(" ", @@text));
+a456 1
+#
+d459 4
+a462 9
+&write_logfile("$LOG_FILE.$i.$id.$cvs_user", @@log_lines);
+&append_to_file("$BRANCH_FILE.$i.$id.$cvs_user",  $dir, @@branch_lines);
+&append_to_file("$ADDED_FILE.$i.$id.$cvs_user",   $dir, @@added_files);
+&append_to_file("$CHANGED_FILE.$i.$id.$cvs_user", $dir, @@changed_files);
+&append_to_file("$REMOVED_FILE.$i.$id.$cvs_user", $dir, @@removed_files);
+&append_line("$MLIST_FILE.$i.$id.$cvs_user", $mlist);
+if ($rcsidinfo) {
+    &change_summary("$SUMMARY_FILE.$i.$id.$cvs_user", (@@changed_files, @@added_files));
+}
+a463 1
+#
+d466 2
+a467 8
+if (-e "$LAST_FILE.$id.$cvs_user") {
+   $_ = &read_line("$LAST_FILE.$id.$cvs_user");
+   $tmpfiles = $files[0];
+   $tmpfiles =~ s,([^a-zA-Z0-9_/]),\\$1,g;
+   if (! grep(/$tmpfiles$/, $_)) {
+        print "More commits to come...\n";
+        exit 0
+   }
+d469 1
+d471 12
+d484 1
+a488 1
+$header = &build_header;
+d494 2
+a495 2
+@@mlist_list = ();
+push(@@text, $header);
+d497 1
+d499 54
+a552 14
+    last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+    push(@@text, &read_file("$BRANCH_FILE.$i.$id.$cvs_user", "Branch:"));
+    push(@@text, &read_file("$CHANGED_FILE.$i.$id.$cvs_user", "Modified:"));
+    push(@@text, &read_file("$ADDED_FILE.$i.$id.$cvs_user", "Added:"));
+    push(@@text, &read_file("$REMOVED_FILE.$i.$id.$cvs_user", "Removed:"));
+    push(@@text, "  Log:");
+    push(@@text, &read_logfile("$LOG_FILE.$i.$id.$cvs_user", "  "));
+    push(@@mlist_list, &read_file_lines("$MLIST_FILE.$i.$id.$cvs_user"));
+    if ($rcsidinfo == 2) {
+        if (-e "$SUMMARY_FILE.$i.$id.$cvs_user") {
+            push(@@text, "  ");
+            push(@@text, "  Revision  Changes    Path");
+            push(@@text, &read_logfile("$SUMMARY_FILE.$i.$id.$cvs_user", "  "));
+        }
+a553 1
+    push(@@text, "");
+d556 1
+d558 2
+a559 16
+# Now generate the extra info for the mail message..
+#
+if ($rcsidinfo == 1) {
+    $revhdr = 0;
+    for ($i = 0; ; $i++) {
+        last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+        if (-e "$SUMMARY_FILE.$i.$id.$cvs_user") {
+            if (!$revhdr++) {
+                push(@@text, "Revision  Changes    Path");
+            }
+            push(@@text, &read_logfile("$SUMMARY_FILE.$i.$id.$cvs_user", ""));
+        }
+    }
+    if ($revhdr) {
+        push(@@text, "");        # consistancy...
+    }
+d562 3
+a564 1
+%mlist_hash = ();
+d566 3
+a568 1
+foreach (@@mlist_list) { $mlist_hash{ $_ } = 1; }
+d570 1
+d572 4
+a575 4
+# Mail out the notification.
+#
+&mail_notification([ keys(%mlist_hash) ], @@text);
+&cleanup_tmpfiles;
+@
+
+
+1.1.3.1
+log
+@our CVS is currently at 1.11.1p1, thus import that version into vendor branch
+@
+text
+@@
+
+
+1.1.3.2
+log
+@CVS 1.11.12 is the latest stable version of CVS,
+released 06.02.2004, with a huge lot of bug fixes.
+
+/me hopes this will pay off...
+@
+text
+@a11 19
+# IMPORTANT: what the above means is, this script interacts with
+# commit_prep, in that they have to agree on the tmpfile name to use.
+# See $LAST_FILE below. 
+#
+# How this works: CVS triggers this script once for each directory
+# involved in the commit -- in other words, a single commit can invoke
+# this script N times.  It knows when it's on the last invocation by
+# examining the contents of $LAST_FILE.  Between invocations, it
+# caches information for its future incarnations in various temporary
+# files in /tmp, which are named according to the process group and
+# the committer (by themselves, neither of these are unique, but
+# together they almost always are, unless the same user is doing two
+# commits simultaneously).  The final invocation is the one that
+# actually sends the mail -- it gathers up the cached information,
+# combines that with what it found out on this pass, and sends a
+# commit message to the appropriate mailing list.
+#
+# (Ask Karl Fogel <kfogel@@collab.net> if questions.)
+#
+a12 2
+# Roy Fielding removed useless code and added log/mail of new files
+# Ken Coar added special processing (i.e., no diffs) for binary files
+d14 11
+a25 1
+############################################################
+d27 1
+a27 1
+# Configurable options
+d29 4
+a32 1
+############################################################
+d34 1
+a34 4
+# Where do you want the RCS ID and delta info?
+# 0 = none,
+# 1 = in mail only,
+# 2 = in both mail and logs.
+a35 1
+$rcsidinfo = 2;
+d37 1
+a37 22
+#if you are using CVS web then set this to some value... if not set it to ""
+#
+# When set properly, this will cause links to aspects of the project to
+# print in the commit emails.
+#$CVSWEB_SCHEME = "http";
+#$CVSWEB_DOMAIN = "cvshome.org";
+#$CVSWEB_PORT = "80";
+#$CVSWEB_URI = "source/browse/";
+#$SEND_URL = "true";
+$SEND_DIFF = "true";
+
+
+# Set this to a domain to have CVS pretend that all users who make
+# commits have mail accounts within that domain.
+#$EMULATE_LOCAL_MAIL_USER="cvshome.org"; 
+
+# Set this to '-c' for context diffs; defaults to '-u' for unidiff format.
+$difftype = '-uN';
+
+############################################################
+#
+# Constants
+a38 1
+############################################################
+d45 1
+a45 2
+$TMPDIR        = $ENV{'TMPDIR'} || '/tmp';
+$FILE_PREFIX   = '#cvs.';
+d47 4
+a50 7
+$LAST_FILE     = "$TMPDIR/${FILE_PREFIX}lastdir";  # Created by commit_prep!
+$ADDED_FILE    = "$TMPDIR/${FILE_PREFIX}files.added";
+$REMOVED_FILE  = "$TMPDIR/${FILE_PREFIX}files.removed";
+$LOG_FILE      = "$TMPDIR/${FILE_PREFIX}files.log";
+$BRANCH_FILE   = "$TMPDIR/${FILE_PREFIX}files.branch";
+$MLIST_FILE    = "$TMPDIR/${FILE_PREFIX}files.mlist";
+$SUMMARY_FILE  = "$TMPDIR/${FILE_PREFIX}files.summary";
+d52 1
+a52 1
+$CVSROOT       = $ENV{'CVSROOT'};
+a53 7
+$MAIL_CMD      = "| /usr/lib/sendmail -i -t";
+#$MAIL_CMD      = "| /var/qmail/bin/qmail-inject";
+$MAIL_FROM     = 'commitlogger';  #not needed if EMULATE_LOCAL_MAIL_USER
+$SUBJECT_PRE   = 'CVS update:';
+
+
+############################################################
+d55 1
+a55 1
+# Subroutines
+a56 15
+############################################################
+
+sub format_names {
+    local($dir, @@files) = @@_;
+    local(@@lines);
+
+    $lines[0] = sprintf(" %-08s", $dir);
+    foreach $file (@@files) {
+        if (length($lines[$#lines]) + length($file) > 60) {
+            $lines[++$#lines] = sprintf(" %8s", " ");
+        }
+        $lines[$#lines] .= " ".$file;
+    }
+    @@lines;
+}
+d59 1
+a59 1
+    local(@@files);
+d61 4
+a64 2
+    opendir(DIR, $TMPDIR);
+    push(@@files, grep(/^${FILE_PREFIX}.*\.${id}\.${cvs_user}$/, readdir(DIR)));
+d67 1
+a67 1
+        unlink "$TMPDIR/$_";
+d69 3
+d77 2
+a78 2
+    open(FILE, ">$filename") || die ("Cannot open log file $filename: $!\n");
+    print(FILE join("\n", @@lines), "\n");
+d82 2
+a83 2
+sub append_to_file {
+    local($filename, $dir, @@files) = @@_;
+d85 3
+a87 6
+    if (@@files) {
+        local(@@lines) = &format_names($dir, @@files);
+        open(FILE, ">>$filename") || die ("Cannot open file $filename: $!\n");
+        print(FILE join("\n", @@lines), "\n");
+        close(FILE);
+    }
+d90 5
+a94 2
+sub write_line {
+    local($filename, $line) = @@_;
+d96 1
+a96 4
+    open(FILE, ">$filename") || die("Cannot open file $filename: $!\n");
+    print(FILE $line, "\n");
+    close(FILE);
+}
+d98 9
+a106 2
+sub append_line {
+    local($filename, $line) = @@_;
+d108 1
+a108 3
+    open(FILE, ">>$filename") || die("Cannot open file $filename: $!\n");
+    print(FILE $line, "\n");
+    close(FILE);
+d111 3
+a113 10
+sub read_line {
+    local($filename) = @@_;
+    local($line);
+
+    open(FILE, "<$filename") || die("Cannot open file $filename: $!\n");
+    $line = <FILE>;
+    close(FILE);
+    chomp($line);
+    $line;
+}
+d115 19
+a133 4
+sub read_line_nodie {
+    local($filename) = @@_;
+    local($line);
+    open(FILE, "<$filename") || return ("");
+d135 1
+a135 4
+    $line = <FILE>;
+    close(FILE);
+    chomp($line);
+    $line;
+d138 2
+a139 3
+sub read_file_lines {
+    local($filename) = @@_;
+    local(@@text) = ();
+d141 5
+a145 4
+    open(FILE, "<$filename") || return ();
+    while (<FILE>) {
+        chomp;
+        push(@@text, $_);
+a146 2
+    close(FILE);
+    @@text;
+d149 3
+a151 3
+sub read_file {
+    local($filename, $leader) = @@_;
+    local(@@text) = ();
+d153 2
+a154 6
+    open(FILE, "<$filename") || return ();
+    while (<FILE>) {
+        chomp;
+        push(@@text, sprintf("  %-10s  %s", $leader, $_));
+        $leader = "";
+    }
+d156 2
+a157 1
+    @@text;
+d161 1
+a162 1
+    local(@@text) = ();
+d164 1
+a164 1
+    open(FILE, "<$filename") || die ("Cannot open log file $filename: $!\n");
+d166 2
+a167 2
+        chomp;
+        push(@@text, $leader.$_);
+a172 128
+#
+# do an 'cvs -Qn status' on each file in the arguments, and extract info.
+#
+sub change_summary {
+    local($out, @@filenames) = @@_;
+    local(@@revline);
+    local($file, $rev, $rcsfile, $line, $vhost, $cvsweb_base);
+
+    while (@@filenames) {
+        $file = shift @@filenames;
+
+        if ("$file" eq "") {
+            next;
+        }
+
+        open(RCS, "-|") || exec "$cvsbin/cvs", '-Qn', 'status', '--', $file;
+
+        $rev = "";
+        $delta = "";
+        $rcsfile = "";
+
+
+        while (<RCS>) {
+            if (/^[ \t]*Repository revision/) {
+                chomp;
+                @@revline = split(' ', $_);
+                $rev = $revline[2];
+                $rcsfile = $revline[3];
+                $rcsfile =~ s,^$CVSROOT/,,;
+                $rcsfile =~ s/,v$//;
+            }
+        }
+        close(RCS);
+
+
+        if ($rev ne '' && $rcsfile ne '') {
+            open(RCS, "-|") || exec "$cvsbin/cvs", '-Qn', 'log', "-r$rev",
+				    '--', $file;
+            while (<RCS>) {
+                if (/^date:/) {
+                    chomp;
+                    $delta = $_;
+                    $delta =~ s/^.*;//;
+                    $delta =~ s/^[\s]+lines://;
+                }
+            }
+            close(RCS);
+        }
+
+        $diff = "\n\n";
+        $vhost = @@path[0];
+        if ($CVSWEB_PORT eq "80") {
+          $cvsweb_base = "$CVSWEB_SCHEME://$vhost.$CVSWEB_DOMAIN/$CVSWEB_URI";
+        }
+        else {
+          $cvsweb_base = "$CVSWEB_SCHEME://$vhost.$CVSWEB_DOMAIN:$CVSWEB_PORT/$CVSWEB_URI";
+        }
+        if ($SEND_URL eq "true") {
+          $diff .= $cvsweb_base . join("/", @@path) . "/$file";
+        }
+
+        #
+        # If this is a binary file, don't try to report a diff; not only is
+        # it meaningless, but it also screws up some mailers.  We rely on
+        # Perl's 'is this binary' algorithm; it's pretty good.  But not
+        # perfect.
+        #
+        if (($file =~ /\.(?:pdf|gif|jpg|mpg)$/i) || (-B $file)) {
+          if ($SEND_URL eq "true") {
+            $diff .= "?rev=$rev&content-type=text/x-cvsweb-markup\n\n";
+          }
+          if ($SEND_DIFF eq "true") {
+            $diff .= "\t<<Binary file>>\n\n";
+          }
+        }
+        else {
+            #
+            # Get the differences between this and the previous revision,
+            # being aware that new files always have revision '1.1' and
+            # new branches always end in '.n.1'.
+            #
+            if ($rev =~ /^(.*)\.([0-9]+)$/) {
+                $prev = $2 - 1;
+                $prev_rev = $1 . '.' .  $prev;
+
+                $prev_rev =~ s/\.[0-9]+\.0$//;# Truncate if first rev on branch
+
+                if ($rev eq '1.1') {
+                  if ($SEND_URL eq "true") {
+                    $diff .= "?rev=$rev&content-type=text/x-cvsweb-markup\n\n";
+                  }
+                  if ($SEND_DIFF eq "true") {
+                    open(DIFF, "-|")
+                      || exec "$cvsbin/cvs", '-Qn', 'update', '-p', '-r1.1',
+			      '--', $file;
+                    $diff .= "Index: $file\n=================================="
+                      . "=================================\n";
+                  }
+                }
+                else {
+                  if ($SEND_URL eq "true") {
+                    $diff .= ".diff?r1=$prev_rev&r2=$rev\n\n";
+                  }
+                  if ($SEND_DIFF eq "true") {
+                    $diff .= "(In the diff below, changes in quantity "
+                      . "of whitespace are not shown.)\n\n";
+                    open(DIFF, "-|")
+                      || exec "$cvsbin/cvs", '-Qn', 'diff', "$difftype",
+                      '-b', "-r$prev_rev", "-r$rev", '--', $file;
+                  }
+                }
+
+                if ($SEND_DIFF eq "true") {
+                  while (<DIFF>) {
+                    $diff .= $_;
+                  }
+                  close(DIFF);
+                }
+                $diff .= "\n\n";
+            }
+        }
+
+        &append_line($out, sprintf("%-9s%-12s%s%s", $rev, $delta,
+                                   $rcsfile, $diff));
+    }
+}
+
+
+d175 60
+a234 121
+    delete $ENV{'TZ'};
+    local($sec,$min,$hour,$mday,$mon,$year) = localtime(time);
+
+    $header = sprintf("  User: %-8s\n  Date: %02d/%02d/%02d %02d:%02d:%02d",
+                       $cvs_user, $year%100, $mon+1, $mday,
+                       $hour, $min, $sec);
+#    $header = sprintf("%-8s    %02d/%02d/%02d %02d:%02d:%02d",
+#                       $login, $year%100, $mon+1, $mday,
+#                       $hour, $min, $sec);
+}
+
+# !!! Destination Mailing-list and history file mappings here !!!
+
+#sub mlist_map
+#{
+#    local($path) = @@_;
+#    my $domain = "cvshome.org";
+#    
+#    if ($path =~ /^([^\/]+)/) {
+#        return "cvs\@@$1.$domain";
+#    } else {
+#        return "cvs\@@$domain";
+#    }
+#}    
+
+sub derive_subject_from_changes_file ()
+{
+  my $subj = "";
+
+  for ($i = 0; ; $i++)
+  {
+    open (CH, "<$CHANGED_FILE.$i.$id.$cvs_user") or last;
+
+    while (my $change = <CH>)
+    {
+      # A changes file looks like this:
+      #
+      #  src      foo.c newfile.html
+      #  www      index.html project_nav.html
+      #
+      # Each line is " Dir File1 File2 ..."
+      # We only care about Dir, since the subject line should
+      # summarize. 
+      
+      $change =~ s/^[ \t]*//;
+      $change =~ /^([^ \t]+)[ \t]*/;
+      my $dir = $1;
+      # Fold to rightmost directory component
+      $dir =~ /([^\/]+)$/;
+      $dir = $1;
+      if ($subj eq "") {
+        $subj = $dir;
+      } else {
+        $subj .= ", $dir"; 
+      }
+    }
+    close (CH);
+  }
+
+  if ($subj ne "") {
+      $subj = "MODIFIED: $subj ..."; 
+  }
+  else {
+      # NPM: See if there's any file-addition notifications.
+      my $added = &read_line_nodie("$ADDED_FILE.$i.$id.$cvs_user");
+      if ($added ne "") {
+          $subj .= "ADDED: $added "; 
+      }
+    
+#    print "derive_subject_from_changes_file().. added== $added \n";
+    
+       ## NPM: See if there's any file-removal notications.
+      my $removed = &read_line_nodie("$REMOVED_FILE.$i.$id.$cvs_user");
+      if ($removed ne "") {
+          $subj .= "REMOVED: $removed "; 
+      }
+    
+#    print "derive_subject_from_changes_file().. removed== $removed \n";
+    
+      ## NPM: See if there's any branch notifications.
+      my $branched = &read_line_nodie("$BRANCH_FILE.$i.$id.$cvs_user");
+      if ($branched ne "") {
+          $subj .= "BRANCHED: $branched"; 
+      }
+    
+#    print "derive_subject_from_changes_file().. branched== $branched \n";
+    
+      ## NPM: DEFAULT: DIRECTORY CREATION (c.f. "Check for a new directory first" in main mody)
+      if ($subj eq "") {
+          my $subject = join("/", @@path);
+          $subj = "NEW: $subject"; 
+      }    
+  }
+
+  return $subj;
+}
+
+sub mail_notification
+{
+    local($addr_list, @@text) = @@_;
+    local($mail_to);
+
+    my $subj = &derive_subject_from_changes_file ();
+
+    if ($EMULATE_LOCAL_MAIL_USER NE "") {
+        $MAIL_FROM = "$cvs_user\@@$EMULATE_LOCAL_MAIL_USER";
+    }
+
+    $mail_to = join(", ", @@{$addr_list});
+
+    print "Mailing the commit message to $mail_to (from $MAIL_FROM)\n";
+
+    $ENV{'MAILUSER'} = $MAIL_FROM;
+    # Commented out on hocus, so comment it out here.  -kff
+    # $ENV{'QMAILINJECT'} = 'f';
+
+    open(MAIL, "$MAIL_CMD -f$MAIL_FROM");
+    print MAIL "From: $MAIL_FROM\n";
+    print MAIL "To: $mail_to\n";
+    print MAIL "Subject: $SUBJECT_PRE $subj\n\n";
+    print(MAIL join("\n", @@text));
+a235 12
+#    print "Mailing the commit message to $MAIL_TO...\n";
+#
+#    #added by jrobbins@@collab.net 1999/12/15
+#    # attempt to get rid of anonymous
+#    $ENV{'MAILUSER'} = 'commitlogger';
+#    $ENV{'QMAILINJECT'} = 'f';
+#
+#    open(MAIL, "| /var/qmail/bin/qmail-inject");
+#    print(MAIL "To: $MAIL_TO\n"); 
+#    print(MAIL "Subject: cvs commit: $ARGV[0]\n"); 
+#    print(MAIL join("\n", @@text));
+#    close(MAIL);
+d238 2
+a239 9
+## process the command line arguments sent to this script
+## it returns an array of files, %s, sent from the loginfo
+## command
+sub process_argv
+{
+    local(@@argv) = @@_;
+    local(@@files);
+    local($arg);
+    print "Processing log script arguments...\n";
+d241 3
+a243 13
+    while (@@argv) {
+        $arg = shift @@argv;
+
+        if ($arg eq '-u') {
+                $cvs_user = shift @@argv;
+        } else {
+                ($donefiles) && die "Too many arguments!\n";
+                $donefiles = 1;
+                $ARGV[0] = $arg;
+                @@files = split(' ', $arg);
+        }
+    }
+    return @@files;
+a245 6
+
+#############################################################
+#
+# Main Body
+#
+############################################################
+d247 1
+a247 1
+# Setup environment
+a248 1
+umask (002);
+a249 4
+# Connect to the database
+$cvsbin = "/usr/bin";
+
+#
+d252 2
+a253 1
+$id = getpgrp();
+d255 59
+a313 2
+$cvs_user = $ENV{'USER'} || getlogin || (getpwuid($<))[0] || sprintf("uid#%d",$<);
+@@files = process_argv(@@ARGV);
+d315 13
+a327 1
+$repository = $path[0];
+d331 1
+a331 1
+    $dir = join('/', @@path[1..$#path]);
+d333 1
+a333 5
+#print("ARGV  - ", join(":", @@ARGV), "\n");
+#print("files - ", join(":", @@files), "\n");
+#print("path  - ", join(":", @@path), "\n");
+#print("dir   - ", $dir, "\n");
+#print("id    - ", $id, "\n");
+d335 9
+d345 4
+a348 2
+# Map the repository directory to an email address for commitlogs to be sent
+# to.
+d350 2
+a351 1
+#$mlist = &mlist_map($files[0]);
+d353 17
+a369 1
+##########################
+d371 4
+a374 2
+# Check for a new directory first.  This will always appear as a
+# single item in the argument list, and an empty log message.
+d376 3
+a378 2
+if ($ARGV[0] =~ /New directory/) {
+    $header = &build_header;
+d380 1
+a380 1
+    push(@@text, $header);
+d382 10
+a391 2
+    push(@@text, "  ".$ARGV[0]);
+    &mail_notification([ $mlist ], @@text);
+a394 1
+#
+d398 8
+a405 5
+    chomp;                      # Drop the newline
+    if (/^Revision\/Branch:/) {
+        s,^Revision/Branch:,,;
+        push (@@branch_lines, split);
+        next;
+d407 1
+a407 1
+#    next if (/^[ \t]+Tag:/ && $state != $STATE_LOG);
+d412 3
+a414 1
+    s/[ \t\n]+$//;              # delete trailing space
+d416 4
+a419 12
+    push (@@changed_files, split) if ($state == $STATE_CHANGED);
+    push (@@added_files,   split) if ($state == $STATE_ADDED);
+    push (@@removed_files, split) if ($state == $STATE_REMOVED);
+    if ($state == $STATE_LOG) {
+        if (/^PR:$/i ||
+            /^Reviewed by:$/i ||
+            /^Submitted by:$/i ||
+            /^Obtained from:$/i) {
+            next;
+        }
+        push (@@log_lines,     $_);
+    }
+a421 1
+#
+a424 1
+# (Note, this only does the mail and changes log, not the rcs log).
+d436 1
+a436 1
+        splice(@@log_lines, $i, 1);
+d440 4
+a443 2
+#
+# Find the log file that matches this log message
+d446 9
+a454 4
+    last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+    @@text = &read_logfile("$LOG_FILE.$i.$id.$cvs_user", "");
+    last if ($#text == -1);
+    last if (join(" ", @@log_lines) eq join(" ", @@text));
+a456 1
+#
+d459 4
+a462 9
+&write_logfile("$LOG_FILE.$i.$id.$cvs_user", @@log_lines);
+&append_to_file("$BRANCH_FILE.$i.$id.$cvs_user",  $dir, @@branch_lines);
+&append_to_file("$ADDED_FILE.$i.$id.$cvs_user",   $dir, @@added_files);
+&append_to_file("$CHANGED_FILE.$i.$id.$cvs_user", $dir, @@changed_files);
+&append_to_file("$REMOVED_FILE.$i.$id.$cvs_user", $dir, @@removed_files);
+&append_line("$MLIST_FILE.$i.$id.$cvs_user", $mlist);
+if ($rcsidinfo) {
+    &change_summary("$SUMMARY_FILE.$i.$id.$cvs_user", (@@changed_files, @@added_files));
+}
+a463 1
+#
+d466 13
+a478 8
+if (-e "$LAST_FILE.$id.$cvs_user") {
+   $_ = &read_line("$LAST_FILE.$id.$cvs_user");
+   $tmpfiles = $files[0];
+   $tmpfiles =~ s,([^a-zA-Z0-9_/]),\\$1,g;
+   if (! grep(/$tmpfiles$/, $_)) {
+        print "More commits to come...\n";
+        exit 0
+   }
+d482 3
+a488 1
+$header = &build_header;
+d494 2
+a495 2
+@@mlist_list = ();
+push(@@text, $header);
+d497 1
+d499 54
+a552 14
+    last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+    push(@@text, &read_file("$BRANCH_FILE.$i.$id.$cvs_user", "Branch:"));
+    push(@@text, &read_file("$CHANGED_FILE.$i.$id.$cvs_user", "Modified:"));
+    push(@@text, &read_file("$ADDED_FILE.$i.$id.$cvs_user", "Added:"));
+    push(@@text, &read_file("$REMOVED_FILE.$i.$id.$cvs_user", "Removed:"));
+    push(@@text, "  Log:");
+    push(@@text, &read_logfile("$LOG_FILE.$i.$id.$cvs_user", "  "));
+    push(@@mlist_list, &read_file_lines("$MLIST_FILE.$i.$id.$cvs_user"));
+    if ($rcsidinfo == 2) {
+        if (-e "$SUMMARY_FILE.$i.$id.$cvs_user") {
+            push(@@text, "  ");
+            push(@@text, "  Revision  Changes    Path");
+            push(@@text, &read_logfile("$SUMMARY_FILE.$i.$id.$cvs_user", "  "));
+        }
+a553 1
+    push(@@text, "");
+d556 1
+d558 2
+a559 16
+# Now generate the extra info for the mail message..
+#
+if ($rcsidinfo == 1) {
+    $revhdr = 0;
+    for ($i = 0; ; $i++) {
+        last if (! -e "$LOG_FILE.$i.$id.$cvs_user");
+        if (-e "$SUMMARY_FILE.$i.$id.$cvs_user") {
+            if (!$revhdr++) {
+                push(@@text, "Revision  Changes    Path");
+            }
+            push(@@text, &read_logfile("$SUMMARY_FILE.$i.$id.$cvs_user", ""));
+        }
+    }
+    if ($revhdr) {
+        push(@@text, "");        # consistancy...
+    }
+d562 3
+a564 1
+%mlist_hash = ();
+d566 3
+a568 1
+foreach (@@mlist_list) { $mlist_hash{ $_ } = 1; }
+d570 1
+d572 4
+a575 4
+# Mail out the notification.
+#
+&mail_notification([ keys(%mlist_hash) ], @@text);
+&cleanup_tmpfiles;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,396 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.28.02;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.18;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/* $OpenBSD: shared_intr.c,v 1.11 2002/03/14 01:26:26 millert Exp $ */
+/* $NetBSD: shared_intr.c,v 1.13 2000/03/19 01:46:18 thorpej Exp $ */
+
+/*
+ * Copyright (c) 1996 Carnegie-Mellon University.
+ * All rights reserved.
+ *
+ * Authors: Chris G. Demetriou
+ * 
+ * Permission to use, copy, modify and distribute this software and
+ * its documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS" 
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND 
+ * FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ *
+ *  Software Distribution Coordinator  or  Software.Distribution@@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ *
+ * any improvements or extensions that they make and grant Carnegie the
+ * rights to redistribute these changes.
+ */
+
+/*
+ * Common shared-interrupt-line functionality.
+ */
+
+#include <sys/param.h>
+#include <sys/kernel.h>
+#include <sys/systm.h>
+#include <sys/malloc.h>
+#include <sys/syslog.h>
+#include <sys/queue.h>
+
+#include <machine/intr.h>
+
+static const char *intr_typename(int);
+
+static const char *
+intr_typename(type)
+	int type;
+{
+
+	switch (type) {
+	case IST_UNUSABLE:
+		return ("disabled");
+	case IST_NONE:
+		return ("none");
+	case IST_PULSE:
+		return ("pulsed");
+	case IST_EDGE:
+		return ("edge-triggered");
+	case IST_LEVEL:
+		return ("level-triggered");
+	}
+	panic("intr_typename: unknown type %d", type);
+}
+
+struct alpha_shared_intr *
+alpha_shared_intr_alloc(n)
+	unsigned int n;
+{
+	struct alpha_shared_intr *intr;
+	unsigned int i;
+
+	intr = malloc(n * sizeof (struct alpha_shared_intr), M_DEVBUF,
+	    cold ? M_NOWAIT : M_WAITOK);
+	if (intr == NULL)
+		panic("alpha_shared_intr_alloc: couldn't malloc intr");
+
+	for (i = 0; i < n; i++) {
+		TAILQ_INIT(&intr[i].intr_q);
+		intr[i].intr_sharetype = IST_NONE;
+		intr[i].intr_dfltsharetype = IST_NONE;
+		intr[i].intr_nstrays = 0;
+		intr[i].intr_maxstrays = 5;
+		intr[i].intr_private = NULL;
+	}
+
+	return (intr);
+}
+
+int
+alpha_shared_intr_dispatch(intr, num)
+	struct alpha_shared_intr *intr;
+	unsigned int num;
+{
+	struct alpha_shared_intrhand *ih;
+	int rv, handled;
+
+	ih = intr[num].intr_q.tqh_first;
+	handled = 0;
+	while (ih != NULL) {
+
+		/*
+		 * The handler returns one of three values:
+		 *   0:	This interrupt wasn't for me.
+		 *   1: This interrupt was for me.
+		 *  -1: This interrupt might have been for me, but I can't say
+		 *      for sure.
+		 */
+		rv = (*ih->ih_fn)(ih->ih_arg);
+
+		handled = handled || (rv != 0);
+		ih = ih->ih_q.tqe_next;
+	}
+
+	return (handled);
+}
+
+void *
+alpha_shared_intr_establish(intr, num, type, level, fn, arg, basename)
+	struct alpha_shared_intr *intr;
+	unsigned int num;
+	int type, level;
+	int (*fn)(void *);
+	void *arg;
+	const char *basename;
+{
+	struct alpha_shared_intrhand *ih;
+
+	if (intr[num].intr_sharetype == IST_UNUSABLE) {
+		printf("alpha_shared_intr_establish: %s %d: unusable\n",
+		    basename, num);
+		return NULL;
+	}
+
+	/* no point in sleeping unless someone can free memory. */
+	ih = malloc(sizeof *ih, M_DEVBUF, cold ? M_NOWAIT : M_WAITOK);
+	if (ih == NULL)
+		panic("alpha_shared_intr_establish: can't malloc intrhand");
+
+#ifdef DIAGNOSTIC
+	if (type == IST_NONE)
+		panic("alpha_shared_intr_establish: bogus type");
+#endif
+
+	switch (intr[num].intr_sharetype) {
+	case IST_EDGE:
+	case IST_LEVEL:
+		if (type == intr[num].intr_sharetype)
+			break;
+	case IST_PULSE:
+		if (type != IST_NONE) {
+			if (intr[num].intr_q.tqh_first == NULL) {
+				printf("alpha_shared_intr_establish: %s %d: warning: using %s on %s\n",
+				    basename, num, intr_typename(type),
+				    intr_typename(intr[num].intr_sharetype));
+				type = intr[num].intr_sharetype;
+			} else {
+				panic("alpha_shared_intr_establish: %s %d: can't share %s with %s",
+				    basename, num, intr_typename(type),
+				    intr_typename(intr[num].intr_sharetype));
+			}
+		}
+		break;
+
+	case IST_NONE:
+		/* not currently used; safe */
+		break;
+	}
+
+	ih->ih_intrhead = intr;
+	ih->ih_fn = fn;
+	ih->ih_arg = arg;
+	ih->ih_level = level;
+	ih->ih_num = num;
+
+	intr[num].intr_sharetype = type;
+	TAILQ_INSERT_TAIL(&intr[num].intr_q, ih, ih_q);
+
+	return (ih);
+}
+
+void
+alpha_shared_intr_disestablish(intr, cookie, basename)
+	struct alpha_shared_intr *intr;
+	void *cookie;
+	const char *basename;
+{
+	struct alpha_shared_intrhand *ih = cookie;
+	unsigned int num = ih->ih_num;
+
+	/*
+	 * Just remove it from the list and free the entry.  We let
+	 * the caller deal with resetting the share type, if appropriate.
+	 */
+	TAILQ_REMOVE(&intr[num].intr_q, ih, ih_q);
+}
+
+int
+alpha_shared_intr_get_sharetype(intr, num)
+	struct alpha_shared_intr *intr;
+	unsigned int num;
+{
+
+	return (intr[num].intr_sharetype);
+}
+
+int
+alpha_shared_intr_isactive(intr, num)
+	struct alpha_shared_intr *intr;
+	unsigned int num;
+{
+
+	return (intr[num].intr_q.tqh_first != NULL);
+}
+
+void
+alpha_shared_intr_set_dfltsharetype(intr, num, newdfltsharetype)
+	struct alpha_shared_intr *intr;
+	unsigned int num;
+	int newdfltsharetype;
+{
+
+#ifdef DIAGNOSTIC
+	if (alpha_shared_intr_isactive(intr, num))
+		panic("alpha_shared_intr_set_dfltsharetype on active intr");
+#endif
+
+	intr[num].intr_dfltsharetype = newdfltsharetype;
+	intr[num].intr_sharetype = intr[num].intr_dfltsharetype;
+}
+
+void
+alpha_shared_intr_set_maxstrays(intr, num, newmaxstrays)
+	struct alpha_shared_intr *intr;
+	unsigned int num;
+	int newmaxstrays;
+{
+	int s = splhigh();
+	intr[num].intr_maxstrays = newmaxstrays;
+	intr[num].intr_nstrays = 0;
+	splx(s);
+}
+
+void
+alpha_shared_intr_stray(intr, num, basename)
+	struct alpha_shared_intr *intr;
+	unsigned int num;
+	const char *basename;
+{
+
+	intr[num].intr_nstrays++;
+
+	if (intr[num].intr_maxstrays == 0)
+		return;
+
+	if (intr[num].intr_nstrays <= intr[num].intr_maxstrays)
+		log(LOG_ERR, "stray %s %d%s\n", basename, num,
+		    intr[num].intr_nstrays >= intr[num].intr_maxstrays ?
+		      "; stopped logging" : "");
+}
+
+void
+alpha_shared_intr_set_private(intr, num, v)
+	struct alpha_shared_intr *intr;
+	unsigned int num;
+	void *v;
+{
+
+	intr[num].intr_private = v;
+}
+
+void *
+alpha_shared_intr_get_private(intr, num)
+	struct alpha_shared_intr *intr;
+	unsigned int num;
+{
+
+	return (intr[num].intr_private);
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

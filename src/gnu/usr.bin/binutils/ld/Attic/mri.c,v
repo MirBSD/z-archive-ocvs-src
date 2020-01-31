@@ -1,0 +1,886 @@
+head	1.3;
+access;
+symbols
+	binutils-2_15:1.1.2.3
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.2.0.6
+	MIRBSD_7:1.2.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.2
+	MIRBSD_7_DEV:1.2.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	binutils_2_14:1.1.2.2
+	binutils_2_11_2:1.1.2.1
+	FSF:1.1.2
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.21.20.30;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.09.23.21.05.38;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.01;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.01;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.25.11;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2003.09.23.15.43.24;	author tg;	state Exp;
+branches;
+next	1.1.2.2;
+
+1.1.2.2
+date	2003.09.23.16.08.44;	author tg;	state Exp;
+branches;
+next	1.1.2.3;
+
+1.1.2.3
+date	2004.07.15.17.18.28;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@remove old binutils
+@
+text
+@/* mri.c -- handle MRI style linker scripts
+   Copyright 1991, 1992, 1993, 1994, 1996, 1997, 1998, 1999, 2000, 2002
+   Free Software Foundation, Inc.
+
+This file is part of GLD, the Gnu Linker.
+
+GLD is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2, or (at your option)
+any later version.
+
+GLD is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with GLD; see the file COPYING.  If not, write to the Free
+Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+02111-1307, USA.
+
+   This bit does the tree decoration when MRI style link scripts
+   are parsed.
+
+   Contributed by Steve Chamberlain <sac@@cygnus.com>.  */
+
+#include "bfd.h"
+#include "sysdep.h"
+#include "ld.h"
+#include "ldexp.h"
+#include "ldlang.h"
+#include "ldmisc.h"
+#include "mri.h"
+#include <ldgram.h>
+#include "libiberty.h"
+
+struct section_name_struct {
+  struct section_name_struct *next;
+  const char *name;
+  const char *alias;
+  etree_type *vma;
+  etree_type *align;
+  etree_type *subalign;
+  int ok_to_load;
+};
+
+unsigned int symbol_truncate = 10000;
+struct section_name_struct *order;
+struct section_name_struct *only_load;
+struct section_name_struct *address;
+struct section_name_struct *alias;
+
+struct section_name_struct *alignment;
+struct section_name_struct *subalignment;
+
+static struct section_name_struct **lookup
+  PARAMS ((const char *name, struct section_name_struct **list));
+static void mri_add_to_list PARAMS ((struct section_name_struct **list,
+				     const char *name, etree_type *vma,
+				     const char *zalias, etree_type *align,
+				     etree_type *subalign));
+
+static struct section_name_struct **
+lookup (name, list)
+     const char *name;
+     struct section_name_struct **list;
+{
+  struct section_name_struct **ptr = list;
+
+  while (*ptr)
+    {
+      if (strcmp (name, (*ptr)->name) == 0)
+	/* If this is a match, delete it, we only keep the last instance
+	   of any name.  */
+	*ptr = (*ptr)->next;
+      else
+	ptr = &((*ptr)->next);
+    }
+
+  *ptr = (struct section_name_struct *) xmalloc (sizeof (struct section_name_struct));
+  return ptr;
+}
+
+static void
+mri_add_to_list (list, name, vma, zalias, align, subalign)
+     struct section_name_struct **list;
+     const char *name;
+     etree_type *vma;
+     const char *zalias;
+     etree_type *align;
+     etree_type *subalign;
+{
+  struct section_name_struct **ptr = lookup (name, list);
+
+  (*ptr)->name = name;
+  (*ptr)->vma = vma;
+  (*ptr)->next = (struct section_name_struct *) NULL;
+  (*ptr)->ok_to_load = 0;
+  (*ptr)->alias = zalias;
+  (*ptr)->align = align;
+  (*ptr)->subalign = subalign;
+}
+
+void
+mri_output_section (name, vma)
+     const char *name;
+     etree_type *vma;
+{
+  mri_add_to_list (&address, name, vma, 0, 0, 0);
+}
+
+/* If any ABSOLUTE <name> are in the script, only load those files
+   marked thus.  */
+
+void
+mri_only_load (name)
+     const char *name;
+{
+  mri_add_to_list (&only_load, name, 0, 0, 0, 0);
+}
+
+void
+mri_base (exp)
+     etree_type *exp;
+{
+  base = exp;
+}
+
+static int done_tree = 0;
+
+void
+mri_draw_tree ()
+{
+  if (done_tree)
+    return;
+
+#if 0   /* We don't bother with memory regions.  */
+  /* Create the regions.  */
+  {
+    lang_memory_region_type *r;
+
+    r = lang_memory_region_lookup("long");
+    r->current = r->origin = exp_get_vma (base, (bfd_vma)0, "origin",
+					  lang_first_phase_enum);
+    r->length = (bfd_size_type) exp_get_vma (0, (bfd_vma) ~((bfd_size_type)0),
+					     "length", lang_first_phase_enum);
+  }
+#endif
+
+  /* Now build the statements for the ldlang machine.  */
+
+  /* Attach the addresses of any which have addresses,
+     and add the ones not mentioned.  */
+  if (address != (struct section_name_struct *) NULL)
+    {
+      struct section_name_struct *alist;
+      struct section_name_struct *olist;
+
+      if (order == (struct section_name_struct *) NULL)
+	order = address;
+
+      for (alist = address;
+	   alist != (struct section_name_struct *) NULL;
+	   alist = alist->next)
+	{
+	  int done = 0;
+
+	  for (olist = order;
+	       done == 0 && olist != (struct section_name_struct *) NULL;
+	       olist = olist->next)
+	    {
+	      if (strcmp (alist->name, olist->name) == 0)
+		{
+		  olist->vma = alist->vma;
+		  done = 1;
+		}
+	    }
+
+	  if (!done)
+	    {
+	      /* Add this onto end of order list.  */
+	      mri_add_to_list (&order, alist->name, alist->vma, 0, 0, 0);
+	    }
+	}
+    }
+
+  /* If we're only supposed to load a subset of them in, then prune
+     the list.  */
+  if (only_load != (struct section_name_struct *) NULL)
+    {
+      struct section_name_struct *ptr1;
+      struct section_name_struct *ptr2;
+
+      if (order == (struct section_name_struct *) NULL)
+	order = only_load;
+
+      /* See if this name is in the list, if it is then we can load it.  */
+      for (ptr1 = only_load; ptr1; ptr1 = ptr1->next)
+	for (ptr2 = order; ptr2; ptr2 = ptr2->next)
+	  if (strcmp (ptr2->name, ptr1->name) == 0)
+	    ptr2->ok_to_load = 1;
+    }
+  else
+    {
+      /* No only load list, so everything is ok to load.  */
+      struct section_name_struct *ptr;
+
+      for (ptr = order; ptr; ptr = ptr->next)
+	ptr->ok_to_load = 1;
+    }
+
+  /* Create the order of sections to load.  */
+  if (order != (struct section_name_struct *) NULL)
+    {
+      /* Been told to output the sections in a certain order.  */
+      struct section_name_struct *p = order;
+
+      while (p)
+	{
+	  struct section_name_struct *aptr;
+	  etree_type *align = 0;
+	  etree_type *subalign = 0;
+	  struct wildcard_list *tmp;
+
+	  /* See if an alignment has been specified.  */
+	  for (aptr = alignment; aptr; aptr = aptr->next)
+	    if (strcmp (aptr->name, p->name) == 0)
+	      align = aptr->align;
+
+	  for (aptr = subalignment; aptr; aptr = aptr->next)
+	    if (strcmp (aptr->name, p->name) == 0)
+	      subalign = aptr->subalign;
+
+	  if (base == 0)
+	    base = p->vma ? p->vma : exp_nameop (NAME, ".");
+
+	  lang_enter_output_section_statement (p->name, base,
+					       p->ok_to_load ? 0 : noload_section,
+					       1, align, subalign,
+					       (etree_type *) NULL);
+	  base = 0;
+	  tmp = (struct wildcard_list *) xmalloc (sizeof *tmp);
+	  tmp->next = NULL;
+	  tmp->spec.name = p->name;
+	  tmp->spec.exclude_name_list = NULL;
+	  tmp->spec.sorted = FALSE;
+	  lang_add_wild (NULL, tmp, FALSE);
+
+	  /* If there is an alias for this section, add it too.  */
+	  for (aptr = alias; aptr; aptr = aptr->next)
+	    if (strcmp (aptr->alias, p->name) == 0)
+	      {
+		tmp = (struct wildcard_list *) xmalloc (sizeof *tmp);
+		tmp->next = NULL;
+		tmp->spec.name = aptr->name;
+		tmp->spec.exclude_name_list = NULL;
+		tmp->spec.sorted = FALSE;
+		lang_add_wild (NULL, tmp, FALSE);
+	      }
+
+	  lang_leave_output_section_statement
+	    (0, "*default*", (struct lang_output_section_phdr_list *) NULL,
+	     NULL);
+
+	  p = p->next;
+	}
+    }
+
+  done_tree = 1;
+}
+
+void
+mri_load (name)
+     const char *name;
+{
+  base = 0;
+  lang_add_input_file (name,
+		       lang_input_file_is_file_enum, (char *) NULL);
+#if 0
+  lang_leave_output_section_statement (0, "*default*");
+#endif
+}
+
+void
+mri_order (name)
+     const char *name;
+{
+  mri_add_to_list (&order, name, 0, 0, 0, 0);
+}
+
+void
+mri_alias (want, is, isn)
+     const char *want;
+     const char *is;
+     int isn;
+{
+  if (!is)
+    {
+      char buf[20];
+
+      /* Some sections are digits.  */
+      sprintf (buf, "%d", isn);
+
+      is = xstrdup (buf);
+
+      if (is == NULL)
+	abort ();
+    }
+
+  mri_add_to_list (&alias, is, 0, want, 0, 0);
+}
+
+void
+mri_name (name)
+     const char *name;
+{
+  lang_add_output (name, 1);
+}
+
+void
+mri_format (name)
+     const char *name;
+{
+  if (strcmp (name, "S") == 0)
+    lang_add_output_format ("srec", (char *) NULL, (char *) NULL, 1);
+
+  else if (strcmp (name, "IEEE") == 0)
+    lang_add_output_format ("ieee", (char *) NULL, (char *) NULL, 1);
+
+  else if (strcmp (name, "COFF") == 0)
+    lang_add_output_format ("coff-m68k", (char *) NULL, (char *) NULL, 1);
+
+  else
+    einfo (_("%P%F: unknown format type %s\n"), name);
+}
+
+void
+mri_public (name, exp)
+     const char *name;
+     etree_type *exp;
+{
+  lang_add_assignment (exp_assop ('=', name, exp));
+}
+
+void
+mri_align (name, exp)
+     const char *name;
+     etree_type *exp;
+{
+  mri_add_to_list (&alignment, name, 0, 0, exp, 0);
+}
+
+void
+mri_alignmod (name, exp)
+     const char *name;
+     etree_type *exp;
+{
+  mri_add_to_list (&subalignment, name, 0, 0, 0, exp);
+}
+
+void
+mri_truncate (exp)
+     unsigned int exp;
+{
+  symbol_truncate = exp;
+}
+@
+
+
+1.2
+log
+@looks as if some sour wine (Federweiﬂer <german>, for an English
+description see http://forum.leo.org/archiv/2002_11/04/20021104125717e_en.html)
+could help me to bear the pain upgrading binutils to 2.14
+
+todo:
+ - test if this works at all
+ - test if this works
+ - test if nothing breaks
+ - nuke all occurences of "false" and "true" in binutils (including gdb),
+   see bfd.h "Poison" for reference
+ - talk to the OpenBSD people, ask them if they could improve this
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+a2 1
+   Copyright 1991, 1992, 1993, 1994, 1996, 1997, 1998, 1999, 2000
+d34 1
+a34 1
+#include "ldgram.h"
+d39 2
+a40 2
+  CONST char *name;
+  CONST char *alias;
+d65 1
+a65 1
+     CONST char *name;
+d87 1
+a87 1
+     CONST char *name;
+d89 1
+a89 1
+     CONST char *zalias;
+d106 1
+a106 1
+     CONST char *name;
+d117 1
+a117 1
+     CONST char *name;
+d152 1
+a152 1
+  /* Attatch the addresses of any which have addresses,
+d223 1
+d242 6
+a247 1
+	  lang_add_wild (p->name, false, (char *) NULL, false, false, NULL);
+d252 8
+a259 1
+	      lang_add_wild (aptr->name, false, (char *) NULL, false, false, NULL);
+d263 1
+a263 1
+	     "*default*");
+d274 1
+a274 1
+     CONST char *name;
+d286 1
+a286 1
+     CONST char *name;
+d293 2
+a294 2
+     CONST char *want;
+     CONST char *is;
+d315 1
+a315 1
+     CONST char *name;
+d322 1
+a322 1
+     CONST char *name;
+d339 1
+a339 1
+     CONST char *name;
+d347 1
+a347 1
+     CONST char *name;
+d355 1
+a355 1
+     CONST char *name;
+@
+
+
+1.1.2.1
+log
+@vendor-branch-i-fy GNU binutils (2.11.2) to facilitate an update
+@
+text
+@@
+
+
+1.1.2.2
+log
+@Import GNU binutils 2.14 from the Free Software Foundation
+(in case the update goes FUBAR, it can be easily backed off)
+@
+text
+@d2 1
+a2 1
+   Copyright 1991, 1992, 1993, 1994, 1996, 1997, 1998, 1999, 2000, 2002
+d34 1
+a34 1
+#include <ldgram.h>
+d39 2
+a40 2
+  const char *name;
+  const char *alias;
+d65 1
+a65 1
+     const char *name;
+d87 1
+a87 1
+     const char *name;
+d89 1
+a89 1
+     const char *zalias;
+d106 1
+a106 1
+     const char *name;
+d117 1
+a117 1
+     const char *name;
+d152 1
+a152 1
+  /* Attach the addresses of any which have addresses,
+a222 1
+	  struct wildcard_list *tmp;
+d241 1
+a241 6
+	  tmp = (struct wildcard_list *) xmalloc (sizeof *tmp);
+	  tmp->next = NULL;
+	  tmp->spec.name = p->name;
+	  tmp->spec.exclude_name_list = NULL;
+	  tmp->spec.sorted = FALSE;
+	  lang_add_wild (NULL, tmp, FALSE);
+d246 1
+a246 8
+	      {
+		tmp = (struct wildcard_list *) xmalloc (sizeof *tmp);
+		tmp->next = NULL;
+		tmp->spec.name = aptr->name;
+		tmp->spec.exclude_name_list = NULL;
+		tmp->spec.sorted = FALSE;
+		lang_add_wild (NULL, tmp, FALSE);
+	      }
+d250 1
+a250 1
+	     NULL);
+d261 1
+a261 1
+     const char *name;
+d273 1
+a273 1
+     const char *name;
+d280 2
+a281 2
+     const char *want;
+     const char *is;
+d302 1
+a302 1
+     const char *name;
+d309 1
+a309 1
+     const char *name;
+d326 1
+a326 1
+     const char *name;
+d334 1
+a334 1
+     const char *name;
+d342 1
+a342 1
+     const char *name;
+@
+
+
+1.1.2.3
+log
+@GNU Binutils, version 2.15
+@
+text
+@d2 2
+a3 2
+   Copyright 1991, 1992, 1993, 1994, 1996, 1997, 1998, 1999, 2000, 2002,
+   2003, 2004 Free Software Foundation, Inc.
+d56 7
+d64 3
+a66 1
+lookup (const char *name, struct section_name_struct **list)
+d80 1
+a80 1
+  *ptr = xmalloc (sizeof (struct section_name_struct));
+d85 7
+a91 6
+mri_add_to_list (struct section_name_struct **list,
+		 const char *name,
+		 etree_type *vma,
+		 const char *zalias,
+		 etree_type *align,
+		 etree_type *subalign)
+d97 1
+a97 1
+  (*ptr)->next = NULL;
+d105 3
+a107 1
+mri_output_section (const char *name, etree_type *vma)
+d116 2
+a117 1
+mri_only_load (const char *name)
+d123 2
+a124 1
+mri_base (etree_type *exp)
+d132 1
+a132 1
+mri_draw_tree (void)
+d145 2
+a146 2
+    r->length = (bfd_size_type) exp_get_vma (0, ~(bfd_vma) 0, "length",
+					     lang_first_phase_enum);
+d154 1
+a154 1
+  if (address != NULL)
+d159 1
+a159 1
+      if (order == NULL)
+d163 1
+a163 1
+	   alist != NULL;
+d168 3
+a170 1
+	  for (olist = order; done == 0 && olist != NULL; olist = olist->next)
+d189 1
+a189 1
+  if (only_load != NULL)
+d194 1
+a194 1
+      if (order == NULL)
+d213 1
+a213 1
+  if (order != NULL)
+d239 2
+a240 1
+					       align, subalign, NULL);
+d242 1
+a242 1
+	  tmp = xmalloc (sizeof *tmp);
+d253 1
+a253 1
+		tmp = xmalloc (sizeof *tmp);
+d261 3
+a263 1
+	  lang_leave_output_section_statement (0, "*default*", NULL, NULL);
+d273 2
+a274 1
+mri_load (const char *name)
+d277 2
+a278 1
+  lang_add_input_file (name, lang_input_file_is_file_enum, NULL);
+d285 2
+a286 1
+mri_order (const char *name)
+d292 4
+a295 1
+mri_alias (const char *want, const char *is, int isn)
+d314 2
+a315 1
+mri_name (const char *name)
+d321 2
+a322 1
+mri_format (const char *name)
+d325 1
+a325 1
+    lang_add_output_format ("srec", NULL, NULL, 1);
+d328 1
+a328 1
+    lang_add_output_format ("ieee", NULL, NULL, 1);
+d331 1
+a331 1
+    lang_add_output_format ("coff-m68k", NULL, NULL, 1);
+d338 3
+a340 1
+mri_public (const char *name, etree_type *exp)
+d346 3
+a348 1
+mri_align (const char *name, etree_type *exp)
+d354 3
+a356 1
+mri_alignmod (const char *name, etree_type *exp)
+d362 2
+a363 1
+mri_truncate (unsigned int exp)
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIXÆ, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d2 1
+a2 1
+   Copyright 1991, 1992, 1993, 1994, 1996, 1997, 1998, 1999, 2000, 2002
+d34 1
+a34 1
+#include <ldgram.h>
+d39 2
+a40 2
+  const char *name;
+  const char *alias;
+d65 1
+a65 1
+     const char *name;
+d87 1
+a87 1
+     const char *name;
+d89 1
+a89 1
+     const char *zalias;
+d106 1
+a106 1
+     const char *name;
+d117 1
+a117 1
+     const char *name;
+d152 1
+a152 1
+  /* Attach the addresses of any which have addresses,
+a222 1
+	  struct wildcard_list *tmp;
+d241 1
+a241 6
+	  tmp = (struct wildcard_list *) xmalloc (sizeof *tmp);
+	  tmp->next = NULL;
+	  tmp->spec.name = p->name;
+	  tmp->spec.exclude_name_list = NULL;
+	  tmp->spec.sorted = FALSE;
+	  lang_add_wild (NULL, tmp, FALSE);
+d246 1
+a246 8
+	      {
+		tmp = (struct wildcard_list *) xmalloc (sizeof *tmp);
+		tmp->next = NULL;
+		tmp->spec.name = aptr->name;
+		tmp->spec.exclude_name_list = NULL;
+		tmp->spec.sorted = FALSE;
+		lang_add_wild (NULL, tmp, FALSE);
+	      }
+d250 1
+a250 1
+	     NULL);
+d261 1
+a261 1
+     const char *name;
+d273 1
+a273 1
+     const char *name;
+d280 2
+a281 2
+     const char *want;
+     const char *is;
+d302 1
+a302 1
+     const char *name;
+d309 1
+a309 1
+     const char *name;
+d326 1
+a326 1
+     const char *name;
+d334 1
+a334 1
+     const char *name;
+d342 1
+a342 1
+     const char *name;
+@
+

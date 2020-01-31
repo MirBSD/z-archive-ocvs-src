@@ -1,0 +1,371 @@
+head	1.2;
+access;
+symbols
+	libpng-1_2_8:1.1.3.5
+	png-1_2_7:1.1.3.4
+	png-1_2_6p1:1.1.3.3
+	png-1_2_6rc1:1.1.3.2
+	png-1_2_5p2:1.1.3.1
+	tg:1.1.3;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2004.03.07.21.43.26;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2004.03.07.21.18.58;	author tg;	state Exp;
+branches
+	1.1.3.1;
+next	;
+
+1.1.3.1
+date	2004.03.07.21.18.58;	author tg;	state Exp;
+branches;
+next	1.1.3.2;
+
+1.1.3.2
+date	2004.08.05.12.15.10;	author tg;	state Exp;
+branches;
+next	1.1.3.3;
+
+1.1.3.3
+date	2004.08.27.16.19.28;	author tg;	state Exp;
+branches;
+next	1.1.3.4;
+
+1.1.3.4
+date	2004.10.22.08.50.27;	author tg;	state Exp;
+branches;
+next	1.1.3.5;
+
+1.1.3.5
+date	2005.01.08.20.37.15;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@un-junk libpng and MirOSify
+@
+text
+@# makefile for libpng on Solaris 2.x with gcc
+# Copyright (C) 2002 Glenn Randers-Pehrson
+# Contributed by William L. Sebok, based on makefile.linux
+# Copyright (C) 1998 Greg Roelofs
+# Copyright (C) 1996, 1997 Andreas Dilger
+# For conditions of distribution and use, see copyright notice in png.h
+
+CC=gcc
+
+# Where make install puts libpng.a, libpng12.so*, and png.h
+prefix=/usr/local
+
+# Where the zlib library and include files are located
+# Changing these to ../zlib poses a security risk.  If you want
+# to have zlib in an adjacent directory, specify the full path instead of "..".
+#ZLIBLIB=../zlib
+#ZLIBINC=../zlib
+
+ZLIBLIB=/usr/local/lib
+ZLIBINC=/usr/local/include
+
+WARNMORE=-Wwrite-strings -Wpointer-arith -Wshadow \
+	-Wmissing-declarations -Wtraditional -Wcast-align \
+	-Wstrict-prototypes -Wmissing-prototypes #-Wconversion
+CFLAGS=-I$(ZLIBINC) -Wall -O3 \
+	# $(WARNMORE) -g -DPNG_DEBUG=5
+LDFLAGS=-L. -R. -L$(ZLIBLIB) -R$(ZLIBLIB) -lpng12 -lz -lm
+
+#RANLIB=ranlib
+RANLIB=echo
+
+PNGMAJ = 0
+PNGMIN = 1.2.5
+PNGVER = $(PNGMAJ).$(PNGMIN)
+LIBNAME = libpng12
+
+INCPATH=$(prefix)/include
+LIBPATH=$(prefix)/lib
+MANPATH=$(prefix)/man
+BINPATH=$(prefix)/bin
+
+# override DESTDIR= on the make install command line to easily support
+# installing into a temporary location.  Example:
+#
+#    make install DESTDIR=/tmp/build/libpng
+#
+# If you're going to install into a temporary location
+# via DESTDIR, $(DESTDIR)$(prefix) must already exist before
+# you execute make install.
+DESTDIR=
+
+DB=$(DESTDIR)$(BINPATH)
+DI=$(DESTDIR)$(INCPATH)
+DL=$(DESTDIR)$(LIBPATH)
+DM=$(DESTDIR)$(MANPATH)
+
+OBJS = png.o pngset.o pngget.o pngrutil.o pngtrans.o pngwutil.o \
+	pngread.o pngrio.o pngwio.o pngwrite.o pngrtran.o \
+	pngwtran.o pngmem.o pngerror.o pngpread.o
+
+OBJSDLL = $(OBJS:.o=.pic.o)
+
+.SUFFIXES:      .c .o .pic.o
+
+.c.pic.o:
+	$(CC) -c $(CFLAGS) -fPIC -o $@@ $*.c
+
+all: libpng.a $(LIBNAME).so pngtest libpng.pc libpng-config
+
+libpng.a: $(OBJS)
+	ar rc $@@ $(OBJS)
+	$(RANLIB) $@@
+
+libpng.pc:
+	cat scripts/libpng.pc.in | sed -e s\!@@PREFIX@@!$(prefix)! > libpng.pc
+
+libpng-config:
+	( cat scripts/libpng-config-head.in; \
+	echo prefix=\"$(prefix)\"; \
+	echo I_opts=\"-I$(INCPATH)/$(LIBNAME)\"; \
+	echo cppflags=\"-DPNG_USE_PNGGCCRD -DPNG_NO_ASSEMBLER_CODE\"; \
+	echo L_opts=\"-L$(LIBPATH)\"; \
+	echo R_opts=\"-R$(LIBPATH)\"; \
+	echo libs=\"-lpng12 -lz -lm\"; \
+	cat scripts/libpng-config-body.in ) > libpng-config
+	chmod +x libpng-config
+
+$(LIBNAME).so: $(LIBNAME).so.$(PNGMAJ)
+	ln -f -s $(LIBNAME).so.$(PNGMAJ) $(LIBNAME).so
+
+$(LIBNAME).so.$(PNGMAJ): $(LIBNAME).so.$(PNGVER)
+	ln -f -s $(LIBNAME).so.$(PNGVER) $(LIBNAME).so.$(PNGMAJ)
+
+$(LIBNAME).so.$(PNGVER): $(OBJSDLL)
+	@@case "`type ld`" in *ucb*) \
+	echo; \
+	echo '## WARNING:'; \
+	echo '## The commands "CC" and "LD" must NOT refer to /usr/ucb/cc'; \
+	echo '## and /usr/ucb/ld.  If they do, you need to adjust your PATH'; \
+	echo '## environment variable to put /usr/ccs/bin ahead of /usr/ucb.'; \
+	echo '## The environment variable LD_LIBRARY_PATH should not be set'; \
+	echo '## at all.  If it is, things are likely to break because of'; \
+	echo '## the libucb dependency that is created.'; \
+	echo; \
+	;; \
+	esac
+	$(LD) -G -h $(LIBNAME).so.$(PNGMAJ) \
+	 -o $(LIBNAME).so.$(PNGVER) $(OBJSDLL)
+
+libpng.so.3.$(PNGMIN): $(OBJS)
+	$(LD) -G -h libpng.so.3 \
+	 -o libpng.so.3.$(PNGMIN) $(OBJSDLL)
+
+pngtest: pngtest.o $(LIBNAME).so
+	$(CC) -o pngtest $(CFLAGS) pngtest.o $(LDFLAGS)
+
+test: pngtest
+	./pngtest
+
+install-headers: png.h pngconf.h
+	-@@if [ ! -d $(DI) ]; then mkdir $(DI); fi
+	-@@if [ ! -d $(DI)/$(LIBNAME) ]; then mkdir $(DI)/$(LIBNAME); fi
+	cp png.h pngconf.h $(DI)/$(LIBNAME)
+	chmod 644 $(DI)/$(LIBNAME)/png.h $(DI)/$(LIBNAME)/pngconf.h
+	-@@/bin/rm -f $(DI)/png.h $(DI)/pngconf.h
+	-@@/bin/rm -f $(DI)/libpng
+	(cd $(DI); ln -f -s $(LIBNAME) libpng; ln -f -s $(LIBNAME)/* .)
+
+install-static: install-headers libpng.a
+	-@@if [ ! -d $(DL) ]; then mkdir $(DL); fi
+	cp libpng.a $(DL)/$(LIBNAME).a
+	chmod 644 $(DL)/$(LIBNAME).a
+	-@@/bin/rm -f $(DL)/libpng.a
+	(cd $(DL); ln -f -s $(LIBNAME).a libpng.a)
+
+install-shared: install-headers $(LIBNAME).so.$(PNGVER) libpng.pc \
+	libpng.so.3.$(PNGMIN)
+	-@@if [ ! -d $(DL) ]; then mkdir $(DL); fi
+	-@@/bin/rm -f $(DL)/$(LIBNAME).so.$(PNGVER)* $(DL)/$(LIBNAME).so
+	-@@/bin/rm -f $(DL)/libpng.so
+	-@@/bin/rm -f $(DL)/libpng.so.3
+	-@@/bin/rm -f $(DL)/libpng.so.3.$(PNGMIN)*
+	cp $(LIBNAME).so.$(PNGVER) $(DL)
+	cp libpng.so.3.$(PNGMIN) $(DL)
+	chmod 755 $(DL)/$(LIBNAME).so.$(PNGVER)
+	chmod 755 $(DL)/libpng.so.3.$(PNGMIN)
+	(cd $(DL); \
+	ln -f -s libpng.so.3.$(PNGMIN) libpng.so.3; \
+	ln -f -s libpng.so.3 libpng.so; \
+	ln -f -s $(LIBNAME).so.$(PNGVER) $(LIBNAME).so; \
+	ln -f -s $(LIBNAME).so.$(PNGVER) $(LIBNAME).so.$(PNGMAJ))
+	-@@if [ ! -d $(DL)/pkgconfig ]; then mkdir $(DL)/pkgconfig; fi
+	-@@/bin/rm -f $(DL)/pkgconfig/$(LIBNAME).pc
+	-@@/bin/rm -f $(DL)/pkgconfig/libpng.pc
+	cp libpng.pc $(DL)/pkgconfig/$(LIBNAME).pc
+	chmod 644 $(DL)/pkgconfig/$(LIBNAME).pc
+	(cd $(DL)/pkgconfig; ln -f -s $(LIBNAME).pc libpng.pc)
+
+install-man: libpng.3 libpngpf.3 png.5
+	-@@if [ ! -d $(DM) ]; then mkdir $(DM); fi
+	-@@if [ ! -d $(DM)/man3 ]; then mkdir $(DM)/man3; fi
+	-@@/bin/rm -f $(DM)/man3/libpng.3
+	-@@/bin/rm -f $(DM)/man3/libpngpf.3
+	cp libpng.3 $(DM)/man3
+	cp libpngpf.3 $(DM)/man3
+	-@@if [ ! -d $(DM)/man5 ]; then mkdir $(DM)/man5; fi
+	-@@/bin/rm -f $(DM)/man5/png.5
+	cp png.5 $(DM)/man5
+
+install-config: libpng-config
+	-@@if [ ! -d $(DB) ]; then mkdir $(DB); fi
+	-@@/bin/rm -f $(DB)/libpng-config
+	-@@/bin/rm -f $(DB)/$(LIBNAME)-config
+	cp libpng-config $(DB)/$(LIBNAME)-config
+	chmod 755 $(DB)/$(LIBNAME)-config
+	(cd $(DB); ln -sf $(LIBNAME)-config libpng-config)
+
+install: install-static install-shared install-man install-config
+
+# If you installed in $(DESTDIR), test-installed won't work until you
+# move the library to its final location.
+
+test-installed:
+	echo
+	echo Testing installed dynamic shared library.
+	$(CC) -I$(ZLIBINC) \
+	   `$(BINPATH)/libpng12-config --cflags` pngtest.c \
+	   -o pngtesti `$(BINPATH)/libpng12-config --ldflags` \
+	   -L$(ZLIBLIB) -R$(ZLIBLIB)
+	./pngtesti pngtest.png
+
+clean:
+	/bin/rm -f *.o libpng.a pngtest pngtesti pngout.png \
+	libpng-config $(LIBNAME).so $(LIBNAME).so.$(PNGMAJ)* \
+	libpng.so.3.$(PNGMIN) \
+	libpng.pc
+
+DOCS = ANNOUNCE CHANGES INSTALL KNOWNBUG LICENSE README TODO Y2KINFO
+writelock:
+	chmod a-w *.[ch35] $(DOCS) scripts/*
+
+# DO NOT DELETE THIS LINE -- make depend depends on it.
+
+png.o png.pic.o: png.h pngconf.h
+pngerror.o pngerror.pic.o: png.h pngconf.h
+pngrio.o pngrio.pic.o: png.h pngconf.h
+pngwio.o pngwio.pic.o: png.h pngconf.h
+pngmem.o pngmem.pic.o: png.h pngconf.h
+pngset.o pngset.pic.o: png.h pngconf.h
+pngget.o pngget.pic.o: png.h pngconf.h
+pngread.o pngread.pic.o: png.h pngconf.h
+pngrtran.o pngrtran.pic.o: png.h pngconf.h
+pngrutil.o pngrutil.pic.o: png.h pngconf.h
+pngtrans.o pngtrans.pic.o: png.h pngconf.h
+pngwrite.o pngwrite.pic.o: png.h pngconf.h
+pngwtran.o pngwtran.pic.o: png.h pngconf.h
+pngwutil.o pngwutil.pic.o: png.h pngconf.h
+pngpread.o pngpread.pic.o: png.h pngconf.h
+
+pngtest.o: png.h pngconf.h
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.3.1
+log
+@Import the PNG library from ports/graphics/png/w-png-1.2.5p2/libpng-1.2.5
+
+libpng is OSI certified Open Source software; the small wording mistake
+to not write "with or without fee" in the licence (png.h) was fixed by
+encouraging the use in commercial software
+@
+text
+@@
+
+
+1.1.3.2
+log
+@libpng 1.2.6rc1, said to solve some security leaks, but
+also brings in enhancements
+@
+text
+@d33 1
+a33 1
+PNGMIN = 1.2.6rc1
+@
+
+
+1.1.3.3
+log
+@libpng 1.2.6 with patch-1 from website applied
+@
+text
+@d2 1
+a2 1
+# Copyright (C) 2004 Glenn Randers-Pehrson
+d25 1
+a25 1
+CFLAGS=-I$(ZLIBINC) -Wall -O \
+d33 1
+a33 1
+PNGMIN = 1.2.6
+a139 1
+	-@@/bin/rm -f $(DL)/$(LIBNAME).so.$(PNGMAJ)
+d176 1
+a176 1
+	(cd $(DB); ln -s -f $(LIBNAME)-config libpng-config)
+@
+
+
+1.1.3.4
+log
+@libpng 1.2.7 (final)
+@
+text
+@d33 1
+a33 1
+PNGMIN = 1.2.7
+d182 1
+a182 11
+# move the library to its final location.  Use test-dd to test it
+# before then.
+
+test-dd:
+	echo
+	echo Testing installed dynamic shared library in $(DL).
+	$(CC) -I$(DI) -I$(ZLIBINC) \
+	   `$(BINPATH)/libpng12-config --cflags` pngtest.c \
+	   -o pngtestd `$(BINPATH)/libpng12-config --ldflags` \
+	   -L$(DL) -L$(ZLIBLIB) -R$(ZLIBLIB) -R$(DL)
+	./pngtestd pngtest.png
+@
+
+
+1.1.3.5
+log
+@png 1.2.8
+@
+text
+@d33 1
+a33 1
+PNGMIN = 1.2.8
+@
+
+

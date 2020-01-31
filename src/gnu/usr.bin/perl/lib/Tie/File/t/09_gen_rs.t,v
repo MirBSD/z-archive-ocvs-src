@@ -1,0 +1,367 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.8
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.6
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.25;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.25;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.56.15;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!/usr/bin/perl
+
+my $file = "tf$$.txt";
+
+print "1..58\n";
+
+my $N = 1;
+use Tie::File;
+print "ok $N\n"; $N++;
+
+$RECSEP = 'blah';
+my $o = tie @@a, 'Tie::File', $file, 
+    recsep => $RECSEP, autochomp => 0, autodefer => 0;
+print $o ? "ok $N\n" : "not ok $N\n";
+$N++;
+
+
+# 3-4 create
+$a[0] = 'rec0';
+check_contents("rec0");
+
+# 5-8 append
+$a[1] = 'rec1';
+check_contents("rec0", "rec1");
+$a[2] = 'rec2';
+check_contents("rec0", "rec1", "rec2");
+
+# 9-14 same-length alterations
+$a[0] = 'new0';
+check_contents("new0", "rec1", "rec2");
+$a[1] = 'new1';
+check_contents("new0", "new1", "rec2");
+$a[2] = 'new2';
+check_contents("new0", "new1", "new2");
+
+# 15-24 lengthening alterations
+$a[0] = 'long0';
+check_contents("long0", "new1", "new2");
+$a[1] = 'long1';
+check_contents("long0", "long1", "new2");
+$a[2] = 'long2';
+check_contents("long0", "long1", "long2");
+$a[1] = 'longer1';
+check_contents("long0", "longer1", "long2");
+$a[0] = 'longer0';
+check_contents("longer0", "longer1", "long2");
+
+# 25-34 shortening alterations, including truncation
+$a[0] = 'short0';
+check_contents("short0", "longer1", "long2");
+$a[1] = 'short1';
+check_contents("short0", "short1", "long2");
+$a[2] = 'short2';
+check_contents("short0", "short1", "short2");
+$a[1] = 'sh1';
+check_contents("short0", "sh1", "short2");
+$a[0] = 'sh0';
+check_contents("sh0", "sh1", "short2");
+
+# (35-38) file with holes
+$a[4] = 'rec4';
+check_contents("sh0", "sh1", "short2", "", "rec4");
+$a[3] = 'rec3';
+check_contents("sh0", "sh1", "short2", "rec3", "rec4");
+
+# (39-40) zero out file
+@@a = ();
+check_contents();
+
+# (41-42) insert into the middle of an empty file
+$a[3] = "rec3";
+check_contents("", "", "", "rec3");
+
+# (43-47) 20020326 You thought there would be a bug in STORE where if
+# a cached record was false, STORE wouldn't see it at all.  Yup, there is,
+# and adding the appropriate defined() test fixes the problem.
+undef $o;  untie @@a;  1 while unlink $file;
+$RECSEP = '0';
+$o = tie @@a, 'Tie::File', $file, 
+    recsep => $RECSEP, autochomp => 0, autodefer => 0;
+print $o ? "ok $N\n" : "not ok $N\n";
+$N++;
+$#a = 2;
+my $z = $a[1];                  # caches "0"
+$a[2] = "oops";
+check_contents("", "", "oops");
+$a[1] = "bah";
+check_contents("", "bah", "oops");
+undef $o; untie @@a;
+
+# (48-56) 20020331 Make sure we correctly handle the case where the final
+# record of the file is not properly terminated, Through version 0.90,
+# we would mangle the file.
+my $badrec = "Malformed";
+$: = $RECSEP = Tie::File::_default_recsep();
+# (48-50)
+if (setup_badly_terminated_file(3)) {
+  $o = tie @@a, 'Tie::File', $file,
+    recsep => $RECSEP, autochomp => 0, autodefer => 0
+    or die "Couldn't tie file: $!";
+  my $z = $a[0];
+  print $z eq "$badrec$:" ? "ok $N\n" : 
+                        "not ok $N \# got $z, expected $badrec\n";
+  $N++;
+  push @@a, "next";
+  check_contents($badrec, "next");
+  undef $o; untie @@a;
+}
+# (51-52)
+if (setup_badly_terminated_file(2)) {
+  $o = tie @@a, 'Tie::File', $file,
+    recsep => $RECSEP, autochomp => 0, autodefer => 0
+    or die "Couldn't tie file: $!";
+  splice @@a, 1, 0, "x", "y";
+  check_contents($badrec, "x", "y");
+  undef $o; untie @@a;
+}
+# (53-56)
+if (setup_badly_terminated_file(4)) {
+  $o = tie @@a, 'Tie::File', $file,
+    recsep => $RECSEP, autochomp => 0, autodefer => 0
+    or die "Couldn't tie file: $!";
+  my @@r = splice @@a, 0, 1, "x", "y";
+  my $n = @@r;
+  print $n == 1 ? "ok $N\n" : "not ok $N \# expected 1 elt, got $n\n";
+  $N++;
+  print $r[0] eq "$badrec$:" ? "ok $N\n"
+    : "not ok $N \# expected <$badrec>, got <$r[0]>\n";
+  $N++;
+  check_contents("x", "y");
+  undef $o; untie @@a;
+}
+
+# (57-58) 20020402 The modifiaction would have failed if $\ were set wrong.
+# I hate $\.
+if (setup_badly_terminated_file(2)) {
+  $o = tie @@a, 'Tie::File', $file,
+    recsep => $RECSEP, autochomp => 0, autodefer => 0
+    or die "Couldn't tie file: $!";
+  { local $\ = "I hate \$\\.";
+    my $z = $a[0];
+  }
+  check_contents($badrec);
+  undef $o; untie @@a;
+}
+
+sub setup_badly_terminated_file {
+  my $NTESTS = shift;
+  open F, "> $file" or die "Couldn't open $file: $!";
+  binmode F;
+  print F $badrec;
+  close F;
+  unless (-s $file == length $badrec) {
+    for (1 .. $NTESTS) {
+      print "ok $N \# skipped - can't create improperly terminated file\n";
+      $N++;
+    }
+    return;
+  }
+  return 1;
+}
+
+
+use POSIX 'SEEK_SET';
+sub check_contents {
+  my @@c = @@_;
+  my $x = join $RECSEP, @@c, '';
+  local *FH = $o->{fh};
+  seek FH, 0, SEEK_SET;
+  my $a;
+  { local $/; $a = <FH> }
+
+  $a = "" unless defined $a;
+  if ($a eq $x) {
+    print "ok $N\n";
+  } else {
+    my $msg = "# expected <$x>, got <$a>";
+    ctrlfix($msg);
+    print "not ok $N $msg\n";
+  }
+  $N++;
+
+  # now check FETCH:
+  my $good = 1;
+  for (0.. $#c) {
+    unless ($a[$_] eq "$c[$_]$RECSEP") {
+      $msg = "expected $c[$_]$RECSEP, got $a[$_]";
+      ctrlfix($msg);
+      $good = 0;
+    }
+  }
+  print $good ? "ok $N\n" : "not ok $N # fetch $msg\n";
+  $N++;
+}
+
+
+sub ctrlfix {
+  for (@@_) {
+    s/\n/\\n/g;
+    s/\r/\\r/g;
+  }
+}
+
+
+END {
+  undef $o;
+  untie @@a;
+  1 while unlink $file;
+}
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d5 1
+a5 1
+print "1..59\n";
+d107 1
+d116 1
+d131 1
+d134 1
+a134 1
+# (57-58) 20020402 The modification would have failed if $\ were set wrong.
+d144 1
+a144 17
+}
+
+# (59) 20030527 Tom Christiansen pointed out that FETCH returns the wrong
+# data on the final record of an unterminated file if the file is opened
+# in read-only mode.  Note that the $#a is necessary here.
+# There's special-case code to fix the final record when it is read normally.
+# But the $#a forces it to be read from the cache, which skips the
+# termination.
+$badrec = "world${RECSEP}hello";
+if (setup_badly_terminated_file(1)) {
+  tie(@@a, "Tie::File", $file, mode => 0, recsep => $RECSEP)
+      or die "Couldn't tie file: $!";
+  my $z = $#a;
+  $z = $a[1];
+  print $z eq "hello" ? "ok $N\n" : 
+      "not ok $N \# got $z, expected hello\n";
+  $N++;
+@
+

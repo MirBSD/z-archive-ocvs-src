@@ -1,0 +1,392 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.14
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.12
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.10
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.8
+	MIRBSD_7quater:1.1.1.2
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.2.0.6
+	MIRBSD_7:1.1.1.2.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.2
+	MIRBSD_7_DEV:1.1.1.2.0.2
+	cvs-200310020700:1.1.1.2
+	cvs-200309271030:1.1.1.2
+	cvs-200309251530:1.1.1.2
+	cvs-200308302005:1.1.1.2
+	cvs-200308171200:1.1.1.2
+	ctm-3496:1.1.1.2
+	ctm-3449:1.1.1.2
+	ctm-3437:1.1.1.2
+	cvs-200307191805:1.1.1.2
+	ctm-3425:1.1.1.2
+	cvs-200307091500:1.1.1.2
+	ctm-3389:1.1.1.2
+	cvs-200306291430:1.1.1.2
+	ctm-3341:1.1.1.2
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.52.39;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.52.39;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.06.19.12.52.19;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*      $OpenBSD: elf2olf.c,v 1.6 2001/11/19 19:02:13 mpech Exp $	*/
+/*
+ * Copyright (c) 1996 Erik Theisen.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+#ifndef lint
+static char copyright[] = 
+"@@(#) Copyright (c) 1996 Erik Theisen.  All rights reserved.\n";
+#endif /* not lint */
+
+#ifndef lint
+static char rcsid[] = "@@(#) $Id: elf2olf.c,v 1.6 2001/11/19 19:02:13 mpech Exp $";
+#endif
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <unistd.h>
+
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <sys/stat.h>
+#include <sys/param.h>
+
+#include <olf_abi.h>
+
+int   retval  = 0;
+int   olf2elf;
+char *progname;
+int   verbose;
+int   opsys = OS_ID;
+
+char *os_namev[] = ONAMEV;
+
+/* Handle endianess */
+#define word(x,y)((y == ELFDATA2LSB) ? ntohl(htonl(x)) : ntohl(x))
+#define half(x,y)((y == ELFDATA2LSB) ? ntohs(htons(x)) : ntohs(x))
+
+void usage(void);
+void pwarn(char *, char *, int);
+
+int
+main(int argc, char*argv[])
+{
+    extern char *optarg;
+    extern int optind;
+    int ch, i, okay;
+    char *opstring;
+
+    int fd;
+    struct stat st;
+    Elf32_Ehdr ehdr;
+    Elf32_Shdr shdr;
+    int e;
+    
+    if ((progname = strrchr(*argv, '/')))
+	++progname;
+    else
+	progname = *argv;
+
+    if (strstr(progname, "olf2elf"))
+	olf2elf = 1;
+    
+    /* 
+     * Process cmdline
+     */
+    opstring = olf2elf ? "v" : "vo:";
+    while((ch = getopt(argc, argv, opstring)) != -1)
+	switch(ch) {
+	case 'v':
+	    verbose = 1;
+	    break;
+	case 'o':
+	    for (i = 1; i <= OOS_NUM; i++) {
+	        if (os_namev[i] == NULL) {
+		    fprintf(stderr, 
+			    "%s: illegal -o argument -- %s\n", 
+			    progname, optarg);
+		    usage();
+		}
+		else if (strcmp(optarg, os_namev[i]) == 0) {
+		    opsys = i;
+		    break;
+		}
+	    }
+	    break;
+	default:
+	    usage();
+	}
+    argc -= optind;
+    argv += optind;
+
+    if (argc == 0)
+	usage();
+
+    /*
+     * Process file(s)
+     */
+    do {
+	okay = 0;
+
+	if ((fd = open(*argv, O_RDWR | O_EXLOCK, 0)) > 0 &&
+	    lseek(fd, (off_t)0, SEEK_SET) == 0 &&
+	    fstat(fd, &st) == 0) {
+
+	    /* Make sure this is a 32bit ELF or OLF version 1 file */
+	    if (read(fd, &ehdr, sizeof(Elf32_Ehdr)) == sizeof(Elf32_Ehdr)&&
+		(IS_ELF(ehdr) || IS_OLF(ehdr)) &&
+		ehdr.e_ident[EI_CLASS] == ELFCLASS32 &&
+		ehdr.e_ident[EI_VERSION] == 1) {
+
+		/* Is this elf2olf? */
+		if(!olf2elf) {
+
+		    /* Tag, your it... */
+		    ehdr.e_ident[OI_MAG0]    = OLFMAG0;
+		    ehdr.e_ident[OI_MAG1]    = OLFMAG1;
+		    ehdr.e_ident[OI_MAG2]    = OLFMAG2;
+		    ehdr.e_ident[OI_MAG3]    = OLFMAG3;
+		    ehdr.e_ident[OI_OS]      = opsys;
+		    ehdr.e_ident[OI_DYNAMIC] = ODYNAMIC_N;
+		    ehdr.e_ident[OI_STRIP]   = OSTRIP;
+
+		    /* We'll need this endian */
+		    e = ehdr.e_ident[EI_DATA];
+
+		    /* Now we need to figure out wether or */
+		    /* not we're really stripped. */
+		    if (lseek(fd, (off_t)word(ehdr.e_shoff, e),
+			      SEEK_SET) == word(ehdr.e_shoff, e)) {
+
+			/* 
+			 * search through section header table
+			 * looking for a section header of type
+			 * SHT_SYMTAB and SHT_DYNAMIC. If there is 
+			 * one present we're NOT stripped and/or 
+			 * dynamic.
+			 */
+			for (i = 0; i < half(ehdr.e_shnum, e); i++) {
+			    if (read(fd, &shdr, sizeof(Elf32_Shdr)) == sizeof(Elf32_Shdr)){
+				if (word(shdr.sh_type, e) == SHT_SYMTAB)
+				    ehdr.e_ident[OI_STRIP] = OSTRIP_N;
+				else if (word(shdr.sh_type, e) == SHT_DYNAMIC)
+				    ehdr.e_ident[OI_DYNAMIC] = ODYNAMIC;
+			    } else
+				pwarn(progname, *argv, errno);
+			} /* while less than number of section headers */
+
+			/* We're ready to modify */
+			okay = 1;
+
+		    } else /* Bogus section header table seek */
+			pwarn(progname, *argv, errno);
+
+		} else { /* olf2elf */
+		    ehdr.e_ident[EI_MAG0]    = ELFMAG0;
+		    ehdr.e_ident[EI_MAG1]    = ELFMAG1;
+		    ehdr.e_ident[EI_MAG2]    = ELFMAG2;
+		    ehdr.e_ident[EI_MAG3]    = ELFMAG3;
+		    ehdr.e_ident[OI_OS]      = 0;
+		    ehdr.e_ident[OI_DYNAMIC] = 0;
+		    ehdr.e_ident[OI_STRIP]   = 0;
+
+		    okay = 1;
+		} /* olf2elf */
+	    } else /* Bogus non-ELF file encountered */
+		pwarn(progname, *argv, ENOEXEC);
+
+	    /*
+	     * Do It.
+	     */
+	    if (okay) {
+		if (lseek(fd, (off_t)0, SEEK_SET) == 0) {
+		    if (write(fd, &ehdr, sizeof(Elf32_Ehdr)) == sizeof(Elf32_Ehdr)) {
+			if (verbose) {
+			    if (!olf2elf) {
+				printf("ELF %s => OLF %d-bit %s %s linked %s OLF.\n",
+				       *argv,
+				       (ehdr.e_ident[OI_CLASS] == OLFCLASS32)?\
+				           32 : 64,
+				       os_namev[ehdr.e_ident[OI_OS]],
+				       ehdr.e_ident[OI_DYNAMIC] ? \
+				           "dynamically" : "statically", 
+				       !ehdr.e_ident[OI_STRIP] ?
+				           "stripped" : "unstripped");
+			    } else
+				printf("OLF %s => ELF.\n", *argv);
+			}
+		    } else /* bad write */
+			pwarn(progname, *argv, errno);	
+		} else /* bad seek */
+		    pwarn(progname, *argv, errno);
+	    } /* okay? */
+	    fsync(fd);
+	    close(fd);
+
+	} else /* couldn't handle file */
+	    pwarn(progname, *argv, errno);
+    } while (*(++argv) != NULL);
+    
+
+    return (retval);
+}
+
+void
+pwarn(name, fname, errval)
+    char *name;
+    char *fname;
+    int errval;
+{
+    fprintf(stderr, "%s: %s: %s.\n", name, fname, strerror(errval));
+    retval = 1;
+}
+
+void
+usage()
+{
+    int i;
+    int col = 8;
+
+    if (olf2elf) {
+	fprintf(stderr,	"usage: %s [-v] file ...\n", progname);
+    } else {
+	fprintf(stderr,	"usage: %s [-v] [-o opsys] elffile ...\n", progname);
+	fprintf(stderr, "where opsys is:\n\t");
+	for (i = 1; os_namev[i] != NULL; i++) {
+	    col = col + strlen(os_namev[i]) + 2;
+	    if (col > 78) {
+		fprintf(stderr, "\n\t");
+		col = 8;
+	    }
+	    fprintf(stderr, "%s%s", os_namev[i],
+		os_namev[i+1] ? ", " : "\n");
+	}
+    }
+    exit(1);
+}
+
+
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@sync with OpenBSD, this gives us a fair amount of fixes
+@
+text
+@d1 1
+a1 1
+/*      $OpenBSD: elf2olf.c,v 1.7 2003/06/10 22:20:46 deraadt Exp $	*/
+d33 1
+a33 1
+static char rcsid[] = "@@(#) $Id: elf2olf.c,v 1.7 2003/06/10 22:20:46 deraadt Exp $";
+d239 1
+a239 1
+usage(void)
+@
+

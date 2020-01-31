@@ -1,0 +1,319 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.05.16.17.43.11;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.51;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.51;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.29.40;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@#include <stdio.h>
+
+#include "config.h"
+
+#ifndef HAVE_PTHREAD_H
+
+/* Don't even try to compile.  In fact, cause a syntax error that we can
+   look for as a compiler error message and know that we have no pthread
+   support.  In that case we can just suppress the test completely. */
+
+#error "no posix threads support"
+
+#else
+
+/* OK.  We have the right header.  If we try to compile this and fail, then
+   there is something wrong and the user should know about it so the testsuite
+   should issue an ERROR result.. */
+
+#include <pthread.h>
+
+/* Under OSF 2.0 & 3.0 and HPUX 10, the second arg of pthread_create
+   is prototyped to be just a "pthread_attr_t", while under Solaris it
+   is a "pthread_attr_t *".  Arg! */
+
+#if defined (__osf__) || defined (__hpux__)
+#define PTHREAD_CREATE_ARG2(arg) arg
+#define PTHREAD_CREATE_NULL_ARG2 null_attr
+static pthread_attr_t null_attr;
+#else
+#define PTHREAD_CREATE_ARG2(arg) &arg
+#define PTHREAD_CREATE_NULL_ARG2 NULL
+#endif
+
+static int verbose = 0;
+
+static void
+common_routine (arg)
+     int arg;
+{
+  static int from_thread1;
+  static int from_thread2;
+  static int from_main;
+  static int hits;
+  static int full_coverage;
+
+  if (verbose) printf("common_routine (%d)\n", arg);
+  hits++;
+  switch (arg)
+    {
+    case 0:
+      from_main++;
+      break;
+    case 1:
+      from_thread1++;
+      break;
+    case 2:
+      from_thread2++;
+      break;
+    }
+  if (from_main && from_thread1 && from_thread2)
+    full_coverage = 1;
+}
+
+static void *
+thread1 (void *arg)
+{
+  int i;
+  int z = 0;
+
+  if (verbose) printf ("thread1 (%0x) ; pid = %d\n", arg, getpid ());
+  for (i=1; i <= 10000000; i++)
+    {
+      if (verbose) printf("thread1 %d\n", pthread_self ());
+      z += i;
+      common_routine (1);
+      sleep(1);
+    }
+}
+
+static void *
+thread2 (void * arg)
+{
+  int i;
+  int k = 0;
+
+  if (verbose) printf ("thread2 (%0x) ; pid = %d\n", arg, getpid ());
+  for (i=1; i <= 10000000; i++)
+    {
+      if (verbose) printf("thread2 %d\n", pthread_self ());
+      k += i;
+      common_routine (2);
+      sleep(1);
+    }
+  sleep(100);
+}
+
+int
+foo (a, b, c)
+     int a, b, c;
+{
+  int d, e, f;
+
+  if (verbose) printf("a=%d\n", a);
+}
+
+main(argc, argv)
+     int argc;
+     char **argv;
+{
+  pthread_t tid1, tid2;
+  int j;
+  int t = 0;
+  void (*xxx) ();
+  pthread_attr_t attr;
+
+  if (verbose) printf ("pid = %d\n", getpid());
+
+  foo (1, 2, 3);
+
+#ifndef __osf__
+  if (pthread_attr_init (&attr))
+    {
+      perror ("pthread_attr_init 1");
+      exit (1);
+    }
+#endif
+
+#ifdef PTHREAD_SCOPE_SYSTEM
+  if (pthread_attr_setscope (&attr, PTHREAD_SCOPE_SYSTEM))
+    {
+      perror ("pthread_attr_setscope 1");
+      exit (1);
+    }
+#endif
+
+  if (pthread_create (&tid1, PTHREAD_CREATE_ARG2(attr), thread1, (void *) 0xfeedface))
+    {
+      perror ("pthread_create 1");
+      exit (1);
+    }
+  if (verbose) printf ("Made thread %d\n", tid1);
+  sleep (1);
+
+  if (pthread_create (&tid2, PTHREAD_CREATE_NULL_ARG2, thread2, (void *) 0xdeadbeef))
+    {
+      perror ("pthread_create 2");
+      exit (1);
+    }
+  if (verbose) printf("Made thread %d\n", tid2);
+
+  sleep (1);
+
+  for (j = 1; j <= 10000000; j++)
+    {
+      if (verbose) printf("top %d\n", pthread_self ());
+      common_routine (0);
+      sleep(1);
+      t += j;
+    }
+  
+  exit(0);
+}
+
+#endif	/* ifndef HAVE_PTHREAD_H */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@d1 17
+a17 23
+/* Pthreads test program.
+   Copyright 1996, 2002, 2003
+   Free Software Foundation, Inc.
+
+   Written by Fred Fish of Cygnus Support
+   Contributed by Cygnus Support
+
+   This file is part of GDB.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
+   
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+   
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place - Suite 330,
+   Boston, MA 02111-1307, USA.  */
+a18 1
+#include <stdio.h>
+a77 1
+  return (void *) 0;
+a94 1
+  return (void *) 0;
+d97 1
+a97 1
+void
+d164 1
+@
+

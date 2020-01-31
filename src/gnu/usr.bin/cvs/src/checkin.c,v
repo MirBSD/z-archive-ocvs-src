@@ -1,0 +1,527 @@
+head	1.4;
+access;
+symbols
+	cvs-1_12_11:1.1.2.1
+	tg-mergetmp-mirosx-1:1.4
+	tg-mergefixes-1-branch:1.4.0.4
+	tg-mergefixes-1-base:1.4
+	MIROS_X:1.4.0.2
+	MIROS_X_BASE:1.4
+	cvs-1_12_10:1.1.2.1
+	FSF:1.1.2
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200404170130:1.1.1.1
+	cvs-1_11_12:1.1.3.2
+	cvs-1_11_1p1:1.1.3.1
+	tg:1.1.3
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2004.12.02.12.40.10;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.02.22.13.49.13;	author tg;	state Stab;
+branches;
+next	1.2;
+
+1.2
+date	2004.02.12.21.16.08;	author tg;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.41.28;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.2.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.41.28;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.2.1
+date	2004.12.02.11.58.49;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.02.12.19.18.12;	author tg;	state Exp;
+branches;
+next	1.1.3.2;
+
+1.1.3.2
+date	2004.02.12.19.38.37;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@update to cvs 1.12.10-MirOS except automatically
+generated files
+XXX this installs as /usr/bin/ncvs yet, so no
+XXX conflicts during the test phase.
+XXX I suggest to _not_ update.
+
+XXX *** IMPORTANT *** DO NOT ACCESS CVS 1.11 REPOSITORIES
+XXX *** IMPORTANT *** WITH CVS 1.12 OR VICE VERSA!
+@
+text
+@/*
+ * Copyright (c) 1992, Brian Berliner and Jeff Polk
+ * Copyright (c) 1989-1992, Brian Berliner
+ * 
+ * You may distribute under the terms of the GNU General Public License as
+ * specified in the README file that comes with the CVS source distribution.
+ * 
+ * Check In
+ * 
+ * Does a very careful checkin of the file "user", and tries not to spoil its
+ * modification time (to avoid needless recompilations). When RCS ID keywords
+ * get expanded on checkout, however, the modification time is updated and
+ * there is no good way to get around this.
+ * 
+ * Returns non-zero on error.
+ */
+
+#include "cvs.h"
+#include "fileattr.h"
+#include "edit.h"
+
+int
+Checkin (int type, struct file_info *finfo, char *rev, char *tag,
+	 char *options, char *message)
+{
+    Vers_TS *vers;
+    int set_time;
+    char *tocvsPath = NULL;
+
+    tocvsPath = wrap_tocvs_process_file (finfo->file);
+    if (!noexec)
+    {
+        if (tocvsPath)
+	{
+	    if (unlink_file_dir (finfo->file) < 0)
+		if (! existence_error (errno))
+		    error (1, errno, "cannot remove %s", finfo->fullname);
+	    rename_file (tocvsPath, finfo->file);
+	}
+    }
+
+    /* There use to be a check for finfo->rcs == NULL here and then a
+     * call to RCS_parse when necessary, but Checkin() isn't called
+     * if the RCS file hasn't already been parsed in one of the
+     * check functions.
+     */
+    assert (finfo->rcs != NULL);
+
+    switch (RCS_checkin (finfo->rcs, finfo->update_dir, finfo->file, message,
+			 rev, 0, RCS_FLAGS_KEEPFILE))
+    {
+	case 0:			/* everything normal */
+
+	    /* The checkin succeeded.  If checking the file out again
+               would not cause any changes, we are done.  Otherwise,
+               we need to check out the file, which will change the
+               modification time of the file.
+
+	       The only way checking out the file could cause any
+	       changes is if the file contains RCS keywords.  So we if
+	       we are not expanding RCS keywords, we are done.  */
+
+	    if (strcmp (options, "-V4") == 0) /* upgrade to V5 now */
+		options[0] = '\0';
+
+	    /* FIXME: If PreservePermissions is on, RCS_cmp_file is
+               going to call RCS_checkout into a temporary file
+               anyhow.  In that case, it would be more efficient to
+               call RCS_checkout here, compare the resulting files
+               using xcmp, and rename if necessary.  I think this
+               should be fixed in RCS_cmp_file.  */
+	    if ((1
+#ifdef PRESERVE_PERMISSIONS_SUPPORT
+		 !config->preserve_perms
+#endif /* PRESERVE_PERMISSIONS_SUPPORT */
+		 && options
+		 && (!strcmp (options, "-ko") || !strcmp (options, "-kb")))
+		|| !RCS_cmp_file (finfo->rcs, rev, NULL, NULL,
+	                          options, finfo->file))
+	    {
+		/* The existing file is correct.  We don't have to do
+                   anything.  */
+		set_time = 0;
+	    }
+	    else
+	    {
+		/* The existing file is incorrect.  We need to check
+                   out the correct file contents.  */
+		if (RCS_checkout (finfo->rcs, finfo->file, rev, (char *) NULL,
+				  options, RUN_TTY, (RCSCHECKOUTPROC) NULL,
+				  (void *) NULL) != 0)
+		    error (1, 0, "failed when checking out new copy of %s",
+			   finfo->fullname);
+		xchmod (finfo->file, 1);
+		set_time = 1;
+	    }
+
+	    wrap_fromcvs_process_file (finfo->file);
+
+	    /*
+	     * If we want read-only files, muck the permissions here, before
+	     * getting the file time-stamp.
+	     */
+	    if (!cvswrite || fileattr_get (finfo->file, "_watched"))
+		xchmod (finfo->file, 0);
+
+	    /* Re-register with the new data.  */
+	    vers = Version_TS (finfo, NULL, tag, NULL, 1, set_time);
+	    if (strcmp (vers->options, "-V4") == 0)
+		vers->options[0] = '\0';
+	    Register (finfo->entries, finfo->file, vers->vn_rcs, vers->ts_user,
+		      vers->options, vers->tag, vers->date, (char *) 0);
+	    history_write (type, NULL, vers->vn_rcs,
+			   finfo->file, finfo->repository);
+
+	    if (tocvsPath)
+		if (unlink_file_dir (tocvsPath) < 0)
+		    error (0, errno, "cannot remove %s", tocvsPath);
+
+	    break;
+
+	case -1:			/* fork failed */
+	    if (tocvsPath)
+		if (unlink_file_dir (tocvsPath) < 0)
+		    error (0, errno, "cannot remove %s", tocvsPath);
+
+	    if (!noexec)
+		error (1, errno, "could not check in %s -- fork failed",
+		       finfo->fullname);
+	    return (1);
+
+	default:			/* ci failed */
+
+	    /* The checkin failed, for some unknown reason, so we
+	       print an error, and return an error.  We assume that
+	       the original file has not been touched.  */
+	    if (tocvsPath)
+		if (unlink_file_dir (tocvsPath) < 0)
+		    error (0, errno, "cannot remove %s", tocvsPath);
+
+	    if (!noexec)
+		error (0, 0, "could not check in %s", finfo->fullname);
+	    return (1);
+    }
+
+    /*
+     * When checking in a specific revision, we may have locked the wrong
+     * branch, so to be sure, we do an extra unlock here before
+     * returning.
+     */
+    if (rev)
+    {
+	(void) RCS_unlock (finfo->rcs, NULL, 1);
+	RCS_rewrite (finfo->rcs, NULL, NULL);
+    }
+
+#ifdef SERVER_SUPPORT
+    if (server_active)
+    {
+	if (set_time)
+	    /* Need to update the checked out file on the client side.  */
+	    server_updated (finfo, vers, SERVER_UPDATED,
+			    (mode_t) -1, (unsigned char *) NULL,
+			    (struct buffer *) NULL);
+	else
+	    server_checked_in (finfo->file, finfo->update_dir, finfo->repository);
+    }
+    else
+#endif
+	mark_up_to_date (finfo->file);
+
+    freevers_ts (&vers);
+    return 0;
+}
+@
+
+
+1.3
+log
+@cvs-1.11.12 doesn't do the joints correctly (what were the
+FSF people smoking?), it memory faults.
+thusly revert to 1.11.1p1
+
+tested.
+agreed bsiegert@@
+@
+text
+@d23 2
+a24 8
+Checkin (type, finfo, rcs, rev, tag, options, message)
+    int type;
+    struct file_info *finfo;
+    char *rcs;
+    char *rev;
+    char *tag;
+    char *options;
+    char *message;
+a29 8
+    /* Hmm.  This message goes to stdout and the "foo,v  <--  foo"
+       message from "ci" goes to stderr.  This doesn't make a whole
+       lot of sense, but making everything go to stdout can only be
+       gracefully achieved once RCS_checkin is librarified.  */
+    cvs_output ("Checking in ", 0);
+    cvs_output (finfo->fullname, 0);
+    cvs_output (";\n", 0);
+
+d42 6
+a47 2
+    if (finfo->rcs == NULL)
+	finfo->rcs = RCS_parse (finfo->file, finfo->repository);
+d49 2
+a50 1
+    switch (RCS_checkin (finfo->rcs, NULL, message, rev, RCS_FLAGS_KEEPFILE))
+d72 8
+a79 5
+	    if ((! preserve_perms
+		 && options != NULL
+		 && (strcmp (options, "-ko") == 0
+		     || strcmp (options, "-kb") == 0))
+		|| RCS_cmp_file (finfo->rcs, rev, options, finfo->file) == 0)
+d173 1
+a173 1
+    return (0);
+@
+
+
+1.2
+log
+@first step of merging new cvs
+XXX might not compile
+XXX might not work
+XXX might contain bugs
+XXX definitively needs autoconf 2.58 first
+@
+text
+@a17 1
+#include <assert.h>
+d23 1
+a23 1
+Checkin (type, finfo, rev, tag, options, message)
+d26 1
+d56 4
+a59 12
+    /* There use to be a check for finfo->rcs == NULL here and then a
+     * call to RCS_parse when necessary, but Checkin() isn't called
+     * if the RCS file hasn't already been parsed in one of the
+     * check functions.
+     */
+    assert ( finfo->rcs != NULL );
+
+    switch ( RCS_checkin ( finfo->rcs,
+			   finfo->file,
+			   message,
+			   rev,
+			   RCS_FLAGS_KEEPFILE ) )
+d81 5
+a85 6
+	    if( ( ! preserve_perms
+		  && options != NULL
+		  && ( strcmp( options, "-ko" ) == 0
+		       || strcmp( options, "-kb" ) == 0 ) )
+		|| RCS_cmp_file( finfo->rcs, rev, (char **)NULL, (char *)NULL,
+	                         options, finfo->file ) == 0 )
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d18 1
+d24 1
+a24 1
+Checkin (type, finfo, rcs, rev, tag, options, message)
+a26 1
+    char *rcs;
+d56 12
+a67 4
+    if (finfo->rcs == NULL)
+	finfo->rcs = RCS_parse (finfo->file, finfo->repository);
+
+    switch (RCS_checkin (finfo->rcs, NULL, message, rev, RCS_FLAGS_KEEPFILE))
+d89 6
+a94 5
+	    if ((! preserve_perms
+		 && options != NULL
+		 && (strcmp (options, "-ko") == 0
+		     || strcmp (options, "-kb") == 0))
+		|| RCS_cmp_file (finfo->rcs, rev, options, finfo->file) == 0)
+@
+
+
+1.1.2.1
+log
+@vendor-branch-ify new cvs 1.12
+@
+text
+@d23 8
+a30 2
+Checkin (int type, struct file_info *finfo, char *rev, char *tag,
+	 char *options, char *message)
+d36 8
+d56 2
+a57 6
+    /* There use to be a check for finfo->rcs == NULL here and then a
+     * call to RCS_parse when necessary, but Checkin() isn't called
+     * if the RCS file hasn't already been parsed in one of the
+     * check functions.
+     */
+    assert (finfo->rcs != NULL);
+d59 1
+a59 2
+    switch (RCS_checkin (finfo->rcs, finfo->update_dir, finfo->file, message,
+			 rev, 0, RCS_FLAGS_KEEPFILE))
+d81 5
+a85 8
+	    if ((1
+#ifdef PRESERVE_PERMISSIONS_SUPPORT
+		 !config->preserve_perms
+#endif /* PRESERVE_PERMISSIONS_SUPPORT */
+		 && options
+		 && (!strcmp (options, "-ko") || !strcmp (options, "-kb")))
+		|| !RCS_cmp_file (finfo->rcs, rev, NULL, NULL,
+	                          options, finfo->file))
+d179 1
+a179 1
+    return 0;
+@
+
+
+1.1.3.1
+log
+@our CVS is currently at 1.11.1p1, thus import that version into vendor branch
+@
+text
+@@
+
+
+1.1.3.2
+log
+@CVS 1.11.12 is the latest stable version of CVS,
+released 06.02.2004, with a huge lot of bug fixes.
+
+/me hopes this will pay off...
+@
+text
+@a17 1
+#include <assert.h>
+d23 1
+a23 1
+Checkin (type, finfo, rev, tag, options, message)
+d26 1
+d56 4
+a59 12
+    /* There use to be a check for finfo->rcs == NULL here and then a
+     * call to RCS_parse when necessary, but Checkin() isn't called
+     * if the RCS file hasn't already been parsed in one of the
+     * check functions.
+     */
+    assert ( finfo->rcs != NULL );
+
+    switch ( RCS_checkin ( finfo->rcs,
+			   finfo->file,
+			   message,
+			   rev,
+			   RCS_FLAGS_KEEPFILE ) )
+d81 5
+a85 6
+	    if( ( ! preserve_perms
+		  && options != NULL
+		  && ( strcmp( options, "-ko" ) == 0
+		       || strcmp( options, "-kb" ) == 0 ) )
+		|| RCS_cmp_file( finfo->rcs, rev, (char **)NULL, (char *)NULL,
+	                         options, finfo->file ) == 0 )
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

@@ -1,0 +1,414 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.2
+	tg-mergefixes-1-branch:1.1.1.2.0.4
+	tg-mergefixes-1-base:1.1.1.2
+	MIROS_X:1.1.1.2.0.2
+	MIROS_X_BASE:1.1.1.2
+	tg-mergetmp-3:1.1.1.2
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410222320:1.1.1.2
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200309171845:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	cvs-20030329-2200:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.03.22.17.44.42;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.44.42;	author tg;	state Stab;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.10.22.23.27.12;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*
+ * Copyright (c) 2001-2002 Sendmail, Inc. and its suppliers.
+ *	All rights reserved.
+ *
+ * By using this file, you agree to the terms and conditions set
+ * forth in the LICENSE file which can be found at the top level of
+ * the sendmail distribution.
+ *
+ */
+
+#include <sm/gen.h>
+SM_RCSID("@@(#)$Sendmail: sasl.c,v 8.19.2.2 2002/09/26 23:03:40 gshapiro Exp $")
+
+#if SASL
+# include <stdlib.h>
+# include <sendmail.h>
+# include <errno.h>
+
+/*
+**  In order to ensure that storage leaks are tracked, and to prevent
+**  conflicts between the sm_heap package and sasl, we tell sasl to
+**  use the following heap allocation functions.  Unfortunately,
+**  the sasl package incorrectly specifies the size of a block
+**  using unsigned long: for portability, it should be size_t.
+*/
+
+void *sm_sasl_malloc __P((unsigned long));
+static void *sm_sasl_calloc __P((unsigned long, unsigned long));
+static void *sm_sasl_realloc __P((void *, unsigned long));
+void sm_sasl_free __P((void *));
+
+/*
+**  SASLv1:
+**  We can't use an rpool for Cyrus-SASL memory management routines,
+**	since the encryption/decryption routines in Cyrus-SASL
+**	allocate/deallocate a buffer each time. Since rpool
+**	don't release memory until the very end, memory consumption is
+**	proportional to the size of an e-mail, which is unacceptable.
+*/
+
+/*
+**  SM_SASL_MALLOC -- malloc() for SASL
+**
+**	Parameters:
+**		size -- size of requested memory.
+**
+**	Returns:
+**		pointer to memory.
+*/
+
+void *
+sm_sasl_malloc(size)
+	unsigned long size;
+{
+	return sm_malloc((size_t) size);
+}
+
+/*
+**  SM_SASL_CALLOC -- calloc() for SASL
+**
+**	Parameters:
+**		nelem -- number of elements.
+**		elemsize -- size of each element.
+**
+**	Returns:
+**		pointer to memory.
+**
+**	Notice:
+**		this isn't currently used by SASL.
+*/
+
+static void *
+sm_sasl_calloc(nelem, elemsize)
+	unsigned long nelem;
+	unsigned long elemsize;
+{
+	size_t size;
+	void *p;
+
+	size = (size_t) nelem * (size_t) elemsize;
+	p = sm_malloc(size);
+	if (p == NULL)
+		return NULL;
+	memset(p, '\0', size);
+	return p;
+}
+
+/*
+**  SM_SASL_REALLOC -- realloc() for SASL
+**
+**	Parameters:
+**		p -- pointer to old memory.
+**		size -- size of requested memory.
+**
+**	Returns:
+**		pointer to new memory.
+*/
+
+static void *
+sm_sasl_realloc(o, size)
+	void *o;
+	unsigned long size;
+{
+	return sm_realloc(o, (size_t) size);
+}
+
+/*
+**  SM_SASL_FREE -- free() for SASL
+**
+**	Parameters:
+**		p -- pointer to free.
+**
+**	Returns:
+**		none
+*/
+
+void
+sm_sasl_free(p)
+	void *p;
+{
+	sm_free(p);
+}
+
+/*
+**  SM_SASL_INIT -- sendmail specific SASL initialization
+**
+**	Parameters:
+**		none.
+**
+**	Returns:
+**		none
+**
+**	Side Effects:
+**		installs memory management routines for SASL.
+*/
+
+void
+sm_sasl_init()
+{
+	sasl_set_alloc(sm_sasl_malloc, sm_sasl_calloc,
+		       sm_sasl_realloc, sm_sasl_free);
+}
+/*
+**  INTERSECT -- create the intersection between two lists
+**
+**	Parameters:
+**		s1, s2 -- lists of items (separated by single blanks).
+**		rpool -- resource pool from which result is allocated.
+**
+**	Returns:
+**		the intersection of both lists.
+*/
+
+char *
+intersect(s1, s2, rpool)
+	char *s1, *s2;
+	SM_RPOOL_T *rpool;
+{
+	char *hr, *h1, *h, *res;
+	int l1, l2, rl;
+
+	if (s1 == NULL || s2 == NULL)	/* NULL string(s) -> NULL result */
+		return NULL;
+	l1 = strlen(s1);
+	l2 = strlen(s2);
+	rl = SM_MIN(l1, l2);
+	res = (char *) sm_rpool_malloc(rpool, rl + 1);
+	if (res == NULL)
+		return NULL;
+	*res = '\0';
+	if (rl == 0)	/* at least one string empty? */
+		return res;
+	hr = res;
+	h1 = s1;
+	h = s1;
+
+	/* walk through s1 */
+	while (h != NULL && *h1 != '\0')
+	{
+		/* is there something after the current word? */
+		if ((h = strchr(h1, ' ')) != NULL)
+			*h = '\0';
+		l1 = strlen(h1);
+
+		/* does the current word appear in s2 ? */
+		if (iteminlist(h1, s2, " ") != NULL)
+		{
+			/* add a blank if not first item */
+			if (hr != res)
+				*hr++ = ' ';
+
+			/* copy the item */
+			memcpy(hr, h1, l1);
+
+			/* advance pointer in result list */
+			hr += l1;
+			*hr = '\0';
+		}
+		if (h != NULL)
+		{
+			/* there are more items */
+			*h = ' ';
+			h1 = h + 1;
+		}
+	}
+	return res;
+}
+# if SASL >= 20000
+/*
+**  IPTOSTRING -- create string for SASL_IP*PORT property
+**		  (borrowed from lib/iptostring.c in Cyrus-IMAP)
+**
+**	Parameters:
+**		addr -- (pointer to) socket address
+**		addrlen -- length of socket address
+**		out -- output string (result)
+**		outlen -- maximum length of output string
+**
+**	Returns:
+**		true iff successful.
+**
+**	Side Effects:
+**		creates output string if successful.
+**		sets errno if unsuccessful.
+*/
+
+#  include <arpa/inet.h>
+
+#  ifndef NI_WITHSCOPEID
+#   define NI_WITHSCOPEID	0
+#  endif
+#  ifndef NI_MAXHOST
+#   define NI_MAXHOST	1025
+#  endif
+#  ifndef NI_MAXSERV
+#   define NI_MAXSERV	32
+#  endif
+
+bool
+iptostring(addr, addrlen, out, outlen)
+	SOCKADDR *addr;
+	SOCKADDR_LEN_T addrlen;
+	char *out;
+	unsigned outlen;
+{
+	char hbuf[NI_MAXHOST], pbuf[NI_MAXSERV];
+
+	if (addr == NULL || out == NULL)
+	{
+		errno = EINVAL;
+		return false;
+	}
+
+#  if NETINET6
+	if (getnameinfo((struct sockaddr *) addr, addrlen,
+			hbuf, sizeof hbuf, pbuf, sizeof pbuf,
+			NI_NUMERICHOST | NI_WITHSCOPEID | NI_NUMERICSERV) != 0)
+		return false;
+#  else /* NETINET6 */
+	if (addr->sa.sa_family != AF_INET)
+	{
+		errno = EINVAL;
+		return false;
+	}
+	if (sm_strlcpy(hbuf, inet_ntoa(addr->sin.sin_addr), sizeof(hbuf))
+	    >= sizeof(hbuf))
+	{
+		errno = ENOMEM;
+		return false;
+	}
+	sm_snprintf(pbuf, sizeof pbuf, "%d", ntohs(addr->sin.sin_port));
+#  endif /* NETINET6 */
+
+	if (outlen < strlen(hbuf) + strlen(pbuf) + 2)
+	{
+		errno = ENOMEM;
+		return false;
+	}
+	sm_snprintf(out, outlen, "%s;%s", hbuf, pbuf);
+	return true;
+}
+# endif /* SASL >= 20000 */
+#endif /* SASL */
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@update to sendmail 8.13.1/8.13.1
+@
+text
+@d12 1
+a12 1
+SM_RCSID("@@(#)$Sendmail: sasl.c,v 8.20 2004/06/02 22:48:06 ca Exp $")
+d211 1
+a211 1
+**		(borrowed from lib/iptostring.c in Cyrus-IMAP)
+@
+

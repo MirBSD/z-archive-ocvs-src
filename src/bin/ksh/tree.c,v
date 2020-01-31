@@ -1,0 +1,1137 @@
+head	1.6;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.6
+	MIROS_X:1.6.0.2
+	MIROS_X_BASE:1.6
+	mksh-18:1.6
+	mirbsdksh-1_17:1.6
+	MIRBSD_XP_MIRPPC:1.3.0.4
+	mirbsdksh-1_16:1.6
+	cvs-200411032110:1.1.1.1
+	cvs-200411031520:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.3
+	MIRBSD_XP_SPARC:1.3.0.2
+	mirbsdksh-1_12:1.2
+	cvs-200408271355:1.1.1.1
+	MIRBSD_7quater:1.2
+	mirbsdksh-1_11:1.2
+	mirbsdksh-1_10:1.2
+	cvs-200405160640:1.1.1.1
+	mirbsdksh-1_6:1.1.1.1
+	mirbsdksh-1_5:1.1.1.1
+	mirbsdksh-1_4:1.1.1.1
+	mirbsdksh-1_3:1.1.1.1
+	mirbsdksh-1_2:1.1.1.1
+	ksh_maintainer:1.1.1.1.0.10
+	pdksh-5_2_14:1.1.3.1
+	tg:1.1.3
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.2.0.2
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.6
+date	2004.10.28.11.53.43;	author tg;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2004.10.28.11.11.19;	author tg;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2004.10.28.11.03.24;	author tg;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2004.09.21.11.57.16;	author tg;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2004.05.24.19.56.20;	author tg;	state Stab;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.35.03;	author tg;	state Exp;
+branches
+	1.1.1.1
+	1.1.3.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.35.03;	author tg;	state Exp;
+branches;
+next	;
+
+1.1.3.1
+date	2004.03.21.00.34.07;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.6
+log
+@run GNU protoize
+protect header files
+nuke some dead code
+regenerate configure script
+let silly code die
+@
+text
+@/**	$MirBSD: src/bin/ksh/tree.c,v 1.5 2004/10/28 11:11:19 tg Exp $ */
+/*	$OpenBSD: tree.c,v 1.10 2002/02/27 19:37:09 dhartmei Exp $	*/
+
+/*
+ * command tree climbing
+ */
+
+#include "sh.h"
+
+__RCSID("$MirBSD: src/bin/ksh/tree.c,v 1.5 2004/10/28 11:11:19 tg Exp $");
+
+#define INDENT	4
+
+#define tputc(c, shf)	shf_putchar(c, shf);
+static void 	ptree(struct op *t, int indent, struct shf *f);
+static void 	pioact(struct shf *f, int indent, struct ioword *iop);
+static void	tputC(int c, struct shf *shf);
+static void	tputS(char *wp, struct shf *shf);
+static void	vfptreef(struct shf *shf, int indent, const char *fmt, va_list va);
+static struct ioword **iocopy(struct ioword **iow, Area *ap);
+static void     iofree(struct ioword **iow, Area *ap);
+
+/*
+ * print a command tree
+ */
+
+static void
+ptree(struct op *t, int indent, struct shf *shf)
+{
+	char **w;
+	struct ioword **ioact;
+	struct op *t1;
+
+ Chain:
+	if (t == NULL)
+		return;
+	switch (t->type) {
+	  case TCOM:
+		if (t->vars)
+			for (w = t->vars; *w != NULL; )
+				fptreef(shf, indent, "%S ", *w++);
+		else
+			fptreef(shf, indent, "#no-vars# ");
+		if (t->args)
+			for (w = t->args; *w != NULL; )
+				fptreef(shf, indent, "%S ", *w++);
+		else
+			fptreef(shf, indent, "#no-args# ");
+		break;
+	  case TEXEC:
+		t = t->left;
+		goto Chain;
+	  case TPAREN:
+		fptreef(shf, indent + 2, "( %T) ", t->left);
+		break;
+	  case TPIPE:
+		fptreef(shf, indent, "%T| ", t->left);
+		t = t->right;
+		goto Chain;
+	  case TLIST:
+		fptreef(shf, indent, "%T%;", t->left);
+		t = t->right;
+		goto Chain;
+	  case TOR:
+	  case TAND:
+		fptreef(shf, indent, "%T%s %T",
+			t->left, (t->type==TOR) ? "||" : "&&", t->right);
+		break;
+	  case TBANG:
+		fptreef(shf, indent, "! ");
+		t = t->right;
+		goto Chain;
+	  case TDBRACKET:
+	  {
+		int i;
+
+		fptreef(shf, indent, "[[");
+		for (i = 0; t->args[i]; i++)
+			fptreef(shf, indent, " %S", t->args[i]);
+		fptreef(shf, indent, " ]] ");
+		break;
+	  }
+#ifdef KSH
+	  case TSELECT:
+		fptreef(shf, indent, "select %s ", t->str);
+		/* fall through */
+#endif /* KSH */
+	  case TFOR:
+		if (t->type == TFOR)
+			fptreef(shf, indent, "for %s ", t->str);
+		if (t->vars != NULL) {
+			fptreef(shf, indent, "in ");
+			for (w = t->vars; *w; )
+				fptreef(shf, indent, "%S ", *w++);
+			fptreef(shf, indent, "%;");
+		}
+		fptreef(shf, indent + INDENT, "do%N%T", t->left);
+		fptreef(shf, indent, "%;done ");
+		break;
+	  case TCASE:
+		fptreef(shf, indent, "case %S in", t->str);
+		for (t1 = t->left; t1 != NULL; t1 = t1->right) {
+			fptreef(shf, indent, "%N(");
+			for (w = t1->vars; *w != NULL; w++)
+				fptreef(shf, indent, "%S%c", *w,
+					(w[1] != NULL) ? '|' : ')');
+			fptreef(shf, indent + INDENT, "%;%T%N;;", t1->left);
+		}
+		fptreef(shf, indent, "%Nesac ");
+		break;
+	  case TIF:
+	  case TELIF:
+		/* 3 == strlen("if ") */
+		fptreef(shf, indent + 3, "if %T", t->left);
+		for (;;) {
+			t = t->right;
+			if (t->left != NULL) {
+				fptreef(shf, indent, "%;");
+				fptreef(shf, indent + INDENT, "then%N%T",
+					t->left);
+			}
+			if (t->right == NULL || t->right->type != TELIF)
+				break;
+			t = t->right;
+			fptreef(shf, indent, "%;");
+			/* 5 == strlen("elif ") */
+			fptreef(shf, indent + 5, "elif %T", t->left);
+		}
+		if (t->right != NULL) {
+			fptreef(shf, indent, "%;");
+			fptreef(shf, indent + INDENT, "else%;%T", t->right);
+		}
+		fptreef(shf, indent, "%;fi ");
+		break;
+	  case TWHILE:
+	  case TUNTIL:
+		/* 6 == strlen("while"/"until") */
+		fptreef(shf, indent + 6, "%s %T",
+			(t->type==TWHILE) ? "while" : "until",
+			t->left);
+		fptreef(shf, indent, "%;do");
+		fptreef(shf, indent + INDENT, "%;%T", t->right);
+		fptreef(shf, indent, "%;done ");
+		break;
+	  case TBRACE:
+		fptreef(shf, indent + INDENT, "{%;%T", t->left);
+		fptreef(shf, indent, "%;} ");
+		break;
+	  case TCOPROC:
+		fptreef(shf, indent, "%T|& ", t->left);
+		break;
+	  case TASYNC:
+		fptreef(shf, indent, "%T& ", t->left);
+		break;
+	  case TFUNCT:
+		fptreef(shf, indent,
+			t->u.ksh_func ? "function %s %T" : "%s() %T",
+				t->str, t->left);
+		break;
+	  case TTIME:
+		fptreef(shf, indent, "time %T", t->left);
+		break;
+	  default:
+		fptreef(shf, indent, "<botch>");
+		break;
+	}
+	if ((ioact = t->ioact) != NULL) {
+		int	need_nl = 0;
+
+		while (*ioact != NULL)
+			pioact(shf, indent, *ioact++);
+		/* Print here documents after everything else... */
+		for (ioact = t->ioact; *ioact != NULL; ) {
+			struct ioword *iop = *ioact++;
+
+			/* heredoc is 0 when tracing (set -x) */
+			if ((iop->flag & IOTYPE) == IOHERE && iop->heredoc) {
+				tputc('\n', shf);
+				shf_puts(iop->heredoc, shf);
+				fptreef(shf, indent, "%s",
+					evalstr(iop->delim, 0));
+				need_nl = 1;
+			}
+		}
+		/* Last delimiter must be followed by a newline (this often
+		 * leads to an extra blank line, but its not worth worrying
+		 * about)
+		 */
+		if (need_nl)
+			tputc('\n', shf);
+	}
+}
+
+static void
+pioact(struct shf *shf, int indent, struct ioword *iop)
+{
+	int flag = iop->flag;
+	int type = flag & IOTYPE;
+	int expected;
+
+	expected = (type == IOREAD || type == IORDWR || type == IOHERE) ? 0
+		    : (type == IOCAT || type == IOWRITE) ? 1
+		    : (type == IODUP && (iop->unit == !(flag & IORDUP))) ?
+			iop->unit
+		    : iop->unit + 1;
+	if (iop->unit != expected)
+		tputc('0' + iop->unit, shf);
+
+	switch (type) {
+	case IOREAD:
+		fptreef(shf, indent, "< ");
+		break;
+	case IOHERE:
+		if (flag&IOSKIP)
+			fptreef(shf, indent, "<<- ");
+		else
+			fptreef(shf, indent, "<< ");
+		break;
+	case IOCAT:
+		fptreef(shf, indent, ">> ");
+		break;
+	case IOWRITE:
+		if (flag&IOCLOB)
+			fptreef(shf, indent, ">| ");
+		else
+			fptreef(shf, indent, "> ");
+		break;
+	case IORDWR:
+		fptreef(shf, indent, "<> ");
+		break;
+	case IODUP:
+		if (flag & IORDUP)
+			fptreef(shf, indent, "<&");
+		else
+			fptreef(shf, indent, ">&");
+		break;
+	}
+	/* name/delim are 0 when printing syntax errors */
+	if (type == IOHERE) {
+		if (iop->delim)
+			fptreef(shf, indent, "%S ", iop->delim);
+	} else if (iop->name)
+		fptreef(shf, indent, (iop->flag & IONAMEXP) ? "%s " : "%S ",
+			iop->name);
+}
+
+
+/*
+ * variants of fputc, fputs for ptreef and snptreef
+ */
+
+static void
+tputC(int c, struct shf *shf)
+{
+	if ((c&0x60) == 0) {		/* C0|C1 */
+		tputc((c&0x80) ? '$' : '^', shf);
+		tputc(((c&0x7F)|0x40), shf);
+	} else if ((c&0x7F) == 0x7F) {	/* DEL */
+		tputc((c&0x80) ? '$' : '^', shf);
+		tputc('?', shf);
+	} else
+		tputc(c, shf);
+}
+
+static void
+tputS(char *wp, struct shf *shf)
+{
+	int c, quoted=0;
+
+	/* problems:
+	 *	`...` -> $(...)
+	 *	'foo' -> "foo"
+	 * could change encoding to:
+	 *	OQUOTE ["'] ... CQUOTE ["']
+	 * 	COMSUB [(`] ...\0	(handle $ ` \ and maybe " in `...` case)
+	 */
+	while (1)
+		switch ((c = *wp++)) {
+		  case EOS:
+			return;
+		  case CHAR:
+			tputC(*wp++, shf);
+			break;
+		  case QCHAR:
+			c = *wp++;
+			if (!quoted || (c == '"' || c == '`' || c == '$'))
+				tputc('\\', shf);
+			tputC(c, shf);
+			break;
+		  case COMSUB:
+			tputc('$', shf);
+			tputc('(', shf);
+			while (*wp != 0)
+				tputC(*wp++, shf);
+			tputc(')', shf);
+			wp++;
+			break;
+		  case EXPRSUB:
+			tputc('$', shf);
+			tputc('(', shf);
+			tputc('(', shf);
+			while (*wp != 0)
+				tputC(*wp++, shf);
+			tputc(')', shf);
+			tputc(')', shf);
+			wp++;
+			break;
+		  case OQUOTE:
+		  	quoted = 1;
+			tputc('"', shf);
+			break;
+		  case CQUOTE:
+			quoted = 0;
+			tputc('"', shf);
+			break;
+		  case OSUBST:
+			tputc('$', shf);
+			if (*wp++ == '{')
+				tputc('{', shf);
+			while ((c = *wp++) != 0)
+				tputC(c, shf);
+			break;
+		  case CSUBST:
+			if (*wp++ == '}')
+				tputc('}', shf);
+			break;
+#ifdef KSH
+		  case OPAT:
+			tputc(*wp++, shf);
+			tputc('(', shf);
+			break;
+		  case SPAT:
+			tputc('|', shf);
+			break;
+		  case CPAT:
+			tputc(')', shf);
+			break;
+#endif /* KSH */
+		}
+}
+
+/*
+ * this is the _only_ way to reliably handle
+ * variable args with an ANSI compiler
+ */
+/* VARARGS */
+int
+fptreef(struct shf *shf, int indent, const char *fmt, ...)
+{
+  va_list	va;
+
+  SH_VA_START(va, fmt);
+
+  vfptreef(shf, indent, fmt, va);
+  va_end(va);
+  return 0;
+}
+
+/* VARARGS */
+char *
+snptreef(char *s, int n, const char *fmt, ...)
+{
+  va_list va;
+  struct shf shf;
+
+  shf_sopen(s, n, SHF_WR | (s ? 0 : SHF_DYNAMIC), &shf);
+
+  SH_VA_START(va, fmt);
+  vfptreef(&shf, 0, fmt, va);
+  va_end(va);
+
+  return shf_sclose(&shf); /* null terminates */
+}
+
+static void
+vfptreef(struct shf *shf, int indent, const char *fmt, va_list va)
+{
+	int c;
+
+	while ((c = *fmt++))
+	    if (c == '%') {
+		long n;
+		char *p;
+		int neg;
+
+		switch ((c = *fmt++)) {
+		  case 'c':
+			tputc(va_arg(va, int), shf);
+			break;
+		  case 's':
+			p = va_arg(va, char *);
+			while (*p)
+				tputc(*p++, shf);
+			break;
+		  case 'S':	/* word */
+			p = va_arg(va, char *);
+			tputS(p, shf);
+			break;
+		  case 'd': case 'u': /* decimal */
+			n = (c == 'd') ? (long)(va_arg(va, int))
+				       : (long)(va_arg(va, unsigned int));
+			neg = (c == 'd') && (n < 0);
+			p = ulton((neg) ? -n : n, 10);
+			if (neg)
+				*--p = '-';
+			while (*p)
+				tputc(*p++, shf);
+			break;
+		  case 'T':	/* format tree */
+			ptree(va_arg(va, struct op *), indent, shf);
+			break;
+		  case ';':	/* newline or ; */
+		  case 'N':	/* newline or space */
+			if (shf->flags & SHF_STRING) {
+				if (c == ';')
+					tputc(';', shf);
+				tputc(' ', shf);
+			} else {
+				int i;
+
+				tputc('\n', shf);
+				for (i = indent; i >= 8; i -= 8)
+					tputc('\t', shf);
+				for (; i > 0; --i)
+					tputc(' ', shf);
+			}
+			break;
+		  case 'R':
+			pioact(shf, indent, va_arg(va, struct ioword *));
+			break;
+		  default:
+			tputc(c, shf);
+			break;
+		}
+	    } else
+		tputc(c, shf);
+}
+
+/*
+ * copy tree (for function definition)
+ */
+
+struct op *
+tcopy(struct op *t, Area *ap)
+{
+	struct op *r;
+	char **tw, **rw;
+
+	if (t == NULL)
+		return NULL;
+
+	r = (struct op *) alloc(sizeof(struct op), ap);
+
+	r->type = t->type;
+	r->u.evalflags = t->u.evalflags;
+
+	r->str = t->type == TCASE ? wdcopy(t->str, ap) : str_save(t->str, ap);
+
+	if (t->vars == NULL)
+		r->vars = NULL;
+	else {
+		for (tw = t->vars; *tw++ != NULL; )
+			;
+		rw = r->vars = (char **)
+			alloc((tw - t->vars + 1) * sizeof(*tw), ap);
+		for (tw = t->vars; *tw != NULL; )
+			*rw++ = wdcopy(*tw++, ap);
+		*rw = NULL;
+	}
+
+	if (t->args == NULL)
+		r->args = NULL;
+	else {
+		for (tw = t->args; *tw++ != NULL; )
+			;
+		rw = r->args = (char **)
+			alloc((tw - t->args + 1) * sizeof(*tw), ap);
+		for (tw = t->args; *tw != NULL; )
+			*rw++ = wdcopy(*tw++, ap);
+		*rw = NULL;
+	}
+
+	r->ioact = (t->ioact == NULL) ? NULL : iocopy(t->ioact, ap);
+
+	r->left = tcopy(t->left, ap);
+	r->right = tcopy(t->right, ap);
+	r->lineno = t->lineno;
+
+	return r;
+}
+
+char *
+wdcopy(const char *wp, Area *ap)
+{
+	size_t len = wdscan(wp, EOS) - wp;
+	return memcpy(alloc(len, ap), wp, len);
+}
+
+/* return the position of prefix c in wp plus 1 */
+char *
+wdscan(const char *wp, int c)
+{
+	int nest = 0;
+
+	while (1)
+		switch (*wp++) {
+		  case EOS:
+			return (char *) wp;
+		  case CHAR:
+		  case QCHAR:
+			wp++;
+			break;
+		  case COMSUB:
+		  case EXPRSUB:
+			while (*wp++ != 0)
+				;
+			break;
+		  case OQUOTE:
+		  case CQUOTE:
+			break;
+		  case OSUBST:
+			nest++;
+			while (*wp++ != '\0')
+				;
+			break;
+		  case CSUBST:
+			wp++;
+			if (c == CSUBST && nest == 0)
+				return (char *) wp;
+			nest--;
+			break;
+#ifdef KSH
+		  case OPAT:
+			nest++;
+			wp++;
+			break;
+		  case SPAT:
+		  case CPAT:
+			if (c == wp[-1] && nest == 0)
+				return (char *) wp;
+			if (wp[-1] == CPAT)
+				nest--;
+			break;
+#endif /* KSH */
+		  default:
+			internal_errorf(0,
+				"wdscan: unknown char 0x%x (carrying on)",
+				wp[-1]);
+		}
+}
+
+/* return a copy of wp without any of the mark up characters and
+ * with quote characters (" ' \) stripped.
+ * (string is allocated from ATEMP)
+ */
+char *
+wdstrip(const char *wp)
+{
+	struct shf shf;
+	int c;
+
+	shf_sopen((char *) 0, 32, SHF_WR | SHF_DYNAMIC, &shf);
+
+	/* problems:
+	 *	`...` -> $(...)
+	 *	x${foo:-"hi"} -> x${foo:-hi}
+	 *	x${foo:-'hi'} -> x${foo:-hi}
+	 */
+	while (1)
+		switch ((c = *wp++)) {
+		  case EOS:
+			return shf_sclose(&shf); /* null terminates */
+		  case CHAR:
+		  case QCHAR:
+			shf_putchar(*wp++, &shf);
+			break;
+		  case COMSUB:
+			shf_putchar('$', &shf);
+			shf_putchar('(', &shf);
+			while (*wp != 0)
+				shf_putchar(*wp++, &shf);
+			shf_putchar(')', &shf);
+			break;
+		  case EXPRSUB:
+			shf_putchar('$', &shf);
+			shf_putchar('(', &shf);
+			shf_putchar('(', &shf);
+			while (*wp != 0)
+				shf_putchar(*wp++, &shf);
+			shf_putchar(')', &shf);
+			shf_putchar(')', &shf);
+			break;
+		  case OQUOTE:
+			break;
+		  case CQUOTE:
+			break;
+		  case OSUBST:
+			shf_putchar('$', &shf);
+			if (*wp++ == '{')
+			    shf_putchar('{', &shf);
+			while ((c = *wp++) != 0)
+				shf_putchar(c, &shf);
+			break;
+		  case CSUBST:
+			if (*wp++ == '}')
+				shf_putchar('}', &shf);
+			break;
+#ifdef KSH
+		  case OPAT:
+			shf_putchar(*wp++, &shf);
+			shf_putchar('(', &shf);
+			break;
+		  case SPAT:
+			shf_putchar('|', &shf);
+			break;
+		  case CPAT:
+			shf_putchar(')', &shf);
+			break;
+#endif /* KSH */
+		}
+}
+
+static	struct ioword **
+iocopy(struct ioword **iow, Area *ap)
+{
+	struct ioword **ior;
+	int i;
+
+	for (ior = iow; *ior++ != NULL; )
+		;
+	ior = (struct ioword **) alloc((ior - iow + 1) * sizeof(*ior), ap);
+
+	for (i = 0; iow[i] != NULL; i++) {
+		struct ioword *p, *q;
+
+		p = iow[i];
+		q = (struct ioword *) alloc(sizeof(*p), ap);
+		ior[i] = q;
+		*q = *p;
+		if (p->name != (char *) 0)
+			q->name = wdcopy(p->name, ap);
+		if (p->delim != (char *) 0)
+			q->delim = wdcopy(p->delim, ap);
+		if (p->heredoc != (char *) 0)
+			q->heredoc = str_save(p->heredoc, ap);
+	}
+	ior[i] = NULL;
+
+	return ior;
+}
+
+/*
+ * free tree (for function definition)
+ */
+
+void
+tfree(struct op *t, Area *ap)
+{
+	char **w;
+
+	if (t == NULL)
+		return;
+
+	if (t->str != NULL)
+		afree((void*)t->str, ap);
+
+	if (t->vars != NULL) {
+		for (w = t->vars; *w != NULL; w++)
+			afree((void*)*w, ap);
+		afree((void*)t->vars, ap);
+	}
+
+	if (t->args != NULL) {
+		for (w = t->args; *w != NULL; w++)
+			afree((void*)*w, ap);
+		afree((void*)t->args, ap);
+	}
+
+	if (t->ioact != NULL)
+		iofree(t->ioact, ap);
+
+	tfree(t->left, ap);
+	tfree(t->right, ap);
+
+	afree((void*)t, ap);
+}
+
+static	void
+iofree(struct ioword **iow, Area *ap)
+{
+	struct ioword **iop;
+	struct ioword *p;
+
+	for (iop = iow; (p = *iop++) != NULL; ) {
+		if (p->name != NULL)
+			afree((void*)p->name, ap);
+		if (p->delim != NULL)
+			afree((void*)p->delim, ap);
+		if (p->heredoc != NULL)
+			afree((void*)p->heredoc, ap);
+		afree((void*)p, ap);
+	}
+}
+@
+
+
+1.5
+log
+@de-register, de-inline, de-__P
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/bin/ksh/tree.c,v 1.4 2004/10/28 11:03:24 tg Exp $ */
+d10 1
+a10 1
+__RCSID("$MirBSD: src/bin/ksh/tree.c,v 1.4 2004/10/28 11:03:24 tg Exp $");
+d28 1
+a28 4
+ptree(t, indent, shf)
+	struct op *t;
+	int indent;
+	struct shf *shf;
+a50 16
+#if 0 /* ?not useful - can't be called? */
+		/* Print original vars */
+		if (t->left->vars)
+			for (w = t->left->vars; *w != NULL; )
+				fptreef(shf, indent, "%S ", *w++);
+		else
+			fptreef(shf, indent, "#no-vars# ");
+		/* Print expanded vars */
+		if (t->args)
+			for (w = t->args; *w != NULL; )
+				fptreef(shf, indent, "%s ", *w++);
+		else
+			fptreef(shf, indent, "#no-args# ");
+		/* Print original io */
+		t = t->left;
+#else
+a52 1
+#endif
+d195 1
+a195 4
+pioact(shf, indent, iop)
+	struct shf *shf;
+	int indent;
+	struct ioword *iop;
+d253 1
+a253 3
+tputC(c, shf)
+	int c;
+	struct shf *shf;
+d266 1
+a266 3
+tputS(wp, shf)
+	char *wp;
+	struct shf *shf;
+a347 1
+#ifdef HAVE_PROTOTYPES
+a348 7
+#else
+fptreef(shf, indent, fmt, va_alist)
+  struct shf *shf;
+  int indent;
+  const char *fmt;
+  va_dcl
+#endif
+a360 1
+#ifdef HAVE_PROTOTYPES
+a361 7
+#else
+snptreef(s, n, fmt, va_alist)
+  char *s;
+  int n;
+  const char *fmt;
+  va_dcl
+#endif
+d376 1
+a376 5
+vfptreef(shf, indent, fmt, va)
+	struct shf *shf;
+	int indent;
+	const char *fmt;
+	va_list va;
+d444 1
+a444 3
+tcopy(t, ap)
+	struct op *t;
+	Area *ap;
+d493 1
+a493 3
+wdcopy(wp, ap)
+	const char *wp;
+	Area *ap;
+d501 1
+a501 3
+wdscan(wp, c)
+	const char *wp;
+	int c;
+d557 1
+a557 2
+wdstrip(wp)
+	const char *wp;
+d624 1
+a624 3
+iocopy(iow, ap)
+	struct ioword **iow;
+	Area *ap;
+d657 1
+a657 3
+tfree(t, ap)
+	struct op *t;
+	Area *ap;
+d689 1
+a689 3
+iofree(iow, ap)
+	struct ioword **iow;
+	Area *ap;
+@
+
+
+1.4
+log
+@-Wall -Werror -W -pedantic clean
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD: src/bin/ksh/tree.c,v 1.3 2004/09/21 11:57:16 tg Exp $ */
+d10 1
+a10 1
+__RCSID("$MirBSD$");
+d15 7
+a21 7
+static void 	ptree ARGS((struct op *t, int indent, struct shf *f));
+static void 	pioact ARGS((struct shf *f, int indent, struct ioword *iop));
+static void	tputC ARGS((int c, struct shf *shf));
+static void	tputS ARGS((char *wp, struct shf *shf));
+static void	vfptreef ARGS((struct shf *shf, int indent, const char *fmt, va_list va));
+static struct ioword **iocopy ARGS((struct ioword **iow, Area *ap));
+static void     iofree ARGS((struct ioword **iow, Area *ap));
+@
+
+
+1.3
+log
+@unify spacing of RCS IDs
+@
+text
+@d1 1
+a1 1
+/**	$MirBSD$ */
+d10 2
+d29 1
+a29 1
+	register struct op *t;
+d31 1
+a31 1
+	register struct shf *shf;
+d33 1
+a33 1
+	register char **w;
+d216 1
+a216 1
+	register struct shf *shf;
+d218 1
+a218 1
+	register struct ioword *iop;
+d277 2
+a278 2
+	register int c;
+	register struct shf *shf;
+d292 2
+a293 2
+	register char *wp;
+	register struct shf *shf;
+d295 1
+a295 1
+	register int c, quoted=0;
+d420 1
+a420 1
+	register struct shf *shf;
+d423 1
+a423 1
+	register va_list va;
+d425 1
+a425 1
+	register int c;
+d429 2
+a430 2
+		register long n;
+		register char *p;
+d447 3
+a449 3
+			n = (c == 'd') ? va_arg(va, int)
+				       : va_arg(va, unsigned int);
+			neg = c=='d' && n<0;
+d492 1
+a492 1
+	register struct op *t;
+d495 2
+a496 2
+	register struct op *r;
+	register char **tw, **rw;
+d553 2
+a554 2
+	register const char *wp;
+	register int c;
+d556 1
+a556 1
+	register int nest = 0;
+d679 1
+a679 1
+	register struct ioword **iow;
+d682 2
+a683 2
+	register struct ioword **ior;
+	register int i;
+d690 1
+a690 1
+		register struct ioword *p, *q;
+d714 1
+a714 1
+	register struct op *t;
+d717 1
+a717 1
+	register char **w;
+d751 2
+a752 2
+	register struct ioword **iop;
+	register struct ioword *p;
+@
+
+
+1.2
+log
+@polish, mop up whitespace, etc.
+
+passes regressions on MirOS
+@
+text
+@d1 2
+a2 2
+/* $MirBSD$ */
+/* $OpenBSD: tree.c,v 1.10 2002/02/27 19:37:09 dhartmei Exp $	*/
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 1
+/*	$OpenBSD: tree.c,v 1.10 2002/02/27 19:37:09 dhartmei Exp $	*/
+@
+
+
+1.1.3.1
+log
+@Import upstream pdksh-5.2.14 (latest version) in order to be able
+to play around with it a bit
+@
+text
+@d1 2
+d375 1
+a375 1
+fptreef(shf, indent, fmt, va_alist) 
+d385 1
+a385 1
+  
+d511 1
+a511 1
+			alloc((int)(tw - t->vars) * sizeof(*tw), ap);
+d523 1
+a523 1
+			alloc((int)(tw - t->args) * sizeof(*tw), ap);
+d684 1
+a684 1
+	ior = (struct ioword **) alloc((int)(ior - iow) * sizeof(*ior), ap);
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

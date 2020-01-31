@@ -1,0 +1,430 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.3
+	tg-mergefixes-1-branch:1.1.1.3.0.4
+	tg-mergefixes-1-base:1.1.1.3
+	MIROS_X:1.1.1.3.0.2
+	MIROS_X_BASE:1.1.1.3
+	tg-mergetmp-3:1.1.1.3
+	MIRBSD_XP_MIRPPC:1.1.1.2.0.4
+	cvs-200410231830:1.1.1.3
+	MIRBSD_XP_SPARC_BASE:1.1.1.2
+	MIRBSD_XP_SPARC:1.1.1.2.0.2
+	cvs-200406091940:1.1.1.2
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	cvs-200312031730:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.13;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.13;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.03.17.55.36;	author tg;	state Stab;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.10.23.18.40.43;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@package Exporter::Heavy;
+
+use strict;
+no strict 'refs';
+
+# On one line so MakeMaker will see it.
+require Exporter;  our $VERSION = $Exporter::VERSION;
+$Carp::Internal{"Exporter::Heavy"} = 1;
+our $Verbose;
+
+=head1 NAME
+
+Exporter::Heavy - Exporter guts
+
+=head1 SYNOPSIS
+
+(internal use only)
+
+=head1 DESCRIPTION
+
+No user-serviceable parts inside.
+
+=cut
+
+#
+# We go to a lot of trouble not to 'require Carp' at file scope,
+#  because Carp requires Exporter, and something has to give.
+#
+
+sub heavy_export {
+
+    # First make import warnings look like they're coming from the "use".
+    local $SIG{__WARN__} = sub {
+	my $text = shift;
+	if ($text =~ s/ at \S*Exporter\S*.pm line \d+.*\n//) {
+	    require Carp;
+	    local $Carp::CarpLevel = 1;	# ignore package calling us too.
+	    Carp::carp($text);
+	}
+	else {
+	    warn $text;
+	}
+    };
+    local $SIG{__DIE__} = sub {
+	require Carp;
+	local $Carp::CarpLevel = 1;	# ignore package calling us too.
+	Carp::croak("$_[0]Illegal null symbol in \@@${1}::EXPORT")
+	    if $_[0] =~ /^Unable to create sub named "(.*?)::"/;
+    };
+
+    my($pkg, $callpkg, @@imports) = @@_;
+    my($type, $sym, $oops);
+    my($exports, $export_cache) = (\@@{"${pkg}::EXPORT"},
+                                   \%{"${pkg}::EXPORT"});
+
+    if (@@imports) {
+	if (!%$export_cache) {
+	    s/^&// foreach @@$exports;
+	    @@{$export_cache}{@@$exports} = (1) x @@$exports;
+	    my $ok = \@@{"${pkg}::EXPORT_OK"};
+	    if (@@$ok) {
+		s/^&// foreach @@$ok;
+		@@{$export_cache}{@@$ok} = (1) x @@$ok;
+	    }
+	}
+
+	if ($imports[0] =~ m#^[/!:]#){
+	    my $tagsref = \%{"${pkg}::EXPORT_TAGS"};
+	    my $tagdata;
+	    my %imports;
+	    my($remove, $spec, @@names, @@allexports);
+	    # negated first item implies starting with default set:
+	    unshift @@imports, ':DEFAULT' if $imports[0] =~ m/^!/;
+	    foreach $spec (@@imports){
+		$remove = $spec =~ s/^!//;
+
+		if ($spec =~ s/^://){
+		    if ($spec eq 'DEFAULT'){
+			@@names = @@$exports;
+		    }
+		    elsif ($tagdata = $tagsref->{$spec}) {
+			@@names = @@$tagdata;
+		    }
+		    else {
+			warn qq["$spec" is not defined in %${pkg}::EXPORT_TAGS];
+			++$oops;
+			next;
+		    }
+		}
+		elsif ($spec =~ m:^/(.*)/$:){
+		    my $patn = $1;
+		    @@allexports = keys %$export_cache unless @@allexports; # only do keys once
+		    @@names = grep(/$patn/, @@allexports); # not anchored by default
+		}
+		else {
+		    @@names = ($spec); # is a normal symbol name
+		}
+
+		warn "Import ".($remove ? "del":"add").": @@names "
+		    if $Verbose;
+
+		if ($remove) {
+		   foreach $sym (@@names) { delete $imports{$sym} } 
+		}
+		else {
+		    @@imports{@@names} = (1) x @@names;
+		}
+	    }
+	    @@imports = keys %imports;
+	}
+
+        my @@carp;
+	foreach $sym (@@imports) {
+	    if (!$export_cache->{$sym}) {
+		if ($sym =~ m/^\d/) {
+		    $pkg->VERSION($sym); # inherit from UNIVERSAL
+		    # If the version number was the only thing specified
+		    # then we should act as if nothing was specified:
+		    if (@@imports == 1) {
+			@@imports = @@$exports;
+			last;
+		    }
+		    # We need a way to emulate 'use Foo ()' but still
+		    # allow an easy version check: "use Foo 1.23, ''";
+		    if (@@imports == 2 and !$imports[1]) {
+			@@imports = ();
+			last;
+		    }
+		} elsif ($sym !~ s/^&// || !$export_cache->{$sym}) {
+		    # accumulate the non-exports
+		    push @@carp,
+		        qq["$sym" is not exported by the $pkg module\n];
+		    $oops++;
+		}
+	    }
+	}
+	if ($oops) {
+	    require Carp;
+	    Carp::croak("@@{carp}Can't continue after import errors");
+	}
+    }
+    else {
+	@@imports = @@$exports;
+    }
+
+    my($fail, $fail_cache) = (\@@{"${pkg}::EXPORT_FAIL"},
+                              \%{"${pkg}::EXPORT_FAIL"});
+
+    if (@@$fail) {
+	if (!%$fail_cache) {
+	    # Build cache of symbols. Optimise the lookup by adding
+	    # barewords twice... both with and without a leading &.
+	    # (Technique could be applied to $export_cache at cost of memory)
+	    my @@expanded = map { /^\w/ ? ($_, '&'.$_) : $_ } @@$fail;
+	    warn "${pkg}::EXPORT_FAIL cached: @@expanded" if $Verbose;
+	    @@{$fail_cache}{@@expanded} = (1) x @@expanded;
+	}
+	my @@failed;
+	foreach $sym (@@imports) { push(@@failed, $sym) if $fail_cache->{$sym} }
+	if (@@failed) {
+	    @@failed = $pkg->export_fail(@@failed);
+	    foreach $sym (@@failed) {
+                require Carp;
+		Carp::carp(qq["$sym" is not implemented by the $pkg module ],
+			"on this architecture");
+	    }
+	    if (@@failed) {
+		require Carp;
+		Carp::croak("Can't continue after import errors");
+	    }
+	}
+    }
+
+    warn "Importing into $callpkg from $pkg: ",
+		join(", ",sort @@imports) if $Verbose;
+
+    foreach $sym (@@imports) {
+	# shortcut for the common case of no type character
+	(*{"${callpkg}::$sym"} = \&{"${pkg}::$sym"}, next)
+	    unless $sym =~ s/^(\W)//;
+	$type = $1;
+	*{"${callpkg}::$sym"} =
+	    $type eq '&' ? \&{"${pkg}::$sym"} :
+	    $type eq '$' ? \${"${pkg}::$sym"} :
+	    $type eq '@@' ? \@@{"${pkg}::$sym"} :
+	    $type eq '%' ? \%{"${pkg}::$sym"} :
+	    $type eq '*' ?  *{"${pkg}::$sym"} :
+	    do { require Carp; Carp::croak("Can't export symbol: $type$sym") };
+    }
+}
+
+sub heavy_export_to_level
+{
+      my $pkg = shift;
+      my $level = shift;
+      (undef) = shift;			# XXX redundant arg
+      my $callpkg = caller($level);
+      $pkg->export($callpkg, @@_);
+}
+
+# Utility functions
+
+sub _push_tags {
+    my($pkg, $var, $syms) = @@_;
+    my @@nontag = ();
+    my $export_tags = \%{"${pkg}::EXPORT_TAGS"};
+    push(@@{"${pkg}::$var"},
+	map { $export_tags->{$_} ? @@{$export_tags->{$_}} 
+                                 : scalar(push(@@nontag,$_),$_) }
+		(@@$syms) ? @@$syms : keys %$export_tags);
+    if (@@nontag and $^W) {
+	# This may change to a die one day
+	require Carp;
+	Carp::carp(join(", ", @@nontag)." are not tags of $pkg");
+    }
+}
+
+sub heavy_require_version {
+    my($self, $wanted) = @@_;
+    my $pkg = ref $self || $self;
+    return ${pkg}->VERSION($wanted);
+}
+
+sub heavy_export_tags {
+  _push_tags((caller)[0], "EXPORT",    \@@_);
+}
+
+sub heavy_export_ok_tags {
+  _push_tags((caller)[0], "EXPORT_OK", \@@_);
+}
+
+1;
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import selected parts of the OpenBSD base system:
+ * vnd change - you'll have to re-run MAKEDEV after booting a new kernel
+ * misc. changes in /etc, mostly user related
+ * Perl 5.8.2 (diff to MirPorts will be committed RSN)
+ * some changes to binutils
+ * Updates in bc and dc
+@
+text
+@d9 1
+a29 11
+sub _rebuild_cache {
+    my ($pkg, $exports, $cache) = @@_;
+    s/^&// foreach @@$exports;
+    @@{$cache}{@@$exports} = (1) x @@$exports;
+    my $ok = \@@{"${pkg}::EXPORT_OK"};
+    if (@@$ok) {
+	s/^&// foreach @@$ok;
+	@@{$cache}{@@$ok} = (1) x @@$ok;
+    }
+}
+
+d52 1
+a52 1
+    my($type, $sym, $cache_is_current, $oops);
+d54 1
+a54 1
+                                   $Exporter::Cache{$pkg} ||= {});
+d58 7
+a64 2
+	    _rebuild_cache ($pkg, $exports, $export_cache);
+	    $cache_is_current = 1;
+d100 1
+a100 1
+		    if $Exporter::Verbose;
+d130 4
+a133 15
+		    # Last chance - see if they've updated EXPORT_OK since we
+		    # cached it.
+
+		    unless ($cache_is_current) {
+			%$export_cache = ();
+			_rebuild_cache ($pkg, $exports, $export_cache);
+			$cache_is_current = 1;
+		    }
+
+		    if (!$export_cache->{$sym}) {
+			# accumulate the non-exports
+			push @@carp,
+			  qq["$sym" is not exported by the $pkg module\n];
+			$oops++;
+		    }
+d147 1
+a147 1
+                              $Exporter::FailCache{$pkg} ||= {});
+d155 1
+a155 1
+	    warn "${pkg}::EXPORT_FAIL cached: @@expanded" if $Exporter::Verbose;
+d175 1
+a175 1
+		join(", ",sort @@imports) if $Exporter::Verbose;
+@
+
+
+1.1.1.3
+log
+@5.8.5
+@
+text
+@d72 1
+a72 1
+	if (grep m{^[/!:]}, @@imports) {
+@
+
+

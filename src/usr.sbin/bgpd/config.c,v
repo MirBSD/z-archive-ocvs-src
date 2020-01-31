@@ -1,0 +1,471 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.5
+	tg-mergefixes-1-branch:1.1.1.5.0.8
+	tg-mergefixes-1-base:1.1.1.5
+	MIROS_X:1.1.1.5.0.6
+	MIROS_X_BASE:1.1.1.5
+	tg-mergetmp-3:1.1.1.5
+	MIRBSD_XP_MIRPPC:1.1.1.5.0.4
+	MIRBSD_XP_SPARC_BASE:1.1.1.5
+	MIRBSD_XP_SPARC:1.1.1.5.0.2
+	cvs-200405160640:1.1.1.5
+	cvs-200401271800:1.1.1.4
+	cvs-200401261630:1.1.1.3
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2003.12.22.21.20.11;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.12.22.21.20.11;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.01.02.18.12.24;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.01.26.19.05.47;	author tg;	state Exp;
+branches;
+next	1.1.1.4;
+
+1.1.1.4
+date	2004.01.27.19.20.49;	author tg;	state Exp;
+branches;
+next	1.1.1.5;
+
+1.1.1.5
+date	2004.05.16.07.19.21;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/*	$OpenBSD: config.c,v 1.2 2003/12/19 14:23:28 henning Exp $ */
+
+/*
+ * Copyright (c) 2003 Henning Brauer <henning@@openbsd.org>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/mman.h>
+
+#include <errno.h>
+#include <ifaddrs.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+#include "bgpd.h"
+
+void			*sconf;
+
+u_int32_t	get_bgpid(void);
+u_int32_t	get_id(struct peer *);
+
+int
+merge_config(struct bgpd_config *xconf, struct bgpd_config *conf)
+{
+	enum reconf_action	 reconf = RECONF_NONE;
+	struct peer		*p;
+
+	/* merge conf (new) into xconf (old)  */
+	if (!conf->as) {
+		logit(LOG_CRIT, "configuration error: AS not given");
+		return (1);
+	}
+	if (xconf->as != conf->as) {
+		xconf->as = conf->as;
+		reconf = RECONF_REINIT;
+	}
+	if (conf->bgpid && xconf->bgpid != conf->bgpid) {
+		xconf->bgpid = conf->bgpid;
+		reconf = RECONF_REINIT;
+	}
+	if (!xconf->bgpid)
+		xconf->bgpid = get_bgpid();
+
+	if (conf->holdtime && !xconf->holdtime)
+		xconf->holdtime = conf->holdtime;
+	if (!conf->holdtime && xconf->holdtime)
+		conf->holdtime = xconf->holdtime;
+
+	if (conf->min_holdtime && !xconf->min_holdtime)
+		xconf->min_holdtime = conf->min_holdtime;
+	if (!conf->min_holdtime && xconf->min_holdtime)
+		conf->min_holdtime = xconf->min_holdtime;
+	if (!xconf->min_holdtime)
+		xconf->min_holdtime = conf->min_holdtime = MIN_HOLDTIME;
+
+	/*
+	 * as we cannot get the negotiated holdtime in the main process,
+	 * the session engine needs to check it against the possibly new values
+	 * and decide on session reestablishment.
+	 */
+
+	xconf->holdtime = conf->holdtime;
+	xconf->min_holdtime = conf->min_holdtime;
+
+	for (p = conf->peers; p != NULL; p = p->next) {
+		p->conf.reconf_action = reconf;
+		p->conf.ebgp = (p->conf.remote_as != xconf->as);
+		if (!p->conf.id)
+			p->conf.id = get_id(p);
+	}
+
+	/* merge peers done by session egine except for initial config */
+	xconf->peers = conf->peers;
+	free(conf);
+
+	return (0);
+}
+
+u_int32_t
+get_bgpid(void)
+{
+	struct ifaddrs		*ifap, *ifa;
+	u_int32_t		 ip = 0, cur, localnet;
+
+	localnet = inet_addr("127.0.0.0");
+
+	if (getifaddrs(&ifap) < 0)
+		fatal("getifaddrs", errno);
+
+	for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+		if (ifa->ifa_addr->sa_family != AF_INET)
+				continue;
+		cur = ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr;
+		if ((cur & localnet) == localnet)	/* skip 127/8 */
+			continue;
+		if (cur > ip)
+			ip = cur;
+	}
+	freeifaddrs(ifap);
+
+	return (ip);
+}
+
+u_int32_t
+get_id(struct peer *p)
+{
+	/*
+	 * XXX this collides with multiviews and will need more clue later XXX
+	 */
+	return (ntohl(p->conf.remote_addr.sin_addr.s_addr));
+}
+@
+
+
+1.1.1.1
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Import OpenBSD again, for various reasons.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: config.c,v 1.12 2003/12/30 13:03:27 henning Exp $ */
+a25 1
+#include <string.h>
+d39 1
+a39 1
+	struct peer		*p, *next;
+a68 14
+	memcpy(&xconf->listen_addr, &conf->listen_addr,
+	    sizeof(xconf->listen_addr));
+
+	if ((xconf->flags & BGPD_FLAG_NO_FIB_UPDATE) !=
+	    (conf->flags & BGPD_FLAG_NO_FIB_UPDATE)) {
+		if (!(conf->flags & BGPD_FLAG_NO_FIB_UPDATE))
+			kroute_fib_couple();
+		else
+			kroute_fib_decouple();
+	}
+
+	xconf->flags = conf->flags;
+	xconf->log = conf->log;
+
+d85 1
+a85 6
+	for (p = xconf->peers; p != NULL; p = next) {
+		next = p->next;
+		free(p);
+	}
+
+	/* merge peers done by session engine except for initial config */
+d87 1
+d100 2
+a101 2
+	if (getifaddrs(&ifap) == -1)
+		fatal("getifaddrs");
+@
+
+
+1.1.1.3
+log
+@Import OpenBSD as of today again (seems pretty stable, I hope)
+
+Prominent changes: more bgpd, tcpmd5; tcpdump/isakmpd fixes
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: config.c,v 1.20 2004/01/26 14:42:47 henning Exp $ */
+d4 1
+a4 1
+ * Copyright (c) 2003, 2004 Henning Brauer <henning@@openbsd.org>
+a29 1
+#include "session.h"
+d37 1
+a37 2
+merge_config(struct bgpd_config *xconf, struct bgpd_config *conf,
+    struct peer *peer_l)
+d39 2
+a40 1
+	struct peer		*p;
+d42 1
+d44 1
+a44 1
+		log_warnx("configuration error: AS not given");
+d47 10
+d58 22
+a79 2
+	if (!conf->min_holdtime)
+		conf->min_holdtime = MIN_HOLDTIME;
+d81 2
+a82 2
+	if (!conf->bgpid)
+		conf->bgpid = get_bgpid();
+d84 12
+a95 2
+	for (p = peer_l; p != NULL; p = p->next) {
+		p->conf.ebgp = (p->conf.remote_as != conf->as);
+a97 5
+		if (p->conf.tcp_sign_key[0] &&
+		    pfkey_signature((struct sockaddr *)&p->conf.local_addr,
+			    (struct sockaddr *)&p->conf.remote_addr,
+			    p->conf.tcp_sign_key) == -1)
+				return (1);
+d100 7
+a106 1
+	memcpy(xconf, conf, sizeof(struct bgpd_config));
+d124 1
+a124 1
+			continue;
+@
+
+
+1.1.1.4
+log
+@using: ========= cvsim-base-obsd _MirBSD: cvsim-src-openbsd,v 1.3 2004/01/27 17:17:54 tg Exp $ =========
+
+In contrast to what people might believe now,
+I am not "specially" attracted by CVS Imports
+(neither am I a version number hunter).
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: config.c,v 1.22 2004/01/27 16:49:53 henning Exp $ */
+d59 1
+a59 1
+		    pfkey_setkey((struct sockaddr *)&p->conf.local_addr,
+d101 1
+a101 1
+	return (ntohl(p->conf.remote_addr.v4.s_addr));
+@
+
+
+1.1.1.5
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/*	$OpenBSD: config.c,v 1.36 2004/05/04 21:22:39 deraadt Exp $ */
+a20 1
+#include <sys/stat.h>
+a24 1
+#include <netdb.h>
+d32 2
+d35 1
+a35 2
+int		host_v4(const char *, struct bgpd_addr *, u_int8_t *);
+int		host_v6(const char *, struct bgpd_addr *);
+d41 1
+a41 5
+	struct peer	*p;
+	int		 errs = 0;
+
+	/* preserve cmd line opts */
+	conf->opts = xconf->opts;
+d56 7
+a62 6
+		if (p->conf.announce_type == ANNOUNCE_UNDEF)
+			p->conf.announce_type = p->conf.ebgp == 0 ?
+			    ANNOUNCE_ALL : ANNOUNCE_SELF;
+		if (p->conf.enforce_as == ENFORCE_AS_UNDEF)
+			p->conf.enforce_as = p->conf.ebgp == 0 ?
+			    ENFORCE_AS_OFF : ENFORCE_AS_ON;
+d67 1
+a67 1
+	return (errs);
+d95 2
+a96 2
+int
+check_file_secrecy(int fd, const char *fname)
+d98 4
+a101 104
+	struct stat	st;
+
+	if (fstat(fd, &st)) {
+		log_warn("cannot stat %s", fname);
+		return (-1);
+	}
+
+	if (st.st_uid != 0 && st.st_uid != getuid()) {
+		log_warnx("%s: owner not root or current user", fname);
+		return (-1);
+	}
+
+	if (st.st_mode & (S_IRWXG | S_IRWXO)) {
+		log_warnx("%s: group/world readable/writeable", fname);
+		return (-1);
+	}
+
+	return (0);
+}
+
+int
+host(const char *s, struct bgpd_addr *h, u_int8_t *len)
+{
+	int			 done = 0;
+	int			 mask;
+	char			*p, *q, *ps;
+
+	if ((p = strrchr(s, '/')) != NULL) {
+		errno = 0;
+		mask = strtol(p+1, &q, 0);
+		if (errno == ERANGE || !q || *q || mask > 128 || q == (p+1)) {
+			log_warnx("invalid netmask");
+			return (0);
+		}
+		if ((ps = malloc(strlen(s) - strlen(p) + 1)) == NULL)
+			fatal("host: malloc");
+		strlcpy(ps, s, strlen(s) - strlen(p) + 1);
+	} else {
+		if ((ps = strdup(s)) == NULL)
+			fatal("host: strdup");
+		mask = 128;
+	}
+
+	bzero(h, sizeof(struct bgpd_addr));
+
+	/* IPv4 address? */
+	if (!done)
+		done = host_v4(s, h, len);
+
+	/* IPv6 address? */
+	if (!done) {
+		done = host_v6(ps, h);
+		*len = mask;
+	}
+
+	free(ps);
+
+	return (done);
+}
+
+int
+host_v4(const char *s, struct bgpd_addr *h, u_int8_t *len)
+{
+	struct in_addr		 ina;
+	int			 bits = 32;
+
+	bzero(&ina, sizeof(struct in_addr));
+	if (strrchr(s, '/') != NULL) {
+		if ((bits = inet_net_pton(AF_INET, s, &ina, sizeof(ina))) == -1)
+			return (0);
+	} else {
+		if (inet_pton(AF_INET, s, &ina) != 1)
+			return (0);
+	}
+
+	h->af = AF_INET;
+	h->v4.s_addr = ina.s_addr;
+	*len = bits;
+
+	return (1);
+}
+
+int
+host_v6(const char *s, struct bgpd_addr *h)
+{
+	struct addrinfo		 hints, *res;
+
+	bzero(&hints, sizeof(hints));
+	hints.ai_family = AF_INET6;
+	hints.ai_socktype = SOCK_DGRAM; /*dummy*/
+	hints.ai_flags = AI_NUMERICHOST;
+	if (getaddrinfo(s, "0", &hints, &res) == 0) {
+		h->af = AF_INET6;
+		memcpy(&h->v6,
+		    &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr,
+		    sizeof(h->v6));
+		h->scope_id =
+		    ((struct sockaddr_in6 *)res->ai_addr)->sin6_scope_id;
+
+		freeaddrinfo(res);
+		return (1);
+	}
+
+	return (0);
+@
+
+

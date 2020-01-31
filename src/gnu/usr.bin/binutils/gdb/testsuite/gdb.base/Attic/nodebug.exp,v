@@ -1,0 +1,377 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.2
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2003.05.16.17.43.02;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.40.44;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.40.44;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2004.06.09.20.29.46;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@remove the FSF changelog files and other unused files; use cvsweb or anoncvs to retrieve them
+@
+text
+@# Test that things still (sort of) work when compiled without -g.
+
+if $tracelevel then {
+	strace $tracelevel
+}
+
+set prms_id 0
+set bug_id 0
+
+set testfile nodebug
+set srcfile ${testfile}.c
+set binfile ${objdir}/${subdir}/${testfile}
+
+# Get rid of any -g options (including -gstabs, -gdwarf, etc...
+if [info exists target_info(target,cflags)] {
+	set saved_cflags $target_info(target,cflags)
+	regsub -all -- {[ 	]-g[^ 	]*} $target_info(target,cflags) { } target_info(target,cflags)
+}
+
+if  { [compile "${srcdir}/${subdir}/${srcfile} -o ${binfile}"] != "" } {
+    perror "Couldn't compile ${srcfile}"
+    return -1
+}
+
+# Create and source the file that provides information about the compiler
+# used to compile the test case.
+execute_anywhere "rm -f ${binfile}.ci"
+if  { [compile "-E ${srcdir}/${subdir}/compiler.c > ${binfile}.ci"] != "" } {
+    perror "Couldn't make ${binfile}.ci file"
+    return -1
+}
+
+if [info exists target_info(target,cflags)] {
+	set target_info(target,cflags) $saved_cflags
+}
+
+source ${binfile}.ci
+
+gdb_reinitialize_dir $srcdir/$subdir
+gdb_load $binfile
+
+if [runto inner] then {
+    
+    # Expect to find global/local symbols in each of text/data/bss.
+    
+    # The exact format for some of this output is not necessarily
+    # ideal, particularly interpreting "p top" requires a fair bit of
+    # savvy about gdb's workings and the meaning of the "{}"
+    # construct.  So the details maybe could be tweaked.  But the
+    # basic purpose should be maintained, which is (a) users should be
+    # able to interact with these variables with some care (they have
+    # to know how to interpret them according to their real type,
+    # since gdb doesn't know the type), but (b) users should be able
+    # to detect that gdb does not know the type, rather than just
+    # being told they are ints or functions returning int like old
+    # versions of gdb used to do.
+    
+    # On alpha (and other ecoff systems) the native compilers put
+    # out debugging info for non-aggregate return values of functions
+    # even without -g, which should be accepted.
+    # Irix5, even though it is ELF, counts as "ecoff" because it
+    # encapsulates ecoff debugging info in a .mdebug section.
+    
+    if {!$gcc_compiled} then { setup_xfail "mips-sgi-irix5*" }
+    gdb_test "p top" \
+	"{(<(text variable|function), no debug info>|short \\(\\))} \[0-9a-fx]* <top>"
+    if {!$gcc_compiled} then { setup_xfail "mips-sgi-irix5*" }
+    gdb_test "whatis top" \
+	"(<(text variable|function), no debug info>|short \\(\\))"
+    gdb_test "ptype top" "(short|int) \\((|<non-float parameter>|<non-float parameter>, <non-float parameter>)\\)"
+    
+    if {!$gcc_compiled} then { setup_xfail "mips-sgi-irix5*" }
+    gdb_test "p middle" \
+	"{(<(text variable|function), no debug info>|short \\(\\))} \[0-9a-fx]* <middle>"
+    if {!$gcc_compiled} then { setup_xfail "mips-sgi-irix5*" }
+    gdb_test "whatis middle" \
+	"(<(text variable|function), no debug info>|short \\(\\))"
+    gdb_test "ptype middle" "(short|int) \\((|<non-float parameter>|<non-float parameter>, <non-float parameter>)\\)"
+    
+    gdb_test "p dataglobal" "= 3"
+    gdb_test "whatis dataglobal" \
+	"<(data variable|variable), no debug info>"
+    gdb_test "ptype dataglobal" "<(data variable|variable), no debug info>"
+    
+    # The only symbol xcoff puts out for statics is for the TOC entry.
+    # Possible, but hairy, for gdb to deal.  Right now it doesn't, it
+    # doesn't know the variables exist at all.
+    setup_xfail "rs6000*-*-aix*"
+    setup_xfail "powerpc*-*-aix*"
+    if {!$gcc_compiled} then { setup_xfail "hppa*-*-hpux*" }
+    gdb_test "p datalocal" "= 4"
+    setup_xfail "rs6000*-*-aix*"
+    setup_xfail "powerpc*-*-aix*"
+    if {!$gcc_compiled} then { setup_xfail "hppa*-*-hpux*" }
+    gdb_test "whatis datalocal" "<(data variable|variable), no debug info>"
+    setup_xfail "rs6000*-*-aix*"
+    setup_xfail "powerpc*-*-aix*"
+    if {!$gcc_compiled} then { setup_xfail "hppa*-*-hpux*" }
+    gdb_test "ptype datalocal" "<(data variable|variable), no debug info>"
+    
+    gdb_test "p bssglobal" "= 0"
+    gdb_test "whatis bssglobal" "<(data variable|variable), no debug info>"
+    gdb_test "ptype bssglobal" "<(data variable|variable), no debug info>"
+    
+    setup_xfail "rs6000*-*-aix*"
+    setup_xfail "powerpc*-*-aix*"
+    if {!$gcc_compiled} then { setup_xfail "hppa*-*-hpux*" }
+    gdb_test "p bsslocal" "= 0"
+    setup_xfail "rs6000*-*-aix*"
+    setup_xfail "powerpc*-*-aix*"
+    if {!$gcc_compiled} then { setup_xfail "hppa*-*-hpux*" }
+    gdb_test "whatis bsslocal" "<(data variable|variable), no debug info>"
+    setup_xfail "rs6000*-*-aix*"
+    setup_xfail "powerpc*-*-aix*"
+    if {!$gcc_compiled} then { setup_xfail "hppa*-*-hpux*" }
+    gdb_test "ptype bsslocal" "<(data variable|variable), no debug info>"
+    
+    gdb_test "backtrace" "#0.*inner.*#1.*middle.*#2.*top.*#3.*main.*" \
+	"backtrace from inner in nodebug.exp"
+    # Or if that doesn't work, at least hope for the external symbols
+    # Commented out because if we aren't going to xfail the above test
+    # ever, why bother with a weaker test?
+    #gdb_test "backtrace" "#0.*inner.*#1.*#2.*top.*#3.*main.*" \
+	#    "backtrace from inner in nodebug.exp for externals"
+    
+    # This test is not as obscure as it might look.  `p getenv ("TERM")'
+    # is a real-world example, at least on many systems.
+    setup_xfail "h8300*-*-*"
+    if {!$gcc_compiled} then { setup_xfail "hppa*-*-hpux*" }
+    gdb_test {p/c array_index("abcdef",2)} " = 99 'c'"
+    
+    # Now, try that we can give names of file-local symbols which happen
+    # to be unique, and have it still work
+    if [runto middle] then {
+	setup_xfail "h8300*-*-*"
+	gdb_test "backtrace" "#0.*middle.*#1.*top.*#2.*main.*" \
+	    "backtrace from middle in nodebug.exp"
+    }
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Sync of src/gnu with OpenBSD (promised a long time ago)
+@
+text
+@a0 19
+# Copyright 1997, 1999, 2004 Free Software Foundation, Inc.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  
+
+# Please email any bugs, comments, and/or additions to this file to:
+# bug-gdb@@prep.ai.mit.edu
+
+d13 10
+a22 2
+if  { [gdb_compile "${srcdir}/${subdir}/${srcfile}" "${binfile}" executable ""] != "" } {
+     gdb_suppress_entire_file "Testcase compile failed, so all tests in this file will automatically fail."
+d27 4
+a30 2
+if [get_compiler_info ${binfile}] {
+    return -1;
+d33 6
+a38 2
+gdb_exit
+gdb_start
+a62 2
+    # Irix6 gcc emits no debug info at all for static functions and
+    # variables, so all tests involving statics fail.
+d64 1
+a64 1
+    if {!$gcc_compiled} then { setup_xfail "mips-sgi-irix5*" "mips-sgi-irix6*" }
+d66 2
+a67 2
+	"\{(<(text variable|function), no debug info>|short \\(int\\)|short \\(\\))\} \[0-9a-fx]* <top(\\(int\\)|)>"
+    if {!$gcc_compiled} then { setup_xfail "mips-sgi-irix5*" "mips-sgi-irix6*" }
+d69 2
+a70 3
+	"(<(text variable|function), no debug info>|short \\(int\\)|short \\(\\))"
+    if {!$gcc_compiled} then { setup_xfail "mips-sgi-irix6*" }
+    gdb_test "ptype top" "(short|int) \\((|void|int|<non-float parameter>|<non-float parameter>, <non-float parameter>)\\)"
+a72 1
+    setup_xfail "mips-sgi-irix6*"
+d74 1
+a74 1
+	"\{(<(text variable|function), no debug info>|short \\(int\\)|short \\(\\))\} \[0-9a-fx]* <middle(\\(int\\)|)>"
+a75 1
+    setup_xfail "mips-sgi-irix6*"
+d77 2
+a78 3
+	"(<(text variable|function), no debug info>|short \\(int\\)|short \\(\\))"
+    setup_xfail "mips-sgi-irix6*"
+    gdb_test "ptype middle" "(short|int) \\((|void|int|<non-float parameter>|<non-float parameter>, <non-float parameter>)\\)"
+d82 2
+a83 2
+	"<(data variable|variable), no debug info>|int"
+    gdb_test "ptype dataglobal" "<(data variable|variable), no debug info>|int"
+a90 1
+    if {$gcc_compiled} then { setup_xfail "mips-sgi-irix6*" }
+a94 1
+    if {$gcc_compiled} then { setup_xfail "mips-sgi-irix6*" }
+a98 1
+    if {$gcc_compiled} then { setup_xfail "mips-sgi-irix6*" }
+d102 2
+a103 2
+    gdb_test "whatis bssglobal" "<(data variable|variable), no debug info>|int"
+    gdb_test "ptype bssglobal" "<(data variable|variable), no debug info>|int"
+a107 1
+    if {$gcc_compiled} then { setup_xfail "mips-sgi-irix6*" }
+a111 1
+    if {$gcc_compiled} then { setup_xfail "mips-sgi-irix6*" }
+a115 1
+    if {$gcc_compiled} then { setup_xfail "mips-sgi-irix6*" }
+d118 1
+a118 2
+    if {$gcc_compiled} then { setup_xfail "mips-sgi-irix6*" }
+    gdb_test "backtrace 10" "#0.*inner.*#1.*middle.*#2.*top.*#3.*main.*" \
+d123 1
+a123 1
+    #gdb_test "backtrace 10" "#0.*inner.*#1.*#2.*top.*#3.*main.*" \
+d128 3
+a130 25
+    if {!$gcc_compiled} then { setup_xfail "mips-sgi-irix6*" }
+    if [target_info exists gdb,cannot_call_functions] {
+	setup_xfail "*-*-*" 2416
+	fail "p/c array_index(\"abcdef\",2)"
+    } else {
+	#
+	# On HP-UX, a support function (__d_plt_call) necessary to
+	# implement an inferior call is normally only available when
+	# the inferior was compiled with -g.  Thus, we expect this
+	# testpoint to fail on HP-UX.
+	if { [istarget "hppa*-hpux*"] } {
+	    send_gdb "p/c array_index(\"abcdef\",2)\n"
+	    gdb_expect {
+		-re ".*Suggest linking executable with -g.*$gdb_prompt $" { pass "p/c array_index(\"abcdef\",2)" }
+		-re ".*Cannot find __wdb_call_dummy in.*end.o.*" { pass "p/c array_index(\"abcdef\",2)" }
+		-re ".*99 'c'.*" { pass "p/c array_index(\"abcdef\",2)" }
+		timeout { fail "(timeout) p/c array_index" }
+	    }
+	} else {
+	    # We need to up this because this can be really slow on some boards.
+	    # (malloc() is called as part of the test).
+	    set timeout 60;    
+	    gdb_test {p/c array_index("abcdef",2)} " = 99 'c'"
+	}
+    }
+a133 1
+    if {$gcc_compiled} then { setup_xfail "mips-sgi-irix6*" }
+d135 2
+a136 1
+	gdb_test "backtrace 10" "#0.*middle.*#1.*top.*#2.*main.*" \
+@
+

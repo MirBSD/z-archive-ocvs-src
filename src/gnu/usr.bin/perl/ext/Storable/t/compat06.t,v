@@ -1,0 +1,261 @@
+head	1.1;
+branch	1.1.1;
+access;
+symbols
+	tg-mergetmp-mirosx-1:1.1.1.1
+	tg-mergefixes-1-branch:1.1.1.1.0.14
+	tg-mergefixes-1-base:1.1.1.1
+	MIROS_X:1.1.1.1.0.12
+	MIROS_X_BASE:1.1.1.1
+	tg-mergetmp-3:1.1.1.1
+	MIRBSD_XP_MIRPPC:1.1.1.1.0.10
+	cvs-200410231830:1.1.1.1
+	MIRBSD_XP_SPARC_BASE:1.1.1.1
+	MIRBSD_XP_SPARC:1.1.1.1.0.8
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	cvs-200312031730:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.1
+date	2003.03.22.17.43.02;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.43.02;	author tg;	state Stab;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#!./perl
+#
+#  Copyright (c) 1995-2000, Raphael Manfredi
+#  
+#  You may redistribute only under the same terms as Perl 5, as specified
+#  in the README file that comes with the distribution.
+#
+
+BEGIN {
+    if ($ENV{PERL_CORE}){
+	chdir('t') if -d 't';
+	@@INC = ('.', '../lib', '../ext/Storable/t');
+    } else {
+	unshift @@INC, 't';
+    }
+    require Config; import Config;
+    if ($ENV{PERL_CORE} and $Config{'extensions'} !~ /\bStorable\b/) {
+        print "1..0 # Skip: Storable was not built\n";
+        exit 0;
+    }
+    require 'st-dump.pl';
+}
+
+sub ok;
+
+print "1..8\n";
+
+use Storable qw(freeze nfreeze thaw);
+
+package TIED_HASH;
+
+sub TIEHASH {
+	my $self = bless {}, shift;
+	return $self;
+}
+
+sub FETCH {
+	my $self = shift;
+	my ($key) = @@_;
+	$main::hash_fetch++;
+	return $self->{$key};
+}
+
+sub STORE {
+	my $self = shift;
+	my ($key, $val) = @@_;
+	$self->{$key} = $val;
+}
+
+package SIMPLE;
+
+sub make {
+	my $self = bless [], shift;
+	my ($x) = @@_;
+	$self->[0] = $x;
+	return $self;
+}
+
+package ROOT;
+
+sub make {
+	my $self = bless {}, shift;
+	my $h = tie %hash, TIED_HASH;
+	$self->{h} = $h;
+	$self->{ref} = \%hash;
+	my @@pool;
+	for (my $i = 0; $i < 5; $i++) {
+		push(@@pool, SIMPLE->make($i));
+	}
+	$self->{obj} = \@@pool;
+	my @@a = ('string', $h, $self);
+	$self->{a} = \@@a;
+	$self->{num} = [1, 0, -3, -3.14159, 456, 4.5];
+	$h->{key1} = 'val1';
+	$h->{key2} = 'val2';
+	return $self;
+};
+
+sub num { $_[0]->{num} }
+sub h   { $_[0]->{h} }
+sub ref { $_[0]->{ref} }
+sub obj { $_[0]->{obj} }
+
+package main;
+
+my $is_EBCDIC = (ord('A') == 193) ? 1 : 0;
+ 
+my $r = ROOT->make;
+
+my $data = '';
+if (!$is_EBCDIC) {			# ASCII machine
+	while (<DATA>) {
+		next if /^#/;
+	    $data .= unpack("u", $_);
+	}
+} else {
+	while (<DATA>) {
+		next if /^#$/;		# skip comments
+		next if /^#\s+/;	# skip comments
+		next if /^[^#]/;	# skip uuencoding for ASCII machines
+		s/^#//;				# prepare uuencoded data for EBCDIC machines
+		$data .= unpack("u", $_);
+	}
+}
+
+my $expected_length = $is_EBCDIC ? 217 : 278;
+ok 1, length $data == $expected_length;
+  
+my $y = thaw($data);
+ok 2, 1;
+ok 3, ref $y eq 'ROOT';
+
+$Storable::canonical = 1;		# Prevent "used once" warning
+$Storable::canonical = 1;
+# Allow for long double string conversions.
+$y->{num}->[3] += 0;
+$r->{num}->[3] += 0;
+ok 4, nfreeze($y) eq nfreeze($r);
+
+ok 5, $y->ref->{key1} eq 'val1';
+ok 6, $y->ref->{key2} eq 'val2';
+ok 7, $hash_fetch == 2;
+
+my $num = $r->num;
+my $ok = 1;
+for (my $i = 0; $i < @@$num; $i++) {
+	do { $ok = 0; last } unless $num->[$i] == $y->num->[$i];
+}
+ok 8, $ok;
+
+__END__
+#
+# using Storable-0.6@@11, output of: print pack("u", nfreeze(ROOT->make));
+# original size: 278 bytes
+#
+M`P,````%!`(````&"(%8"(!8"'U8"@@@@M,RXQ-#$U.5@@)```!R%@@*`S0N-5A8
+M6`````-N=6T$`P````(*!'9A;#%8````!&ME>3$*!'9A;#)8````!&ME>3)B
+M"51)141?2$%32%A8`````6@@$`@@````,*!G-T<FEN9U@@$``````I8!```````
+M6%A8`````6$$`@@````4$`@@````$(@@%AB!E-)35!,15A8!`(````!"(%88@@93
+M24U03$586`0"`````0B"6&(&4TE-4$Q%6%@@$`@@````$(@@UAB!E-)35!,15A8
+M!`(````!"(188@@9324U03$586%A8`````V]B:@@0,!``````*6%A8`````W)E
+(9F($4D]/5%@@`
+#
+# using Storable-0.6@@11, output of: print '#' . pack("u", nfreeze(ROOT->make));
+# on OS/390 (cp 1047) original size: 217 bytes
+#
+#M!0,1!-G6UN,#````!00,!!$)X\G%Q&W(P>+(`P````(*!*6!D_$````$DH6H
+#M\0H$I8&3\@@````22A:CR`````YF%A@@0"````!@@B!"(`(?0H(8/-+\?3Q]?D)
+#M```!R`H#]$OU`````Y6DE`0"````!001!N+)U-?3Q0(````!"(`$$@@("````
+#M`0B!!!("`@@````$(@@@@02`@@(````!"(,$$@@("`````0B$`````Y:"D00`````
+#E!`````&(!`(````#"@@:BHYF)E8<$``````0$```````````!@@0``
+@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@

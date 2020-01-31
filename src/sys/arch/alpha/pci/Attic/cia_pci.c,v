@@ -1,0 +1,409 @@
+head	1.2;
+access;
+symbols
+	cvs-200405160640:1.1.1.2
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	cvs-200312222040:1.1.1.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309261655:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	cvs-200307072125:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200307021520:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3255:1.1.1.1
+	ctm-3229:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2003.04.06.04.28.04;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.49.18;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.49.18;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.20.58.28;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Remove "some dead architectures".
+
+These are all but i386 and x86-64 (which is not in the tree yet),
+because I have no machines to work with.
+
+Re-adding support should be fairly easy, just cvs adding a partial
+OpenBSD checkout and pulling in stuff like kernel signal patch, humantime,
+etc. which got added to i386 as well.
+
+You will need gcc support as well.
+@
+text
+@/* $OpenBSD: cia_pci.c,v 1.9 2002/03/14 01:26:27 millert Exp $ */
+/* $NetBSD: cia_pci.c,v 1.25 2000/06/29 08:58:46 mrg Exp $ */
+
+/*
+ * Copyright (c) 1995, 1996 Carnegie-Mellon University.
+ * All rights reserved.
+ *
+ * Author: Chris G. Demetriou
+ * 
+ * Permission to use, copy, modify and distribute this software and
+ * its documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS" 
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND 
+ * FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ *
+ *  Software Distribution Coordinator  or  Software.Distribution@@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ *
+ * any improvements or extensions that they make and grant Carnegie the
+ * rights to redistribute these changes.
+ */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/device.h>
+
+#include <uvm/uvm_extern.h>
+
+#include <dev/pci/pcireg.h>
+#include <dev/pci/pcivar.h>
+#include <alpha/pci/ciareg.h>
+#include <alpha/pci/ciavar.h>
+
+void		cia_attach_hook(struct device *, struct device *,
+		    struct pcibus_attach_args *);
+int		cia_bus_maxdevs(void *, int);
+pcitag_t	cia_make_tag(void *, int, int, int);
+void		cia_decompose_tag(void *, pcitag_t, int *, int *,
+		    int *);
+pcireg_t	cia_conf_read(void *, pcitag_t, int);
+void		cia_conf_write(void *, pcitag_t, int, pcireg_t);
+
+void
+cia_pci_init(pc, v)
+	pci_chipset_tag_t pc;
+	void *v;
+{
+
+	pc->pc_conf_v = v;
+	pc->pc_attach_hook = cia_attach_hook;
+	pc->pc_bus_maxdevs = cia_bus_maxdevs;
+	pc->pc_make_tag = cia_make_tag;
+	pc->pc_decompose_tag = cia_decompose_tag;
+	pc->pc_conf_read = cia_conf_read;
+	pc->pc_conf_write = cia_conf_write;
+}
+
+void
+cia_attach_hook(parent, self, pba)
+	struct device *parent, *self;
+	struct pcibus_attach_args *pba;
+{
+}
+
+int
+cia_bus_maxdevs(cpv, busno)
+	void *cpv;
+	int busno;
+{
+
+	return 32;
+}
+
+pcitag_t
+cia_make_tag(cpv, b, d, f)
+	void *cpv;
+	int b, d, f;
+{
+
+	return (b << 16) | (d << 11) | (f << 8);
+}
+
+void
+cia_decompose_tag(cpv, tag, bp, dp, fp)
+	void *cpv;
+	pcitag_t tag;
+	int *bp, *dp, *fp;
+{
+
+	if (bp != NULL)
+		*bp = (tag >> 16) & 0xff;
+	if (dp != NULL)
+		*dp = (tag >> 11) & 0x1f;
+	if (fp != NULL)
+		*fp = (tag >> 8) & 0x7;
+}
+
+pcireg_t
+cia_conf_read(cpv, tag, offset)
+	void *cpv;
+	pcitag_t tag;
+	int offset;
+{
+	struct cia_config *ccp = cpv;
+	pcireg_t *datap, data;
+	int s, secondary, ba;
+	u_int32_t old_cfg, errbits;
+
+#ifdef __GNUC__
+	s = 0;					/* XXX gcc -Wuninitialized */
+	old_cfg = 0;				/* XXX gcc -Wuninitialized */
+#endif
+
+	/*
+	 * Some (apparently-common) revisions of EB164 and AlphaStation
+	 * firmware do the Wrong thing with PCI master and target aborts,
+	 * which are caused by accesing the configuration space of devices
+	 * that don't exist (for example).
+	 *
+	 * To work around this, we clear the CIA error register's PCI
+	 * master and target abort bits before touching PCI configuration
+	 * space and check it afterwards.  If it indicates a master or target
+	 * abort, the device wasn't there so we return 0xffffffff.
+	 */
+	REGVAL(CIA_CSR_CIA_ERR) = CIA_ERR_RCVD_MAS_ABT|CIA_ERR_RCVD_TAR_ABT;
+	alpha_mb();
+	alpha_pal_draina();	
+
+	/* secondary if bus # != 0 */
+	alpha_pci_decompose_tag(&ccp->cc_pc, tag, &secondary, 0, 0);
+	if (secondary) {
+		s = splhigh();
+		old_cfg = REGVAL(CIA_CSR_CFG);
+		alpha_mb();
+		REGVAL(CIA_CSR_CFG) = old_cfg | 0x1;
+		alpha_mb();
+	}
+
+	/*
+	 * We just inline the BWX support, since this is the only
+	 * difference between BWX and swiz for config space.
+	 */
+	if (ccp->cc_flags & CCF_PCI_USE_BWX) {
+		if (secondary) {
+			datap =
+			    (pcireg_t *)ALPHA_PHYS_TO_K0SEG(CIA_EV56_BWCONF1 |
+				tag | (offset & ~0x03));
+		} else {
+			datap =
+			    (pcireg_t *)ALPHA_PHYS_TO_K0SEG(CIA_EV56_BWCONF0 |
+				tag | (offset & ~0x03));
+		}
+	} else {
+		datap = (pcireg_t *)ALPHA_PHYS_TO_K0SEG(CIA_PCI_CONF |
+		    tag << 5UL |				/* XXX */
+		    (offset & ~0x03) << 5 |			/* XXX */
+		    0 << 5 |					/* XXX */
+		    0x3 << 3);					/* XXX */
+	}
+	data = (pcireg_t)-1;
+	alpha_mb();
+	if (!(ba = badaddr(datap, sizeof *datap)))
+		data = *datap;
+	alpha_mb();
+	alpha_mb();
+
+	if (secondary) {
+		alpha_mb();
+		REGVAL(CIA_CSR_CFG) = old_cfg;
+		alpha_mb();
+		splx(s);
+	}
+
+	alpha_pal_draina();	
+	alpha_mb();
+	errbits = REGVAL(CIA_CSR_CIA_ERR);
+	if (errbits & (CIA_ERR_RCVD_MAS_ABT|CIA_ERR_RCVD_TAR_ABT)) {
+		ba = 1;
+		data = 0xffffffff;
+	}
+
+	if (errbits) {
+		REGVAL(CIA_CSR_CIA_ERR) = errbits;
+		alpha_mb();
+		alpha_pal_draina();
+	}
+
+#if 0
+	printf("cia_conf_read: tag 0x%lx, reg 0x%lx -> %x @@ %p%s\n", tag, reg,
+	    data, datap, ba ? " (badaddr)" : "");
+#endif
+
+	return data;
+}
+
+void
+cia_conf_write(cpv, tag, offset, data)
+	void *cpv;
+	pcitag_t tag;
+	int offset;
+	pcireg_t data;
+{
+	struct cia_config *ccp = cpv;
+	pcireg_t *datap;
+	int s, secondary;
+	u_int32_t old_cfg;
+
+#ifdef __GNUC__
+	s = 0;					/* XXX gcc -Wuninitialized */
+	old_cfg = 0;				/* XXX gcc -Wuninitialized */
+#endif
+
+	/* secondary if bus # != 0 */
+	alpha_pci_decompose_tag(&ccp->cc_pc, tag, &secondary, 0, 0);
+	if (secondary) {
+		s = splhigh();
+		old_cfg = REGVAL(CIA_CSR_CFG);
+		alpha_mb();
+		REGVAL(CIA_CSR_CFG) = old_cfg | 0x1;
+		alpha_mb();
+	}
+
+	/*
+	 * We just inline the BWX support, since this is the only
+	 * difference between BWX and swiz for config space.
+	 */
+	if (ccp->cc_flags & CCF_PCI_USE_BWX) {
+		if (secondary) {
+			datap =
+			    (pcireg_t *)ALPHA_PHYS_TO_K0SEG(CIA_EV56_BWCONF1 |
+				tag | (offset & ~0x03));
+		} else {
+			datap =
+			    (pcireg_t *)ALPHA_PHYS_TO_K0SEG(CIA_EV56_BWCONF0 |
+				tag | (offset & ~0x03));
+		}
+	} else {
+		datap = (pcireg_t *)ALPHA_PHYS_TO_K0SEG(CIA_PCI_CONF |
+		    tag << 5UL |				/* XXX */
+		    (offset & ~0x03) << 5 |			/* XXX */
+		    0 << 5 |					/* XXX */
+		    0x3 << 3);					/* XXX */
+	}
+	alpha_mb();
+	*datap = data;
+	alpha_mb();
+	alpha_mb();
+
+	if (secondary) {
+		alpha_mb();
+		REGVAL(CIA_CSR_CFG) = old_cfg;
+		alpha_mb();
+		splx(s);
+	}
+
+#if 0
+	printf("cia_conf_write: tag 0x%lx, reg 0x%lx -> 0x%x @@ %p\n", tag,
+	    reg, data, datap);
+#endif
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: cia_pci.c,v 1.10 2003/10/18 20:14:42 jmc Exp $ */
+d124 1
+a124 1
+	 * Some (apparently common) revisions of EB164 and AlphaStation
+d126 1
+a126 1
+	 * which are caused by accessing the configuration space of devices
+@
+

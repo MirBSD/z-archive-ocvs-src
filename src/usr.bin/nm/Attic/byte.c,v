@@ -1,0 +1,328 @@
+head	1.3;
+access;
+symbols
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.3
+	cvs-200401271800:1.1.1.2
+	cvs-200401261630:1.1.1.2
+	cvs-200401021645:1.1.1.2
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.2
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2004.08.11.21.45.52;	author tg;	state dead;
+branches;
+next	1.2;
+
+1.2
+date	2003.04.15.20.12.18;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.53.11;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.53.11;	author tg;	state Exp;
+branches;
+next	1.1.1.2;
+
+1.1.1.2
+date	2003.12.22.21.13.50;	author tg;	state Exp;
+branches;
+next	1.1.1.3;
+
+1.1.1.3
+date	2004.05.16.08.10.18;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@there you go, BSD-licenced nm(1) and size(1)
+in favour of a BFD-based multi-platform one
+
+after discussion on miros-discuss@@
+@
+text
+@/* $OpenBSD: byte.c,v 1.3 2001/08/19 23:21:40 espie Exp $ */
+/*
+ * Copyright (c) 1999  
+ *	Marc Espie.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ */
+
+/* a set of routines to read object files and compensate for host
+ * endianness
+ */
+
+
+static int byte_sex(mid)
+	int mid;
+{
+	switch(mid) {
+	case MID_I386:
+	case MID_VAX:
+	case MID_ALPHA:
+	case MID_PMAX:
+		return LITTLE_ENDIAN;
+	case MID_M68K:
+	case MID_M68K4K:
+	case MID_M88K:
+	case MID_SUN010:
+	case MID_SUN020:
+	case MID_HP200:
+	case MID_HP300:
+	case MID_HPUX800:
+	case MID_HPUX:
+	case MID_SPARC:
+	case MID_MIPS:
+	case MID_SPARC64:
+	case MID_POWERPC:
+		return BIG_ENDIAN;
+	default:	/* we don't know what this is, so we don't want to process it */
+		return 0;
+	}
+}
+
+#define BAD_OBJECT(h)  (N_BADMAG(h) || !byte_sex(N_GETMID(h)))
+
+/* handles endianess swaps */
+static void swap_u32s(h, n)
+	u_int32_t *h;
+	size_t n;
+{
+	size_t i;
+
+	for (i = 0; i < n; i++)
+		h[i] = swap32(h[i]);
+}
+
+static void fix_header_order(h)
+	struct exec *h;
+{
+	if (byte_sex(N_GETMID(*h)) != BYTE_ORDER)
+		swap_u32s( ((u_int32_t *)(h))+1, sizeof *h/sizeof(u_int32_t) - 1);
+}
+
+static long fix_long_order(l, mid)
+	long l;
+	int mid;
+{
+	if (byte_sex(mid) != BYTE_ORDER)
+		return swap32(l);
+	else
+		return l;
+}
+
+static void swap_nlist(p)
+	struct nlist *p;
+{
+	p->n_un.n_strx = swap32(p->n_un.n_strx);
+	p->n_desc = swap16(p->n_desc);
+	p->n_value = swap32(p->n_value);
+}
+
+static void fix_nlist_order(p, mid)
+	struct nlist *p;
+	int mid;
+{
+	if (byte_sex(mid) != BYTE_ORDER)
+		swap_nlist(p);
+}
+
+static void fix_nlists_order(p, n, mid)
+	struct nlist *p;
+	size_t n;
+	int mid;
+{
+	size_t i;
+
+	if (byte_sex(mid) != BYTE_ORDER)
+		for (i = 0; i < n; i++)
+			swap_nlist(p+i);
+}
+
+static void fix_ranlib_order(r, mid)
+	struct ranlib *r;
+	int mid;
+{
+	if (byte_sex(mid) != BYTE_ORDER) {
+		r->ran_un.ran_strx = swap32(r->ran_un.ran_strx);
+		r->ran_off = swap32(r->ran_off);
+	}
+}
+@
+
+
+1.2
+log
+@clean up after cvs
+fix some stuff
+
+in the hope to fully have removed sys_mhint... they implemented
+it in the name of sys_mquery *d'oh*
+@
+text
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
+
+
+1.1.1.2
+log
+@Time to import OpenBSD once again. Expect breakage.
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: byte.c,v 1.4 2003/11/07 04:43:14 mickey Exp $ */
+a33 1
+	case MID_HPPA:
+@
+
+
+1.1.1.3
+log
+@large-scale import of OpenBSD 3.5-current source base including many fixes
+note: from now, we will not be binary compatible with OpenBSD apps any
+longer (due to syscall numbering differences); both an OpenBSD compat and
+a conversion tool for old MirOS #7 apps will be delivered later.
+
+The src/ tree is locked from now.
+@
+text
+@d1 1
+a1 1
+/* $OpenBSD: byte.c,v 1.5 2004/01/28 18:05:10 deraadt Exp $ */
+d3 1
+a3 1
+ * Copyright (c) 1999
+d13 1
+a13 2
+/*
+ * A set of routines to read object files and compensate for host
+d16 4
+a19 2
+static int
+byte_sex(int mid)
+d21 1
+a21 1
+	switch (mid) {
+d42 1
+a42 2
+	default:
+		/* we don't know what this is, so we don't want to process it */
+d50 3
+a52 2
+static void
+swap_u32s(u_int32_t *h, size_t n)
+d60 2
+a61 2
+static void
+fix_header_order(struct exec *h)
+d67 3
+a69 2
+static long
+fix_long_order(long l, int mid)
+d77 2
+a78 2
+static void
+swap_nlist(struct nlist *p)
+d85 3
+a87 2
+static void
+fix_nlist_order(struct nlist *p, int mid)
+d93 4
+a96 2
+static void
+fix_nlists_order(struct nlist *p, size_t n, int mid)
+d105 3
+a107 2
+static void
+fix_ranlib_order(struct ranlib *r, int mid)
+@
+
+

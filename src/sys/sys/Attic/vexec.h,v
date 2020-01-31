@@ -1,0 +1,283 @@
+head	1.1;
+access;
+symbols
+	MIRBSD_7_DEV:1.1.0.2;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2004.01.02.01.45.39;	author wbx;	state dead;
+branches
+	1.1.2.1;
+next	;
+
+1.1.2.1
+date	2004.01.02.01.45.39;	author wbx;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@file vexec.h was initially added on branch MIRBSD_7_DEV.
+@
+text
+@@
+
+
+1.1.2.1
+log
+@missing file for vexec
+@
+text
+@a0 243
+/* $MirBSD$ */
+
+/*
+ * Verified exec port for MirBSD extracted from Stephanie for OpenBSD 3.4
+ * Waldemar Brodkorb <miros@@thinknow.de>
+*/
+
+/* $Id: vexec.h,v 1.5 2003/10/11 21:40:08 brian Exp $ */
+
+/*
+ * Stephanie for OpenBSD 3.4
+ */
+
+/*	$NetBSD: verified_exec.h,v 1.1 2002/10/29 12:31:25 blymn Exp $	*/
+
+/*-
+ * Copyright (c) 1998-1999 Brett Lymn
+ *                         (blymn@@baea.com.au, brett_lymn@@yahoo.com.au)
+ * All rights reserved.
+ *
+ * This code has been donated to The NetBSD Foundation by the Author.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. The name of the author may not be used to endorse or promote products
+ *    derived from this software withough specific prior written permission
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR "AS IS" AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *
+ */
+
+#ifndef _SYS_VEXEC_H_
+#define _SYS_VEXEC_H_
+
+#include <sys/types.h>
+#include <sys/device.h>
+#include <sys/md5k.h>
+#include <crypto/sha1.h>
+#include <crypto/rmd160.h>
+
+/*
+ * Vexec supports several types of digital-checksumming hashes, and
+ * allows you to easily add new types if available.
+ *
+ * Vexec uses a table describing available hashing types and their
+ * associated data (checksum length, hashing functions..) that's
+ * available only in the kernel's address space; but since we need
+ * type/length indication in userland aswell (for parsing the config
+ * file), we maintain a list of types/length available in userland
+ * too.
+ *
+ * To add more hash types:
+ *
+ *  - Make sure you have hashing routines that can be interfaced by 
+ *    the function types (see below).
+ *  - Add entries for the new type (type/length) below. Re-adjust the
+ *    maximum fingerprint length if needed.
+ *  - Add an entry for the new hash type in kern/kern_vexec.c.
+ *  - Change the userland control utility ("vexecctl", parse.y) to
+ *    recognize the new type.
+ */
+
+/* Function types: init, update, final. */
+typedef void (*VEXEC_INIT_FN)(void *);
+typedef void (*VEXEC_UPDATE_FN)(void *, u_char *, u_int);
+typedef void (*VEXEC_FINAL_FN)(u_char *, void *);
+
+/* Structure describing a hash type. */
+struct vexec_hash {
+	u_char vxh_type;		/* Hash type. */
+	size_t vxh_len;			/* Hash length. */
+	size_t vxh_ctxsize;		/* Calculation context size. */
+	VEXEC_INIT_FN vxh_init;		/* Context "init" function. */
+	VEXEC_UPDATE_FN vxh_update;	/* Context "update" function. */
+	VEXEC_FINAL_FN vxh_final;	/* Context "final" function. */
+};
+
+/* The table (set in kern/kern_vexec.c). */
+extern struct vexec_hash vexec_hash_list[];
+
+/* These serve as both types and indexes into the vexec hashes table. */
+#define	FPTYPE_MD5	0
+#define	FPTYPE_SHA1	1
+#define	FPTYPE_RMD160	2
+#define FPTYPE_MAXID	3
+
+/* We need this for "diagnostics". */
+#define FPTYPE_OK(type)	(type < (u_char) FPTYPE_MAXID)
+
+/* Fingerprint lengths. Make sure FPLEN_MAX is okay. */
+#define	FPLEN_MD5	16
+#define	FPLEN_SHA1	20
+#define	FPLEN_RMD160	20
+#define FPLEN_MAX	20
+
+/*
+ * This makes it easier to add hash functions that use the default generic
+ * naming scheme. (HASHInit, HASHUpdate, HASHFinal, FPTYPE_HASH,
+ * FPLEN_HASH and HASH_CTX)
+ */
+#define	VEXEC_HASHINIT(hash)	FPTYPE_ ## hash, \
+				FPLEN_ ## hash, \
+				sizeof(hash ## _CTX), \
+				(VEXEC_INIT_FN) hash ## Init, \
+				(VEXEC_UPDATE_FN) hash ## Update, \
+				(VEXEC_FINAL_FN) hash ## Final
+
+/* Parameters for vexecioctl(). */
+struct vexec_params {
+	u_char vxp_type;		/* Entry type. */
+	u_char vxp_fptype;		/* Hash type. */
+	u_char vxp_file[MAXPATHLEN];	/* Filename. */
+	u_char vxp_fp[FPLEN_MAX];	/* Fingerprint. */
+};
+
+#define VEXEC_LOAD _IOW('S', 0x1, struct vexec_params)
+
+/* Use for debugging only. */
+#ifdef VEXEC_DEBUG
+#define vexec_dprintf(x) printf x
+#else
+#define vexec_dprintf(x)
+#endif /* VEXEC_DEBUG */
+
+/*
+ * Entries in the Vexec lists can have either of these types:
+ *  - VEXEC_INDIRECT: Only indirect (via scripts) execution allowed.
+ *  - VEXEC_DIRECT: Both direct (via execve()) and indirect executions allowed.
+ *  - VEXEC_FILE: Maintain integrity during open() calls (for read/write).
+ */
+
+#define VEXEC_INDIRECT 		0
+#define VEXEC_DIRECT  		1
+#define VEXEC_FILE    		2
+
+
+#ifdef _KERNEL
+/*
+ * To comply with the "last line of defense" features of securelevel,
+ * Vexec allows you to specify at what securelevel it will stop being
+ * nice and will start treating warnings as errors. The implications,
+ * as far as Vexec is concerned, of the securelevel set here are:
+ *
+ *  - Securelevel 1: Only explicit mismatches (bad fingerprint for files
+ *    with entries in the list(s)) will be denied access to.
+ *  - Securelevel 2, strict mode off: Same as above, only that executables
+ *    without entries will be denied access to.
+ *  - Securelevel 2, strict mode on: Access will be denied to any file
+ *    that doesn't have an entry in the list(s), including newly created
+ *    files.
+ *
+ * Basically, it's recommended that you don't change this setting.
+ * However, if you want to change it, make sure you know what you're doing
+ * and what would be the implications of this change. DO NOT CHANGE THIS.
+ */
+#define	VEXEC_SECURELEVEL	2
+
+/*
+ * Vexec has two types of lists:
+ *  - Device list: List of devices that contain files vexec has entries for.
+ *  - Inode list: List of inodes, on a per-device basis, each describing
+ *    an entry for a file Vexec has information (fingerprint, etc.) for.
+ *
+ * The purpose of having those lists, and the seperation between devices,
+ * is to solve problems that may occure when having files with the same
+ * inode on two different devices.
+ *
+ * Vexec also maintains two global lists:
+ *  - Executables: Whose integrity is verified in the execve() syscall.
+ *  - Files: Other files vexec has entries for, whom aren't executables.
+ *    These may be config files, etc. Their integrity is checked in
+ *    the open() syscall.
+ *
+ * The seperation between executables and "normal" files is done to
+ * minimize the time spent on searching an entry. Search wasn't optimized
+ * (it's linear) because in theory it should run only once per file.
+ *
+ * Since we need to pass both lists (executables and files) to various
+ * functions we define only one "head type".
+ */
+LIST_HEAD(vexec_devhead, vexec_dev_list) vexec_exec_dev_head;
+/* LIST_HEAD(vexec_devhead, vexec_dev_list) vexec_file_dev_head; */
+struct vexec_devhead vexec_file_dev_head;
+
+/* Structure of an entry on the device list. */
+struct vexec_dev_list {
+	dev_t vxd_dev;				/* Device-id. */
+	LIST_HEAD(vxd_inodehead, vexec_inode_list) vxd_inode_head; /* List head. */
+	LIST_ENTRY(vexec_dev_list) vxd_entries;	/* List pointer. */
+};
+
+/* Structure of an entry on the inode list. */
+struct vexec_inode_list {
+	unsigned char vxi_type;				/* Entry type. */
+	unsigned char vxi_fptype;			/* Hash type. */
+	ino_t vxi_inode;				/* Inode number. */
+	unsigned char vxi_fp[FPLEN_MAX];		/* Fingerprint. */
+	LIST_ENTRY(vexec_inode_list) vxi_entries;	/* List pointer. */
+};
+
+extern int security_vexec;
+extern int security_vexec_verbose;
+extern int security_vexec_strict;
+
+/*
+ * Function prototypes.
+ */
+
+/* dev/vexec.c: */
+void vexecattach(struct device *, struct device *, void *);
+int vexecopen(dev_t, int, int, struct proc *);
+int vexecclose(dev_t, int, int, struct proc *);
+int vexecioctl(dev_t, u_long, caddr_t, int, struct proc *);
+int vexec_inodeadd(struct vexec_dev_list *, struct proc *, struct vnode *,
+    struct vexec_params *, struct vattr);
+struct vexec_dev_list *vexec_finddev(dev_t, struct vexec_devhead *);
+
+/* kern/kern_vexec.c: */
+void vexec_fp_convert(u_char *, u_char *, size_t);
+int vexec_fp_calc(struct proc *, struct vnode *, struct vexec_inode_list *,
+    u_quad_t, u_char *);
+int vexec_fp_cmp(struct vexec_inode_list *, u_char *);
+struct vexec_inode_list *vexec_inodeget(struct vexec_devhead *, dev_t,
+    ino_t, u_char *);
+int vexec_verify(struct proc *, struct vnode *, struct vattr *, u_char *, int);
+int vexec_openchk(struct proc *, struct vnode *);
+
+#endif /* _KERNEL */
+
+#endif /* _SYS_VEXEC_H_ */
+@
+

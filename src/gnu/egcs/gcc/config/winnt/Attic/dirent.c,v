@@ -1,0 +1,478 @@
+head	1.2;
+access;
+symbols
+	cvs-200406091940:1.1.1.1
+	MIRBSD_7quater:1.1.1.1
+	cvs-200405160640:1.1.1.1
+	cvs-200401271800:1.1.1.1
+	cvs-200401261630:1.1.1.1
+	cvs-200401021645:1.1.1.1
+	MIRBSD_7_ALPHA:1.1.1.1.0.6
+	MIRBSD_7:1.1.1.1.0.4
+	cvs-200312222040:1.1.1.1
+	MIRBSD_7ter:1.1.1.1
+	MIRBSD_7_DEV:1.1.1.1.0.2
+	cvs-200310020700:1.1.1.1
+	cvs-200309271030:1.1.1.1
+	cvs-200309251530:1.1.1.1
+	cvs-200308302005:1.1.1.1
+	cvs-200308171200:1.1.1.1
+	ctm-3496:1.1.1.1
+	ctm-3449:1.1.1.1
+	ctm-3437:1.1.1.1
+	cvs-200307191805:1.1.1.1
+	ctm-3425:1.1.1.1
+	cvs-200307091500:1.1.1.1
+	ctm-3389:1.1.1.1
+	cvs-200306291430:1.1.1.1
+	ctm-3341:1.1.1.1
+	MIRBSD_5:1.1.1.1
+	cvs-200306082100:1.1.1.1
+	ctm-3316:1.1.1.1
+	ctm-3272:1.1.1.1
+	ctm-3264:1.1.1.1
+	cvs-200305071630:1.1.1.1
+	MIRBSD_4:1.1.1.1
+	ctm-3203:1.1.1.1
+	cvs-20030410-1130:1.1.1.1
+	ctm-3155:1.1.1.1
+	ctm-3132:1.1.1.1
+	openbsd:1.1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2004.07.18.13.38.58;	author tg;	state dead;
+branches;
+next	1.1;
+
+1.1
+date	2003.03.22.17.36.59;	author tg;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2003.03.22.17.36.59;	author tg;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@nuke egcs (pgcc, gcc2) and simplify the system a bit
+also fix placement of GNUSYSTEM_AUX_DIR equation in <bsd.own.mk> while here
+remove some sparc and xc-old/xc-mit remnants
+for now, all distribution lists are mi, since we only have 1 arch
+
+XXX comp is second-largest now (after xfont), need ideas, come to IRC
+
+agreed: <benz|lernen> joa, warum nicht
+@
+text
+@/*
+ * @@(#)msd_dir.c 1.4 87/11/06	Public Domain.
+ *
+ *  A public domain implementation of BSD directory routines for
+ *  MS-DOS.  Written by Michael Rendell ({uunet,utai}michael@@garfield),
+ *  August 1897
+ *
+ *  Modified by Ian Stewartson, Data Logic (istewart@@datlog.co.uk).
+ *
+ *  Updates:  1.  To support OS/2 1.x
+ *	      2.  To support HPFS long filenames
+ *	      3.  To support OS/2 2.x
+ *	      4.  To support TurboC
+ *	      5.  To support Windows NT
+ */
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <malloc.h>
+
+#include <string.h>
+#include <limits.h>
+#include <ctype.h>
+#include <errno.h>
+#include <dirent.h>
+
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+#define FILE_NAME_E		cFileName
+#define OS_CloseFH(a)		FindClose (a)
+#define FIND_BUFFER		WIN32_FIND_DATA
+#define DISABLE_HARD_ERRORS	SetErrorMode (0)
+#define ENABLE_HARD_ERRORS	SetErrorMode (SEM_FAILCRITICALERRORS | \
+					      SEM_NOOPENFILEERRORBOX);
+
+#  define ERROR_EMPTY_DIR	ERROR_FILE_NOT_FOUND
+
+#  define ATTRIBUTES		(_A_SUBDIR | _A_HIDDEN | _A_SYSTEM | \
+				 _A_NORMAL | _A_RDONLY | _A_ARCH)
+
+/*
+ * missing ??
+ */
+
+#ifndef ENOTDIR
+#  define ENOTDIR	120	/* Not a directory			*/
+#endif
+
+#ifndef S_IFMT
+#  define	S_IFMT	0xf000	/* type of file				*/
+#endif
+
+#ifndef S_ISDIR
+#  define S_ISDIR(m)	((((m) & S_IFMT) == S_IFDIR))
+#endif
+
+/*
+ * Internals
+ */
+
+typedef struct _dircontents	DIRCONT;
+static void			free_dircontents (DIRCONT *);
+
+/*
+ * Open the directory stream
+ */
+
+DIR *
+opendir (name)
+    const char	*name;
+{
+    struct stat		statb;
+    DIR			*dirp;
+    char		*last;
+    DIRCONT		*dp;
+    char		*nbuf;
+    int			len = strlen (name);
+    unsigned long	rc;
+    FIND_BUFFER		dtabuf;
+    HANDLE		d_handle;
+    bool		HPFS = FALSE;
+
+    if (!len)
+    {
+	errno = ENOTDIR;
+	return (DIR *)NULL;
+    }
+
+    if ((nbuf = malloc (len + 5)) == (char *)NULL)
+	return (DIR *) NULL;
+
+    strcpy (nbuf, name);
+    last = &nbuf[len - 1];
+
+/* Ok, DOS is very picky about its directory names.  The following are
+ * valid.
+ *
+ *  c:/
+ *  c:.
+ *  c:name/name1
+ *
+ *  c:name/ is not valid
+ */
+
+    if (((*last == '\\') || (*last == '/')) && (len > 1) &&
+	(!((len == 3) && (name[1] == ':'))))
+	*(last--) = 0;
+
+/* Check its a directory */
+
+    DISABLE_HARD_ERRORS;
+    rc = stat (nbuf, &statb);
+    ENABLE_HARD_ERRORS;
+
+    if (rc)
+    {
+	free (nbuf);
+	return (DIR *) NULL;
+    }
+
+    if (!S_ISDIR (statb.st_mode))
+    {
+	free (nbuf);
+	errno = ENOTDIR;
+	return (DIR *)NULL;
+    }
+
+    if ((dirp = (DIR *) malloc (sizeof (DIR))) == (DIR *) NULL)
+    {
+	free (nbuf);
+	return (DIR *) NULL;
+    }
+
+/* Set up to find everything */
+
+    if ((*last != '\\') && (*last != '/'))
+	strcat (last, "/");
+
+    strcat (last, "*.*");
+
+/* Find the file system type */
+
+    HPFS = IsHPFSFileSystem (nbuf);
+
+    dirp->dd_loc      = 0;
+    dirp->dd_cp       = (DIRCONT *) NULL;
+    dirp->dd_contents = (DIRCONT *) NULL;
+
+    DISABLE_HARD_ERRORS;
+
+    d_handle = FindFirstFile (nbuf, &dtabuf);
+    rc = (d_handle == INVALID_HANDLE_VALUE) ? GetLastError () : 0;
+
+    ENABLE_HARD_ERRORS;
+
+/* Check for errors */
+
+    if (rc)
+    {
+	free (nbuf);
+
+/* Empty directory */
+
+#if defined (ERROR_EMPTY_DIR)
+	if (rc == ERROR_EMPTY_DIR)
+	    return dirp;
+#endif
+
+	free (dirp);
+	return (DIR *) NULL;
+    }
+
+/* Process the directory */
+
+    do
+    {
+	if (((dp = (DIRCONT *) malloc (sizeof (DIRCONT))) == (DIRCONT *)NULL) ||
+	    ((dp->_d_entry = strdup (dtabuf.FILE_NAME_E)) == (char *) NULL))
+	{
+	    if (dp->_d_entry != (char *)NULL)
+		free ((char *)dp);
+
+	    free (nbuf);
+	    free_dircontents (dirp->dd_contents);
+
+	    OS_CloseFH (d_handle);
+	    return (DIR *) NULL;
+	}
+
+	if (!HPFS)
+	    strlwr (dp->_d_entry);
+
+	if (dirp->dd_contents != (DIRCONT *) NULL)
+	    dirp->dd_cp = dirp->dd_cp->_d_next = dp;
+
+	else
+	    dirp->dd_contents = dirp->dd_cp = dp;
+
+	dp->_d_next = (DIRCONT *) NULL;
+
+    } while (FindNextFile (d_handle, &dtabuf));
+
+    dirp->dd_cp = dirp->dd_contents;
+    free (nbuf);
+
+    OS_CloseFH (d_handle);
+    return dirp;
+}
+
+
+/*
+ * Close the directory stream
+ */
+
+int
+closedir (dirp)
+    DIR *dirp;
+{
+    if (dirp != (DIR *)NULL)
+    {
+	free_dircontents (dirp->dd_contents);
+	free ((char *)dirp);
+    }
+
+    return 0;
+}
+
+/*
+ * Read the next record from the stream
+ */
+
+struct dirent *
+readdir (dirp)
+    DIR	*dirp;
+{
+    static struct dirent	dp;
+
+    if ((dirp == (DIR *)NULL) || (dirp->dd_cp == (DIRCONT *) NULL))
+	return (struct dirent *) NULL;
+
+    dp.d_reclen = strlen (strcpy (dp.d_name, dirp->dd_cp->_d_entry));
+    dp.d_off    = dirp->dd_loc * 32;
+    dp.d_ino    = (ino_t)++dirp->dd_loc;
+    dirp->dd_cp = dirp->dd_cp->_d_next;
+
+    return &dp;
+}
+
+/*
+ * Restart the directory stream
+ */
+
+void
+rewinddir (dirp)
+    DIR *dirp;
+{
+    seekdir (dirp, (off_t)0);
+}
+
+/*
+ * Move to a know position in the stream
+ */
+
+void
+seekdir (dirp, off)
+    DIR *dirp;
+    off_t off;
+{
+    long	i = off;
+    DIRCONT	*dp;
+
+    if ((dirp == (DIR *)NULL) || (off < 0L))
+	return;
+
+    for (dp = dirp->dd_contents; (--i >= 0) && (dp != (DIRCONT *)NULL);
+	 dp = dp->_d_next)
+	;
+
+    dirp->dd_loc = off - (i + 1);
+    dirp->dd_cp = dp;
+}
+
+/*
+ * Get the current position
+ */
+
+off_t
+telldir(dirp)
+    DIR *dirp;
+{
+    return (dirp == (DIR *)NULL) ? (off_t) -1 : dirp->dd_loc;
+}
+
+/*
+ * Release the internal structure
+ */
+
+static void
+free_dircontents (dp)
+    DIRCONT *dp;
+{
+    DIRCONT	*odp;
+
+    while ((odp = dp) != (DIRCONT *)NULL)
+    {
+	if (dp->_d_entry != (char *)NULL)
+	    free (dp->_d_entry);
+
+	dp = dp->_d_next;
+	free ((char *)odp);
+    }
+}
+
+
+/*
+ * Windows NT version
+ */
+
+bool
+IsHPFSFileSystem (directory)
+    char *directory;
+{
+    char		bName[4];
+    DWORD		flags;
+    DWORD		maxname;
+    BOOL		rc;
+    unsigned int	nDrive;
+    char		szCurDir [MAX_PATH];
+
+    if (isalpha (directory[0]) && (directory[1] == ':'))
+	nDrive = toupper (directory[0]) - '@@';
+
+    else
+    {
+	GetCurrentDirectory (MAX_PATH, szCurDir);
+	nDrive = szCurDir[0] - 'A' + 1;
+    }
+
+/* Set up the drive name */
+
+    strcpy (bName, "x:\\");
+    bName[0] = (char) (nDrive + '@@');
+
+/* Read the volume info, if we fail - assume non-HPFS */
+
+    DISABLE_HARD_ERRORS;
+
+    rc = GetVolumeInformation (bName, (LPTSTR)NULL, 0, (LPDWORD)NULL,
+			       &maxname, &flags, (LPTSTR)NULL, 0);
+    ENABLE_HARD_ERRORS;
+
+    return ((rc) && (flags & (FS_CASE_SENSITIVE | FS_CASE_IS_PRESERVED)))
+    		? TRUE : FALSE;
+}
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@@
+
+
+1.1.1.1
+log
+@Import OpenBSD 3.3 source repository from CTM 3132 the first time
+This opens an OpenBSD-mirabile (aka MirBSD) repository.
+
+### MirBSD is:
+# Copyright (c) 1982-2003 by Thorsten "mirabile" Glaser <x86@@ePost.de>
+# Copyright © 1968-2003  The authors of And contributors to UNIX®, the
+#       C Language, BSD/Berkeley Unix; 386BSD, NetBSD 1.1 and OpenBSD.
+#
+# Anyone who obtained a copy of this work is hereby permitted to freely use,
+# distribute, modify, merge, sublicence, give away or sell it as long as the
+# authors are given due credit and the following notice is retained:
+#
+# This work is provided "as is", with no explicit or implicit warranty what-
+# soever. Use it only at your own risk. In no event may an author or contri-
+# butor be held liable for any damage, directly or indirectly, that origina-
+# ted through or is caused by creation or modification of this work.
+
+MirBSD is my private tree. MirBSD does not differ very much from OpenBSD
+and intentionally tracks OpenBSD. That's why it _is_ OpenBSD, just not the
+official one. It's like with DarrenBSD.
+
+At time of this writing, no advertising for MirBSD must be done,
+because the advertising clause has not yet been sorted out.
+
+http://templeofhate.com/tglaser/MirBSD/index.php
+@
+text
+@@
